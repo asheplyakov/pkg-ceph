@@ -1,0 +1,451 @@
+Source: ceph
+Section: admin
+Priority: optional
+Homepage: http://ceph.com/
+Vcs-Git: git://github.com/ceph/ceph.git
+Vcs-Browser: https://github.com/ceph/ceph
+Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
+XSBC-Original-Maintainer: Laszlo Boszormenyi (GCS) <gcs@debian.hu>
+Uploaders: Sage Weil <sage@newdream.net>
+Build-Depends: autoconf,
+               automake,
+               autotools-dev,
+               debhelper (>= 8~),
+               default-jdk,
+               dpkg-dev (>= 1.16.1~),
+               javahelper,
+               junit4,
+               libaio-dev,
+               libatomic-ops-dev,
+               libboost-dev (>= 1.42),
+               libboost-program-options-dev (>= 1.42),
+               libboost-system-dev (>= 1.42),
+               libboost-thread-dev (>= 1.42),
+               libcurl4-gnutls-dev,
+               libedit-dev,
+               libexpat1-dev,
+               libfcgi-dev,
+               libfuse-dev,
+               libgoogle-perftools-dev,
+               libkeyutils-dev,
+               libleveldb-dev,
+               libnss3-dev,
+               libs3-dev,
+               libsnappy-dev,
+               libtool,
+               libxml2-dev,
+               pkg-config,
+               python-all (>= 2.6.6-3~),
+               uuid-dev
+Standards-Version: 3.9.4
+X-Python-Version: >= 2.6
+XS-Testsuite: autopkgtest
+
+Package: ceph
+Architecture: linux-any
+Depends: binutils,
+         ceph-common,
+         cryptsetup-bin | cryptsetup,
+         gdisk,
+         hdparm | sdparm,
+         parted,
+         python,
+         python-argparse,
+         uuid-runtime,
+         xfsprogs,
+         ${misc:Depends},
+         ${shlibs:Depends}
+Recommends: libcephfs1, librados2, librbd1
+Description: distributed storage and file system
+ Ceph is a distributed storage system designed to provide excellent
+ performance, reliability, and scalability.
+ .
+ This package contains all server daemons and management tools for creating,
+ running, and administering a Ceph storage cluster, with the exception of the
+ metadata server, which is necessary for using the distributed file system
+ and is provided by the ceph-mds package.
+
+Package: ceph-dbg
+Architecture: linux-any
+Section: debug
+Priority: extra
+Depends: ceph (= ${binary:Version}), ${misc:Depends}
+Description: debugging symbols for ceph
+ Ceph is a distributed storage system designed to provide excellent
+ performance, reliability, and scalability.
+ .
+ This package contains the debugging symbols for ceph.
+
+Package: ceph-mds
+Architecture: linux-any
+Depends: ceph, ${misc:Depends}, ${shlibs:Depends}
+Recommends: ceph-fs-common, ceph-fuse, libcephfs1
+Description: metadata server for the ceph distributed file system
+ Ceph is a distributed storage and network file system designed to
+ provide excellent performance, reliability, and scalability.
+ .
+ This package contains the metadata server daemon, which is used to
+ create a distributed file system on top of the ceph storage cluster.
+
+Package: ceph-mds-dbg
+Architecture: linux-any
+Section: debug
+Priority: extra
+Depends: ceph-mds (= ${binary:Version}), ${misc:Depends}
+Description: debugging symbols for ceph-mds
+ Ceph is a distributed storage and network file system designed to provide
+ excellent performance, reliability, and scalability.
+ .
+ This package contains the debugging symbols for ceph-mds.
+
+Package: ceph-fuse
+Architecture: amd64
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Recommends: fuse
+Description: FUSE-based client for the Ceph distributed file system
+ Ceph is a distributed network file system designed to provide
+ excellent performance, reliability, and scalability.  This is a
+ FUSE-based client that allows one to mount a Ceph file system without
+ root privileges.
+ .
+ Because the FUSE-based client has certain inherent performance
+ limitations, it is recommended that the native Linux kernel client
+ be used if possible.  If it is not practical to load a kernel module
+ (insufficient privileges, older kernel, etc.), then the FUSE client will
+ do.
+
+Package: ceph-fuse-dbg
+Architecture: amd64
+Section: debug
+Priority: extra
+Depends: ceph-fuse (= ${binary:Version}), ${misc:Depends}
+Description: debugging symbols for ceph-fuse
+ Ceph is a distributed network file system designed to provide
+ excellent performance, reliability, and scalability.  This is a
+ FUSE-based client that allows one to mount a Ceph file system without
+ root privileges.
+ .
+ This package contains the debugging symbols for ceph-fuse.
+
+Package: rbd-fuse
+Architecture: linux-any
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Recommends: fuse
+Description: FUSE-based rbd client for the Ceph distributed file system
+ Ceph is a distributed network file system designed to provide
+ excellent performance, reliability, and scalability.  This is a
+ FUSE-based client that allows one to map Ceph rbd images as files.
+ .
+ FUSE base client that allows one to map Ceph rbd images as files.
+
+Package: rbd-fuse-dbg
+Architecture: linux-any
+Section: debug
+Priority: extra
+Depends: rbd-fuse (= ${binary:Version}), ${misc:Depends}
+Description: debugging symbols for rbd-fuse
+ Ceph is a distributed network file system designed to provide
+ excellent performance, reliability, and scalability.  This is a
+ FUSE-based client that allows one to map Ceph rbd images as files.
+ .
+ This package contains the debugging symbols for rbd-fuse.
+
+Package: ceph-common
+Architecture: linux-any
+Depends: librbd1 (= ${binary:Version}),
+         python,
+         python-ceph (= ${binary:Version}),
+         ${misc:Depends},
+         ${shlibs:Depends}
+Conflicts: ceph-client-tools
+Replaces: ceph-client-tools
+Suggests: ceph, ceph-mds
+Description: common utilities to mount and interact with a ceph storage cluster
+ Ceph is a distributed storage and file system designed to provide
+ excellent performance, reliability, and scalability.  This is a collection
+ of common tools that allow one to interact with and administer a Ceph cluster.
+
+Package: ceph-common-dbg
+Architecture: linux-any
+Depends: ceph-common (= ${binary:Version}), ${misc:Depends}
+Conflicts: ceph-client-tools-dbg
+Replaces: ceph-client-tools-dbg
+Section: debug
+Priority: extra
+Description: debugging symbols for ceph-common
+ Ceph is a distributed storage and file system designed to provide
+ excellent performance, reliability, and scalability.  This is a collection
+ of common tools that allow one to interact with and administer a Ceph cluster.
+ .
+ This package contains the debugging symbols for ceph-common.
+
+Package: ceph-fs-common
+Architecture: linux-any
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Conflicts: ceph-client-tools
+Replaces: ceph-client-tools
+Suggests: ceph-mds
+Description: common utilities to mount and interact with a ceph file system
+ Ceph is a distributed network file system designed to provide
+ excellent performance, reliability, and scalability.  This is a collection
+ of common tools, including the mount utility, that allows one to mount the
+ Ceph file system with the kernel client.
+
+Package: ceph-fs-common-dbg
+Architecture: linux-any
+Depends: ceph-fs-common (= ${binary:Version}), ${misc:Depends}
+Conflicts: ceph-client-tools-dbg
+Replaces: ceph-client-tools-dbg
+Section: debug
+Priority: extra
+Description: debugging symbols for ceph-fs-common
+ Ceph is a distributed network file system designed to provide
+ excellent performance, reliability, and scalability.  This is a collection
+ of common tools, including the mount utility, that allows one to mount the
+ Ceph file system with the kernel client.
+ .
+ This package contains the debugging symbols for ceph-fs-common.
+
+Package: ceph-resource-agents
+Architecture: all
+Recommends: pacemaker
+Priority: extra
+Depends: ceph (>= ${binary:Version}), resource-agents, ${misc:Depends}
+Description: OCF-compliant resource agents for Ceph
+ Ceph is a distributed storage and network file system designed to provide
+ excellent performance, reliability, and scalability.
+ .
+ This package contains the resource agents (RAs) which integrate
+ Ceph with OCF-compliant cluster resource managers,
+ such as Pacemaker.
+
+Package: librados2
+Conflicts: librados, librados1
+Replaces: librados, librados1
+Architecture: linux-any
+Section: libs
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: RADOS distributed object store client library
+ RADOS is a reliable, autonomic distributed object storage cluster
+ developed as part of the Ceph distributed storage system.  This is a
+ shared library allowing applications to access the distributed object
+ store using a simple file-like interface.
+
+Package: librados2-dbg
+Conflicts: librados1-dbg
+Replaces: librados1-dbg
+Architecture: linux-any
+Section: debug
+Priority: extra
+Depends: librados2 (= ${binary:Version}), ${misc:Depends}
+Description: debugging symbols for librados2
+ RADOS is a reliable, autonomic distributed object storage cluster
+ developed as part of the Ceph distributed storage system.  This is a
+ shared library allowing applications to access the distributed object
+ store using a simple file-like interface.
+ .
+ This package contains debugging symbols for librados2.
+
+Package: librados-dev
+Architecture: linux-any
+Section: libdevel
+Depends: librados2 (= ${binary:Version}), ${misc:Depends}, ${shlibs:Depends}
+Conflicts: librados1-dev, librados2-dev
+Replaces: librados1-dev, librados2-dev
+Description: RADOS distributed object store client library (development files)
+ RADOS is a reliable, autonomic distributed object storage cluster
+ developed as part of the Ceph distributed storage system.  This is a
+ shared library allowing applications to access the distributed object
+ store using a simple file-like interface.
+ .
+ This package contains development files needed for building applications that
+ link against librados2.
+
+Package: librbd1
+Architecture: linux-any
+Section: libs
+Depends: librados2 (= ${binary:Version}), ${misc:Depends}, ${shlibs:Depends}
+Description: RADOS block device client library
+ RBD is a block device striped across multiple distributed objects
+ in RADOS, a reliable, autonomic distributed object storage cluster
+ developed as part of the Ceph distributed storage system.  This is a
+ shared library allowing applications to manage these block devices.
+
+Package: librbd1-dbg
+Architecture: linux-any
+Section: debug
+Priority: extra
+Depends: librbd1 (= ${binary:Version}), ${misc:Depends}
+Description: debugging symbols for librbd1
+ RBD is a block device striped across multiple distributed objects
+ in RADOS, a reliable, autonomic distributed object storage cluster
+ developed as part of the Ceph distributed storage system.  This is a
+ shared library allowing applications to manage these block devices.
+ .
+ This package contains debugging symbols for librbd1.
+
+Package: librbd-dev
+Architecture: linux-any
+Section: libdevel
+Depends: librados-dev, librbd1 (= ${binary:Version}), ${misc:Depends}
+Conflicts: librbd1-dev
+Replaces: librbd1-dev
+Description: RADOS block device client library (development files)
+ RBD is a block device striped across multiple distributed objects
+ in RADOS, a reliable, autonomic distributed object storage cluster
+ developed as part of the Ceph distributed storage system.  This is a
+ shared library allowing applications to manage these block devices.
+ .
+ This package contains development files needed for building applications that
+ link against librbd1.
+
+Package: libcephfs1
+Conflicts: libceph, libceph1, libcephfs
+Replaces: libceph, libceph1, libcephfs
+Architecture: linux-any
+Section: libs
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: Ceph distributed file system client library
+ Ceph is a distributed network file system designed to provide
+ excellent performance, reliability, and scalability.  This is a
+ shared library allowing applications to access a Ceph distributed
+ file system via a POSIX-like interface.
+
+Package: libcephfs1-dbg
+Architecture: linux-any
+Section: debug
+Priority: extra
+Depends: libcephfs1 (= ${binary:Version}), ${misc:Depends}
+Conflicts: libceph1-dbg
+Replaces: libceph1-dbg
+Description: debugging symbols for libcephfs1
+ Ceph is a distributed network file system designed to provide
+ excellent performance, reliability, and scalability.  This is a
+ shared library allowing applications to access a Ceph distributed
+ file system via a POSIX-like interface.
+ .
+ This package contains debugging symbols for libcephfs1.
+
+Package: libcephfs-dev
+Architecture: linux-any
+Section: libdevel
+Depends: libcephfs1 (= ${binary:Version}), ${misc:Depends}
+Conflicts: libceph-dev, libceph1-dev, libcephfs1-dev
+Replaces: libceph-dev, libceph1-dev, libcephfs1-dev
+Description: Ceph distributed file system client library (development files)
+ Ceph is a distributed network file system designed to provide
+ excellent performance, reliability, and scalability.  This is a
+ shared library allowing applications to access a Ceph distributed
+ file system via a POSIX-like interface.
+ .
+ This package contains development files needed for building applications that
+ link against libcephfs1.
+
+Package: radosgw
+Architecture: linux-any
+Depends: ceph-common (= ${binary:Version}), ${misc:Depends}, ${shlibs:Depends}
+Description: REST gateway for RADOS distributed object store
+ RADOS is a distributed object store used by the Ceph distributed
+ storage system.  This package provides a REST gateway to the
+ object store that aims to implement a superset of Amazon's S3
+ service.
+ .
+ This package contains the proxy daemon and related tools only.
+
+Package: radosgw-dbg
+Architecture: linux-any
+Section: debug
+Priority: extra
+Depends: radosgw (= ${binary:Version}), ${misc:Depends}
+Description: debugging symbols for radosgw
+ RADOS is a distributed object store used by the Ceph distributed
+ storage system.  This package provides a REST gateway to the
+ object store that aims to implement a superset of Amazon's S3
+ service.
+ .
+ This package contains debugging symbols for radosgw.
+
+Package: rest-bench
+Architecture: linux-any
+Depends: ceph-common, curl, xml2, ${misc:Depends}, ${shlibs:Depends}
+Description: RESTful bencher that can be used to benchmark radosgw performance
+ Simple tool to benchmark radosgw (or S3) (based on 'rados-bench' command).
+
+Package: rest-bench-dbg
+Architecture: linux-any
+Section: debug
+Priority: extra
+Depends: rest-bench (= ${binary:Version}), ${misc:Depends}
+Description: RESTful bencher that can be used to benchmark radosgw performance
+ Simple tool to benchmark radosgw (or S3) (based on 'rados-bench' command).
+ .
+ This package contains the debugging symbols for rest-bench.
+
+Package: ceph-test
+Architecture: linux-any
+Depends: ceph-common, curl, xml2, ${misc:Depends}, ${shlibs:Depends}
+Description: Ceph test and benchmarking tools
+ Ceph is a distributed storage system designed to provide excellent
+ performance, reliability, and scalability.
+ .
+ This package contains tools for testing and benchmarking Ceph.
+
+Package: ceph-test-dbg
+Architecture: linux-any
+Section: debug
+Priority: extra
+Depends: ceph-common, curl, xml2, ${misc:Depends}, ${shlibs:Depends}
+Description: Debugging symbols for ceph-test
+ Ceph is a distributed storage system designed to provide excellent
+ performance, reliability, and scalability.
+ .
+ This package contains the debugging symbols for ceph-test.
+
+Package: python-ceph
+Architecture: linux-any
+Section: python
+Depends: librados2,
+         librbd1,
+         python-flask,
+         python-requests,
+         ${misc:Depends},
+         ${python:Depends}
+Description: Python libraries for the Ceph distributed filesystem
+ Ceph is a distributed storage and network file system designed to provide
+ excellent performance, reliability, and scalability.
+ .
+ This package contains Python libraries for interacting with Ceph's
+ RADOS object storage, and RBD (RADOS block device).
+
+Package: libcephfs-java
+Section: java
+Architecture: all
+Depends: libcephfs-jni (>= ${binary:Version}), ${java:Depends}, ${misc:Depends}
+Description: Java library for the Ceph File System
+ Ceph is a distributed storage system designed to provide excellent
+ performance, reliability, and scalability.
+ .
+ This package contains the Java library for interacting with the Ceph
+ File System.
+
+Package: libcephfs-jni
+Architecture: linux-any
+Section: libs
+Depends: libcephfs1 (= ${binary:Version}), ${misc:Depends}, ${shlibs:Depends}
+Description: Java Native Interface library for CephFS Java bindings
+ Ceph is a distributed storage system designed to provide excellent
+ performance, reliability, and scalability.
+ .
+ This package contains the Java Native Interface library for interacting
+ with the Ceph File System.
+
+Package: libcephfs-jni-dbg
+Architecture: linux-any
+Section: debug
+Priority: extra
+Depends: libcephfs-jni (= ${binary:Version}), ${misc:Depends}
+Description: Debugging symbols for libcephfs-jni
+ Ceph is a distributed storage system designed to provide excellent
+ performance, reliability, and scalability.
+ .
+ This package contains debugging symbols for libcephfs-jni.
