@@ -1,0 +1,103 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+#export DH_VERBOSE=1
+
+export DESTDIR=$(CURDIR)/debian/tmp
+
+# Enable hardening
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+DPKG_EXPORT_BUILDFLAGS = 1
+include /usr/share/dpkg/buildflags.mk
+
+export DEB_HOST_ARCH      ?= $(shell dpkg-architecture -qDEB_HOST_ARCH)
+
+extraopts += --disable-silent-rules
+extraopts += --with-ocf --with-rest-bench --with-nss
+extraopts += --with-debug
+extraopts += --enable-cephfs-java
+
+ifeq ($(DEB_HOST_ARCH), armel)
+  # armel supports ARMv4t or above instructions sets.
+  # libatomic-ops is only usable with Ceph for ARMv6 or above.
+  extraopts += --without-libatomic-ops
+endif
+
+# Use system provided libs3
+extraopts += --with-system-libs3
+
+%:
+	dh $@ --with javahelper --with python2 --parallel
+
+override_dh_auto_configure:
+	./autogen.sh
+	dh_auto_configure -- --sbindir=/sbin $(extraopts)
+
+override_dh_auto_build:
+	dh_auto_build
+	cp src/init-ceph debian/ceph.init
+	cp src/init-radosgw debian/radosgw.init
+	cp src/logrotate.conf debian/ceph.logrotate
+	cp src/rgw/logrotate.conf debian/radosgw.logrotate
+
+override_dh_auto_clean:
+	dh_auto_clean
+	rm -f aclocal.m4 compile config.sub config.guess depcomp install-sh \
+      ltmain.sh missing
+	rm -f configure Makefile.in man/Makefile.in src/Makefile.in
+	rm -f src/acconfig.h.in
+	rm -f debian/ceph.init debian/radosgw.init debian/ceph.logrotate debian/radosgw.logrotate
+	rm -f debian/*.upstart
+
+override_dh_auto_install:
+	dh_auto_install
+	sed -i "/dependency_libs/ s/'.*'/''/" `find . -name '*.la'`
+	install -D -m 644 udev/50-rbd.rules $(DESTDIR)/lib/udev/rules.d/50-rbd.rules
+	install -D -m 644 udev/60-ceph-partuuid-workaround.rules $(DESTDIR)/lib/udev/rules.d/60-ceph-partuuid-workaround.rules
+	install -D -m 644 udev/95-ceph-osd.rules $(DESTDIR)/lib/udev/rules.d/95-ceph-osd.rules
+	install -D -m 644 src/rbdmap $(DESTDIR)/etc/ceph/rbdmap
+	install -D -m 755 src/init-rbdmap $(DESTDIR)/etc/init.d/rbdmap
+
+override_dh_installinit:
+	dh_installinit --no-start
+	# Install upstart configurations using dh_installinit
+	for conf in `ls -1 src/upstart/ceph*.conf | grep -v mds`; do \
+        name=`basename $$conf | cut -d . -f 1`; \
+        cp $$conf debian/ceph.$$name.upstart; \
+        dh_installinit -pceph --upstart-only --no-start --name=$$name; \
+    done
+	for conf in `ls -1 src/upstart/ceph-mds*.conf`; do \
+        name=`basename $$conf | cut -d . -f 1`; \
+        cp $$conf debian/ceph-mds.$$name.upstart; \
+        dh_installinit -pceph-mds --upstart-only --no-start --name=$$name; \
+    done
+	for conf in `ls -1 src/upstart/radosgw*.conf`; do \
+        name=`basename $$conf | cut -d . -f 1`; \
+        cp $$conf debian/radosgw.$$name.upstart; \
+        dh_installinit -pradosgw --upstart-only --no-start --name=$$name; \
+    done
+
+override_dh_strip:
+	dh_strip -pceph --dbg-package=ceph-dbg -k --exclude=libcls_
+	dh_strip -pceph-mds --dbg-package=ceph-mds-dbg
+	dh_strip -pceph-fuse --dbg-package=ceph-fuse-dbg
+	dh_strip -prbd-fuse --dbg-package=rbd-fuse-dbg
+	dh_strip -pceph-common --dbg-package=ceph-common-dbg
+	dh_strip -pceph-fs-common --dbg-package=ceph-fs-common-dbg
+	dh_strip -plibrados2 --dbg-package=librados2-dbg
+	dh_strip -plibrbd1 --dbg-package=librbd1-dbg
+	dh_strip -plibcephfs1 --dbg-package=libcephfs1-dbg
+	dh_strip -pradosgw --dbg-package=radosgw-dbg
+	dh_strip -prest-bench --dbg-package=rest-bench-dbg
+	dh_strip -pceph-test --dbg-package=ceph-test-dbg
+	dh_strip -plibrados-dev
+	dh_strip -plibcephfs-jni --dbg-package=libcephfs-jni-dbg
+
+override_dh_makeshlibs:
+	# exclude .so files in ceph package
+	# exclude jni libraries in libcephfs-jni
+	dh_makeshlibs -X/usr/lib/rados-classes -X/usr/lib/jni
+
+override_dh_auto_test:
+	# Skip tests when building packages as they require
+	# python virtualenv
+	:
