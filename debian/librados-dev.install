@@ -6,7 +6,7 @@ usr/include/rados/librados.hpp
 usr/include/rados/page.h
 usr/include/rados/rados_types.h
 usr/include/rados/rados_types.hpp
-usr/lib/librados.a
-usr/lib/librados.la
-usr/lib/librados.so
+usr/lib/*/librados.a
+usr/lib/*/librados.la
+usr/lib/*/librados.so
 usr/share/man/man8/librados-config.8

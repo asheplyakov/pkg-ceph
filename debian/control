@@ -10,7 +10,7 @@ Vcs-Browser: http://anonscm.debian.org/git/pkg-ceph/pkg-ceph.git
 Build-Depends: autoconf,
                automake,
                autotools-dev,
-               debhelper (>= 8~),
+               debhelper (>= 9~),
                default-jdk,
                dpkg-dev (>= 1.16.1~),
                javahelper,
@@ -56,6 +56,7 @@ Depends: binutils,
          xfsprogs,
          ${misc:Depends},
          ${shlibs:Depends}
+Pre-Depends: ${misc:Pre-Depends}
 Conflicts: librgw1, librgw-dev, librgw1-dbg, gceph, obsync
 Replaces: librgw1, librgw-dev, librgw1-dbg, gceph, obsync
 Recommends: libcephfs1, librados2, librbd1
@@ -230,6 +231,7 @@ Replaces: librados, librados1, libcrush, libcrush1
 Architecture: linux-any
 Section: libs
 Depends: ${misc:Depends}, ${shlibs:Depends}
+Pre-Depends: ${misc:Pre-Depends}
 Description: RADOS distributed object store client library
  RADOS is a reliable, autonomic distributed object storage cluster
  developed as part of the Ceph distributed storage system.  This is a
@@ -270,6 +272,7 @@ Package: librbd1
 Architecture: linux-any
 Section: libs
 Depends: librados2 (= ${binary:Version}), ${misc:Depends}, ${shlibs:Depends}
+Pre-Depends: ${misc:Pre-Depends}
 Description: RADOS block device client library
  RBD is a block device striped across multiple distributed objects
  in RADOS, a reliable, autonomic distributed object storage cluster
@@ -310,6 +313,7 @@ Replaces: libceph, libceph1, libcephfs
 Architecture: linux-any
 Section: libs
 Depends: ${misc:Depends}, ${shlibs:Depends}
+Pre-Depends: ${misc:Pre-Depends}
 Description: Ceph distributed file system client library
  Ceph is a distributed network file system designed to provide
  excellent performance, reliability, and scalability.  This is a

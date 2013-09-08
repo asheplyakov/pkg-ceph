@@ -1,4 +1,4 @@
-ceph (0.67.2-1) unstable; urgency=low
+ceph (0.67.2-1) UNRELEASED; urgency=low
 
   * New upstream release.
   * Update debian/copyright .
@@ -21,6 +21,9 @@ ceph (0.67.2-1) unstable; urgency=low
     for librados-config.
   * d/tests/*: Added autopkgtests for librbd, librados, python-ceph
     and the ceph CLI.
+
+  [ Bastian Blank ]
+  * Use debhelper 9.
 
  -- Laszlo Boszormenyi (GCS) <gcs@debian.org>  Sun, 08 Sep 2013 10:10:42 +0200
 
