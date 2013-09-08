@@ -33,10 +33,9 @@ endif
 extraopts += --with-system-libs3
 
 %:
-	dh $@ --with javahelper --with python2 --parallel
+	dh $@ --with javahelper --with python2 --with autoreconf --parallel
 
 override_dh_auto_configure:
-	./autogen.sh
 	dh_auto_configure -- --sbindir=/sbin $(extraopts)
 
 override_dh_auto_build:
@@ -48,10 +47,6 @@ override_dh_auto_build:
 
 override_dh_auto_clean:
 	dh_auto_clean
-	rm -f aclocal.m4 compile config.sub config.guess depcomp install-sh \
-      ltmain.sh missing
-	rm -f configure Makefile.in man/Makefile.in src/Makefile.in
-	rm -f src/acconfig.h.in
 	rm -f debian/ceph.init debian/radosgw.init debian/ceph.logrotate debian/radosgw.logrotate
 	rm -f debian/*.upstart
 
