@@ -26,7 +26,7 @@ Build-Depends: autoconf,
                libexpat1-dev,
                libfcgi-dev,
                libfuse-dev,
-               libgoogle-perftools-dev,
+               libgoogle-perftools-dev [i386 amd64],
                libkeyutils-dev,
                libleveldb-dev,
                libnss3-dev,
@@ -37,6 +37,7 @@ Build-Depends: autoconf,
                pkg-config,
                python-all (>= 2.6.6-3~),
                uuid-dev
+Build-Conflicts: libcrypto++-dev
 Standards-Version: 3.9.4
 X-Python-Version: >= 2.6
 XS-Testsuite: autopkgtest
@@ -55,6 +56,8 @@ Depends: binutils,
          xfsprogs,
          ${misc:Depends},
          ${shlibs:Depends}
+Conflicts: librgw1, librgw-dev, librgw1-dbg, gceph, obsync
+Replaces: librgw1, librgw-dev, librgw1-dbg, gceph, obsync
 Recommends: libcephfs1, librados2, librbd1
 Description: distributed storage and file system
  Ceph is a distributed storage system designed to provide excellent
@@ -70,6 +73,8 @@ Architecture: linux-any
 Section: debug
 Priority: extra
 Depends: ceph (= ${binary:Version}), ${misc:Depends}
+Conflicts: gceph-dbg
+Replaces: gceph-dbg
 Description: debugging symbols for ceph
  Ceph is a distributed storage system designed to provide excellent
  performance, reliability, and scalability.
@@ -220,8 +225,8 @@ Description: OCF-compliant resource agents for Ceph
  such as Pacemaker.
 
 Package: librados2
-Conflicts: librados, librados1
-Replaces: librados, librados1
+Conflicts: librados, librados1, libcrush, libcrush1
+Replaces: librados, librados1, libcrush, libcrush1
 Architecture: linux-any
 Section: libs
 Depends: ${misc:Depends}, ${shlibs:Depends}
@@ -232,8 +237,8 @@ Description: RADOS distributed object store client library
  store using a simple file-like interface.
 
 Package: librados2-dbg
-Conflicts: librados1-dbg
-Replaces: librados1-dbg
+Conflicts: librados1-dbg, libcrush1-dbg
+Replaces: librados1-dbg, libcrush1-dbg
 Architecture: linux-any
 Section: debug
 Priority: extra
@@ -250,8 +255,8 @@ Package: librados-dev
 Architecture: linux-any
 Section: libdevel
 Depends: librados2 (= ${binary:Version}), ${misc:Depends}, ${shlibs:Depends}
-Conflicts: librados1-dev, librados2-dev
-Replaces: librados1-dev, librados2-dev
+Conflicts: librados1-dev, librados2-dev, libcrush-dev, libcrush1-dev
+Replaces: librados1-dev, librados2-dev, libcrush-dev, libcrush1-dev
 Description: RADOS distributed object store client library (development files)
  RADOS is a reliable, autonomic distributed object storage cluster
  developed as part of the Ceph distributed storage system.  This is a
