@@ -1,4 +1,4 @@
-lib/udev/rules.d/50-rbd.rules
+../../udev/50-rbd.rules lib/udev/rules.d
 usr/bin/ceph-rbdnamer
 usr/lib/*/librbd.so.*
 usr/share/man/man8/ceph-rbdnamer.8
