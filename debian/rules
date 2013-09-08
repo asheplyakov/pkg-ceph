@@ -95,9 +95,4 @@ override_dh_makeshlibs:
 	# exclude jni libraries in libcephfs-jni
 	dh_makeshlibs -X/usr/lib/rados-classes -X/usr/lib/jni
 
-override_dh_auto_test:
-	# Skip tests when building packages as they require
-	# python virtualenv
-	:
-
-.PHONY: override_dh_auto_configure override_dh_auto_build override_dh_auto_clean override_dh_auto_install override_dh_installinit override_dh_strip override_dh_makeshlibs override_dh_auto_test
+.PHONY: override_dh_auto_configure override_dh_auto_build override_dh_auto_clean override_dh_auto_install override_dh_installinit override_dh_strip override_dh_makeshlibs
