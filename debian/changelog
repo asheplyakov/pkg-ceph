@@ -33,6 +33,7 @@ ceph (0.67.2-1) UNRELEASED; urgency=low
   * Properly mark library modules:
     - Don't longer exclude them from stripping.
   * Drop all libtool .la files.
+  * Generate python dependencies.
 
  -- Laszlo Boszormenyi (GCS) <gcs@debian.org>  Sun, 08 Sep 2013 10:10:42 +0200
 
