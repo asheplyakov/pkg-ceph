@@ -75,7 +75,7 @@ override_dh_installinit:
     done
 
 override_dh_strip:
-	dh_strip -pceph --dbg-package=ceph-dbg -k --exclude=libcls_
+	dh_strip -pceph --dbg-package=ceph-dbg
 	dh_strip -pceph-mds --dbg-package=ceph-mds-dbg
 	dh_strip -pceph-fuse --dbg-package=ceph-fuse-dbg
 	dh_strip -prbd-fuse --dbg-package=rbd-fuse-dbg
