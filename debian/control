@@ -1,12 +1,13 @@
 Source: ceph
 Section: admin
 Priority: optional
+Maintainer: Ceph Maintainers <ceph-maintainers@lists.ceph.com>
+Uploaders: Laszlo Boszormenyi (GCS) <gcs@debian.org>,
+ James Page <jamespage@debian.org>
+Standards-Version: 3.9.4
 Homepage: http://ceph.com/
-Vcs-Git: git://github.com/ceph/ceph.git
-Vcs-Browser: https://github.com/ceph/ceph
-Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
-XSBC-Original-Maintainer: Laszlo Boszormenyi (GCS) <gcs@debian.hu>
-Uploaders: Sage Weil <sage@newdream.net>
+Vcs-Git: git://anonscm.debian.org/pkg-ceph/pkg-ceph.git
+Vcs-Browser: http://anonscm.debian.org/git/pkg-ceph/pkg-ceph.git
 Build-Depends: autoconf,
                automake,
                autotools-dev,
