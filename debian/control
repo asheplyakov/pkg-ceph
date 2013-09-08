@@ -4,7 +4,6 @@ Priority: optional
 Maintainer: Ceph Maintainers <ceph-maintainers@lists.ceph.com>
 Uploaders: Laszlo Boszormenyi (GCS) <gcs@debian.org>,
  James Page <jamespage@debian.org>
-Standards-Version: 3.9.4
 Homepage: http://ceph.com/
 Vcs-Git: git://anonscm.debian.org/pkg-ceph/pkg-ceph.git
 Vcs-Browser: http://anonscm.debian.org/git/pkg-ceph/pkg-ceph.git
