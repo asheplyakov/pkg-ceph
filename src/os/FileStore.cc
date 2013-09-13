@@ -1510,8 +1510,9 @@ int FileStore::mount()
       goto close_basedir_fd;
     }
 
+    char dbuf[offsetof(struct dirent, d_name) + PATH_MAX + 1];
     struct dirent *de;
-    while (::readdir_r(dir, (struct dirent *)buf, &de) == 0) {
+    while (::readdir_r(dir, (struct dirent *)dbuf, &de) == 0) {
       if (!de)
 	break;
       long long unsigned c;
@@ -3065,7 +3066,8 @@ int FileStore::_write(coll_t cid, const hobject_t& oid,
     r = bl.length();
 
   // flush?
-  if (!replaying)
+  if (!replaying &&
+      g_conf->filestore_wbthrottle_enable)
     wbthrottle.queue_wb(fd, oid, offset, len, replica);
   lfn_close(fd);
 
@@ -4380,8 +4382,9 @@ int FileStore::list_collections(vector<coll_t>& ls)
     return r;
   }
 
-  struct dirent sde, *de;
-  while ((r = ::readdir_r(dir, &sde, &de)) == 0) {
+  char buf[offsetof(struct dirent, d_name) + PATH_MAX + 1];
+  struct dirent *de;
+  while ((r = ::readdir_r(dir, (struct dirent *)&buf, &de)) == 0) {
     if (!de)
       break;
     if (de->d_type == DT_UNKNOWN) {
