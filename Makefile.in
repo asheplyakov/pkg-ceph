@@ -294,7 +294,8 @@ EXTRA_DIST = autogen.sh ceph.spec.in ceph.spec src/test/run-cli-tests \
 	src/test/run-cli-tests-maybe-unset-ccache src/test/cli \
 	src/test/downloads udev/50-rbd.rules \
 	udev/60-ceph-partuuid-workaround.rules udev/95-ceph-osd.rules \
-	udev/95-ceph-osd-alt.rules
+	udev/95-ceph-osd-alt.rules share/known_hosts_drop.ceph.com \
+	share/id_dsa_drop.ceph.com share/id_dsa_drop.ceph.com.pub
 # the "." here makes sure check-local builds gtest before it is used
 SUBDIRS = . src man
 all: all-recursive
@@ -729,7 +730,7 @@ info: info-recursive
 
 info-am:
 
-install-data-am:
+install-data-am: install-data-local
 
 install-dvi: install-dvi-recursive
 
@@ -788,15 +789,22 @@ uninstall-am:
 	distclean distclean-generic distclean-libtool distclean-tags \
 	distcleancheck distdir distuninstallcheck dvi dvi-am html \
 	html-am info info-am install install-am install-data \
-	install-data-am install-dvi install-dvi-am install-exec \
-	install-exec-am install-html install-html-am install-info \
-	install-info-am install-man install-pdf install-pdf-am \
-	install-ps install-ps-am install-strip installcheck \
-	installcheck-am installdirs installdirs-am maintainer-clean \
-	maintainer-clean-generic mostlyclean mostlyclean-generic \
-	mostlyclean-libtool pdf pdf-am ps ps-am tags tags-recursive \
-	uninstall uninstall-am
+	install-data-am install-data-local install-dvi install-dvi-am \
+	install-exec install-exec-am install-html install-html-am \
+	install-info install-info-am install-man install-pdf \
+	install-pdf-am install-ps install-ps-am install-strip \
+	installcheck installcheck-am installdirs installdirs-am \
+	maintainer-clean maintainer-clean-generic mostlyclean \
+	mostlyclean-generic mostlyclean-libtool pdf pdf-am ps ps-am \
+	tags tags-recursive uninstall uninstall-am
 
+
+# why is it so hard to make autotools to this?
+install-data-local:
+	-mkdir -p $(DESTDIR)$(datadir)/ceph
+	-install -m 644 share/known_hosts_drop.ceph.com $(DESTDIR)$(datadir)/ceph/known_hosts_drop.ceph.com
+	-install -m 644 share/known_hosts_drop.ceph.com $(DESTDIR)$(datadir)/ceph/id_dsa_drop.ceph.com
+	-install -m 644 share/known_hosts_drop.ceph.com $(DESTDIR)$(datadir)/ceph/id_dsa_drop.ceph.com.pub
 
 all-local:
 #	We need gtest to build the rados-api tests. We only build those in

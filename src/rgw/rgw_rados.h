@@ -284,6 +284,7 @@ protected:
 
   void prepare_next_part(off_t ofs);
   void complete_parts();
+  int complete_writing_data();
 
 public:
   ~RGWPutObjProcessor_Atomic() {}
@@ -801,6 +802,7 @@ class RGWRados
   uint64_t *watch_handles;
   librados::IoCtx root_pool_ctx;      // .rgw
   librados::IoCtx control_pool_ctx;   // .rgw.control
+  bool watch_initialized;
 
   Mutex bucket_id_lock;
   uint64_t max_bucket_id;
@@ -864,6 +866,7 @@ public:
   RGWRados() : lock("rados_timer_lock"), timer(NULL),
                gc(NULL), use_gc_thread(false),
                num_watchers(0), watchers(NULL), watch_handles(NULL),
+               watch_initialized(false),
                bucket_id_lock("rados_bucket_id"), max_bucket_id(0),
                cct(NULL), rados(NULL),
                pools_initialized(false),
@@ -1254,6 +1257,7 @@ public:
   virtual int update_containers_stats(map<string, RGWBucketEnt>& m);
   virtual int append_async(rgw_obj& obj, size_t size, bufferlist& bl);
 
+  virtual bool need_watch_notify() { return false; }
   virtual int init_watch();
   virtual void finalize_watch();
   virtual int distribute(const string& key, bufferlist& bl);
