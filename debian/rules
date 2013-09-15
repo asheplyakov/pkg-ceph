@@ -60,17 +60,17 @@ override_dh_installinit:
 	for conf in `ls -1 src/upstart/ceph*.conf | grep -v mds`; do \
         name=`basename $$conf | cut -d . -f 1`; \
         cp $$conf debian/ceph.$$name.upstart; \
-        dh_installinit -pceph --upstart-only --no-start --name=$$name; \
+#        dh_installinit -pceph --upstart-only --no-start --name=$$name; \
     done
 	for conf in `ls -1 src/upstart/ceph-mds*.conf`; do \
         name=`basename $$conf | cut -d . -f 1`; \
         cp $$conf debian/ceph-mds.$$name.upstart; \
-        dh_installinit -pceph-mds --upstart-only --no-start --name=$$name; \
+#        dh_installinit -pceph-mds --upstart-only --no-start --name=$$name; \
     done
 	for conf in `ls -1 src/upstart/radosgw*.conf`; do \
         name=`basename $$conf | cut -d . -f 1`; \
         cp $$conf debian/radosgw.$$name.upstart; \
-        dh_installinit -pradosgw --upstart-only --no-start --name=$$name; \
+#        dh_installinit -pradosgw --upstart-only --no-start --name=$$name; \
     done
 
 override_dh_strip:
