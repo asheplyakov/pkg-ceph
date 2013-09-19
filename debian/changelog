@@ -1,7 +1,7 @@
 ceph (0.67.3-1) UNRELEASED; urgency=low
 
   [ Laszlo Boszormenyi ]
-  * New upstream release.
+  * New upstream release (Closes: #693866).
   * Update debian/copyright.
   * Sync with Ubuntu.
 
