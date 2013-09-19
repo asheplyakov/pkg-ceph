@@ -89,4 +89,9 @@ override_dh_strip:
 	dh_strip -plibrados-dev
 	dh_strip -plibcephfs-jni --dbg-package=libcephfs-jni-dbg
 
-.PHONY: override_dh_auto_configure override_dh_installinit override_dh_strip
+override_dh_makeshlibs:
+	# exclude jni libraries in libcephfs-jni to avoid pointless ldconfig
+	# calls in maintainer scripts
+	dh_makeshlibs -X/usr/lib/jni
+
+.PHONY: override_dh_auto_configure override_dh_installinit override_dh_strip override_dh_makeshlibs

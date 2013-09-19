@@ -6,18 +6,17 @@ ceph (0.67.3-1) UNRELEASED; urgency=low
   * Sync with Ubuntu.
 
   [ James Page ]
-  * debian/control,rules,libcephfs-{java,jni}: Enable Java CephFS library,
+  * d/control,rules,libcephfs-{java,jni}: Enable Java CephFS library,
     add new BD's on javahelper and default-jdk, add dbg package.
-  * debian/control: Add new BD on libboost-thread-dev for RADOS Gateway
+  * d/control: Add new BD on libboost-thread-dev for RADOS Gateway
     keystone integration.
-  * debian/{control,obsync.install}: Drop obsync package inline with
+  * d/{control,obsync.install}: Drop obsync package inline with
     upstream.
-  * debian/librbd-dev.install: Pickup new features.h file.
-  * Remove manual calls to ldconfig (LP: #1017978):
-    - debian/lib{rados2|rbd1|cephfs1}.post*: Dropped - all these do is call
+  * d/librbd-dev.install: Pickup new features.h file.
+  * Remove manual calls to ldconfig:
+    - d/lib{rados2|rbd1|cephfs1}.post*: Dropped - all these do is call
       ldconfig which will automatically be done. 
-    - debian/rules: Let dh_makeshlibs do its magic with postinst/postrm
-      scripts but ensure that the .so's in ceph package are excluded.
+    - d/rules: Let dh_makeshlibs do its magic with postinst/postrm.
   * d/tests/*: Added autopkgtests for librbd, librados, python-ceph
     and the ceph CLI.
   * d/control: Fix versions of librbd1, librados2 and libcephfs1 for
@@ -26,6 +25,8 @@ ceph (0.67.3-1) UNRELEASED; urgency=low
     (Closes: #722957).
   * d/rules: Drop --upstart-only from dh_installinit calls for upstart
     configurations; this is deprecated in Ubuntu and not support in Debian.
+  * d/rules: Exclude jni package from shlibs generation to avoid pointless
+    ldconfig calls in maintainer scripts.
 
   [ Bastian Blank ]
   * Use debhelper 9.
