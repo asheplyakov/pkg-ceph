@@ -24,6 +24,8 @@ ceph (0.67.3-1) UNRELEASED; urgency=low
     python-ceph as it requires an exact version match.
   * d/ceph.docs: Drop - README from upstream is only useful for developers
     (Closes: #722957).
+  * d/rules: Drop --upstart-only from dh_installinit calls for upstart
+    configurations; this is deprecated in Ubuntu and not support in Debian.
 
   [ Bastian Blank ]
   * Use debhelper 9.
