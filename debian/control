@@ -3,14 +3,13 @@ Section: admin
 Priority: optional
 Maintainer: Ceph Maintainers <ceph-maintainers@lists.ceph.com>
 Uploaders: Laszlo Boszormenyi (GCS) <gcs@debian.org>,
- James Page <jamespage@debian.org>
+           James Page <jamespage@debian.org>
 Homepage: http://ceph.com/
 Vcs-Git: git://anonscm.debian.org/pkg-ceph/ceph.git
 Vcs-Browser: http://anonscm.debian.org/gitweb/?p=pkg-ceph/ceph.git
-Build-Depends:
-               debhelper (>= 9~),
-               dh-autoreconf,
+Build-Depends: debhelper (>= 9~),
                default-jdk,
+               dh-autoreconf,
                dpkg-dev (>= 1.16.1~),
                javahelper,
                junit4,
@@ -53,11 +52,11 @@ Depends: binutils,
          uuid-runtime,
          xfsprogs,
          ${misc:Depends},
-         ${shlibs:Depends},
-         ${python:Depends}
+         ${python:Depends},
+         ${shlibs:Depends}
 Pre-Depends: ${misc:Pre-Depends}
-Conflicts: librgw1, librgw-dev, librgw1-dbg, gceph, obsync
-Replaces: librgw1, librgw-dev, librgw1-dbg, gceph, obsync
+Conflicts: gceph, librgw-dev, librgw1, librgw1-dbg, obsync
+Replaces: gceph, librgw-dev, librgw1, librgw1-dbg, obsync
 Recommends: libcephfs1, librados2, librbd1
 Description: distributed storage and file system
  Ceph is a distributed storage system designed to provide excellent
@@ -160,8 +159,8 @@ Architecture: linux-any
 Depends: librbd1 (= ${binary:Version}),
          python-ceph (= ${binary:Version}),
          ${misc:Depends},
-         ${shlibs:Depends},
-         ${python:Depends}
+         ${python:Depends},
+         ${shlibs:Depends}
 Conflicts: ceph-client-tools
 Replaces: ceph-client-tools
 Suggests: ceph, ceph-mds
@@ -225,8 +224,8 @@ Description: OCF-compliant resource agents for Ceph
  such as Pacemaker.
 
 Package: librados2
-Conflicts: librados, librados1, libcrush, libcrush1
-Replaces: librados, librados1, libcrush, libcrush1
+Conflicts: libcrush, libcrush1, librados, librados1
+Replaces: libcrush, libcrush1, librados, librados1
 Architecture: linux-any
 Section: libs
 Depends: ${misc:Depends}, ${shlibs:Depends}
@@ -238,8 +237,8 @@ Description: RADOS distributed object store client library
  store using a simple file-like interface.
 
 Package: librados2-dbg
-Conflicts: librados1-dbg, libcrush1-dbg
-Replaces: librados1-dbg, libcrush1-dbg
+Conflicts: libcrush1-dbg, librados1-dbg
+Replaces: libcrush1-dbg, librados1-dbg
 Architecture: linux-any
 Section: debug
 Priority: extra
@@ -256,8 +255,8 @@ Package: librados-dev
 Architecture: linux-any
 Section: libdevel
 Depends: librados2 (= ${binary:Version}), ${misc:Depends}, ${shlibs:Depends}
-Conflicts: librados1-dev, librados2-dev, libcrush-dev, libcrush1-dev
-Replaces: librados1-dev, librados2-dev, libcrush-dev, libcrush1-dev
+Conflicts: libcrush-dev, libcrush1-dev, librados1-dev, librados2-dev
+Replaces: libcrush-dev, libcrush1-dev, librados1-dev, librados2-dev
 Description: RADOS distributed object store client library (development files)
  RADOS is a reliable, autonomic distributed object storage cluster
  developed as part of the Ceph distributed storage system.  This is a

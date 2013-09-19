@@ -1,8 +1,8 @@
-etc/bash_completion.d/ceph
 ../../src/rbdmap etc/ceph
-etc/init.d/rbdmap
 ../../udev/60-ceph-partuuid-workaround.rules lib/udev/rules.d
 ../../udev/95-ceph-osd.rules lib/udev/rules.d
+etc/bash_completion.d/ceph
+etc/init.d/rbdmap
 sbin/mkcephfs
 usr/bin/ceph-clsinfo
 usr/bin/ceph-debugpack
