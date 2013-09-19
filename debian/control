@@ -411,8 +411,9 @@ Description: Debugging symbols for ceph-test
 Package: python-ceph
 Architecture: linux-any
 Section: python
-Depends: librados2,
-         librbd1,
+Depends: libcephfs1 (= ${binary:Version}),
+         librados2 (= ${binary:Version}),
+         librbd1 (= ${binary:Version}),
          python-flask,
          python-requests,
          ${misc:Depends},

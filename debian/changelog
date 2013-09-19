@@ -20,6 +20,8 @@ ceph (0.67.3-1) UNRELEASED; urgency=low
       scripts but ensure that the .so's in ceph package are excluded.
   * d/tests/*: Added autopkgtests for librbd, librados, python-ceph
     and the ceph CLI.
+  * d/control: Fix versions of librbd1, librados2 and libcephfs1 for
+    python-ceph as it requires an exact version match.
 
   [ Bastian Blank ]
   * Use debhelper 9.
