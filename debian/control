@@ -5,8 +5,8 @@ Maintainer: Ceph Maintainers <ceph-maintainers@lists.ceph.com>
 Uploaders: Laszlo Boszormenyi (GCS) <gcs@debian.org>,
  James Page <jamespage@debian.org>
 Homepage: http://ceph.com/
-Vcs-Git: git://anonscm.debian.org/pkg-ceph/pkg-ceph.git
-Vcs-Browser: http://anonscm.debian.org/git/pkg-ceph/pkg-ceph.git
+Vcs-Git: git://anonscm.debian.org/pkg-ceph/ceph.git
+Vcs-Browser: http://anonscm.debian.org/git/pkg-ceph/ceph.git
 Build-Depends:
                debhelper (>= 9~),
                dh-autoreconf,
