@@ -1,24 +1,23 @@
-ceph (0.67.2-1) UNRELEASED; urgency=low
+ceph (0.67.3-1) UNRELEASED; urgency=low
 
+  [ Laszlo Boszormenyi ]
   * New upstream release.
-  * Update debian/copyright .
+  * Update debian/copyright.
   * Sync with Ubuntu.
 
-  [ James Page <james.page@ubuntu.com> ]
+  [ James Page ]
   * debian/control,rules,libcephfs-{java,jni}: Enable Java CephFS library,
-      add new BD's on javahelper and default-jdk, add dbg package.
+    add new BD's on javahelper and default-jdk, add dbg package.
   * debian/control: Add new BD on libboost-thread-dev for RADOS Gateway
-      keystone integration.
+    keystone integration.
   * debian/{control,obsync.install}: Drop obsync package inline with
-      upstream.
+    upstream.
   * debian/librbd-dev.install: Pickup new features.h file.
   * Remove manual calls to ldconfig (LP: #1017978):
     - debian/lib{rados2|rbd1|cephfs1}.post*: Dropped - all these do is call
       ldconfig which will automatically be done. 
     - debian/rules: Let dh_makeshlibs do its magic with postinst/postrm
       scripts but ensure that the .so's in ceph package are excluded.
-  * debian/patches/pthread-linking.patch: Fix indirect pthread linking problem
-    for librados-config.
   * d/tests/*: Added autopkgtests for librbd, librados, python-ceph
     and the ceph CLI.
 
