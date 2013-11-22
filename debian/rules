@@ -96,4 +96,8 @@ override_dh_makeshlibs:
 	# calls in maintainer scripts
 	dh_makeshlibs -X/usr/lib/jni
 
-.PHONY: override_dh_auto_configure override_dh_installinit override_dh_strip override_dh_makeshlibs
+override_dh_auto_test:
+	# Skip tests as they rely on virtualenv
+	:
+
+.PHONY: override_dh_auto_configure override_dh_installinit override_dh_strip override_dh_makeshlibs override_dh_auto_test

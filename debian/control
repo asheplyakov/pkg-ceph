@@ -34,7 +34,6 @@ Build-Depends: debhelper (>= 9~),
                libxml2-dev,
                pkg-config,
                python-all (>= 2.6.6-3~),
-               python-virtualenv,
                python-nose,
                uuid-dev,
                yasm
