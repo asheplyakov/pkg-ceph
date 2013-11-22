@@ -131,6 +131,26 @@ int librados::RadosClient::get_fsid(std::string *s)
   return 0;
 }
 
+int librados::RadosClient::ping_monitor(const string mon_id, string *result)
+{
+  int err = 0;
+  /* If we haven't yet connected, we have no way of telling whether we
+   * already built monc's initial monmap.  IF we are in CONNECTED state,
+   * then it is safe to assume that we went through connect(), which does
+   * build a monmap.
+   */
+  if (state != CONNECTED) {
+    ldout(cct, 10) << __func__ << " build monmap" << dendl;
+    err = monclient.build_initial_monmap();
+  }
+  if (err < 0) {
+    return err;
+  }
+
+  err = monclient.ping_monitor(mon_id, result);
+  return err;
+}
+
 int librados::RadosClient::connect()
 {
   common_init_finish(cct);
@@ -459,7 +479,6 @@ int librados::RadosClient::pool_create_async(string& name, PoolAsyncCompletionIm
   Context *onfinish = new C_PoolAsync_Safe(c);
   int r = objecter->create_pool(name, onfinish, auid, crush_rule);
   if (r < 0) {
-    delete c;
     delete onfinish;
   }
   return r;
@@ -505,7 +524,6 @@ int librados::RadosClient::pool_delete_async(const char *name, PoolAsyncCompleti
   Context *onfinish = new C_PoolAsync_Safe(c);
   int r = objecter->delete_pool(tmp_pool_id, onfinish);
   if (r < 0) {
-    delete c;
     delete onfinish;
   }
   return r;

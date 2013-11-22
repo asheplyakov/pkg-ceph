@@ -94,6 +94,7 @@ public:
       crush_destroy(crush);
     crush = crush_create();
     assert(crush);
+    have_rmaps = false;
   }
 
   // tunables
@@ -720,10 +721,10 @@ public:
 
   /* modifiers */
   int add_bucket(int bucketno, int alg, int hash, int type, int size,
-		 int *items, int *weights) {
+		 int *items, int *weights, int *idout) {
     crush_bucket *b = crush_make_bucket(alg, hash, type, size, items, weights);
     assert(b);
-    return crush_add_bucket(crush, bucketno, b);
+    return crush_add_bucket(crush, bucketno, b, idout);
   }
   
   void finalize() {

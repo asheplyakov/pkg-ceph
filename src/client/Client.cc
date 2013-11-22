@@ -23,6 +23,10 @@
 #include <sys/param.h>
 #include <fcntl.h>
 
+#if defined(__linux__)
+#include <linux/falloc.h>
+#endif
+
 #include <sys/statvfs.h>
 
 #include <iostream>
@@ -107,6 +111,7 @@ bool Client::CommandHook::call(std::string command, cmdmap_t& cmdmap,
 {
   stringstream ss;
   Formatter *f = new_formatter(format);
+  f->open_object_section("result");
   m_client->client_lock.Lock();
   if (command == "mds_requests")
     m_client->dump_mds_requests(f);
@@ -117,6 +122,7 @@ bool Client::CommandHook::call(std::string command, cmdmap_t& cmdmap,
   else
     assert(0 == "bad command registered");
   m_client->client_lock.Unlock();
+  f->close_section();
   f->flush(out);
   delete f;
   return true;
@@ -142,9 +148,12 @@ Client::Client(Messenger *m, MonClient *mc)
     timer(m->cct, client_lock),
     ino_invalidate_cb(NULL),
     ino_invalidate_cb_handle(NULL),
+    dentry_invalidate_cb(NULL),
+    dentry_invalidate_cb_handle(NULL),
     getgroups_cb(NULL),
     getgroups_cb_handle(NULL),
     async_ino_invalidator(m->cct),
+    async_dentry_invalidator(m->cct),
     tick_event(NULL),
     monclient(mc), messenger(m), whoami(m->get_myname().num()),
     initialized(false), mounted(false), unmounting(false),
@@ -404,9 +413,15 @@ void Client::shutdown()
   admin_socket->unregister_command("dump_cache");
 
   if (ino_invalidate_cb) {
-    ldout(cct, 10) << "shutdown stopping invalidator finisher" << dendl;
+    ldout(cct, 10) << "shutdown stopping cache invalidator finisher" << dendl;
     async_ino_invalidator.wait_for_empty();
     async_ino_invalidator.stop();
+  }
+
+  if (dentry_invalidate_cb) {
+    ldout(cct, 10) << "shutdown stopping dentry invalidator finisher" << dendl;
+    async_dentry_invalidator.wait_for_empty();
+    async_dentry_invalidator.stop();
   }
 
   objectcacher->stop();  // outside of client_lock! this does a join.
@@ -803,16 +818,28 @@ void Client::insert_readdir_results(MetaRequest *request, MetaSession *session, 
     ::decode(end, p);
     ::decode(complete, p);
 
-    ldout(cct, 10) << "insert_trace " << numdn << " readdir items, end=" << (int)end
-		   << ", offset " << request->readdir_offset
-		   << ", readdir_start " << request->readdir_start << dendl;
+    frag_t fg = request->readdir_frag;
+    uint64_t readdir_offset = request->readdir_offset;
+    string readdir_start = request->readdir_start;
+    if (fg != dst.frag) {
+      ldout(cct, 10) << "insert_trace got new frag " << fg << " -> " << dst.frag << dendl;
+      fg = dst.frag;
+      if (fg.is_leftmost())
+	readdir_offset = 2;
+      else
+	readdir_offset = 0;
+      readdir_start.clear();
+    }
 
+    ldout(cct, 10) << "insert_trace " << numdn << " readdir items, end=" << (int)end
+		   << ", offset " << readdir_offset
+		   << ", readdir_start " << readdir_start << dendl;
+
+    request->readdir_reply_frag = fg;
     request->readdir_end = end;
     request->readdir_num = numdn;
 
-    map<string,Dentry*>::iterator pd = dir->dentry_map.upper_bound(request->readdir_start);
-
-    frag_t fg = request->readdir_frag;
+    map<string,Dentry*>::iterator pd = dir->dentry_map.upper_bound(readdir_start);
 
     string dname;
     LeaseStat dlease;
@@ -863,7 +890,7 @@ void Client::insert_readdir_results(MetaRequest *request, MetaSession *session, 
 	dn = link(dir, dname, in, NULL);
       }
       update_dentry_lease(dn, &dlease, request->sent_stamp, session);
-      dn->offset = dir_result_t::make_fpos(request->readdir_frag, i + request->readdir_offset);
+      dn->offset = dir_result_t::make_fpos(fg, i + readdir_offset);
 
       // add to cached result list
       in->get();
@@ -1526,7 +1553,7 @@ void Client::_closed_mds_session(MetaSession *s)
   signal_context_list(s->waiting_for_open);
   mount_cond.Signal();
   remove_session_caps(s);
-  kick_requests(s, true);
+  kick_requests_closed(s);
   mds_sessions.erase(s->mds_num);
   delete s;
 }
@@ -1899,7 +1926,7 @@ void Client::handle_mds_map(MMDSMap* m)
 
     if (newstate >= MDSMap::STATE_ACTIVE) {
       if (oldstate < MDSMap::STATE_ACTIVE) {
-	kick_requests(p->second, false);
+	kick_requests(p->second);
 	kick_flushing_caps(p->second);
 	signal_context_list(p->second->waiting_for_open);
 	kick_maxsize_requests(p->second);
@@ -1983,25 +2010,16 @@ void Client::send_reconnect(MetaSession *session)
 }
 
 
-void Client::kick_requests(MetaSession *session, bool signal)
+void Client::kick_requests(MetaSession *session)
 {
   ldout(cct, 10) << "kick_requests for mds." << session->mds_num << dendl;
-
   for (map<tid_t, MetaRequest*>::iterator p = mds_requests.begin();
        p != mds_requests.end();
-       ++p) 
+       ++p) {
     if (p->second->mds == session->mds_num) {
-      if (signal) {
-	// only signal caller if there is a caller
-	// otherwise, let resend_unsafe handle it
-	if (p->second->caller_cond) {
-	  p->second->kick = true;
-	  p->second->caller_cond->Signal();
-	}
-      } else {
-	send_request(p->second, session);
-      }
+      send_request(p->second, session);
     }
+  }
 }
 
 void Client::resend_unsafe_requests(MetaSession *session)
@@ -2010,6 +2028,25 @@ void Client::resend_unsafe_requests(MetaSession *session)
        !iter.end();
        ++iter)
     send_request(*iter, session);
+}
+
+void Client::kick_requests_closed(MetaSession *session)
+{
+  ldout(cct, 10) << "kick_requests_closed for mds." << session->mds_num << dendl;
+  for (map<tid_t, MetaRequest*>::iterator p = mds_requests.begin();
+       p != mds_requests.end();
+       ++p) {
+    if (p->second->mds == session->mds_num) {
+      if (p->second->caller_cond) {
+	p->second->kick = true;
+	p->second->caller_cond->Signal();
+      }
+      p->second->item.remove_myself();
+      p->second->unsafe_item.remove_myself();
+    }
+  }
+  assert(session->requests.empty());
+  assert(session->unsafe_requests.empty());
 }
 
 
@@ -3545,6 +3582,45 @@ void Client::handle_cap_flushsnap_ack(MetaSession *session, Inode *in, MClientCa
   m->put();
 }
 
+class C_Client_DentryInvalidate : public Context  {
+private:
+  Client *client;
+  vinodeno_t dirino;
+  vinodeno_t ino;
+  string name;
+public:
+  C_Client_DentryInvalidate(Client *c, Dentry *dn) :
+			    client(c), dirino(dn->dir->parent_inode->vino()),
+			    ino(dn->inode->vino()), name(dn->name) { }
+  void finish(int r) {
+    client->_async_dentry_invalidate(dirino, ino, name);
+  }
+};
+
+void Client::_async_dentry_invalidate(vinodeno_t dirino, vinodeno_t ino, string& name)
+{
+  ldout(cct, 10) << "_async_dentry_invalidate '" << name << "' ino " << ino
+		 << " in dir " << dirino << dendl;
+  dentry_invalidate_cb(dentry_invalidate_cb_handle, dirino, ino, name);
+}
+
+void Client::_schedule_invalidate_dentry_callback(Dentry *dn)
+{
+  if (dentry_invalidate_cb && dn->inode->ll_ref > 0)
+    async_dentry_invalidator.queue(new C_Client_DentryInvalidate(this, dn));
+}
+
+void Client::_invalidate_inode_parents(Inode *in)
+{
+  set<Dentry*>::iterator q = in->dn_set.begin();
+  while (q != in->dn_set.end()) {
+    Dentry *dn = *q++;
+    // FIXME: we play lots of unlink/link tricks when handling MDS replies,
+    //        so in->dn_set doesn't always reflect the state of kernel's dcache.
+    _schedule_invalidate_dentry_callback(dn);
+    unlink(dn, false);
+  }
+}
 
 void Client::handle_cap_grant(MetaSession *session, Inode *in, Cap *cap, MClientCaps *m)
 {
@@ -3572,8 +3648,12 @@ void Client::handle_cap_grant(MetaSession *session, Inode *in, Cap *cap, MClient
     in->uid = m->head.uid;
     in->gid = m->head.gid;
   }
+  bool deleted_inode = false;
   if ((issued & CEPH_CAP_LINK_EXCL) == 0) {
     in->nlink = m->head.nlink;
+    if (in->nlink == 0 &&
+	(new_caps & (CEPH_CAP_LINK_SHARED | CEPH_CAP_LINK_EXCL)))
+      deleted_inode = true;
   }
   if ((issued & CEPH_CAP_XATTR_EXCL) == 0 &&
       m->xattrbl.length() &&
@@ -3626,6 +3706,10 @@ void Client::handle_cap_grant(MetaSession *session, Inode *in, Cap *cap, MClient
   // wake up waiters
   if (new_caps)
     signal_cond_list(in->waitfor_caps);
+
+  // may drop inode's last ref
+  if (deleted_inode)
+    _invalidate_inode_parents(in);
 
   m->put();
 }
@@ -4944,8 +5028,16 @@ int Client::_readdir_get_frag(dir_result_t *dirp)
 
     dirp->buffer = new vector<pair<string,Inode*> >;
     dirp->buffer->swap(req->readdir_result);
-    dirp->buffer_frag = fg;
 
+    if (fg != req->readdir_reply_frag) {
+      fg = req->readdir_reply_frag;
+      if (fg.is_leftmost())
+	dirp->next_offset = 2;
+      else
+	dirp->next_offset = 0;
+      dirp->offset = dir_result_t::make_fpos(fg, dirp->next_offset);
+    }
+    dirp->buffer_frag = fg;
     dirp->this_offset = dirp->next_offset;
     ldout(cct, 10) << "_readdir_get_frag " << dirp << " got frag " << dirp->buffer_frag
 	     << " this_offset " << dirp->this_offset
@@ -5124,14 +5216,18 @@ int Client::readdir_r_cb(dir_result_t *d, add_dirent_cb_t cb, void *p)
       int r = _readdir_get_frag(dirp);
       if (r)
 	return r;
+      // _readdir_get_frag () may updates dirp->offset if the replied dirfrag is
+      // different than the requested one. (our dirfragtree was outdated)
       fg = dirp->buffer_frag;
+      off = dirp->fragpos();
     }
 
     ldout(cct, 10) << "off " << off << " this_offset " << hex << dirp->this_offset << dec << " size " << dirp->buffer->size()
 	     << " frag " << fg << dendl;
+
+    dirp->offset = dir_result_t::make_fpos(fg, off);
     while (off >= dirp->this_offset &&
 	   off - dirp->this_offset < dirp->buffer->size()) {
-      uint64_t pos = dir_result_t::make_fpos(fg, off);
       pair<string,Inode*>& ent = (*dirp->buffer)[off - dirp->this_offset];
 
       int stmask = fill_stat(ent.second, &st);  
@@ -5147,7 +5243,7 @@ int Client::readdir_r_cb(dir_result_t *d, add_dirent_cb_t cb, void *p)
 	return r;
       
       off++;
-      dirp->offset = pos + 1;
+      dirp->offset++;
     }
 
     if (dirp->last_name.length()) {
@@ -5158,10 +5254,10 @@ int Client::readdir_r_cb(dir_result_t *d, add_dirent_cb_t cb, void *p)
 
     if (!fg.is_rightmost()) {
       // next frag!
-      dirp->next_frag();
-      off = 0;
+      _readdir_next_frag(dirp);
       ldout(cct, 10) << " advancing to next frag: " << fg << " -> " << dirp->frag() << dendl;
       fg = dirp->frag();
+      off = 0;
       continue;
     }
 
@@ -6311,6 +6407,17 @@ void Client::ll_register_ino_invalidate_cb(client_ino_callback_t cb, void *handl
   ino_invalidate_cb = cb;
   ino_invalidate_cb_handle = handle;
   async_ino_invalidator.start();
+}
+
+void Client::ll_register_dentry_invalidate_cb(client_dentry_callback_t cb, void *handle)
+{
+  Mutex::Locker l(client_lock);
+  ldout(cct, 10) << "ll_register_dentry_invalidate_cb cb " << (void*)cb << " p " << (void*)handle << dendl;
+  if (cb == NULL)
+    return;
+  dentry_invalidate_cb = cb;
+  dentry_invalidate_cb_handle = handle;
+  async_dentry_invalidator.start();
 }
 
 void Client::ll_register_getgroups_cb(client_getgroups_callback_t cb, void *handle)
@@ -7683,6 +7790,110 @@ int Client::ll_fsync(Fh *fh, bool syncdataonly)
   return _fsync(fh, syncdataonly);
 }
 
+#ifdef FALLOC_FL_PUNCH_HOLE
+
+int Client::_fallocate(Fh *fh, int mode, int64_t offset, int64_t length)
+{
+  if (offset < 0 || length <= 0)
+    return -EINVAL;
+
+  if (mode & ~(FALLOC_FL_KEEP_SIZE | FALLOC_FL_PUNCH_HOLE))
+    return -EOPNOTSUPP;
+
+  if ((mode & FALLOC_FL_PUNCH_HOLE) && !(mode & FALLOC_FL_KEEP_SIZE))
+    return -EOPNOTSUPP;
+
+  if (osdmap->test_flag(CEPH_OSDMAP_FULL) && !(mode & FALLOC_FL_PUNCH_HOLE))
+    return -ENOSPC;
+
+  Inode *in = fh->inode;
+
+  if (in->snapid != CEPH_NOSNAP)
+    return -EROFS;
+
+  if ((fh->mode & CEPH_FILE_MODE_WR) == 0)
+    return -EBADF;
+
+  int have;
+  int r = get_caps(in, CEPH_CAP_FILE_WR, CEPH_CAP_FILE_BUFFER, &have, -1);
+  if (r < 0)
+    return r;
+
+  if (mode & FALLOC_FL_PUNCH_HOLE) {
+    Mutex flock("Client::_punch_hole flock");
+    Cond cond;
+    bool done = false;
+    Context *onfinish = new C_SafeCond(&flock, &cond, &done);
+    Context *onsafe = new C_Client_SyncCommit(this, in);
+
+    unsafe_sync_write++;
+    get_cap_ref(in, CEPH_CAP_FILE_BUFFER);
+
+    _invalidate_inode_cache(in, offset, length, true);
+    r = filer->zero(in->ino, &in->layout,
+                    in->snaprealm->get_snap_context(),
+                    offset, length,
+                    ceph_clock_now(cct),
+                    0, true, onfinish, onsafe);
+    if (r < 0)
+      goto done;
+
+    in->mtime = ceph_clock_now(cct);
+    mark_caps_dirty(in, CEPH_CAP_FILE_WR);
+
+    client_lock.Unlock();
+    flock.Lock();
+    while (!done)
+      cond.Wait(flock);
+    flock.Unlock();
+    client_lock.Lock();
+  } else if (!(mode & FALLOC_FL_KEEP_SIZE)) {
+    uint64_t size = offset + length;
+    if (size > in->size) {
+      in->size = size;
+      in->mtime = ceph_clock_now(cct);
+      mark_caps_dirty(in, CEPH_CAP_FILE_WR);
+
+      if ((in->size << 1) >= in->max_size &&
+          (in->reported_size << 1) < in->max_size)
+        check_caps(in, false);
+    }
+  }
+
+done:
+  put_cap_ref(in, CEPH_CAP_FILE_WR);
+  return r;
+}
+#else
+
+int Client::_fallocate(Fh *fh, int mode, int64_t offset, int64_t length)
+{
+  return -EOPNOTSUPP;
+}
+
+#endif
+
+
+int Client::ll_fallocate(Fh *fh, int mode, loff_t offset, loff_t length)
+{
+  Mutex::Locker lock(client_lock);
+  ldout(cct, 3) << "ll_fallocate " << fh << " " << fh->inode->ino << " " << dendl;
+  tout(cct) << "ll_fallocate " << mode << " " << offset << " " << length << std::endl;
+  tout(cct) << (unsigned long)fh << std::endl;
+
+  return _fallocate(fh, mode, offset, length);
+}
+
+int Client::fallocate(int fd, int mode, loff_t offset, loff_t length)
+{
+  Mutex::Locker lock(client_lock);
+  tout(cct) << "fallocate " << " " << fd << mode << " " << offset << " " << length << std::endl;
+
+  Fh *fh = get_filehandle(fd);
+  if (!fh)
+    return -EBADF;
+  return _fallocate(fh, mode, offset, length);
+}
 
 int Client::ll_release(Fh *fh)
 {

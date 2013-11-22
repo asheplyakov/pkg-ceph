@@ -29,10 +29,10 @@ class Session;
 class CDir;
 class CInode;
 class CDentry;
-class Mutation;
-class MDRequest;
+struct Mutation;
+struct MDRequest;
 class EMetaBlob;
-class SnapRealm;
+struct SnapRealm;
 
 class Message;
 
@@ -143,7 +143,7 @@ public:
   void remote_wrlock_finish(SimpleLock *lock, int target, Mutation *mut);
 
   bool xlock_start(SimpleLock *lock, MDRequest *mut);
-  void _finish_xlock(SimpleLock *lock, bool *pneed_issue);
+  void _finish_xlock(SimpleLock *lock, client_t xlocker, bool *pneed_issue);
   void xlock_finish(SimpleLock *lock, Mutation *mut, bool *pneed_issue);
 
   void xlock_export(SimpleLock *lock, Mutation *mut);
@@ -284,13 +284,13 @@ public:
 private:
   friend class C_MDL_CheckMaxSize;
   friend class C_MDL_RequestInodeFileCaps;
-  friend class C_Locker_FileUpdate_finish;
+  friend struct C_Locker_FileUpdate_finish;
   friend class C_Locker_RetryCapRelease;
 
   
   // -- client leases --
 public:
-  void handle_client_lease(class MClientLease *m);
+  void handle_client_lease(struct MClientLease *m);
 
   void issue_client_lease(CDentry *dn, client_t client, bufferlist &bl, utime_t now, Session *session);
   void revoke_client_leases(SimpleLock *lock);

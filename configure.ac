@@ -8,7 +8,7 @@ AC_PREREQ(2.59)
 # VERSION define is not used by the code.  It gets a version string
 # from 'git describe'; see src/ceph_ver.[ch]
 
-AC_INIT([ceph], [0.67.3], [ceph-devel@vger.kernel.org])
+AC_INIT([ceph], [0.72.1], [ceph-devel@vger.kernel.org])
 
 # Create release string.  Used with VERSION for RPMs.
 RPM_RELEASE=0
@@ -33,6 +33,8 @@ AC_CANONICAL_TARGET
 AM_INIT_AUTOMAKE
 AM_PROG_CC_C_O
 AM_PROG_LIBTOOL
+AM_PROG_AS
+
 
 # enable make V=0 (if automake >1.11)
 AM_INIT_AUTOMAKE([foreign])
@@ -59,6 +61,8 @@ if test "$CXX" = no || test "$CXX:$GXX" = "g++:"; then
   AC_MSG_ERROR([no C++ compiler found])
 fi
 
+AM_CONDITIONAL(CLANG, test x"$CXX" = x"clang++")
+
 #AC_PROG_CC
 AC_PROG_MAKE_SET
 AC_PROG_LIBTOOL
@@ -67,6 +71,19 @@ AC_PROG_LIBTOOL
 
 AC_SUBST(AM_CXXFLAGS)
 AM_CXXFLAGS="${AM_CXXFLAGS}"
+
+# Check for yasm
+if yasm -f elf64 src/common/crc32c_intel_fast_asm.S -o /dev/null; then
+   echo 'we have a modern and working yasm'
+   if test `arch` = "x86_64"; then
+      echo 'we are x86_64'
+      AC_DEFINE([HAVE_GOOD_YASM_ELF64], [1], [we have a recent yasm and are x86_64])
+      with_good_yasm=yes
+   fi
+else
+   echo 'we do not have a modern/working yasm'
+fi
+AM_CONDITIONAL(WITH_GOOD_YASM_ELF64, test "$with_good_yasm" = "yes")
 
 # Checks for compiler warning types
 
@@ -88,6 +105,13 @@ AC_DEFUN([AC_CHECK_CC_FLAG],
 
 AC_CHECK_CC_FLAG([-Wtype-limits], [WARN_TYPE_LIMITS])
 AC_CHECK_CC_FLAG([-Wignored-qualifiers], [WARN_IGNORED_QUALIFIERS])
+
+# Checks for architecture stuff
+AM_CONDITIONAL([ENABLE_FPU_NEON], [case $target_cpu in arm*) true;; *) false;; esac])
+
+# Check for compiler VTA support
+AX_CHECK_COMPILE_FLAG([-fvar-tracking-assignments], [HAS_VTA_SUPPORT=1], [HAS_VTA_SUPPORT=0])
+AM_CONDITIONAL(COMPILER_HAS_VTA, [test "$HAS_VTA_SUPPORT" = 1])
 
 # Checks for libraries.
 ACX_PTHREAD
@@ -250,7 +274,10 @@ AS_IF([test "x$with_fuse" != xno],
                          [Define if you have fuse])
                HAVE_LIBFUSE=1
 	       # look for fuse_getgroups and define FUSE_GETGROUPS if found
+           LIBS_saved="$LIBS"
+           LIBS="$LIBS -lfuse"
 	       AC_CHECK_FUNCS([fuse_getgroups])
+           LIBS="$LIBS_saved"
               ],
              [AC_MSG_FAILURE(
                    [no FUSE found (use --without-fuse to disable)])])])
@@ -306,14 +333,18 @@ if test "x$enable_cephfs_java" = "xyes"; then
 
 	# setup defaults for Debian default-jdk package (without --with-jdk-dir)
 	AS_IF([test -z "$with_jdk_dir"], [
-		   # This works with Debian's default-jdk package
-		   dir='/usr/lib/jvm/default-java/'
-		   javac_prog=`find $dir -name javac | head -n 1`
-		   AS_IF([test -x "$javac_prog"], [
-				  EXTRA_JDK_BIN_DIR=`dirname $javac_prog`])
-		   jnih=`find $dir -name jni.h | head -n 1`
-		   AS_IF([test -r "$jnih"], [
-				  EXTRA_JDK_INC_DIR=`dirname $jnih`])])
+		   # This works with Debian's and CentOS' default-jdk package
+       for dir in '/usr/lib/jvm/default-java/' '/usr/lib/jvm/java/' ; do
+          # only test if a suitable path has not yet been found
+          AS_IF([test "$EXTRA_JDK_BIN_DIR" == ""], [
+		          AS_IF([test -x "$javac_prog"], [
+				          EXTRA_JDK_BIN_DIR=`dirname $javac_prog`])
+		          jnih=`find $dir -name jni.h | head -n 1`
+		          AS_IF([test -r "$jnih"], [
+				          EXTRA_JDK_INC_DIR=`dirname $jnih`])
+              ])
+       done
+       ])
 
         # cephfs_java_test only makes sense if java is already turned on
 	# setup CLASSPATH for Debian default junit4.jar package 
@@ -341,10 +372,6 @@ if test "x$enable_cephfs_java" = "xyes"; then
         CLASSPATH=$CLASSPATH:$EXTRA_CLASSPATH_JAR
         export CLASSPATH
         AC_MSG_NOTICE([classpath - $CLASSPATH])
-        AS_IF([test "$have_junit4" = "1"], [
-		AC_CHECK_CLASS([org.junit.rules.ExternalResource], [], [
-		AC_MSG_NOTICE(Could not find org.junit.rules.ExternalResource)
-		have_junit4=0])])
 
         # Check for jni.h
 	CPPFLAGS_save=$CPPFLAGS
@@ -363,25 +390,6 @@ if test "x$enable_cephfs_java" = "xyes"; then
 	AC_SUBST(JDK_CPPFLAGS)
 fi
 AM_CONDITIONAL(HAVE_JUNIT4, [test "$have_junit4" = "1"])
-
-# jni?
-# clear cache (from java above) -- this whole thing will get
-# folded into the bigger java package later -- for now maintain
-# backward compat
-AS_UNSET(ac_cv_header_jni_h)
-AC_ARG_WITH([hadoop],
-            [AS_HELP_STRING([--with-hadoop], [build hadoop client])],
-            [],
-            [with_hadoop=check])
-AS_IF([test "x$with_hadoop" != xno],
-	    [AC_CHECK_HEADER([jni.h],
-             [HAVE_JNI=1],
-             [if test "x$with_hadoop" != xcheck; then
-                 AC_MSG_FAILURE(
-                   [--with-hadoop was given but jni.h not found])
-               fi
-             ])])
-AM_CONDITIONAL(WITH_HADOOPCLIENT, [test "$HAVE_JNI" = "1"])
 
 #
 # FreeBSD has it in base.
@@ -463,6 +471,17 @@ AS_IF([test "$with_libaio" = "yes"],
 	    [AC_DEFINE([HAVE_LIBAIO], [1], [Defined if you don't have atomic_ops])])
 AM_CONDITIONAL(WITH_LIBAIO, [ test "$with_libaio" = "yes" ])
 
+# use libzfs
+AC_ARG_WITH([libzfs],
+	    [AS_HELP_STRING([--with-libzfs], [build ZFS support])],
+	    ,
+	    [with_libzfs=no])
+AS_IF([test "x$with_libzfs" = xyes],
+	    [PKG_CHECK_MODULES([LIBZFS], [zfs], [], [true])])
+AS_IF([test "x$with_libzfs" = xyes],
+	    [AC_DEFINE([HAVE_LIBZFS], [1], [Defined if you have libzfs enabled])])
+AM_CONDITIONAL(WITH_LIBZFS, [ test "$with_libzfs" = "yes" ])
+
 # Checks for header files.
 AC_HEADER_DIRENT
 AC_HEADER_STDC
@@ -516,6 +535,9 @@ AC_CHECK_FUNC([fallocate],
 	[AC_DEFINE([CEPH_HAVE_FALLOCATE], [], [fallocate(2) is supported])],
 	[])
 
+
+AC_CHECK_HEADERS([sys/prctl.h])
+AC_CHECK_FUNCS([prctl])
 
 # Checks for typedefs, structures, and compiler characteristics.
 #AC_HEADER_STDBOOL

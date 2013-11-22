@@ -1,5 +1,7 @@
 // -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
 // vim: ts=8 sw=2 smarttab
+#include "include/int_types.h"
+
 #include <errno.h>
 #include <limits.h>
 
@@ -8,7 +10,6 @@
 #include "common/errno.h"
 #include "common/Throttle.h"
 #include "cls/lock/cls_lock_client.h"
-#include "include/inttypes.h"
 #include "include/stringify.h"
 
 #include "cls/rbd/cls_rbd.h"
@@ -226,12 +227,6 @@ namespace librbd {
 
     memcpy(info, bl.c_str(), r);
     return 0;
-  }
-
-  uint64_t rbd_assign_bid(IoCtx& io_ctx)
-  {
-    Rados rados(io_ctx);
-    return rados.get_instance_id();
   }
 
   int read_header_bl(IoCtx& io_ctx, const string& header_oid,
@@ -872,7 +867,8 @@ reprotect_and_return_err:
       return -EDOM;
     }
 
-    uint64_t bid = rbd_assign_bid(io_ctx);
+    Rados rados(io_ctx);
+    uint64_t bid = rados.get_instance_id();
 
     // if striping is enabled, use possibly custom defaults
     if (!old_format && (features & RBD_FEATURE_STRIPINGV2) &&
@@ -2825,7 +2821,9 @@ reprotect_and_return_err:
       return r;
 
     ictx->user_flushed();
-    return _flush(ictx);
+    r = _flush(ictx);
+    ictx->perfcounter->inc(l_librbd_flush);
+    return r;
   }
 
   int _flush(ImageCtx *ictx)
@@ -2850,7 +2848,7 @@ reprotect_and_return_err:
   {
     CephContext *cct = ictx->cct;
     ldout(cct, 20) << "aio_write " << ictx << " off = " << off << " len = "
-		   << len << " buf = " << &buf << dendl;
+		   << len << " buf = " << (void*)buf << dendl;
 
     if (!len)
       return 0;

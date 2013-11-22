@@ -52,13 +52,9 @@ void PGLog::IndexedLog::split_into(
 
   if (log.empty())
     tail = head;
-  else
-    head = log.rbegin()->version;
 
   if (olog->empty())
     olog->tail = olog->head;
-  else
-    olog->head = olog->log.rbegin()->version;
 
   olog->index();
   index();
@@ -364,7 +360,7 @@ void PGLog::rewind_divergent_log(ObjectStore::Transaction& t, eversion_t newhead
     }
     --p;
     mark_dirty_from(p->version);
-    if (p->version == newhead) {
+    if (p->version <= newhead) {
       ++p;
       divergent.splice(divergent.begin(), log.log, p, log.log.end());
       break;
@@ -426,8 +422,6 @@ void PGLog::merge_log(ObjectStore::Transaction& t,
       log.index(*to);
       dout(15) << *to << dendl;
     }
-    assert(to != olog.log.end() ||
-	   (olog.head == info.last_update));
       
     // splice into our log.
     log.log.splice(log.log.begin(),
@@ -510,6 +504,7 @@ void PGLog::merge_log(ObjectStore::Transaction& t,
     log.index();   
 
     info.last_update = log.head = olog.head;
+    info.last_user_version = oinfo.last_user_version;
     info.purged_snaps = oinfo.purged_snaps;
 
     // process divergent items
@@ -697,6 +692,7 @@ bool PGLog::read_log(ObjectStore *store, coll_t coll, hobject_t log_oid,
 	 i != log.log.rend();
 	 ++i) {
       if (i->version <= info.last_complete) break;
+      if (i->soid > info.last_backfill) continue;
       if (did.count(i->soid)) continue;
       did.insert(i->soid);
       
@@ -720,6 +716,7 @@ bool PGLog::read_log(ObjectStore *store, coll_t coll, hobject_t log_oid,
 	 i != divergent_priors.rend();
 	 ++i) {
       if (i->first <= info.last_complete) break;
+      if (i->second > info.last_backfill) continue;
       if (did.count(i->second)) continue;
       did.insert(i->second);
       bufferlist bv;
@@ -781,10 +778,6 @@ void PGLog::read_log_old(ObjectStore *store, coll_t coll, hobject_t log_oid,
  
   log.tail = info.log_tail;
 
-  // In case of sobject_t based encoding, may need to list objects in the store
-  // to find hashes
-  vector<hobject_t> ls;
-  
   if (ondisklog_head > 0) {
     // read
     bufferlist bl;
@@ -802,7 +795,6 @@ void PGLog::read_log_old(ObjectStore *store, coll_t coll, hobject_t log_oid,
     assert(log.empty());
     eversion_t last;
     bool reorder = false;
-    bool listed_collection = false;
 
     while (!p.end()) {
       uint64_t pos = ondisklog_tail + p.get_off();
@@ -845,29 +837,7 @@ void PGLog::read_log_old(ObjectStore *store, coll_t coll, hobject_t log_oid,
 	      << e.version << " after " << last << "\n";
       }
 
-      if (e.invalid_hash) {
-	// We need to find the object in the store to get the hash
-	if (!listed_collection) {
-	  store->collection_list(coll, ls);
-	  listed_collection = true;
-	}
-	bool found = false;
-	for (vector<hobject_t>::iterator i = ls.begin();
-	     i != ls.end();
-	     ++i) {
-	  if (i->oid == e.soid.oid && i->snap == e.soid.snap) {
-	    e.soid = *i;
-	    found = true;
-	    break;
-	  }
-	}
-	if (!found) {
-	  // Didn't find the correct hash
-	  std::ostringstream oss;
-	  oss << "Could not find hash for hoid " << e.soid << std::endl;
-	  throw read_log_error(oss.str().c_str());
-	}
-      }
+      assert(!e.invalid_hash);
 
       if (e.invalid_pool) {
 	e.soid.pool = info.pgid.pool();

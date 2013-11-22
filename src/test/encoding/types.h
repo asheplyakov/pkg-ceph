@@ -4,6 +4,10 @@ TYPE(CompatSet)
 #include "include/filepath.h"
 TYPE(filepath)
 
+#include "common/bloom_filter.hpp"
+TYPE(bloom_filter)
+TYPE(compressible_bloom_filter)
+
 #include "common/snap_types.h"
 TYPE(SnapContext)
 TYPE(SnapRealmInfo)
@@ -15,6 +19,9 @@ TYPE(DecayCounter)
 TYPE(LogEntryKey)
 TYPE(LogEntry)
 TYPE(LogSummary)
+
+#include "common/SloppyCRCMap.h"
+TYPE(SloppyCRCMap)
 
 #include "msg/msg_types.h"
 TYPE(entity_name_t)
@@ -29,12 +36,16 @@ TYPEWITHSTRAYDATA(OSDMap::Incremental)
 #include "crush/CrushWrapper.h"
 TYPE(CrushWrapper)
 
+#include "include/histogram.h"
+TYPE(pow2_hist_t)
+
 #include "osd/osd_types.h"
 TYPE(osd_reqid_t)
 TYPE(object_locator_t)
+TYPE(request_redirect_t)
 TYPE(pg_t)
 TYPE(coll_t)
-TYPE(pow2_hist_t)
+TYPE(filestore_perf_stat_t)
 TYPE(osd_stat_t)
 TYPE(OSDSuperblock)
 TYPE_FEATUREFUL(pool_snap_info_t)
@@ -52,6 +63,8 @@ TYPE(pg_log_t)
 TYPE(pg_missing_t::item)
 TYPE(pg_missing_t)
 TYPE(pg_ls_response_t)
+TYPE(object_copy_cursor_t)
+TYPE(object_copy_data_t)
 TYPE(pg_create_t)
 TYPE(watch_info_t)
 TYPE(object_info_t)
@@ -73,8 +86,9 @@ TYPE(ObjectStore::Transaction)
 #include "os/SequencerPosition.h"
 TYPE(SequencerPosition)
 
-#include "os/hobject.h"
+#include "common/hobject.h"
 TYPE(hobject_t)
+TYPE(ghobject_t)
 
 #include "mon/AuthMonitor.h"
 TYPE(AuthMonitor::Incremental)

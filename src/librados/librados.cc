@@ -269,6 +269,14 @@ void librados::ObjectReadOperation::list_snaps(
   o->list_snaps(out_snaps, prval);
 }
 
+void librados::ObjectReadOperation::is_dirty(bool *is_dirty, int *prval)
+{
+  ::ObjectOperation *o = (::ObjectOperation *)impl;
+  o->is_dirty(is_dirty, prval);
+}
+
+
+
 int librados::IoCtx::omap_get_vals(const std::string& oid,
                                    const std::string& start_after,
                                    const std::string& filter_prefix,
@@ -380,6 +388,20 @@ void librados::ObjectWriteOperation::omap_rm_keys(
 {
   ::ObjectOperation *o = (::ObjectOperation *)impl;
   o->omap_rm_keys(to_rm);
+}
+
+void librados::ObjectWriteOperation::copy_from(const std::string& src,
+					       const IoCtx& src_ioctx,
+					       uint64_t src_version)
+{
+  ::ObjectOperation *o = (::ObjectOperation *)impl;
+  o->copy_from(object_t(src), src_ioctx.io_ctx_impl->snap_seq, src_ioctx.io_ctx_impl->oloc, src_version);
+}
+
+void librados::ObjectWriteOperation::undirty()
+{
+  ::ObjectOperation *o = (::ObjectOperation *)impl;
+  o->undirty();
 }
 
 void librados::ObjectWriteOperation::tmap_put(const bufferlist &bl)
@@ -587,6 +609,12 @@ int librados::AioCompletion::AioCompletion::get_return_value()
 }
 
 int librados::AioCompletion::AioCompletion::get_version()
+{
+  AioCompletionImpl *c = (AioCompletionImpl *)pc;
+  return c->get_version();
+}
+
+uint64_t librados::AioCompletion::AioCompletion::get_version64()
 {
   AioCompletionImpl *c = (AioCompletionImpl *)pc;
   return c->get_version();
@@ -944,6 +972,8 @@ int librados::IoCtx::aio_operate(const std::string& oid, AioCompletion *c,
     op_flags |= CEPH_OSD_FLAG_BALANCE_READS;
   if (flags & OPERATION_LOCALIZE_READS)
     op_flags |= CEPH_OSD_FLAG_LOCALIZE_READS;
+  if (flags & OPERATION_ORDER_READS_WRITES)
+    op_flags |= CEPH_OSD_FLAG_RWORDERED;
 
   return io_ctx_impl->aio_operate_read(obj, (::ObjectOperation*)o->impl, c->pc,
 				       op_flags, pbl);
@@ -1108,8 +1138,7 @@ const librados::ObjectIterator& librados::IoCtx::objects_end() const
 
 uint64_t librados::IoCtx::get_last_version()
 {
-  eversion_t ver = io_ctx_impl->last_version();
-  return ver.version;
+  return io_ctx_impl->last_version();
 }
 
 int librados::IoCtx::aio_read(const std::string& oid, librados::AioCompletion *c,
@@ -1871,6 +1900,22 @@ static void do_out_buffer(string& outbl, char **outbuf, size_t *outbuflen)
     *outbuflen = outbl.length();
 }
 
+extern "C" int rados_ping_monitor(rados_t cluster, const char *mon_id,
+                                  char **outstr, size_t *outstrlen)
+{
+  librados::RadosClient *client = (librados::RadosClient *)cluster;
+  string str;
+
+  if (!mon_id)
+    return -EINVAL;
+
+  int ret = client->ping_monitor(mon_id, &str);
+  if (ret == 0 && !str.empty() && outstr && outstrlen) {
+    do_out_buffer(str, outstr, outstrlen);
+  }
+  return ret;
+}
+
 extern "C" int rados_mon_command(rados_t cluster, const char **cmd,
 				 size_t cmdlen,
 				 const char *inbuf, size_t inbuflen,
@@ -2142,8 +2187,7 @@ extern "C" int rados_read(rados_ioctx_t io, const char *o, char *buf, size_t len
 extern "C" uint64_t rados_get_last_version(rados_ioctx_t io)
 {
   librados::IoCtxImpl *ctx = (librados::IoCtxImpl *)io;
-  eversion_t ver = ctx->last_version();
-  return ver.version;
+  return ctx->last_version();
 }
 
 extern "C" int rados_pool_create(rados_t cluster, const char *name)

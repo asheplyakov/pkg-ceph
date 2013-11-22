@@ -1,191 +1,140 @@
-Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: ceph
-Upstream-Contact: Sage Weil <sage@newdream.net>
+Format-Specification: http://anonscm.debian.org/viewvc/dep/web/deps/dep5/copyright-format.xml?revision=279&view=markup
+Name: ceph
+Maintainer: Sage Weil <sage@newdream.net>
 Source: http://ceph.com/
 
 Files: *
-Copyright: (C) 2004-2013 by Sage Weil <sage@newdream.net>
-License: LGPL-2.1
+Copyright: (c) 2004-2010 by Sage Weil <sage@newdream.net>
+License: LGPL2.1 (see COPYING-LGPL2.1)
 
-Files: src/client/hadoop/ceph
-Copyright: Copyright (C) New Dream Network and contributors
-License: Apache-2.0
- Licensed under the Apache License, Version 2.0 (the "License");
- you may not use this file except in compliance with the License.
- You may obtain a copy of the License at
- .
- http://www.apache.org/licenses/LICENSE-2.0
- .
- Unless required by applicable law or agreed to in writing, software
- distributed under the License is distributed on an "AS IS" BASIS,
- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- See the License for the specific language governing permissions and
- limitations under the License.
- .
- On Debian systems, the complete text of the Apache version 2.0 license
- can be found in `/usr/share/common-licenses/Apache-2.0'.
-
-Files: src/rbd.cc
-Copyright: Copyright (C) 2004-2006 Sage Weil <sage@newdream.net>
-License: GPL-2
-
-Files: src/common/fiemap.cc
-Copyright: Copyright (C) 2010 Canonical
-License: GPL-2
+Files: doc/*
+Copyright: (c) 2010-2012 New Dream Network and contributors
+License: Creative Commons Attribution-ShareAlike (CC BY-SA)
 
 Files: src/mount/canonicalize.c
 Copyright: Copyright (C) 1993 Rick Sladkey <jrs@world.std.com>
-License: LGPL-2+
+License: LGPL2 or later
 
 Files: src/os/btrfs_ioctl.h
 Copyright: Copyright (C) 2007 Oracle.  All rights reserved.
-License: GPL-2
+License: GPL2
 
 Files: src/include/ceph_hash.cc
-Copyright: Copyright (C) 1995-1997 Robert J. Jenkins Jr.
-License: public-domain
-  This file uses Robert Jenkin's hash function as detailed at:
-  .
-    http://burtleburtle.net/bob/hash/evahash.html
-  .
-  This is in the public domain.
+Copyright: None
+License: Public domain
+
+Files: src/common/bloom_filter.hpp
+Copyright: Copyright (C) 2000 Arash Partow
+License: Boost Software License, Version 1.0
 
 Files: m4/acx_pthread.m4
 Copyright: Steven G. Johnson <stevenj@alum.mit.edu>
 License: GPLWithACException
- This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
- .
- This program is distributed in the hope that it will be useful, but WITHOUT
- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
- .
- You should have received a copy of the GNU General Public License along with
- this program. If not, see <http://www.gnu.org/licenses/>.
- .
- As a special exception, the respective Autoconf Macro’s copyright owner gives
- unlimited permission to copy, distribute and modify the configure scripts that
- are the output of Autoconf when processing the Macro. You need not follow the
- terms of the GNU General Public License when using or distributing such
- scripts, even though portions of the text of the Macro appear in them. The
- GNU General Public License (GPL) does govern all other use of the material
- that constitutes the Autoconf Macro.
- .
- This special exception to the GPL applies to versions of the Autoconf Macro
- released by the Autoconf Archive. When you make and distribute a modified
- version of the Autoconf Macro, you may extend this special exception to the
- GPL to apply to your modified version as well.
+
+Files: src/common/crc32c_intel*:
+Copyright:
+    Copyright 2012-2013 Intel Corporation All Rights Reserved.
+License: BSD 3-clause
 
 Files: src/common/sctp_crc32.c:
 Copyright:
-    Copyright (C) 2001-2007, by Cisco Systems, Inc. All rights reserved.
-    Copyright (C) 2004-2006 Intel Corporation - All Rights Reserved
+    Copyright (c) 2001-2007, by Cisco Systems, Inc. All rights reserved.
+    Copyright (c) 2004-2006 Intel Corporation - All Rights Reserved
 License:
- Redistribution and use in source and binary forms, with or without
- modification, are permitted provided that the following conditions are met:
- .
- a) Redistributions of source code must retain the above copyright notice,
-    this list of conditions and the following disclaimer.
- .
- b) Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in
-    the documentation and/or other materials provided with the distribution.
- .
- c) Neither the name of Cisco Systems, Inc. nor the names of its
-    contributors may be used to endorse or promote products derived
-    from this software without specific prior written permission.
- .
- THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
- LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
- THE POSSIBILITY OF SUCH DAMAGE.
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
 
-Files: src/json_spirit/*
+  a) Redistributions of source code must retain the above copyright notice,
+    this list of conditions and the following disclaimer.
+
+  b) Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in
+    the documentation and/or other materials provided with the distribution.
+
+  c) Neither the name of Cisco Systems, Inc. nor the names of its
+     contributors may be used to endorse or promote products derived
+     from this software without specific prior written permission.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+  THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+  LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+  CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+  SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+  CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+  THE POSSIBILITY OF SUCH DAMAGE.
+
+Files: src/json_spirit
 Copyright:
 	Copyright John W. Wilkinson 2007 - 2011
-License: MIT
- Permission is hereby granted, free of charge, to any person obtaining
- a copy of this software and associated documentation files (the
- "Software"), to deal in the Software without restriction, including
- without limitation the rights to use, copy, modify, merge, publish,
- distribute, sublicense, and/or sell copies of the Software, and to
- permit persons to whom the Software is furnished to do so, subject to
- the following conditions:
- .
- The above copyright notice and this permission notice shall be
- included in all copies or substantial portions of the Software.
- .
- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
- NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
- LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
- OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
- WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+License:
+  The MIT License
 
-Files: debian/*
-Copyright: Copyright (C) 2004-     Sage Weil <sage@newdream.net>,
- Copyright (C) 2010-     Canonical, Ltd.,
- Copyright (C) 2011-     Laszlo Boszormenyi (GCS) <gcs@debian.org>
-License: LGPL-2.1
+  Copyright (c) 2007 - 2010 John W. Wilkinson
 
-License: GPL-2
- This program is free software; you can redistribute it and/or modify
- it under the terms of the GNU General Public License as published by
- the Free Software Foundation; either version 2 of the License, or
- (at your option) any later version.
- .
- This program is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details.
- .
- You should have received a copy of the GNU General Public License along
- with this program; if not, write to the Free Software Foundation, Inc.,
- 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
- .
- On Debian systems, the complete text of the GNU General Public License
- version 2 can be found in `/usr/share/common-licenses/GPL-2' file.
+  Permission is hereby granted, free of charge, to any person
+  obtaining a copy of this software and associated documentation
+  files (the "Software"), to deal in the Software without
+  restriction, including without limitation the rights to use,
+  copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the
+  Software is furnished to do so, subject to the following
+  conditions:
 
-License: LGPL-2.1
- This library is free software; you can redistribute it and/or
- modify it under the terms of the GNU Lesser General Public
- License version 2.1 as published by the Free Software Foundation.
- .
- This library is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- Lesser General Public License for more details.
- .
- You should have received a copy of the GNU Lesser General Public
- License along with this library; if not, write to the Free Software
- Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- .
- On Debian systems, the complete text of the GNU Lesser General
- Public License can be found in `/usr/share/common-licenses/LGPL-2.1'.
+  The above copyright notice and this permission notice shall be
+  included in all copies or substantial portions of the Software.
 
-License: LGPL-2+
- This library is free software; you can redistribute it and/or
- modify it under the terms of the GNU Lesser General Public
- License version 2 (or later) as published by the Free Software Foundation.
- .
- This library is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- Lesser General Public License for more details.
- .
- You should have received a copy of the GNU Lesser General Public
- License along with this library; if not, write to the Free Software
- Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- .
- On Debian systems, the complete text of the GNU Lesser General
- Public License 2 can be found in `/usr/share/common-licenses/LGPL-2'.
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+  OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+  NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+  HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+  WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+  OTHER DEALINGS IN THE SOFTWARE.
+
+
+
+Files: src/test/common/Throttle.cc src/test/filestore/chain_xattr.cc
+Copyright: Copyright (C) 2013 Cloudwatt <libre.licensing@cloudwatt.com>
+License: LGPL2 or later
+
+Files: src/osd/ErasureCodePluginJerasure/*.{c,h}
+Copyright: Copyright (c) 2011, James S. Plank <plank@cs.utk.edu>
+License:
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions
+  are met:
+
+   - Redistributions of source code must retain the above copyright
+     notice, this list of conditions and the following disclaimer.
+
+   - Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in
+     the documentation and/or other materials provided with the
+     distribution.
+
+   - Neither the name of the University of Tennessee nor the names of its
+     contributors may be used to endorse or promote products derived
+     from this software without specific prior written permission.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+  A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+  HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS
+  OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
+  AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY
+  WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+  POSSIBILITY OF SUCH DAMAGE.
+
+Packaging:
+    Copyright (C) 2004-2009 by Sage Weil <sage@newdream.net>
+    Copyright (C) 2010 Canonical, Ltd.
+    Licensed under LGPL-2.1

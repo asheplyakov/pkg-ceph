@@ -7,10 +7,7 @@ daemon.
 
 Copyright (C) 2013 Inktank Storage, Inc.
 
-This is free software; you can redistribute it and/or
-modify it under the terms of the GNU General Public
-License version 2, as published by the Free Software
-Foundation.  See file COPYING.
+LGPL2.  See file COPYING.
 """
 import copy
 import json
@@ -278,12 +275,26 @@ class CephIPAddr(CephArgtype):
 
 class CephEntityAddr(CephIPAddr):
     """
-    EntityAddress, that is, IP address/nonce
+    EntityAddress, that is, IP address[/nonce]
     """
     def valid(self, s, partial=False):
-        ip, nonce = s.split('/')
+        nonce = None
+        if '/' in s:
+            ip, nonce = s.split('/')
+        else:
+            ip = s
         super(self.__class__, self).valid(ip)
-        self.nonce = nonce
+        if nonce:
+            nonce_long = None
+            try:
+                nonce_long = long(nonce)
+            except ValueError:
+                pass
+            if nonce_long is None or nonce_long < 0:
+                raise ArgumentValid(
+                    '{0}: invalid entity, nonce {1} not integer > 0'.\
+                    format(s, nonce)
+                )
         self.val = s
 
     def __str__(self):
@@ -331,11 +342,13 @@ class CephName(CephArgtype):
 
     Also accept '*'
     """
+    def __init__(self):
+        self.nametype = None
+        self.nameid = None
+
     def valid(self, s, partial=False):
         if s == '*':
             self.val = s
-            self.nametype = None
-            self.nameid = None
             return
         if s.find('.') == -1:
             raise ArgumentFormat('CephName: no . in {0}'.format(s))
@@ -362,19 +375,21 @@ class CephOsdName(CephArgtype):
 
     osd.<id>, or <id>, or *, where id is a base10 int
     """
+    def __init__(self):
+        self.nametype = None
+        self.nameid = None
+
     def valid(self, s, partial=False):
         if s == '*':
             self.val = s
-            self.nametype = None
-            self.nameid = None
             return
         if s.find('.') != -1:
             t, i = s.split('.')
+            if t != 'osd':
+                raise ArgumentValid('unknown type ' + t)
         else:
             t = 'osd'
             i = s
-        if t != 'osd':
-            raise ArgumentValid('unknown type ' + t)
         try:
             i = int(i)
         except:
@@ -391,7 +406,7 @@ class CephChoices(CephArgtype):
     Set of string literals; init with valid choices
     """
     def __init__(self, strings='', **kwargs):
-        self.strings=strings.split('|')
+        self.strings = strings.split('|')
 
     def valid(self, s, partial=False):
         if not partial:
@@ -533,16 +548,16 @@ class argdesc(object):
     def __repr__(self):
         r = 'argdesc(' + str(self.t) + ', '
         internals = ['N', 'typeargs', 'instance', 't']
-        for (k,v) in self.__dict__.iteritems():
+        for (k, v) in self.__dict__.iteritems():
             if k.startswith('__') or k in internals:
                 pass
             else:
                 # undo modification from __init__
                 if k == 'n' and self.N:
                     v = 'N'
-                r += '{0}={1}, '.format(k,v)
-        for (k,v) in self.typeargs.iteritems():
-                r += '{0}={1}, '.format(k,v)
+                r += '{0}={1}, '.format(k, v)
+        for (k, v) in self.typeargs.iteritems():
+            r += '{0}={1}, '.format(k, v)
         return r[:-2] + ')'
 
     def __str__(self):
@@ -708,7 +723,7 @@ def matchnum(args, signature, partial=False):
         while desc.numseen < desc.n:
             # if there are no more arguments, return
             if not words:
-                return matchcnt;
+                return matchcnt
             word = words.pop(0)
 
             try:
@@ -828,6 +843,11 @@ def validate(args, signature, partial=False):
                     # wanted n, got too few
                     if partial:
                         return d
+                    # special-case the "0 expected 1" case
+                    if desc.numseen == 0 and desc.n == 1:
+                        raise ArgumentNumber(
+                            'missing required parameter {0}'.format(desc)
+                        )
                     raise ArgumentNumber(
                         'saw {0} of {1}, expected {2}'.\
                         format(desc.numseen, desc, desc.n)
@@ -936,6 +956,7 @@ def validate_command(sigdict, args, verbose=False):
                     # Stop now, because we have the right command but
                     # some other input is invalid
                     print >> sys.stderr, "Invalid command: ", str(e)
+                    print >> sys.stderr, concise_sig(sig), ': ', cmd['help']
                     return {}
             if found:
                 break
@@ -992,7 +1013,7 @@ def find_cmd_target(childargs):
 
     return 'mon', ''
 
-def send_command(cluster, target=('mon', ''), cmd=[], inbuf='', timeout=0, 
+def send_command(cluster, target=('mon', ''), cmd=None, inbuf='', timeout=0, 
                  verbose=False):
     """
     Send a command to a daemon using librados's
@@ -1005,6 +1026,7 @@ def send_command(cluster, target=('mon', ''), cmd=[], inbuf='', timeout=0,
 
     If target is osd.N, send command to that osd (except for pgid cmds)
     """
+    cmd = cmd or []
     try:
         if target[0] == 'osd':
             osdid = target[1]

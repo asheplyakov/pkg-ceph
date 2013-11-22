@@ -554,9 +554,7 @@ bool MDSMonitor::preprocess_command(MMonCommand *m)
   boost::scoped_ptr<Formatter> f(new_formatter(format));
 
   MonSession *session = m->get_session();
-  if (!session ||
-      (!session->is_capable("mds", MON_CAP_R) &&
-       !mon->_allowed_command(session, cmdmap))) {
+  if (!session) {
     mon->reply_command(m, -EACCES, "access denied", rdata, get_last_committed());
     return true;
   }
@@ -768,9 +766,7 @@ bool MDSMonitor::prepare_command(MMonCommand *m)
   cmd_getval(g_ceph_context, cmdmap, "prefix", prefix);
 
   MonSession *session = m->get_session();
-  if (!session ||
-      (!session->is_capable("mds", MON_CAP_W) &&
-       !mon->_allowed_command(session, cmdmap))) {
+  if (!session) {
     mon->reply_command(m, -EACCES, "access denied", rdata, get_last_committed());
     return true;
   }
@@ -924,22 +920,75 @@ bool MDSMonitor::prepare_command(MMonCommand *m)
       r = 0;
     }
 
+  } else if (prefix == "mds set") {
+    string key;
+    cmd_getval(g_ceph_context, cmdmap, "key", key);
+    string sure;
+    cmd_getval(g_ceph_context, cmdmap, "sure", sure);
+    if (key == "allow_new_snaps") {
+      if (sure != "--yes-i-really-mean-it") {
+	ss << "Snapshots are unstable and will probably break your FS! Add --yes-i-really-mean-it if you are sure";
+	r = -EPERM;
+      } else {
+	pending_mdsmap.set_snaps_allowed();
+	ss << "turned on snaps";
+	r = 0;
+      }
+    }
+  } else if (prefix == "mds unset") {
+    string key;
+    cmd_getval(g_ceph_context, cmdmap, "key", key);
+    string sure;
+    cmd_getval(g_ceph_context, cmdmap, "sure", sure);
+    if (key == "allow_new_snaps") {
+      if (sure != "--yes-i-really-mean-it") {
+	ss << "this won't get rid of snapshots or restore the cluster if it's broken. Add --yes-i-really-mean-it if you are sure";
+	r = -EPERM;
+      } else {
+	pending_mdsmap.clear_snaps_allowed();
+	ss << "disabled new snapshots";
+	r = 0;
+      }
+    }
   } else if (prefix == "mds add_data_pool") {
-    int64_t poolid;
-    cmd_getval(g_ceph_context, cmdmap, "poolid", poolid);
-    pending_mdsmap.add_data_pool(poolid);
-    ss << "added data pool " << poolid << " to mdsmap";
-    r = 0;
-
-  } else if (prefix == "mds remove_data_pool") {
-    int64_t poolid;
-    cmd_getval(g_ceph_context, cmdmap, "poolid", poolid);
-    r = pending_mdsmap.remove_data_pool(poolid);
-    if (r == -ENOENT)
+    string poolname;
+    cmd_getval(g_ceph_context, cmdmap, "pool", poolname);
+    int64_t poolid = mon->osdmon()->osdmap.lookup_pg_pool_name(poolname);
+    if (poolid < 0) {
+      string err;
+      poolid = strict_strtol(poolname.c_str(), 10, &err);
+      if (err.length()) {
+	r = -ENOENT;
+	poolid = -1;
+	ss << "pool '" << poolname << "' does not exist";
+      }
+    }
+    if (poolid >= 0) {
+      pending_mdsmap.add_data_pool(poolid);
+      ss << "added data pool " << poolid << " to mdsmap";
       r = 0;
-    if (r == 0)
-      ss << "removed data pool " << poolid << " from mdsmap";
-
+    }
+  } else if (prefix == "mds remove_data_pool") {
+    string poolname;
+    cmd_getval(g_ceph_context, cmdmap, "pool", poolname);
+    int64_t poolid = mon->osdmon()->osdmap.lookup_pg_pool_name(poolname);
+    if (poolid < 0) {
+      string err;
+      poolid = strict_strtol(poolname.c_str(), 10, &err);
+      if (err.length()) {
+	r = -ENOENT;
+	poolid = -1;
+	ss << "pool '" << poolname << "' does not exist";
+      }
+    }
+    if (poolid >= 0) {
+      cmd_getval(g_ceph_context, cmdmap, "poolid", poolid);
+      r = pending_mdsmap.remove_data_pool(poolid);
+      if (r == -ENOENT)
+	r = 0;
+      if (r == 0)
+	ss << "removed data pool " << poolid << " from mdsmap";
+    }
   } else if (prefix == "mds newfs") {
     MDSMap newmap;
     int64_t metadata, data;
@@ -951,6 +1000,7 @@ bool MDSMonitor::prepare_command(MMonCommand *m)
       ss << "this is DANGEROUS and will wipe out the mdsmap's fs, and may clobber data in the new pools you specify.  add --yes-i-really-mean-it if you do.";
       r = -EPERM;
     } else {
+      newmap.inc = pending_mdsmap.inc;
       pending_mdsmap = newmap;
       pending_mdsmap.epoch = mdsmap.epoch + 1;
       create_new_fs(pending_mdsmap, metadata, data);

@@ -11,7 +11,7 @@
 
 class RGWRados;
 class JSONObj;
-class RGWObjVersionTracker;
+struct RGWObjVersionTracker;
 
 struct obj_version;
 
@@ -150,7 +150,9 @@ public:
   void complete_list_entries(void *handle);
   int list_entries(void *handle,
                    int max_entries,
-                   list<cls_log_entry>& entries, bool *truncated);
+                   list<cls_log_entry>& entries,
+		   string *out_marker,
+		   bool *truncated);
 
   int trim(int shard_id, const utime_t& from_time, const utime_t& end_time, const string& start_marker, const string& end_marker);
   int get_info(int shard_id, RGWMetadataLogInfo *info);
@@ -158,7 +160,7 @@ public:
   int unlock(int shard_id, string& zone_id, string& owner_id);
 };
 
-class RGWMetadataLogData;
+struct RGWMetadataLogData;
 
 class RGWMetadataManager {
   map<string, RGWMetadataHandler *> handlers;

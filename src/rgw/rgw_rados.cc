@@ -82,18 +82,26 @@ void RGWDefaultRegionInfo::decode_json(JSONObj *obj) {
   JSONDecoder::decode_json("default_region", default_region, obj);
 }
 
-string RGWRegion::get_pool_name(CephContext *cct)
+int RGWRegion::get_pool_name(CephContext *cct, string *pool_name)
 {
-  string pool_name = cct->_conf->rgw_region_root_pool;
-  if (pool_name.empty()) {
-    pool_name = RGW_DEFAULT_REGION_ROOT_POOL;
+  *pool_name = cct->_conf->rgw_region_root_pool;
+  if (pool_name->empty()) {
+    *pool_name = RGW_DEFAULT_REGION_ROOT_POOL;
+  } else if ((*pool_name)[0] != '.') {
+    derr << "ERROR: region root pool name must start with a period" << dendl;
+    return -EINVAL;
   }
-  return pool_name;
+  return 0;
 }
 
 int RGWRegion::read_default(RGWDefaultRegionInfo& default_info)
 {
-  string pool_name = get_pool_name(cct);
+  string pool_name;
+
+  int ret = get_pool_name(cct, &pool_name);
+  if (ret < 0) {
+    return ret;
+  }
 
   string oid = cct->_conf->rgw_default_region_info_oid;
   if (oid.empty()) {
@@ -102,7 +110,7 @@ int RGWRegion::read_default(RGWDefaultRegionInfo& default_info)
 
   rgw_bucket pool(pool_name.c_str());
   bufferlist bl;
-  int ret = rgw_get_system_obj(store, NULL, pool, oid, bl, NULL, NULL);
+  ret = rgw_get_system_obj(store, NULL, pool, oid, bl, NULL, NULL);
   if (ret < 0)
     return ret;
 
@@ -121,7 +129,10 @@ int RGWRegion::read_default(RGWDefaultRegionInfo& default_info)
 
 int RGWRegion::set_as_default()
 {
-  string pool_name = get_pool_name(cct);
+  string pool_name;
+  int ret = get_pool_name(cct, &pool_name);
+  if (ret < 0)
+    return ret;
 
   string oid = cct->_conf->rgw_default_region_info_oid;
   if (oid.empty()) {
@@ -136,7 +147,7 @@ int RGWRegion::set_as_default()
 
   ::encode(default_info, bl);
 
-  int ret = rgw_put_system_obj(store, pool, oid, bl.c_str(), bl.length(), false, NULL, 0, NULL);
+  ret = rgw_put_system_obj(store, pool, oid, bl.c_str(), bl.length(), false, NULL, 0, NULL);
   if (ret < 0)
     return ret;
 
@@ -185,7 +196,11 @@ int RGWRegion::init(CephContext *_cct, RGWRados *_store, bool setup_region)
 
 int RGWRegion::read_info(const string& region_name)
 {
-  string pool_name = get_pool_name(cct);
+  string pool_name;
+  int ret = get_pool_name(cct, &pool_name);
+  if (ret < 0)
+    return ret;
+
   rgw_bucket pool(pool_name.c_str());
   bufferlist bl;
 
@@ -193,7 +208,7 @@ int RGWRegion::read_info(const string& region_name)
 
   string oid = region_info_oid_prefix + name;
 
-  int ret = rgw_get_system_obj(store, NULL, pool, oid, bl, NULL, NULL);
+  ret = rgw_get_system_obj(store, NULL, pool, oid, bl, NULL, NULL);
   if (ret < 0) {
     lderr(cct) << "failed reading region info from " << pool << ":" << oid << ": " << cpp_strerror(-ret) << dendl;
     return ret;
@@ -246,7 +261,10 @@ int RGWRegion::create_default()
 
 int RGWRegion::store_info(bool exclusive)
 {
-  string pool_name = get_pool_name(cct);
+  string pool_name;
+  int ret = get_pool_name(cct, &pool_name);
+  if (ret < 0)
+    return ret;
 
   rgw_bucket pool(pool_name.c_str());
 
@@ -254,7 +272,7 @@ int RGWRegion::store_info(bool exclusive)
 
   bufferlist bl;
   ::encode(*this, bl);
-  int ret = rgw_put_system_obj(store, pool, oid, bl.c_str(), bl.length(), exclusive, NULL, 0, NULL);
+  ret = rgw_put_system_obj(store, pool, oid, bl.c_str(), bl.length(), exclusive, NULL, 0, NULL);
 
   return ret;
 }
@@ -293,13 +311,17 @@ void RGWZoneParams::init_default(RGWRados *store)
   }
 }
 
-string RGWZoneParams::get_pool_name(CephContext *cct)
+int RGWZoneParams::get_pool_name(CephContext *cct, string *pool_name)
 {
-  string pool_name = cct->_conf->rgw_zone_root_pool;
-  if (pool_name.empty()) {
-    pool_name = RGW_DEFAULT_ZONE_ROOT_POOL;
+  *pool_name = cct->_conf->rgw_zone_root_pool;
+  if (pool_name->empty()) {
+    *pool_name = RGW_DEFAULT_ZONE_ROOT_POOL;
+  } else if ((*pool_name)[0] != '.') {
+    derr << "ERROR: zone root pool name must start with a period" << dendl;
+    return -EINVAL;
   }
-  return pool_name;
+
+  return 0;
 }
 
 void RGWZoneParams::init_name(CephContext *cct, RGWRegion& region)
@@ -319,13 +341,16 @@ int RGWZoneParams::init(CephContext *cct, RGWRados *store, RGWRegion& region)
 {
   init_name(cct, region);
 
-  string pool_name = get_pool_name(cct);
+  string pool_name;
+  int ret = get_pool_name(cct, &pool_name);
+  if (ret < 0)
+    return ret;
 
   rgw_bucket pool(pool_name.c_str());
   bufferlist bl;
 
   string oid = zone_info_oid_prefix + name;
-  int ret = rgw_get_system_obj(store, NULL, pool, oid, bl, NULL, NULL);
+  ret = rgw_get_system_obj(store, NULL, pool, oid, bl, NULL, NULL);
   if (ret < 0)
     return ret;
 
@@ -337,6 +362,10 @@ int RGWZoneParams::init(CephContext *cct, RGWRados *store, RGWRegion& region)
     return -EIO;
   }
 
+  is_master = (name == region.master_zone) || (region.master_zone.empty() && name == "default");
+
+  ldout(cct, 2) << "zone " << name << " is " << (is_master ? "" : "NOT ") << "master" << dendl;
+
   return 0;
 }
 
@@ -344,29 +373,36 @@ int RGWZoneParams::store_info(CephContext *cct, RGWRados *store, RGWRegion& regi
 {
   init_name(cct, region);
 
-  string pool_name = get_pool_name(cct);
+  string pool_name;
+  int ret = get_pool_name(cct, &pool_name);
+  if (ret < 0)
+    return ret;
 
   rgw_bucket pool(pool_name.c_str());
   string oid = zone_info_oid_prefix + name;
 
   bufferlist bl;
   ::encode(*this, bl);
-  int ret = rgw_put_system_obj(store, pool, oid, bl.c_str(), bl.length(), false, NULL, 0, NULL);
+  ret = rgw_put_system_obj(store, pool, oid, bl.c_str(), bl.length(), false, NULL, 0, NULL);
 
   return ret;
 }
 
 void RGWRegionMap::encode(bufferlist& bl) const {
-  ENCODE_START(1, 1, bl);
+  ENCODE_START(2, 1, bl);
   ::encode(regions, bl);
   ::encode(master_region, bl);
+  ::encode(bucket_quota, bl);
   ENCODE_FINISH(bl);
 }
 
 void RGWRegionMap::decode(bufferlist::iterator& bl) {
-  DECODE_START(1, bl);
+  DECODE_START(2, bl);
   ::decode(regions, bl);
   ::decode(master_region, bl);
+
+  if (struct_v >= 2)
+    ::decode(bucket_quota, bl);
   DECODE_FINISH(bl);
 
   regions_by_api.clear();
@@ -761,6 +797,11 @@ int RGWPutObjProcessor_Atomic::complete_writing_data()
     }
   }
   complete_parts();
+
+  int r = drain_pending();
+  if (r < 0)
+    return r;
+
   return 0;
 }
 
@@ -846,6 +887,7 @@ void RGWRados::finalize()
     RGWRESTConn *conn = iter->second;
     delete conn;
   }
+  RGWQuotaHandler::free_handler(quota_handler);
 }
 
 /** 
@@ -892,7 +934,9 @@ int RGWRados::init_complete()
 
   ret = region_map.read(cct, this);
   if (ret < 0) {
-    ldout(cct, 0) << "WARNING: cannot read region map" << dendl;
+    if (ret != -ENOENT) {
+      ldout(cct, 0) << "WARNING: cannot read region map" << dendl;
+    }
     ret = region_map.update(region);
     if (ret < 0) {
       ldout(cct, 0) << "ERROR: failed to update regionmap with local region info" << dendl;
@@ -954,6 +998,8 @@ int RGWRados::init_complete()
 
   if (use_gc_thread)
     gc->start_processor();
+
+  quota_handler = RGWQuotaHandler::generate_handler(this);
 
   return ret;
 }
@@ -1018,14 +1064,20 @@ int RGWRados::list_raw_prefixed_objs(string pool_name, const string& prefix, lis
 
 int RGWRados::list_regions(list<string>& regions)
 {
-  string pool_name = RGWRegion::get_pool_name(cct);
+  string pool_name;
+  int ret = RGWRegion::get_pool_name(cct, &pool_name);
+  if (ret < 0)
+    return ret;
 
   return list_raw_prefixed_objs(pool_name, region_info_oid_prefix, regions);
 }
 
 int RGWRados::list_zones(list<string>& zones)
 {
-  string pool_name = RGWZoneParams::get_pool_name(cct);
+  string pool_name;
+  int ret = RGWZoneParams::get_pool_name(cct, &pool_name);
+  if (ret < 0)
+    return ret;
 
   return list_raw_prefixed_objs(pool_name, zone_info_oid_prefix, zones);
 }
@@ -1538,7 +1590,10 @@ int RGWRados::time_log_add(const string& oid, list<cls_log_entry>& entries)
 }
 
 int RGWRados::time_log_list(const string& oid, utime_t& start_time, utime_t& end_time,
-                            int max_entries, list<cls_log_entry>& entries, string& marker, bool *truncated)
+                            int max_entries, list<cls_log_entry>& entries,
+			    const string& marker,
+			    string *out_marker,
+			    bool *truncated)
 {
   librados::IoCtx io_ctx;
 
@@ -1548,7 +1603,8 @@ int RGWRados::time_log_list(const string& oid, utime_t& start_time, utime_t& end
     return r;
   librados::ObjectReadOperation op;
 
-  cls_log_list(op, start_time, end_time, marker, max_entries, entries, &marker, truncated);
+  cls_log_list(op, start_time, end_time, marker, max_entries, entries,
+	       out_marker, truncated);
 
   bufferlist obl;
 
@@ -2177,8 +2233,8 @@ int RGWRados::create_pools(vector<string>& names, vector<int>& retcodes)
       if (r < 0) {
         ldout(cct, 0) << "WARNING: async pool_create returned " << r << dendl;
       }
-      c->release();
     }
+    c->release();
     retcodes.push_back(r);
   }
   return 0;
@@ -2335,6 +2391,11 @@ int RGWRados::put_obj_meta_impl(void *ctx, rgw_obj& obj,  uint64_t size,
     *mtime = set_mtime;
   }
 
+  if (state) {
+    /* update quota cache */
+    quota_handler->update_stats(bucket, (state->exists ? 0 : 1), size, state->size);
+  }
+
   return 0;
 
 done_cancel:
@@ -2488,6 +2549,22 @@ static void set_copy_attrs(map<string, bufferlist>& src_attrs, map<string, buffe
   }
 }
 
+class GetObjHandleDestructor {
+  RGWRados *store;
+  void **handle;
+
+public:
+    GetObjHandleDestructor(RGWRados *_store) : store(_store), handle(NULL) {}
+    ~GetObjHandleDestructor() {
+      if (handle) {
+        store->finish_get_obj(handle);
+      }
+    }
+    void set_handle(void **_h) {
+      handle = _h;
+    }
+};
+
 /**
  * Copy an object.
  * dest_obj: the object to copy into
@@ -2542,6 +2619,7 @@ int RGWRados::copy_obj(void *ctx,
   ldout(cct, 5) << "Copy object " << src_obj.bucket << ":" << src_obj.object << " => " << dest_obj.bucket << ":" << dest_obj.object << dendl;
 
   void *handle = NULL;
+  GetObjHandleDestructor handle_destructor(this);
 
   map<string, bufferlist> src_attrs;
   off_t ofs = 0;
@@ -2551,6 +2629,8 @@ int RGWRados::copy_obj(void *ctx,
                   mod_ptr, unmod_ptr, &lastmod, if_match, if_nomatch, &total_len, &obj_size, NULL, &handle, err);
     if (ret < 0)
       return ret;
+
+    handle_destructor.set_handle(&handle);
   } else {
     /* source is in a different region, copy it there */
 
@@ -2693,7 +2773,7 @@ set_err_state:
 
     return 0;
   } else if (copy_data) { /* refcounting tail wouldn't work here, just copy the data */
-    return copy_obj_data(ctx, handle, end, dest_obj, src_obj, mtime, src_attrs, category, ptag, err);
+    return copy_obj_data(ctx, &handle, end, dest_obj, src_obj, mtime, src_attrs, category, ptag, err);
   }
 
   map<uint64_t, RGWObjManifestPart>::iterator miter = astate->manifest.objs.begin();
@@ -2798,7 +2878,7 @@ done_ret:
 
 
 int RGWRados::copy_obj_data(void *ctx,
-	       void *handle, off_t end,
+	       void **handle, off_t end,
                rgw_obj& dest_obj,
                rgw_obj& src_obj,
 	       time_t *mtime,
@@ -2824,7 +2904,7 @@ int RGWRados::copy_obj_data(void *ctx,
 
   do {
     bufferlist bl;
-    ret = get_obj(ctx, NULL, &handle, src_obj, bl, ofs, end);
+    ret = get_obj(ctx, NULL, handle, src_obj, bl, ofs, end);
     if (ret < 0)
       return ret;
 
@@ -2871,12 +2951,9 @@ int RGWRados::copy_obj_data(void *ctx,
   if (mtime)
     obj_stat(ctx, dest_obj, NULL, mtime, NULL, NULL, NULL, NULL);
 
-  finish_get_obj(&handle);
-
   return ret;
 done_err:
   delete_obj(ctx, shadow_obj);
-  finish_get_obj(&handle);
   return r;
 }
 
@@ -3187,6 +3264,11 @@ int RGWRados::delete_obj_impl(void *ctx, rgw_obj& obj, RGWObjVersionTracker *obj
 
   if (ret_not_existed)
     return -ENOENT;
+
+  if (state) {
+    /* update quota cache */
+    quota_handler->update_stats(bucket, -1, 0, state->size);
+  }
 
   return 0;
 }
@@ -4575,6 +4657,38 @@ int RGWRados::get_bucket_stats(rgw_bucket& bucket, uint64_t *bucket_ver, uint64_
   return 0;
 }
 
+class RGWGetBucketStatsContext : public RGWGetDirHeader_CB {
+  RGWGetBucketStats_CB *cb;
+
+public:
+  RGWGetBucketStatsContext(RGWGetBucketStats_CB *_cb) : cb(_cb) {}
+  void handle_response(int r, rgw_bucket_dir_header& header) {
+    map<RGWObjCategory, RGWBucketStats> stats;
+
+    if (r >= 0) {
+      translate_raw_stats(header, stats);
+      cb->set_response(header.ver, header.master_ver, &stats, header.max_marker);
+    }
+
+    cb->handle_response(r);
+
+    cb->put();
+  }
+};
+
+int RGWRados::get_bucket_stats_async(rgw_bucket& bucket, RGWGetBucketStats_CB *ctx)
+{
+  RGWGetBucketStatsContext *get_ctx = new RGWGetBucketStatsContext(ctx);
+  int r = cls_bucket_head_async(bucket, get_ctx);
+  if (r < 0) {
+    ctx->put();
+    delete get_ctx;
+    return r;
+  }
+
+  return 0;
+}
+
 void RGWRados::get_bucket_instance_entry(rgw_bucket& bucket, string& entry)
 {
   entry = bucket.name + ":" + bucket.bucket_id;
@@ -5457,6 +5571,25 @@ int RGWRados::cls_bucket_head(rgw_bucket& bucket, struct rgw_bucket_dir_header& 
   return 0;
 }
 
+int RGWRados::cls_bucket_head_async(rgw_bucket& bucket, RGWGetDirHeader_CB *ctx)
+{
+  librados::IoCtx index_ctx;
+  string oid;
+  int r = open_bucket_index(bucket, index_ctx, oid);
+  if (r < 0)
+    return r;
+
+  r = cls_rgw_get_dir_header_async(index_ctx, oid, ctx);
+  if (r < 0)
+    return r;
+
+  return 0;
+}
+
+int RGWRados::check_quota(rgw_bucket& bucket, RGWQuotaInfo& quota_info, uint64_t obj_size)
+{
+  return quota_handler->check_quota(bucket, quota_info, 1, obj_size);
+}
 
 class IntentLogNameFilter : public RGWAccessListFilter
 {

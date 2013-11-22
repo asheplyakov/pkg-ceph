@@ -3,7 +3,7 @@
 #ifndef CEPH_LIBRBD_INTERNAL_H
 #define CEPH_LIBRBD_INTERNAL_H
 
-#include <inttypes.h>
+#include "include/int_types.h"
 
 #include <map>
 #include <set>
@@ -145,7 +145,6 @@ namespace librbd {
   int read_rbd_info(librados::IoCtx& io_ctx, const std::string& info_oid,
 		    struct rbd_info *info);
 
-  uint64_t rbd_assign_bid(librados::IoCtx& io_ctx);
   int read_header_bl(librados::IoCtx& io_ctx, const std::string& md_oid,
 		     ceph::bufferlist& header, uint64_t *ver);
   int notify_change(librados::IoCtx& io_ctx, const std::string& oid,

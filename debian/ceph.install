@@ -4,6 +4,10 @@
 etc/bash_completion.d/ceph
 etc/init.d/rbdmap
 sbin/mkcephfs
+sbin/ceph-create-keys
+sbin/ceph-disk
+sbin/ceph-disk-activate
+sbin/ceph-disk-prepare
 usr/bin/ceph-clsinfo
 usr/bin/ceph-debugpack
 usr/bin/ceph-mon
@@ -15,10 +19,6 @@ usr/bin/monmaptool
 usr/bin/osdmaptool
 usr/lib/*/ceph/ceph_common.sh
 usr/lib/*/rados-classes/*.so
-usr/sbin/ceph-create-keys
-usr/sbin/ceph-disk
-usr/sbin/ceph-disk-activate
-usr/sbin/ceph-disk-prepare
 usr/share/doc/ceph/sample.ceph.conf
 usr/share/doc/ceph/sample.fetch_config
 usr/share/man/man8/ceph-clsinfo.8

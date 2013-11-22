@@ -227,7 +227,7 @@ private:
   bool prepare_pgtemp(class MOSDPGTemp *m);
 
   int _prepare_remove_pool(uint64_t pool);
-  int _prepare_rename_pool(uint64_t pool, string newname);
+  int _prepare_rename_pool(int64_t pool, string newname);
 
   bool preprocess_pool_op ( class MPoolOp *m);
   bool preprocess_pool_op_create ( class MPoolOp *m);
@@ -235,7 +235,8 @@ private:
   bool prepare_pool_op_create (MPoolOp *m);
   bool prepare_pool_op_delete(MPoolOp *m);
   int prepare_new_pool(string& name, uint64_t auid, int crush_rule,
-                       unsigned pg_num, unsigned pgp_num);
+                       unsigned pg_num, unsigned pgp_num,
+		       const vector<string> &properties);
   int prepare_new_pool(MPoolOp *m);
 
   void update_pool_flags(int64_t pool_id, uint64_t flags);
@@ -305,8 +306,8 @@ private:
     }
   };
 
-  bool preprocess_remove_snaps(class MRemoveSnaps *m);
-  bool prepare_remove_snaps(class MRemoveSnaps *m);
+  bool preprocess_remove_snaps(struct MRemoveSnaps *m);
+  bool prepare_remove_snaps(struct MRemoveSnaps *m);
 
  public:
   OSDMonitor(Monitor *mn, Paxos *p, string service_name)
@@ -322,6 +323,9 @@ private:
 		  list<pair<health_status_t,string> > *detail) const;
   bool preprocess_command(MMonCommand *m);
   bool prepare_command(MMonCommand *m);
+
+  int prepare_command_pool_set(map<string,cmd_vartype> &cmdmap,
+                               stringstream& ss);
 
   void handle_osd_timeouts(const utime_t &now,
 			   std::map<int,utime_t> &last_osd_report);

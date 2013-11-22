@@ -41,7 +41,8 @@ class MonitorDBStore
     string key, endkey;
     bufferlist bl;
 
-    Op() { }
+    Op()
+      : type(0) { }
     Op(int t, string p, string k)
       : type(t), prefix(p), key(k) { }
     Op(int t, const string& p, string k, bufferlist& b)
@@ -509,6 +510,10 @@ class MonitorDBStore
     db->compact_prefix(prefix);
   }
 
+  uint64_t get_estimated_size(map<string, uint64_t> &extras) {
+    return db->get_estimated_size(extras);
+  }
+
   MonitorDBStore(const string& path) :
     db(0), do_dump(false), dump_fd(-1) {
     string::const_reverse_iterator rit;
@@ -523,8 +528,8 @@ class MonitorDBStore
 
     LevelDBStore *db_ptr = new LevelDBStore(g_ceph_context, full_path);
     if (!db_ptr) {
-      std::cout << __func__ << " error initializing level db back storage in "
-		<< full_path << std::endl;
+      derr << __func__ << " error initializing level db back storage in "
+		<< full_path << dendl;
       assert(0 != "MonitorDBStore: error initializing level db back storage");
     }
     db.reset(db_ptr);

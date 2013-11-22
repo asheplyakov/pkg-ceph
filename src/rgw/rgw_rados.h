@@ -238,11 +238,11 @@ class RGWPutObjProcessor_Aio : public RGWPutObjProcessor
   struct put_obj_aio_info pop_pending();
   int wait_pending_front();
   bool pending_has_completed();
-  int drain_pending();
 
 protected:
   uint64_t obj_len;
 
+  int drain_pending();
   int handle_obj_data(rgw_obj& obj, bufferlist& bl, off_t ofs, off_t abs_ofs, void **phandle);
 
 public:
@@ -428,12 +428,15 @@ struct RGWZoneParams {
   rgw_bucket user_uid_pool;
 
   string name;
+  bool is_master;
 
   RGWAccessKey system_key;
 
   map<string, RGWZonePlacementInfo> placement_pools;
 
-  static string get_pool_name(CephContext *cct);
+  RGWZoneParams() : is_master(false) {}
+
+  static int get_pool_name(CephContext *cct, string *pool_name);
   void init_name(CephContext *cct, RGWRegion& region);
   int init(CephContext *cct, RGWRados *store, RGWRegion& region);
   void init_default(RGWRados *store);
@@ -622,7 +625,7 @@ struct RGWRegion {
   int set_as_default();
   int equals(const string& other_region);
 
-  static string get_pool_name(CephContext *cct);
+  static int get_pool_name(CephContext *cct, string *pool_name);
 
   void dump(Formatter *f) const;
   void decode_json(JSONObj *obj);
@@ -635,6 +638,8 @@ struct RGWRegionMap {
   map<string, RGWRegion> regions_by_api;
 
   string master_region;
+
+  RGWQuotaInfo bucket_quota;
 
   RGWRegionMap() : lock("RGWRegionMap") {}
 
@@ -759,6 +764,29 @@ public:
   int renew_state();
 };
 
+class RGWGetBucketStats_CB : public RefCountedObject {
+protected:
+  rgw_bucket bucket;
+  uint64_t bucket_ver;
+  uint64_t master_ver;
+  map<RGWObjCategory, RGWBucketStats> *stats;
+  string max_marker;
+public:
+  RGWGetBucketStats_CB(rgw_bucket& _bucket) : bucket(_bucket), stats(NULL) {}
+  virtual ~RGWGetBucketStats_CB() {}
+  virtual void handle_response(int r) = 0;
+  virtual void set_response(uint64_t _bucket_ver, uint64_t _master_ver,
+                            map<RGWObjCategory, RGWBucketStats> *_stats,
+                            const string &_max_marker) {
+    bucket_ver = _bucket_ver;
+    master_ver = _master_ver;
+    stats = _stats;
+    max_marker = _max_marker;
+  }
+};
+
+class RGWGetDirHeader_CB;
+
 
 class RGWRados
 {
@@ -862,6 +890,8 @@ protected:
   string region_name;
   string zone_name;
 
+  RGWQuotaHandler *quota_handler;
+
 public:
   RGWRados() : lock("rados_timer_lock"), timer(NULL),
                gc(NULL), use_gc_thread(false),
@@ -870,6 +900,7 @@ public:
                bucket_id_lock("rados_bucket_id"), max_bucket_id(0),
                cct(NULL), rados(NULL),
                pools_initialized(false),
+               quota_handler(NULL),
                rest_master_conn(NULL),
                meta_mgr(NULL), data_log(NULL) {}
 
@@ -1130,7 +1161,7 @@ public:
                void *progress_data);
 
   int copy_obj_data(void *ctx,
-	       void *handle, off_t end,
+	       void **handle, off_t end,
                rgw_obj& dest_obj,
                rgw_obj& src_obj,
 	       time_t *mtime,
@@ -1290,6 +1321,7 @@ public:
   int decode_policy(bufferlist& bl, ACLOwner *owner);
   int get_bucket_stats(rgw_bucket& bucket, uint64_t *bucket_ver, uint64_t *master_ver, map<RGWObjCategory, RGWBucketStats>& stats,
                        string *max_marker);
+  int get_bucket_stats_async(rgw_bucket& bucket, RGWGetBucketStats_CB *cb);
   void get_bucket_instance_obj(rgw_bucket& bucket, rgw_obj& obj);
   void get_bucket_instance_entry(rgw_bucket& bucket, string& entry);
   void get_bucket_meta_oid(rgw_bucket& bucket, string& oid);
@@ -1321,6 +1353,7 @@ public:
                       map<string, RGWObjEnt>& m, bool *is_truncated,
                       string *last_entry, bool (*force_check_filter)(const string&  name) = NULL);
   int cls_bucket_head(rgw_bucket& bucket, struct rgw_bucket_dir_header& header);
+  int cls_bucket_head_async(rgw_bucket& bucket, RGWGetDirHeader_CB *ctx);
   int prepare_update_index(RGWObjState *state, rgw_bucket& bucket,
                            RGWModifyOp op, rgw_obj& oid, string& tag);
   int complete_update_index(rgw_bucket& bucket, string& oid, string& tag, int64_t poolid, uint64_t epoch, uint64_t size,
@@ -1352,7 +1385,8 @@ public:
   int time_log_add(const string& oid, list<cls_log_entry>& entries);
   int time_log_add(const string& oid, const utime_t& ut, const string& section, const string& key, bufferlist& bl);
   int time_log_list(const string& oid, utime_t& start_time, utime_t& end_time,
-                    int max_entries, list<cls_log_entry>& entries, string& marker, bool *truncated);
+                    int max_entries, list<cls_log_entry>& entries,
+		    const string& marker, string *out_marker, bool *truncated);
   int time_log_info(const string& oid, cls_log_header *header);
   int time_log_trim(const string& oid, const utime_t& start_time, const utime_t& end_time,
                     const string& from_marker, const string& to_marker);
@@ -1375,6 +1409,8 @@ public:
                          map<RGWObjCategory, RGWBucketStats> *calculated_stats);
   int bucket_rebuild_index(rgw_bucket& bucket);
   int remove_objs_from_index(rgw_bucket& bucket, list<string>& oid_list);
+
+  int check_quota(rgw_bucket& bucket, RGWQuotaInfo& quota_info, uint64_t obj_size);
 
   string unique_id(uint64_t unique_num) {
     char buf[32];

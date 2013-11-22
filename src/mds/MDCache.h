@@ -19,6 +19,7 @@
 
 #include "include/types.h"
 #include "include/filepath.h"
+#include "include/elist.h"
 
 #include "CInode.h"
 #include "CDentry.h"
@@ -51,23 +52,23 @@ class MDirUpdate;
 class MDentryLink;
 class MDentryUnlink;
 class MLock;
-class MMDSFindIno;
-class MMDSFindInoReply;
-class MMDSOpenIno;
-class MMDSOpenInoReply;
+struct MMDSFindIno;
+struct MMDSFindInoReply;
+struct MMDSOpenIno;
+struct MMDSOpenInoReply;
 
 class Message;
 class MClientRequest;
 class MMDSSlaveRequest;
-class MClientSnap;
+struct MClientSnap;
 
 class MMDSFragmentNotify;
 
 class ESubtreeMap;
 
-class Mutation;
-class MDRequest;
-class MDSlaveUpdate;
+struct Mutation;
+struct MDRequest;
+struct MDSlaveUpdate;
 
 
 // flags for predirty_journal_parents()
@@ -564,7 +565,7 @@ public:
 
   // trimming
   bool trim(int max = -1);   // trim cache
-  void trim_dentry(CDentry *dn, map<int, MCacheExpire*>& expiremap);
+  bool trim_dentry(CDentry *dn, map<int, MCacheExpire*>& expiremap);
   void trim_dirfrag(CDir *dir, CDir *con,
 		    map<int, MCacheExpire*>& expiremap);
   void trim_inode(CDentry *dn, CInode *in, CDir *con,
@@ -646,6 +647,15 @@ public:
   }
   void touch_dentry_bottom(CDentry *dn) {
     lru.lru_bottouch(dn);
+    if (dn->get_projected_linkage()->is_primary()) {
+      CInode *in = dn->get_projected_linkage()->get_inode();
+      if (in->has_dirfrags()) {
+	list<CDir*> ls;
+	in->get_dirfrags(ls);
+	for (list<CDir*>::iterator p = ls.begin(); p != ls.end(); ++p)
+	  (*p)->touch_dentries_bottom();
+      }
+    }
   }
 protected:
 
@@ -801,8 +811,8 @@ protected:
   void handle_open_ino(MMDSOpenIno *m);
   void handle_open_ino_reply(MMDSOpenInoReply *m);
   friend class C_MDC_OpenInoBacktraceFetched;
-  friend class C_MDC_OpenInoTraverseDir;
-  friend class C_MDC_OpenInoParentOpened;
+  friend struct C_MDC_OpenInoTraverseDir;
+  friend struct C_MDC_OpenInoParentOpened;
 
 public:
   void kick_open_ino_peers(int who);
@@ -858,31 +868,29 @@ public:
 
   // -- stray --
 public:
-  void scan_stray_dir();
-  void eval_stray(CDentry *dn);
+  elist<CDentry*> delayed_eval_stray;
+
+  void eval_stray(CDentry *dn, bool delay=false);
   void eval_remote(CDentry *dn);
 
-  void maybe_eval_stray(CInode *in) {
+  void maybe_eval_stray(CInode *in, bool delay=false) {
     if (in->inode.nlink > 0 || in->is_base())
       return;
     CDentry *dn = in->get_projected_parent_dn();
-    if (dn->get_projected_linkage()->is_primary() &&
-	dn->get_dir()->get_inode()->is_stray() &&
-	!dn->is_replicated())
-      eval_stray(dn);
+    if (!dn->state_test(CDentry::STATE_PURGING) &&
+	dn->get_projected_linkage()->is_primary() &&
+	dn->get_dir()->get_inode()->is_stray())
+      eval_stray(dn, delay);
   }
 protected:
+  void scan_stray_dir(dirfrag_t next=dirfrag_t());
   void fetch_backtrace(inodeno_t ino, int64_t pool, bufferlist& bl, Context *fin);
-  void remove_backtrace(inodeno_t ino, int64_t pool, Context *fin);
-  void _purge_forwarding_pointers(bufferlist& bl, CDentry *dn, int r);
-  void _purge_stray(CDentry *dn, int r);
   void purge_stray(CDentry *dn);
   void _purge_stray_purged(CDentry *dn, int r=0);
   void _purge_stray_logged(CDentry *dn, version_t pdv, LogSegment *ls);
   void _purge_stray_logged_truncate(CDentry *dn, LogSegment *ls);
+  friend class C_MDC_RetryScanStray;
   friend class C_MDC_FetchedBacktrace;
-  friend class C_MDC_PurgeForwardingPointers;
-  friend class C_MDC_PurgeStray;
   friend class C_MDC_PurgeStrayLogged;
   friend class C_MDC_PurgeStrayLoggedTruncate;
   friend class C_MDC_PurgeStrayPurged;
@@ -935,10 +943,26 @@ protected:
 
 
   // -- fragmenting --
-public:
-  set< pair<dirfrag_t,int> > uncommitted_fragments;  // prepared but uncommitted refragmentations
-
 private:
+  struct ufragment {
+    int bits;
+    bool committed;
+    LogSegment *ls;
+    list<Context*> waiters;
+    list<frag_t> old_frags;
+    bufferlist rollback;
+    ufragment() : bits(0), committed(false), ls(NULL) {}
+  };
+  map<dirfrag_t, ufragment> uncommitted_fragments;
+
+  struct fragment_info_t {
+    frag_t basefrag;
+    int bits;
+    list<CDir*> dirs;
+    list<CDir*> resultfrags;
+  };
+  map<metareqid_t, fragment_info_t> fragment_requests;
+
   void adjust_dir_fragments(CInode *diri, frag_t basefrag, int bits,
 			    list<CDir*>& frags, list<Context*>& waiters, bool replay);
   void adjust_dir_fragments(CInode *diri,
@@ -950,32 +974,39 @@ private:
   CDir *force_dir_fragment(CInode *diri, frag_t fg);
   void get_force_dirfrag_bound_set(vector<dirfrag_t>& dfs, set<CDir*>& bounds);
 
-
-  friend class EFragment;
-
-  bool can_fragment_lock(CInode *diri);
   bool can_fragment(CInode *diri, list<CDir*>& dirs);
-
-public:
-  void split_dir(CDir *dir, int byn);
-  void merge_dir(CInode *diri, frag_t fg);
-
-private:
   void fragment_freeze_dirs(list<CDir*>& dirs, C_GatherBuilder &gather);
   void fragment_mark_and_complete(list<CDir*>& dirs);
   void fragment_frozen(list<CDir*>& dirs, frag_t basefrag, int bits);
   void fragment_unmark_unfreeze_dirs(list<CDir*>& dirs);
-  void fragment_logged_and_stored(Mutation *mut, list<CDir*>& resultfrags, frag_t basefrag, int bits);
-public:
-  void rollback_uncommitted_fragments();
-private:
+  void dispatch_fragment_dir(MDRequest *mdr);
+  void _fragment_logged(MDRequest *mdr);
+  void _fragment_stored(MDRequest *mdr);
+  void _fragment_committed(dirfrag_t f, list<CDir*>& resultfrags);
+  void _fragment_finish(dirfrag_t f, list<CDir*>& resultfrags);
 
+  friend class EFragment;
   friend class C_MDC_FragmentFrozen;
   friend class C_MDC_FragmentMarking;
-  friend class C_MDC_FragmentLoggedAndStored;
+  friend class C_MDC_FragmentPrep;
+  friend class C_MDC_FragmentStore;
+  friend class C_MDC_FragmentCommit;
+  friend class C_MDC_FragmentFinish;
 
   void handle_fragment_notify(MMDSFragmentNotify *m);
 
+  void add_uncommitted_fragment(dirfrag_t basedirfrag, int bits, list<frag_t>& old_frag,
+				LogSegment *ls, bufferlist *rollback=NULL);
+  void finish_uncommitted_fragment(dirfrag_t basedirfrag, int op);
+  void rollback_uncommitted_fragment(dirfrag_t basedirfrag, list<frag_t>& old_frags);
+public:
+  void wait_for_uncommitted_fragment(dirfrag_t dirfrag, Context *c) {
+    assert(uncommitted_fragments.count(dirfrag));
+    uncommitted_fragments[dirfrag].waiters.push_back(c);
+  }
+  void split_dir(CDir *dir, int byn);
+  void merge_dir(CInode *diri, frag_t fg);
+  void rollback_uncommitted_fragments();
 
   // -- updates --
   //int send_inode_updates(CInode *in);

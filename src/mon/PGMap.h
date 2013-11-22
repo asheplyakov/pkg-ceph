@@ -43,12 +43,13 @@ public:
   float full_ratio;
   float nearfull_ratio;
 
+  // mapping of osd to most recently reported osdmap epoch
+  hash_map<int32_t,epoch_t> osd_epochs;
+
   class Incremental {
   public:
     version_t version;
     map<pg_t,pg_stat_t> pg_stat_updates;
-    map<int32_t,osd_stat_t> osd_stat_updates;
-    set<int32_t> osd_stat_rm;
     epoch_t osdmap_epoch;
     epoch_t pg_scan;  // osdmap epoch
     set<pg_t> pg_remove;
@@ -56,6 +57,38 @@ public:
     float nearfull_ratio;
     utime_t stamp;
 
+  private:
+    map<int32_t,osd_stat_t> osd_stat_updates;
+    set<int32_t> osd_stat_rm;
+
+    // mapping of osd to most recently reported osdmap epoch
+    map<int32_t,epoch_t> osd_epochs;
+  public:
+
+    const map<int32_t, osd_stat_t> &get_osd_stat_updates() const {
+      return osd_stat_updates;
+    }
+    const set<int32_t> &get_osd_stat_rm() const {
+      return osd_stat_rm;
+    }
+    const map<int32_t, epoch_t> &get_osd_epochs() const {
+      return osd_epochs;
+    }
+
+    void update_stat(int32_t osd, epoch_t epoch, const osd_stat_t &stat) {
+      osd_stat_updates[osd] = stat;
+      osd_epochs[osd] = epoch;
+      assert(osd_epochs.size() == osd_stat_updates.size());
+    }
+    void stat_osd_out(int32_t osd) {
+      // 0 the stats for the osd
+      osd_stat_updates[osd] = osd_stat_t();
+    }
+    void rm_stat(int32_t osd) {
+      osd_stat_rm.insert(osd);
+      osd_epochs.erase(osd);
+      osd_stat_updates.erase(osd);
+    }
     void encode(bufferlist &bl, uint64_t features=-1) const;
     void decode(bufferlist::iterator &bl);
     void dump(Formatter *f) const;
@@ -76,12 +109,50 @@ public:
   utime_t stamp;
 
   // recent deltas, and summation
+  /**
+   * keep track of last deltas for each pool, calculated using
+   * @p pg_pool_sum as baseline.
+   */
+  hash_map<uint64_t, list< pair<pool_stat_t, utime_t> > > per_pool_sum_deltas;
+  /**
+   * keep track of per-pool timestamp deltas, according to last update on
+   * each pool.
+   */
+  hash_map<uint64_t, utime_t> per_pool_sum_deltas_stamps;
+  /**
+   * keep track of sum deltas, per-pool, taking into account any previous
+   * deltas existing in @p per_pool_sum_deltas.  The utime_t as second member
+   * of the pair is the timestamp refering to the last update (i.e., the first
+   * member of the pair) for a given pool.
+   */
+  hash_map<uint64_t, pair<pool_stat_t,utime_t> > per_pool_sum_delta;
+
   list< pair<pool_stat_t, utime_t> > pg_sum_deltas;
   pool_stat_t pg_sum_delta;
   utime_t stamp_delta;
 
-  void update_delta(CephContext *cct, utime_t inc_stamp, pool_stat_t& pg_sum_old);
+  void update_global_delta(CephContext *cct,
+                           const utime_t ts, const pool_stat_t& pg_sum_old);
+  void update_pool_deltas(CephContext *cct,
+                          const utime_t ts,
+                          const hash_map<uint64_t, pool_stat_t>& pg_pool_sum_old);
   void clear_delta();
+
+ private:
+  void update_delta(CephContext *cct,
+                    const utime_t ts,
+                    const pool_stat_t& old_pool_sum,
+                    utime_t *last_ts,
+                    const pool_stat_t& current_pool_sum,
+                    pool_stat_t *result_pool_delta,
+                    utime_t *result_ts_delta,
+                    list<pair<pool_stat_t,utime_t> > *delta_avg_list);
+
+  void update_one_pool_delta(CephContext *cct,
+                             const utime_t ts,
+                             const uint64_t pool,
+                             const pool_stat_t& old_pool_sum);
+ public:
 
   set<pg_t> creating_pgs;   // lru: front = new additions, back = recently pinged
   map<int,set<pg_t> > creating_pgs_by_osd;
@@ -158,6 +229,7 @@ public:
   void dump_pg_stats(Formatter *f, bool brief) const;
   void dump_pool_stats(Formatter *f) const;
   void dump_osd_stats(Formatter *f) const;
+  void dump_delta(Formatter *f) const;
 
   void dump_pg_stats_plain(ostream& ss,
 			   const hash_map<pg_t, pg_stat_t>& pg_stats) const;
@@ -168,8 +240,42 @@ public:
 
   void dump(ostream& ss) const;
 
-  void recovery_summary(Formatter *f, ostream *out) const;
+  void dump_osd_perf_stats(Formatter *f) const;
+  void print_osd_perf_stats(std::ostream *ss) const;
+
+  void recovery_summary(Formatter *f, ostream *out,
+                        const pool_stat_t& delta_sum) const;
+  void overall_recovery_summary(Formatter *f, ostream *out) const;
+  void pool_recovery_summary(Formatter *f, ostream *out,
+                             uint64_t poolid) const;
+  void recovery_rate_summary(Formatter *f, ostream *out,
+                             const pool_stat_t& delta_sum,
+                             utime_t delta_stamp) const;
+  void overall_recovery_rate_summary(Formatter *f, ostream *out) const;
+  void pool_recovery_rate_summary(Formatter *f, ostream *out,
+                                  uint64_t poolid) const;
+  /**
+   * Obtain a formatted/plain output for client I/O, source from stats for a
+   * given @p delta_sum pool over a given @p delta_stamp period of time.
+   */
+  void client_io_rate_summary(Formatter *f, ostream *out,
+                              const pool_stat_t& delta_sum,
+                              utime_t delta_stamp) const;
+  /**
+   * Obtain a formatted/plain output for the overall client I/O, which is
+   * calculated resorting to @p pg_sum_delta and @p stamp_delta.
+   */
+  void overall_client_io_rate_summary(Formatter *f, ostream *out) const;
+  /**
+   * Obtain a formatted/plain output for client I/O over a given pool
+   * with id @p pool_id.  We will then obtain pool-specific data
+   * from @p per_pool_sum_delta.
+   */
+  void pool_client_io_rate_summary(Formatter *f, ostream *out,
+                                   uint64_t poolid) const;
+
   void print_summary(Formatter *f, ostream *out) const;
+  void print_oneline_summary(ostream *out) const;
 
   epoch_t calc_min_last_epoch_clean() const;
 
@@ -179,7 +285,7 @@ WRITE_CLASS_ENCODER_FEATURES(PGMap::Incremental)
 WRITE_CLASS_ENCODER_FEATURES(PGMap)
 
 inline ostream& operator<<(ostream& out, const PGMap& m) {
-  m.print_summary(NULL, &out);
+  m.print_oneline_summary(&out);
   return out;
 }
 

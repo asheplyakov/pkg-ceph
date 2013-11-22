@@ -12,7 +12,8 @@
  * 
  */
 
-#include <inttypes.h>
+#include "include/int_types.h"
+
 #include <string>
 #include <stdio.h>
 
@@ -457,13 +458,6 @@ frag_t CInode::pick_dirfrag(const string& dn)
 bool CInode::get_dirfrags_under(frag_t fg, list<CDir*>& ls)
 {
   bool all = true;
-  for (map<frag_t,CDir*>::iterator p = dirfrags.begin(); p != dirfrags.end(); ++p) {
-    if (fg.contains(p->first))
-      ls.push_back(p->second);
-    else
-      all = false;
-  }
-  /*
   list<frag_t> fglist;
   dirfragtree.get_leaves_under(fg, fglist);
   for (list<frag_t>::iterator p = fglist.begin();
@@ -473,7 +467,6 @@ bool CInode::get_dirfrags_under(frag_t fg, list<CDir*>& ls)
       ls.push_back(dirfrags[*p]);
     else 
       all = false;
-  */
   return all;
 }
 
@@ -679,6 +672,12 @@ void CInode::last_put()
   // unpin my dentry?
   if (parent) 
     parent->put(CDentry::PIN_INODEPIN);
+}
+
+void CInode::_put()
+{
+  if (get_num_ref() == (int)is_dirty() + (int)is_dirty_parent())
+    mdcache->maybe_eval_stray(this, true);
 }
 
 void CInode::add_remote_parent(CDentry *p) 
@@ -914,8 +913,7 @@ void CInode::_stored(version_t v, Context *fin)
   if (v == get_projected_version())
     mark_clean();
 
-  fin->finish(0);
-  delete fin;
+  fin->complete(0);
 }
 
 struct C_Inode_Fetched : public Context {
@@ -964,13 +962,12 @@ void CInode::_fetched(bufferlist& bl, bufferlist& bl2, Context *fin)
   if (magic != CEPH_FS_ONDISK_MAGIC) {
     dout(0) << "on disk magic '" << magic << "' != my magic '" << CEPH_FS_ONDISK_MAGIC
 	    << "'" << dendl;
-    fin->finish(-EINVAL);
+    fin->complete(-EINVAL);
   } else {
     decode_store(p);
     dout(10) << "_fetched " << *this << dendl;
-    fin->finish(0);
+    fin->complete(0);
   }
-  delete fin;
 }
 
 void CInode::build_backtrace(int64_t pool, inode_backtrace_t& bt)
@@ -1074,7 +1071,6 @@ void CInode::_stored_backtrace(version_t v, Context *fin)
     clear_dirty_parent();
   if (fin)
     fin->complete(0);
-  mdcache->maybe_eval_stray(this);
 }
 
 void CInode::_mark_dirty_parent(LogSegment *ls, bool dirty_pool)
@@ -1772,7 +1768,7 @@ void CInode::finish_scatter_gather_update(int type)
 	CDir *dir = p->second;
 	dout(20) << fg << " " << *dir << dendl;
 
-	bool update = dir->is_auth() && !dir->is_frozen();
+	bool update = dir->is_auth() && dir->get_version() != 0 &&  !dir->is_frozen();
 
 	fnode_t *pf = dir->get_projected_fnode();
 	if (update)
@@ -1853,7 +1849,7 @@ void CInode::finish_scatter_gather_update(int type)
 	CDir *dir = p->second;
 	dout(20) << fg << " " << *dir << dendl;
 
-	bool update = dir->is_auth() && !dir->is_frozen();
+	bool update = dir->is_auth() && dir->get_version() != 0 && !dir->is_frozen();
 
 	fnode_t *pf = dir->get_projected_fnode();
 	if (update)
@@ -1940,7 +1936,7 @@ void CInode::finish_scatter_gather_update_accounted(int type, Mutation *mut, EMe
        p != dirfrags.end();
        ++p) {
     CDir *dir = p->second;
-    if (!dir->is_auth() || dir->is_frozen())
+    if (!dir->is_auth() || dir->get_version() == 0 || dir->is_frozen())
       continue;
     
     if (type == CEPH_LOCK_IDFT)
@@ -2076,7 +2072,7 @@ void CInode::clear_ambiguous_auth()
 
 // auth_pins
 bool CInode::can_auth_pin() {
-  if (is_freezing_inode() || is_frozen_inode() || is_frozen_auth_pin())
+  if (!is_auth() || is_freezing_inode() || is_frozen_inode() || is_frozen_auth_pin())
     return false;
   if (parent)
     return parent->can_auth_pin();
@@ -2735,10 +2731,12 @@ int CInode::encode_inodestat(bufferlist& bl, Session *session,
 
   // do not issue caps if inode differs from readdir snaprealm
   SnapRealm *realm = find_snaprealm();
-  bool no_caps = (realm && dir_realm && realm != dir_realm) ||
+  bool no_caps = session->is_stale() ||
+		 (realm && dir_realm && realm != dir_realm) ||
 		 is_frozen() || state_test(CInode::STATE_EXPORTINGCAPS);
   if (no_caps)
     dout(20) << "encode_inodestat no caps"
+	     << (session->is_stale()?", session stale ":"")
 	     << ((realm && dir_realm && realm != dir_realm)?", snaprealm differs ":"")
 	     << (state_test(CInode::STATE_EXPORTINGCAPS)?", exporting caps":"")
 	     << (is_frozen()?", frozen inode":"") << dendl;

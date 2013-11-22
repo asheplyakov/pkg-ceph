@@ -142,6 +142,7 @@ PG::PG(OSDService *o, OSDMapRef curmap,
        const PGPool &_pool, pg_t p, const hobject_t& loid,
        const hobject_t& ioid) :
   osd(o),
+  cct(o->cct),
   osdriver(osd->store, coll_t(), OSD::make_snapmapper_oid()),
   snap_mapper(
     &osdriver,
@@ -158,7 +159,7 @@ PG::PG(OSDService *o, OSDMapRef curmap,
   deleting(false), dirty_info(false), dirty_big_info(false),
   info(p),
   info_struct_v(0),
-  coll(p), pg_log(g_ceph_context), log_oid(loid), biginfo_oid(ioid),
+  coll(p), pg_log(cct), log_oid(loid), biginfo_oid(ioid),
   recovery_item(this), scrub_item(this), scrub_finalize_item(this), snap_trim_item(this), stat_queue_item(this),
   recovery_ops_active(0),
   waiting_on_backfill(0),
@@ -1094,7 +1095,7 @@ void PG::activate(ObjectStore::Transaction& t,
   if (is_primary() &&
       pool.info.crash_replay_interval > 0 &&
       may_need_replay(get_osdmap())) {
-    replay_until = ceph_clock_now(g_ceph_context);
+    replay_until = ceph_clock_now(cct);
     replay_until += pool.info.crash_replay_interval;
     dout(10) << "activate starting replay interval for " << pool.info.crash_replay_interval
 	     << " until " << replay_until << dendl;
@@ -1223,7 +1224,7 @@ void PG::activate(ObjectStore::Transaction& t,
 	m = new MOSDPGLog(get_osdmap()->get_epoch(), pi);
 
 	// send some recent log, so that op dup detection works well.
-	m->log.copy_up_to(pg_log.get_log(), g_conf->osd_min_pg_log_entries);
+	m->log.copy_up_to(pg_log.get_log(), cct->_conf->osd_min_pg_log_entries);
 	m->info.log_tail = m->log.tail;
 	pi.log_tail = m->log.tail;  // sigh...
 
@@ -1331,10 +1332,10 @@ void PG::do_pending_flush()
 bool PG::op_has_sufficient_caps(OpRequestRef op)
 {
   // only check MOSDOp
-  if (op->request->get_type() != CEPH_MSG_OSD_OP)
+  if (op->get_req()->get_type() != CEPH_MSG_OSD_OP)
     return true;
 
-  MOSDOp *req = static_cast<MOSDOp*>(op->request);
+  MOSDOp *req = static_cast<MOSDOp*>(op->get_req());
 
   OSD::Session *session = (OSD::Session *)req->get_connection()->get_priv();
   if (!session) {
@@ -1397,76 +1398,6 @@ void PG::queue_op(OpRequestRef op)
   osd->op_wq.queue(make_pair(PGRef(this), op));
 }
 
-void PG::do_request(
-  OpRequestRef op,
-  ThreadPool::TPHandle &handle)
-{
-  // do any pending flush
-  do_pending_flush();
-
-  if (!op_has_sufficient_caps(op)) {
-    osd->reply_op_error(op, -EPERM);
-    return;
-  }
-  assert(!op_must_wait_for_map(get_osdmap(), op));
-  if (can_discard_request(op)) {
-    return;
-  }
-  if (!flushed) {
-    dout(20) << " !flushed, waiting for active on " << op << dendl;
-    waiting_for_active.push_back(op);
-    return;
-  }
-
-  switch (op->request->get_type()) {
-  case CEPH_MSG_OSD_OP:
-    if (is_replay() || !is_active()) {
-      dout(20) << " replay, waiting for active on " << op << dendl;
-      waiting_for_active.push_back(op);
-      return;
-    }
-    do_op(op); // do it now
-    break;
-
-  case MSG_OSD_SUBOP:
-    do_sub_op(op);
-    break;
-
-  case MSG_OSD_SUBOPREPLY:
-    do_sub_op_reply(op);
-    break;
-
-  case MSG_OSD_PG_SCAN:
-    do_scan(op, handle);
-    break;
-
-  case MSG_OSD_PG_BACKFILL:
-    do_backfill(op);
-    break;
-
-  case MSG_OSD_PG_PUSH:
-    if (!is_active()) {
-      waiting_for_active.push_back(op);
-      op->mark_delayed("waiting for active");
-      return;
-    }
-    do_push(op);
-    break;
-
-  case MSG_OSD_PG_PULL:
-    do_pull(op);
-    break;
-
-  case MSG_OSD_PG_PUSH_REPLY:
-    do_push_reply(op);
-    break;
-
-  default:
-    assert(0 == "bad message type in do_request");
-  }
-}
-
-
 void PG::replay_queued_ops()
 {
   assert(is_replay() && is_active());
@@ -1486,7 +1417,7 @@ void PG::replay_queued_ops()
       c = p->first;
     }
     dout(10) << "activate replay " << p->first << " "
-             << *p->second->request << dendl;
+             << *p->second->get_req() << dendl;
     replay.push_back(p->second);
   }
   replay_queue.clear();
@@ -1751,6 +1682,8 @@ void PG::split_into(pg_t child_pgid, PG *child, unsigned split_bits)
   info.last_update = pg_log.get_head();
   child->info.last_update = child->pg_log.get_head();
 
+  child->info.last_user_version = info.last_user_version;
+
   info.log_tail = pg_log.get_tail();
   child->info.log_tail = child->pg_log.get_tail();
 
@@ -1916,7 +1849,7 @@ void PG::publish_stats_to_osd()
     else
       state_clear(PG_STATE_INCONSISTENT);
 
-    utime_t now = ceph_clock_now(g_ceph_context);
+    utime_t now = ceph_clock_now(cct);
     info.stats.last_fresh = now;
     if (info.stats.state != state) {
       info.stats.state = state;
@@ -2063,8 +1996,7 @@ void PG::upgrade(ObjectStore *store, const interval_set<snapid_t> &snapcolls)
       hobject_t cur;
       vector<hobject_t> objects;
       while (1) {
-	int r = store->collection_list_partial(
-	  cid,
+	int r = get_pgbackend()->objects_list_partial(
 	  cur,
 	  store->get_ideal_list_min(),
 	  store->get_ideal_list_max(),
@@ -2112,8 +2044,7 @@ void PG::upgrade(ObjectStore *store, const interval_set<snapid_t> &snapcolls)
   while (1) {
     dout(1) << "Updating snap_mapper from main collection, "
 	    << done << " objects done" << dendl;
-    int r = store->collection_list_partial(
-      cid,
+    int r = get_pgbackend()->objects_list_partial(
       cur,
       store->get_ideal_list_min(),
       store->get_ideal_list_max(),
@@ -2136,19 +2067,16 @@ void PG::upgrade(ObjectStore *store, const interval_set<snapid_t> &snapcolls)
 	 ++j) {
       if (j->snap < CEPH_MAXSNAP) {
 	OSDriver::OSTransaction _t(osdriver.get_transaction(&t));
-	bufferptr bp;
-	r = store->getattr(
-	  cid,
+	bufferlist bl;
+	r = get_pgbackend()->objects_get_attr(
 	  *j,
 	  OI_ATTR,
-	  bp);
+	  &bl);
 	if (r < 0) {
 	  derr << __func__ << ": getattr returned "
 	       << cpp_strerror(r) << dendl;
 	  assert(0);
 	}
-	bufferlist bl;
-	bl.push_back(bp);
 	object_info_t oi(bl);
 	set<snapid_t> oi_snaps(oi.snaps.begin(), oi.snaps.end());
 	set<snapid_t> cur_snaps;
@@ -2250,7 +2178,8 @@ epoch_t PG::peek_map_epoch(ObjectStore *store, coll_t coll, hobject_t &infos_oid
   snapid_t snap;
   bool ok = coll.is_pg(pgid, snap);
   assert(ok);
-  store->collection_getattr(coll, "info", *bl);
+  int r = store->collection_getattr(coll, "info", *bl);
+  assert(r > 0);
   bufferlist::iterator bp = bl->begin();
   __u8 struct_v = 0;
   ::decode(struct_v, bp);
@@ -2304,6 +2233,11 @@ void PG::add_log_entry(pg_log_entry_t& e, bufferlist& log_bl)
   // raise last_update.
   assert(e.version > info.last_update);
   info.last_update = e.version;
+
+  // raise user_version, if it increased (it may have not get bumped
+  // by all logged updates)
+  if (e.user_version > info.last_user_version)
+    info.last_user_version = e.user_version;
 
   // log mutation
   pg_log.add(e);
@@ -2465,16 +2399,9 @@ void PG::log_weirdness()
 		      << " != info.last_update " << info.last_update
 		      << "\n";
 
-  if (pg_log.get_log().empty()) {
-    // shoudl it be?
-    if (pg_log.get_head() != pg_log.get_tail())
-      osd->clog.error() << info.pgid
-			<< " log bound mismatch, empty but (" << pg_log.get_tail() << ","
-			<< pg_log.get_head() << "]\n";
-  } else {
-    if ((pg_log.get_log().log.begin()->version <= pg_log.get_tail()) || // sloppy check
-	(pg_log.get_log().log.rbegin()->version != pg_log.get_head() &&
-	 !(pg_log.get_head() == pg_log.get_tail())))
+  if (!pg_log.get_log().empty()) {
+    // sloppy check
+    if ((pg_log.get_log().log.begin()->version <= pg_log.get_tail()))
       osd->clog.error() << info.pgid
 			<< " log bound mismatch, info (" << pg_log.get_tail() << ","
 			<< pg_log.get_head() << "]"
@@ -2574,6 +2501,11 @@ void PG::requeue_object_waiters(map<hobject_t, list<OpRequestRef> >& m)
   m.clear();
 }
 
+void PG::requeue_op(OpRequestRef op)
+{
+  osd->op_wq.queue_front(make_pair(PGRef(this), op));
+}
+
 void PG::requeue_ops(list<OpRequestRef> &ls)
 {
   dout(15) << " requeue_ops " << ls << dendl;
@@ -2618,8 +2550,8 @@ bool PG::sched_scrub()
     return false;
   }
 
-  bool time_for_deep = (ceph_clock_now(g_ceph_context) >
-    info.history.last_deep_scrub_stamp + g_conf->osd_deep_scrub_interval);
+  bool time_for_deep = (ceph_clock_now(cct) >
+    info.history.last_deep_scrub_stamp + cct->_conf->osd_deep_scrub_interval);
  
   //NODEEP_SCRUB so ignore time initiated deep-scrub
   if (osd->osd->get_osdmap()->test_flag(CEPH_OSDMAP_NODEEP_SCRUB))
@@ -2685,7 +2617,7 @@ void PG::unreg_next_scrub()
 
 void PG::sub_op_scrub_map(OpRequestRef op)
 {
-  MOSDSubOp *m = static_cast<MOSDSubOp *>(op->request);
+  MOSDSubOp *m = static_cast<MOSDSubOp *>(op->get_req());
   assert(m->get_header().type == MSG_OSD_SUBOP);
   dout(7) << "sub_op_scrub_map" << dendl;
 
@@ -2771,7 +2703,7 @@ void PG::_scan_list(
         int r;
         __u64 pos = 0;
         while ( (r = osd->store->read(coll, poid, pos,
-                                      g_conf->osd_deep_scrub_stride, bl,
+                                       cct->_conf->osd_deep_scrub_stride, bl,
 		                      true)) > 0) {
 	  handle.reset_tp_timeout();
           h << bl;
@@ -2805,8 +2737,8 @@ void PG::_scan_list(
         assert(iter);
 	uint64_t keys_scanned = 0;
         for (iter->seek_to_first(); iter->valid() ; iter->next()) {
-	  if (g_conf->osd_scan_list_ping_tp_interval &&
-	      (keys_scanned % g_conf->osd_scan_list_ping_tp_interval == 0)) {
+	  if (cct->_conf->osd_scan_list_ping_tp_interval &&
+	      (keys_scanned % cct->_conf->osd_scan_list_ping_tp_interval == 0)) {
 	    handle.reset_tp_timeout();
 	  }
 	  ++keys_scanned;
@@ -2871,7 +2803,7 @@ void PG::_request_scrub_map(int replica, eversion_t version,
 
 void PG::sub_op_scrub_reserve(OpRequestRef op)
 {
-  MOSDSubOp *m = static_cast<MOSDSubOp*>(op->request);
+  MOSDSubOp *m = static_cast<MOSDSubOp*>(op->get_req());
   assert(m->get_header().type == MSG_OSD_SUBOP);
   dout(7) << "sub_op_scrub_reserve" << dendl;
 
@@ -2891,7 +2823,7 @@ void PG::sub_op_scrub_reserve(OpRequestRef op)
 
 void PG::sub_op_scrub_reserve_reply(OpRequestRef op)
 {
-  MOSDSubOpReply *reply = static_cast<MOSDSubOpReply*>(op->request);
+  MOSDSubOpReply *reply = static_cast<MOSDSubOpReply*>(op->get_req());
   assert(reply->get_header().type == MSG_OSD_SUBOPREPLY);
   dout(7) << "sub_op_scrub_reserve_reply" << dendl;
 
@@ -2924,7 +2856,7 @@ void PG::sub_op_scrub_reserve_reply(OpRequestRef op)
 
 void PG::sub_op_scrub_unreserve(OpRequestRef op)
 {
-  assert(op->request->get_header().type == MSG_OSD_SUBOP);
+  assert(op->get_req()->get_header().type == MSG_OSD_SUBOP);
   dout(7) << "sub_op_scrub_unreserve" << dendl;
 
   op->mark_started();
@@ -2936,7 +2868,7 @@ void PG::sub_op_scrub_stop(OpRequestRef op)
 {
   op->mark_started();
 
-  MOSDSubOp *m = static_cast<MOSDSubOp*>(op->request);
+  MOSDSubOp *m = static_cast<MOSDSubOp*>(op->get_req());
   assert(m->get_header().type == MSG_OSD_SUBOP);
   dout(7) << "sub_op_scrub_stop" << dendl;
 
@@ -2962,7 +2894,7 @@ void PG::schedule_backfill_full_retry()
 {
   Mutex::Locker lock(osd->backfill_request_lock);
   osd->backfill_request_timer.add_event_after(
-    g_conf->osd_backfill_retry_interval,
+    cct->_conf->osd_backfill_retry_interval,
     new QueuePeeringEvt<RequestBackfill>(
       this, get_osdmap()->get_epoch(),
       RequestBackfill()));
@@ -3099,9 +3031,9 @@ int PG::build_scrub_map_chunk(
 
   // objects
   vector<hobject_t> ls;
-  int ret = osd->store->collection_list_range(coll, start, end, 0, &ls);
+  int ret = get_pgbackend()->objects_list_range(start, end, 0, &ls);
   if (ret < 0) {
-    dout(5) << "collection_list_range error: " << ret << dendl;
+    dout(5) << "objects_list_range error: " << ret << dendl;
     return ret;
   }
 
@@ -3621,11 +3553,13 @@ void PG::chunky_scrub(ThreadPool::TPHandle &handle)
           hobject_t start = scrubber.start;
           while (!boundary_found) {
             vector<hobject_t> objects;
-            ret = osd->store->collection_list_partial(coll, start,
-                                                      g_conf->osd_scrub_chunk_min,
-						      g_conf->osd_scrub_chunk_max,
-						      0,
-                                                      &objects, &scrubber.end);
+            ret = get_pgbackend()->objects_list_partial(
+	      start,
+	      cct->_conf->osd_scrub_chunk_min,
+	      cct->_conf->osd_scrub_chunk_max,
+	      0,
+	      &objects,
+	      &scrubber.end);
             assert(ret >= 0);
 
             // in case we don't find a boundary: start again at the end
@@ -4206,7 +4140,7 @@ void PG::scrub_finish()
 
   // finish up
   unreg_next_scrub();
-  utime_t now = ceph_clock_now(g_ceph_context);
+  utime_t now = ceph_clock_now(cct);
   info.history.last_scrub = info.last_update;
   info.history.last_scrub_stamp = now;
   if (scrubber.deep) {
@@ -4527,9 +4461,6 @@ void PG::start_peering_interval(const OSDMapRef lastmap,
 {
   const OSDMapRef osdmap = get_osdmap();
 
-  // -- there was a change! --
-  kick();
-
   set_last_peering_reset();
 
   vector<int> oldacting, oldup;
@@ -4683,7 +4614,7 @@ void PG::proc_primary_info(ObjectStore::Transaction &t, const pg_info_t &oinfo)
 
   if (last_complete_ondisk.epoch >= info.history.last_epoch_started) {
     // DEBUG: verify that the snaps are empty in snap_mapper
-    if (g_conf->osd_debug_verify_snaps_on_info) {
+    if (cct->_conf->osd_debug_verify_snaps_on_info) {
       interval_set<snapid_t> p;
       p.union_of(oinfo.purged_snaps, info.purged_snaps);
       p.subtract(info.purged_snaps);
@@ -4742,19 +4673,11 @@ ostream& operator<<(ostream& out, const PG& pg)
       pg.pg_log.get_head() != pg.info.last_update)
     out << " (info mismatch, " << pg.pg_log.get_log() << ")";
 
-  if (pg.pg_log.get_log().empty()) {
-    // shoudl it be?
-    if (pg.pg_log.get_head().version - pg.pg_log.get_tail().version != 0) {
-      out << " (log bound mismatch, empty)";
-    }
-  } else {
-    if ((pg.pg_log.get_log().log.begin()->version <= pg.pg_log.get_tail()) || // sloppy check
-        (pg.pg_log.get_log().log.rbegin()->version != pg.pg_log.get_head() &&
-	 !(pg.pg_log.get_head() == pg.pg_log.get_tail()))) {
+  if (!pg.pg_log.get_log().empty()) {
+    if ((pg.pg_log.get_log().log.begin()->version <= pg.pg_log.get_tail())) {
       out << " (log bound mismatch, actual=["
 	  << pg.pg_log.get_log().log.begin()->version << ","
 	  << pg.pg_log.get_log().log.rbegin()->version << "]";
-      //out << "len=" << pg.log.log.size();
       out << ")";
     }
   }
@@ -4800,7 +4723,7 @@ ostream& operator<<(ostream& out, const PG& pg)
 
 bool PG::can_discard_op(OpRequestRef op)
 {
-  MOSDOp *m = static_cast<MOSDOp*>(op->request);
+  MOSDOp *m = static_cast<MOSDOp*>(op->get_req());
   if (OSD::op_is_discardable(m)) {
     dout(20) << " discard " << *m << dendl;
     return true;
@@ -4828,7 +4751,7 @@ bool PG::can_discard_op(OpRequestRef op)
 template<typename T, int MSGTYPE>
 bool PG::can_discard_replica_op(OpRequestRef op)
 {
-  T *m = static_cast<T *>(op->request);
+  T *m = static_cast<T *>(op->get_req());
   assert(m->get_header().type == MSGTYPE);
 
   // same pg?
@@ -4844,7 +4767,7 @@ bool PG::can_discard_replica_op(OpRequestRef op)
 
 bool PG::can_discard_scan(OpRequestRef op)
 {
-  MOSDPGScan *m = static_cast<MOSDPGScan *>(op->request);
+  MOSDPGScan *m = static_cast<MOSDPGScan *>(op->get_req());
   assert(m->get_header().type == MSG_OSD_PG_SCAN);
 
   if (old_peering_msg(m->map_epoch, m->query_epoch)) {
@@ -4856,7 +4779,7 @@ bool PG::can_discard_scan(OpRequestRef op)
 
 bool PG::can_discard_backfill(OpRequestRef op)
 {
-  MOSDPGBackfill *m = static_cast<MOSDPGBackfill *>(op->request);
+  MOSDPGBackfill *m = static_cast<MOSDPGBackfill *>(op->get_req());
   assert(m->get_header().type == MSG_OSD_PG_BACKFILL);
 
   if (old_peering_msg(m->map_epoch, m->query_epoch)) {
@@ -4870,7 +4793,7 @@ bool PG::can_discard_backfill(OpRequestRef op)
 
 bool PG::can_discard_request(OpRequestRef op)
 {
-  switch (op->request->get_type()) {
+  switch (op->get_req()->get_type()) {
   case CEPH_MSG_OSD_OP:
     return can_discard_op(op);
   case MSG_OSD_SUBOP:
@@ -4895,55 +4818,55 @@ bool PG::can_discard_request(OpRequestRef op)
 bool PG::split_request(OpRequestRef op, unsigned match, unsigned bits)
 {
   unsigned mask = ~((~0)<<bits);
-  switch (op->request->get_type()) {
+  switch (op->get_req()->get_type()) {
   case CEPH_MSG_OSD_OP:
-    return (static_cast<MOSDOp*>(op->request)->get_pg().m_seed & mask) == match;
+    return (static_cast<MOSDOp*>(op->get_req())->get_pg().m_seed & mask) == match;
   }
   return false;
 }
 
 bool PG::op_must_wait_for_map(OSDMapRef curmap, OpRequestRef op)
 {
-  switch (op->request->get_type()) {
+  switch (op->get_req()->get_type()) {
   case CEPH_MSG_OSD_OP:
     return !have_same_or_newer_map(
       curmap,
-      static_cast<MOSDOp*>(op->request)->get_map_epoch());
+      static_cast<MOSDOp*>(op->get_req())->get_map_epoch());
 
   case MSG_OSD_SUBOP:
     return !have_same_or_newer_map(
       curmap,
-      static_cast<MOSDSubOp*>(op->request)->map_epoch);
+      static_cast<MOSDSubOp*>(op->get_req())->map_epoch);
 
   case MSG_OSD_SUBOPREPLY:
     return !have_same_or_newer_map(
       curmap,
-      static_cast<MOSDSubOpReply*>(op->request)->map_epoch);
+      static_cast<MOSDSubOpReply*>(op->get_req())->map_epoch);
 
   case MSG_OSD_PG_SCAN:
     return !have_same_or_newer_map(
       curmap,
-      static_cast<MOSDPGScan*>(op->request)->map_epoch);
+      static_cast<MOSDPGScan*>(op->get_req())->map_epoch);
 
   case MSG_OSD_PG_BACKFILL:
     return !have_same_or_newer_map(
       curmap,
-      static_cast<MOSDPGBackfill*>(op->request)->map_epoch);
+      static_cast<MOSDPGBackfill*>(op->get_req())->map_epoch);
 
   case MSG_OSD_PG_PUSH:
     return !have_same_or_newer_map(
       curmap,
-      static_cast<MOSDPGPush*>(op->request)->map_epoch);
+      static_cast<MOSDPGPush*>(op->get_req())->map_epoch);
 
   case MSG_OSD_PG_PULL:
     return !have_same_or_newer_map(
       curmap,
-      static_cast<MOSDPGPull*>(op->request)->map_epoch);
+      static_cast<MOSDPGPull*>(op->get_req())->map_epoch);
 
   case MSG_OSD_PG_PUSH_REPLY:
     return !have_same_or_newer_map(
       curmap,
-      static_cast<MOSDPGPushReply*>(op->request)->map_epoch);
+      static_cast<MOSDPGPushReply*>(op->get_req())->map_epoch);
   }
   assert(0);
   return false;
@@ -5058,7 +4981,7 @@ void PG::handle_activate_map(RecoveryCtx *rctx)
   ActMap evt;
   recovery_state.handle_event(evt, rctx);
   if (osdmap_ref->get_epoch() - last_persisted_osdmap_ref->get_epoch() >
-      g_conf->osd_pg_epoch_persisted_max_stale) {
+    cct->_conf->osd_pg_epoch_persisted_max_stale) {
     dout(20) << __func__ << ": Dirtying info: last_persisted is "
 	     << last_persisted_osdmap_ref->get_epoch()
 	     << " while current is " << osdmap_ref->get_epoch() << dendl;
@@ -5112,9 +5035,9 @@ std::ostream& operator<<(std::ostream& oss,
 
 /*------Crashed-------*/
 PG::RecoveryState::Crashed::Crashed(my_context ctx)
-  : my_base(ctx)
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Crashed")
 {
-  state_name = "Crashed";
   context< RecoveryMachine >().log_enter(state_name);
   assert(0 == "we got a bad state machine event");
 }
@@ -5122,9 +5045,9 @@ PG::RecoveryState::Crashed::Crashed(my_context ctx)
 
 /*------Initial-------*/
 PG::RecoveryState::Initial::Initial(my_context ctx)
-  : my_base(ctx)
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Initial")
 {
-  state_name = "Initial";
   context< RecoveryMachine >().log_enter(state_name);
 }
 
@@ -5166,13 +5089,16 @@ boost::statechart::result PG::RecoveryState::Initial::react(const MLogRec& i)
 void PG::RecoveryState::Initial::exit()
 {
   context< RecoveryMachine >().log_exit(state_name, enter_time);
+  PG *pg = context< RecoveryMachine >().pg;
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_initial_latency, dur);
 }
 
 /*------Started-------*/
 PG::RecoveryState::Started::Started(my_context ctx)
-  : my_base(ctx)
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Started")
 {
-  state_name = "Started";
   context< RecoveryMachine >().log_enter(state_name);
 }
 
@@ -5181,6 +5107,7 @@ PG::RecoveryState::Started::react(const FlushedEvt&)
 {
   PG *pg = context< RecoveryMachine >().pg;
   pg->flushed = true;
+  pg->on_flushed();
   pg->requeue_ops(pg->waiting_for_active);
   return discard_event();
 }
@@ -5212,13 +5139,16 @@ boost::statechart::result PG::RecoveryState::Started::react(const QueryState& q)
 void PG::RecoveryState::Started::exit()
 {
   context< RecoveryMachine >().log_exit(state_name, enter_time);
+  PG *pg = context< RecoveryMachine >().pg;
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_started_latency, dur);
 }
 
 /*--------Reset---------*/
 PG::RecoveryState::Reset::Reset(my_context ctx)
-  : my_base(ctx)
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Reset")
 {
-  state_name = "Reset";
   context< RecoveryMachine >().log_enter(state_name);
   PG *pg = context< RecoveryMachine >().pg;
   pg->flushed = false;
@@ -5284,13 +5214,16 @@ boost::statechart::result PG::RecoveryState::Reset::react(const QueryState& q)
 void PG::RecoveryState::Reset::exit()
 {
   context< RecoveryMachine >().log_exit(state_name, enter_time);
+  PG *pg = context< RecoveryMachine >().pg;
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_reset_latency, dur);
 }
 
 /*-------Start---------*/
 PG::RecoveryState::Start::Start(my_context ctx)
-  : my_base(ctx)
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Start")
 {
-  state_name = "Start";
   context< RecoveryMachine >().log_enter(state_name);
 
   PG *pg = context< RecoveryMachine >().pg;
@@ -5306,13 +5239,16 @@ PG::RecoveryState::Start::Start(my_context ctx)
 void PG::RecoveryState::Start::exit()
 {
   context< RecoveryMachine >().log_exit(state_name, enter_time);
+  PG *pg = context< RecoveryMachine >().pg;
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_start_latency, dur);
 }
 
 /*---------Primary--------*/
 PG::RecoveryState::Primary::Primary(my_context ctx)
-  : my_base(ctx)
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Started/Primary")
 {
-  state_name = "Started/Primary";
   context< RecoveryMachine >().log_enter(state_name);
   PG *pg = context< RecoveryMachine >().pg;
   assert(pg->want_acting.empty());
@@ -5353,13 +5289,16 @@ void PG::RecoveryState::Primary::exit()
   context< RecoveryMachine >().log_exit(state_name, enter_time);
   PG *pg = context< RecoveryMachine >().pg;
   pg->want_acting.clear();
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_primary_latency, dur);
 }
 
 /*---------Peering--------*/
 PG::RecoveryState::Peering::Peering(my_context ctx)
-  : my_base(ctx), flushed(false)
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Started/Primary/Peering"),
+    flushed(false)
 {
-  state_name = "Started/Primary/Peering";
   context< RecoveryMachine >().log_enter(state_name);
 
   PG *pg = context< RecoveryMachine >().pg;
@@ -5439,16 +5378,16 @@ void PG::RecoveryState::Peering::exit()
   pg->state_clear(PG_STATE_PEERING);
   pg->clear_probe_targets();
 
-  utime_t dur = ceph_clock_now(g_ceph_context) - enter_time;
-  pg->osd->logger->tinc(l_osd_peering_latency, dur);
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_peering_latency, dur);
 }
 
 
 /*------Backfilling-------*/
 PG::RecoveryState::Backfilling::Backfilling(my_context ctx)
-  : my_base(ctx)
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Started/Primary/Active/Backfilling")
 {
-  state_name = "Started/Primary/Active/Backfilling";
   context< RecoveryMachine >().log_enter(state_name);
   PG *pg = context< RecoveryMachine >().pg;
   pg->backfill_reserved = true;
@@ -5477,14 +5416,16 @@ void PG::RecoveryState::Backfilling::exit()
   pg->backfill_reserved = false;
   pg->backfill_reserving = false;
   pg->state_clear(PG_STATE_BACKFILL);
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_backfilling_latency, dur);
 }
 
 /*--WaitRemoteBackfillReserved--*/
 
 PG::RecoveryState::WaitRemoteBackfillReserved::WaitRemoteBackfillReserved(my_context ctx)
-  : my_base(ctx)
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Started/Primary/Active/WaitRemoteBackfillReserved")
 {
-  state_name = "Started/Primary/Active/WaitRemoteBackfillReserved";
   context< RecoveryMachine >().log_enter(state_name);
   PG *pg = context< RecoveryMachine >().pg;
   pg->state_set(PG_STATE_BACKFILL_WAIT);
@@ -5509,6 +5450,9 @@ PG::RecoveryState::WaitRemoteBackfillReserved::WaitRemoteBackfillReserved(my_con
 void PG::RecoveryState::WaitRemoteBackfillReserved::exit()
 {
   context< RecoveryMachine >().log_exit(state_name, enter_time);
+  PG *pg = context< RecoveryMachine >().pg;
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_waitremotebackfillreserved_latency, dur);
 }
 
 boost::statechart::result
@@ -5534,9 +5478,9 @@ PG::RecoveryState::WaitRemoteBackfillReserved::react(const RemoteReservationReje
 
 /*--WaitLocalBackfillReserved--*/
 PG::RecoveryState::WaitLocalBackfillReserved::WaitLocalBackfillReserved(my_context ctx)
-  : my_base(ctx)
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Started/Primary/Active/WaitLocalBackfillReserved")
 {
-  state_name = "Started/Primary/Active/WaitLocalBackfillReserved";
   context< RecoveryMachine >().log_enter(state_name);
   PG *pg = context< RecoveryMachine >().pg;
   pg->state_set(PG_STATE_BACKFILL_WAIT);
@@ -5551,39 +5495,48 @@ PG::RecoveryState::WaitLocalBackfillReserved::WaitLocalBackfillReserved(my_conte
 void PG::RecoveryState::WaitLocalBackfillReserved::exit()
 {
   context< RecoveryMachine >().log_exit(state_name, enter_time);
+  PG *pg = context< RecoveryMachine >().pg;
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_waitlocalbackfillreserved_latency, dur);
 }
 
 /*----NotBackfilling------*/
 PG::RecoveryState::NotBackfilling::NotBackfilling(my_context ctx)
-  : my_base(ctx)
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Started/Primary/Active/NotBackfilling")
 {
-  state_name = "Started/Primary/Active/NotBackfilling";
   context< RecoveryMachine >().log_enter(state_name);
 }
 
 void PG::RecoveryState::NotBackfilling::exit()
 {
   context< RecoveryMachine >().log_exit(state_name, enter_time);
+  PG *pg = context< RecoveryMachine >().pg;
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_notbackfilling_latency, dur);
 }
 
 /*---RepNotRecovering----*/
 PG::RecoveryState::RepNotRecovering::RepNotRecovering(my_context ctx)
-  : my_base(ctx)
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Started/ReplicaActive/RepNotRecovering")
 {
-  state_name = "Started/ReplicaActive/RepNotRecovering";
   context< RecoveryMachine >().log_enter(state_name);
 }
 
 void PG::RecoveryState::RepNotRecovering::exit()
 {
   context< RecoveryMachine >().log_exit(state_name, enter_time);
+  PG *pg = context< RecoveryMachine >().pg;
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_repnotrecovering_latency, dur);
 }
 
 /*---RepWaitRecoveryReserved--*/
 PG::RecoveryState::RepWaitRecoveryReserved::RepWaitRecoveryReserved(my_context ctx)
-  : my_base(ctx)
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Started/ReplicaActive/RepWaitRecoveryReserved")
 {
-  state_name = "Started/ReplicaActive/RepWaitRecoveryReserved";
   context< RecoveryMachine >().log_enter(state_name);
   PG *pg = context< RecoveryMachine >().pg;
 
@@ -5611,13 +5564,16 @@ PG::RecoveryState::RepWaitRecoveryReserved::react(const RemoteRecoveryReserved &
 void PG::RecoveryState::RepWaitRecoveryReserved::exit()
 {
   context< RecoveryMachine >().log_exit(state_name, enter_time);
+  PG *pg = context< RecoveryMachine >().pg;
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_repwaitrecoveryreserved_latency, dur);
 }
 
 /*-RepWaitBackfillReserved*/
 PG::RecoveryState::RepWaitBackfillReserved::RepWaitBackfillReserved(my_context ctx)
-  : my_base(ctx)
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Started/ReplicaActive/RepWaitBackfillReserved")
 {
-  state_name = "Started/ReplicaActive/RepWaitBackfillReserved";
   context< RecoveryMachine >().log_enter(state_name);
 }
 
@@ -5628,7 +5584,7 @@ PG::RecoveryState::RepNotRecovering::react(const RequestBackfillPrio &evt)
 
   double ratio, max_ratio;
   if (pg->osd->too_full_for_backfill(&ratio, &max_ratio) &&
-      !g_conf->osd_debug_skip_full_check_in_backfill_reservation) {
+      !pg->cct->_conf->osd_debug_skip_full_check_in_backfill_reservation) {
     dout(10) << "backfill reservation rejected: full ratio is "
 	     << ratio << ", which is greater than max allowed ratio "
 	     << max_ratio << dendl;
@@ -5646,6 +5602,9 @@ PG::RecoveryState::RepNotRecovering::react(const RequestBackfillPrio &evt)
 void PG::RecoveryState::RepWaitBackfillReserved::exit()
 {
   context< RecoveryMachine >().log_exit(state_name, enter_time);
+  PG *pg = context< RecoveryMachine >().pg;
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_repwaitbackfillreserved_latency, dur);
 }
 
 boost::statechart::result
@@ -5672,9 +5631,9 @@ PG::RecoveryState::RepWaitBackfillReserved::react(const RemoteReservationRejecte
 
 /*---RepRecovering-------*/
 PG::RecoveryState::RepRecovering::RepRecovering(my_context ctx)
-  : my_base(ctx)
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Started/ReplicaActive/RepRecovering")
 {
-  state_name = "Started/ReplicaActive/RepRecovering";
   context< RecoveryMachine >().log_enter(state_name);
 }
 
@@ -5691,25 +5650,30 @@ void PG::RecoveryState::RepRecovering::exit()
   context< RecoveryMachine >().log_exit(state_name, enter_time);
   PG *pg = context< RecoveryMachine >().pg;
   pg->osd->remote_reserver.cancel_reservation(pg->info.pgid);
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_RepRecovering_latency, dur);
 }
 
 /*------Activating--------*/
 PG::RecoveryState::Activating::Activating(my_context ctx)
-  : my_base(ctx)
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Started/Primary/Active/Activating")
 {
-  state_name = "Started/Primary/Active/Activating";
   context< RecoveryMachine >().log_enter(state_name);
 }
 
 void PG::RecoveryState::Activating::exit()
 {
   context< RecoveryMachine >().log_exit(state_name, enter_time);
+  PG *pg = context< RecoveryMachine >().pg;
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_activating_latency, dur);
 }
 
 PG::RecoveryState::WaitLocalRecoveryReserved::WaitLocalRecoveryReserved(my_context ctx)
-  : my_base(ctx)
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Started/Primary/Active/WaitLocalRecoveryReserved")
 {
-  state_name = "Started/Primary/Active/WaitLocalRecoveryReserved";
   context< RecoveryMachine >().log_enter(state_name);
   PG *pg = context< RecoveryMachine >().pg;
   pg->state_set(PG_STATE_RECOVERY_WAIT);
@@ -5723,13 +5687,16 @@ PG::RecoveryState::WaitLocalRecoveryReserved::WaitLocalRecoveryReserved(my_conte
 void PG::RecoveryState::WaitLocalRecoveryReserved::exit()
 {
   context< RecoveryMachine >().log_exit(state_name, enter_time);
+  PG *pg = context< RecoveryMachine >().pg;
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_waitlocalrecoveryreserved_latency, dur);
 }
 
 PG::RecoveryState::WaitRemoteRecoveryReserved::WaitRemoteRecoveryReserved(my_context ctx)
   : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Started/Primary/Active/WaitRemoteRecoveryReserved"),
     acting_osd_it(context< Active >().sorted_acting_set.begin())
 {
-  state_name = "Started/Primary/Active/WaitRemoteRecoveryReserved";
   context< RecoveryMachine >().log_enter(state_name);
   post_event(RemoteRecoveryReserved());
 }
@@ -5767,12 +5734,15 @@ PG::RecoveryState::WaitRemoteRecoveryReserved::react(const RemoteRecoveryReserve
 void PG::RecoveryState::WaitRemoteRecoveryReserved::exit()
 {
   context< RecoveryMachine >().log_exit(state_name, enter_time);
+  PG *pg = context< RecoveryMachine >().pg;
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_waitremoterecoveryreserved_latency, dur);
 }
 
 PG::RecoveryState::Recovering::Recovering(my_context ctx)
-  : my_base(ctx)
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Started/Primary/Active/Recovering")
 {
-  state_name = "Started/Primary/Active/Recovering";
   context< RecoveryMachine >().log_enter(state_name);
 
   PG *pg = context< RecoveryMachine >().pg;
@@ -5827,14 +5797,17 @@ PG::RecoveryState::Recovering::react(const RequestBackfill &evt)
 void PG::RecoveryState::Recovering::exit()
 {
   context< RecoveryMachine >().log_exit(state_name, enter_time);
+  PG *pg = context< RecoveryMachine >().pg;
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_recovering_latency, dur);
 }
 
 PG::RecoveryState::Recovered::Recovered(my_context ctx)
-  : my_base(ctx)
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Started/Primary/Active/Recovered")
 {
   int newest_update_osd;
 
-  state_name = "Started/Primary/Active/Recovered";
   context< RecoveryMachine >().log_enter(state_name);
 
   PG *pg = context< RecoveryMachine >().pg;
@@ -5858,12 +5831,15 @@ PG::RecoveryState::Recovered::Recovered(my_context ctx)
 void PG::RecoveryState::Recovered::exit()
 {
   context< RecoveryMachine >().log_exit(state_name, enter_time);
+  PG *pg = context< RecoveryMachine >().pg;
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_recovered_latency, dur);
 }
 
 PG::RecoveryState::Clean::Clean(my_context ctx)
-  : my_base(ctx)
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Started/Primary/Active/Clean")
 {
-  state_name = "Started/Primary/Active/Clean";
   context< RecoveryMachine >().log_enter(state_name);
 
   PG *pg = context< RecoveryMachine >().pg;
@@ -5884,16 +5860,18 @@ void PG::RecoveryState::Clean::exit()
   context< RecoveryMachine >().log_exit(state_name, enter_time);
   PG *pg = context< RecoveryMachine >().pg;
   pg->state_clear(PG_STATE_CLEAN);
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_clean_latency, dur);
 }
 
 /*---------Active---------*/
 PG::RecoveryState::Active::Active(my_context ctx)
   : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Started/Primary/Active"),
     sorted_acting_set(context< RecoveryMachine >().pg->acting.begin(),
                       context< RecoveryMachine >().pg->acting.end()),
     all_replicas_activated(false)
 {
-  state_name = "Started/Primary/Active";
   context< RecoveryMachine >().log_enter(state_name);
 
   PG *pg = context< RecoveryMachine >().pg;
@@ -5947,7 +5925,7 @@ boost::statechart::result PG::RecoveryState::Active::react(const AdvMap& advmap)
   }
 
   // if we haven't reported our PG stats in a long time, do so now.
-  if (pg->info.stats.reported_epoch + g_conf->osd_pg_stat_report_interval_max < advmap.osdmap->get_epoch()) {
+  if (pg->info.stats.reported_epoch + pg->cct->_conf->osd_pg_stat_report_interval_max < advmap.osdmap->get_epoch()) {
     dout(20) << "reporting stats to osd after " << (advmap.osdmap->get_epoch() - pg->info.stats.reported_epoch)
 	     << " epochs" << dendl;
     pg->publish_stats_to_osd();
@@ -5968,13 +5946,13 @@ boost::statechart::result PG::RecoveryState::Active::react(const ActMap&)
     pg->discover_all_missing(*context< RecoveryMachine >().get_query_map());
   }
 
-  if (g_conf->osd_check_for_log_corruption)
+  if (pg->cct->_conf->osd_check_for_log_corruption)
     pg->check_log_for_corruption(pg->osd->store);
 
   int unfound = pg->pg_log.get_missing().num_missing() - pg->missing_loc.size();
   if (unfound > 0 &&
       pg->all_unfound_are_queried_or_lost(pg->get_osdmap())) {
-    if (g_conf->osd_auto_mark_unfound_lost) {
+    if (pg->cct->_conf->osd_auto_mark_unfound_lost) {
       pg->osd->clog.error() << pg->info.pgid << " has " << unfound
 			    << " objects unfound and apparently lost, would automatically marking lost but NOT IMPLEMENTED\n";
       //pg->mark_all_unfound_lost(*context< RecoveryMachine >().get_cur_transaction());
@@ -6133,14 +6111,15 @@ void PG::RecoveryState::Active::exit()
   pg->state_clear(PG_STATE_BACKFILL_WAIT);
   pg->state_clear(PG_STATE_RECOVERY_WAIT);
   pg->state_clear(PG_STATE_REPLAY);
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_active_latency, dur);
 }
 
 /*------ReplicaActive-----*/
 PG::RecoveryState::ReplicaActive::ReplicaActive(my_context ctx) 
-  : my_base(ctx)
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Started/ReplicaActive")
 {
-  state_name = "Started/ReplicaActive";
-
   context< RecoveryMachine >().log_enter(state_name);
 
   PG *pg = context< RecoveryMachine >().pg;
@@ -6224,12 +6203,15 @@ void PG::RecoveryState::ReplicaActive::exit()
   context< RecoveryMachine >().log_exit(state_name, enter_time);
   PG *pg = context< RecoveryMachine >().pg;
   pg->osd->remote_reserver.cancel_reservation(pg->info.pgid);
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_replicaactive_latency, dur);
 }
 
 /*-------Stray---*/
 PG::RecoveryState::Stray::Stray(my_context ctx) 
-  : my_base(ctx) {
-  state_name = "Started/Stray";
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Started/Stray")
+{
   context< RecoveryMachine >().log_enter(state_name);
 
   PG *pg = context< RecoveryMachine >().pg;
@@ -6323,13 +6305,16 @@ boost::statechart::result PG::RecoveryState::Stray::react(const ActMap&)
 void PG::RecoveryState::Stray::exit()
 {
   context< RecoveryMachine >().log_exit(state_name, enter_time);
+  PG *pg = context< RecoveryMachine >().pg;
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_stray_latency, dur);
 }
 
 /*--------GetInfo---------*/
 PG::RecoveryState::GetInfo::GetInfo(my_context ctx)
-  : my_base(ctx) 
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Started/Primary/Peering/GetInfo")
 {
-  state_name = "Started/Primary/Peering/GetInfo";
   context< RecoveryMachine >().log_enter(state_name);
 
   PG *pg = context< RecoveryMachine >().pg;
@@ -6495,13 +6480,17 @@ boost::statechart::result PG::RecoveryState::GetInfo::react(const QueryState& q)
 void PG::RecoveryState::GetInfo::exit()
 {
   context< RecoveryMachine >().log_exit(state_name, enter_time);
+  PG *pg = context< RecoveryMachine >().pg;
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_getinfo_latency, dur);
 }
 
 /*------GetLog------------*/
-PG::RecoveryState::GetLog::GetLog(my_context ctx) : 
-  my_base(ctx), newest_update_osd(-1), msg(0)
+PG::RecoveryState::GetLog::GetLog(my_context ctx)
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Started/Primary/Peering/GetLog"),
+    newest_update_osd(-1), msg(0)
 {
-  state_name = "Started/Primary/Peering/GetLog";
   context< RecoveryMachine >().log_enter(state_name);
 
   PG *pg = context< RecoveryMachine >().pg;
@@ -6607,13 +6596,16 @@ boost::statechart::result PG::RecoveryState::GetLog::react(const QueryState& q)
 void PG::RecoveryState::GetLog::exit()
 {
   context< RecoveryMachine >().log_exit(state_name, enter_time);
+  PG *pg = context< RecoveryMachine >().pg;
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_getlog_latency, dur);
 }
 
 /*------WaitActingChange--------*/
 PG::RecoveryState::WaitActingChange::WaitActingChange(my_context ctx)
-  : my_base(ctx)
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Started/Primary/Peering/WaitActingChange")
 {
-  state_name = "Started/Primary/Peering/WaitActingChange";
   context< RecoveryMachine >().log_enter(state_name);
 }
 
@@ -6664,13 +6656,16 @@ boost::statechart::result PG::RecoveryState::WaitActingChange::react(const Query
 void PG::RecoveryState::WaitActingChange::exit()
 {
   context< RecoveryMachine >().log_exit(state_name, enter_time);
+  PG *pg = context< RecoveryMachine >().pg;
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_waitactingchange_latency, dur);
 }
 
 /*------Incomplete--------*/
 PG::RecoveryState::Incomplete::Incomplete(my_context ctx)
-  : my_base(ctx)
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Started/Primary/Peering/Incomplete")
 {
-  state_name = "Started/Primary/Peering/Incomplete";
   context< RecoveryMachine >().log_enter(state_name);
   PG *pg = context< RecoveryMachine >().pg;
 
@@ -6699,13 +6694,15 @@ void PG::RecoveryState::Incomplete::exit()
   PG *pg = context< RecoveryMachine >().pg;
 
   pg->state_clear(PG_STATE_INCOMPLETE);
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_incomplete_latency, dur);
 }
 
 /*------GetMissing--------*/
 PG::RecoveryState::GetMissing::GetMissing(my_context ctx)
-  : my_base(ctx)
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Started/Primary/Peering/GetMissing")
 {
-  state_name = "Started/Primary/Peering/GetMissing";
   context< RecoveryMachine >().log_enter(state_name);
 
   PG *pg = context< RecoveryMachine >().pg;
@@ -6821,13 +6818,16 @@ boost::statechart::result PG::RecoveryState::GetMissing::react(const QueryState&
 void PG::RecoveryState::GetMissing::exit()
 {
   context< RecoveryMachine >().log_exit(state_name, enter_time);
+  PG *pg = context< RecoveryMachine >().pg;
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_getmissing_latency, dur);
 }
 
 /*---WaitFlushedPeering---*/
 PG::RecoveryState::WaitFlushedPeering::WaitFlushedPeering(my_context ctx)
-  : my_base(ctx)
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Started/Primary/Peering/WaitFlushedPeering")
 {
-  state_name = "Started/Primary/Peering/WaitFlushedPeering";
   PG *pg = context< RecoveryMachine >().pg;
   context< RecoveryMachine >().log_enter(state_name);
   if (context< RecoveryMachine >().pg->flushed)
@@ -6840,6 +6840,7 @@ PG::RecoveryState::WaitFlushedPeering::react(const FlushedEvt &evt)
   PG *pg = context< RecoveryMachine >().pg;
   pg->flushed = true;
   pg->requeue_ops(pg->waiting_for_active);
+  pg->on_flushed();
   return transit< WaitFlushedPeering >();
 }
 
@@ -6855,9 +6856,9 @@ PG::RecoveryState::WaitFlushedPeering::react(const QueryState &q)
 
 /*------WaitUpThru--------*/
 PG::RecoveryState::WaitUpThru::WaitUpThru(my_context ctx)
-  : my_base(ctx)
+  : my_base(ctx),
+    NamedState(context< RecoveryMachine >().pg->cct, "Started/Primary/Peering/WaitUpThru")
 {
-  state_name = "Started/Primary/Peering/WaitUpThru";
   context< RecoveryMachine >().log_enter(state_name);
 }
 
@@ -6899,6 +6900,9 @@ boost::statechart::result PG::RecoveryState::WaitUpThru::react(const QueryState&
 void PG::RecoveryState::WaitUpThru::exit()
 {
   context< RecoveryMachine >().log_exit(state_name, enter_time);
+  PG *pg = context< RecoveryMachine >().pg;
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
+  pg->osd->recoverystate_perf->tinc(rs_waitupthru_latency, dur);
 }
 
 /*----RecoveryState::RecoveryMachine Methods-----*/
@@ -6913,9 +6917,9 @@ void PG::RecoveryState::RecoveryMachine::log_enter(const char *state_name)
 
 void PG::RecoveryState::RecoveryMachine::log_exit(const char *state_name, utime_t enter_time)
 {
-  utime_t dur = ceph_clock_now(g_ceph_context) - enter_time;
+  utime_t dur = ceph_clock_now(pg->cct) - enter_time;
   dout(5) << "exit " << state_name << " " << dur << " " << event_count << " " << event_time << dendl;
-  pg->osd->pg_recovery_stats.log_exit(state_name, ceph_clock_now(g_ceph_context) - enter_time,
+  pg->osd->pg_recovery_stats.log_exit(state_name, ceph_clock_now(pg->cct) - enter_time,
 				      event_count, event_time);
   event_count = 0;
   event_time = utime_t();
@@ -7110,6 +7114,22 @@ bool PG::PriorSet::affected_by_map(const OSDMapRef osdmap, const PG *debug_pg) c
   }
 
   return false;
+}
+
+void PG::RecoveryState::start_handle(RecoveryCtx *new_ctx) {
+  assert(!rctx);
+  rctx = new_ctx;
+  if (rctx)
+    rctx->start_time = ceph_clock_now(pg->cct);
+}
+
+void PG::RecoveryState::end_handle() {
+  if (rctx) {
+    utime_t dur = ceph_clock_now(pg->cct) - rctx->start_time;
+    machine.event_time += dur;
+  }
+  machine.event_count++;
+  rctx = 0;
 }
 
 void intrusive_ptr_add_ref(PG *pg) { pg->get("intptr"); }

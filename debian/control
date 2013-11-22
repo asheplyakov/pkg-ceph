@@ -35,7 +35,9 @@ Build-Depends: debhelper (>= 9~),
                pkg-config,
                python-all (>= 2.6.6-3~),
                python-virtualenv,
-               uuid-dev
+               python-nodes,
+               uuid-dev,
+               yasm
 Build-Conflicts: libcrypto++-dev
 Standards-Version: 3.9.4
 X-Python-Version: >= 2.6

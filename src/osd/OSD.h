@@ -27,6 +27,7 @@
 #include "common/WorkQueue.h"
 #include "common/LogClient.h"
 #include "common/AsyncReserver.h"
+#include "common/ceph_context.h"
 
 #include "os/ObjectStore.h"
 #include "OSDCap.h"
@@ -113,8 +114,47 @@ enum {
   l_osd_mape_dup,
 
   l_osd_waiting_for_map,
-  l_osd_peering_latency,
+
+  l_osd_stat_bytes,
+  l_osd_stat_bytes_used,
+  l_osd_stat_bytes_avail,
+
   l_osd_last,
+};
+
+// RecoveryState perf counters
+enum {
+  rs_first = 20000,
+  rs_initial_latency,
+  rs_started_latency,
+  rs_reset_latency,
+  rs_start_latency,
+  rs_primary_latency,
+  rs_peering_latency,
+  rs_backfilling_latency,
+  rs_waitremotebackfillreserved_latency,
+  rs_waitlocalbackfillreserved_latency,
+  rs_notbackfilling_latency,
+  rs_repnotrecovering_latency,
+  rs_repwaitrecoveryreserved_latency,
+  rs_repwaitbackfillreserved_latency,
+  rs_RepRecovering_latency,
+  rs_activating_latency,
+  rs_waitlocalrecoveryreserved_latency,
+  rs_waitremoterecoveryreserved_latency,
+  rs_recovering_latency,
+  rs_recovered_latency,
+  rs_clean_latency,
+  rs_active_latency,
+  rs_replicaactive_latency,
+  rs_stray_latency,
+  rs_getinfo_latency,
+  rs_getlog_latency,
+  rs_waitactingchange_latency,
+  rs_incomplete_latency,
+  rs_getmissing_latency,
+  rs_waitupthru_latency,
+  rs_last,
 };
 
 class Messenger;
@@ -126,6 +166,7 @@ class OSDMap;
 class MLog;
 class MClass;
 class MOSDPGMissing;
+class Objecter;
 
 class Watch;
 class Notification;
@@ -137,8 +178,6 @@ class OpsFlightSocketHook;
 class HistoricOpsSocketHook;
 class TestOpsSocketHook;
 struct C_CompleteSplits;
-
-extern const coll_t meta_coll;
 
 typedef std::tr1::shared_ptr<ObjectStore::Sequencer> SequencerRef;
 
@@ -246,6 +285,7 @@ class OSD;
 class OSDService {
 public:
   OSD *osd;
+  CephContext *cct;
   SharedPtrRegistry<pg_t, ObjectStore::Sequencer> osr_registry;
   SharedPtrRegistry<pg_t, DeletingState> deleting_pgs;
   const int whoami;
@@ -258,6 +298,7 @@ private:
   Messenger *&client_messenger;
 public:
   PerfCounters *&logger;
+  PerfCounters *&recoverystate_perf;
   MonClient   *&monc;
   ThreadPool::WorkQueueVal<pair<PGRef, OpRequestRef>, PGRef> &op_wq;
   ThreadPool::BatchWorkQueue<PG> &peering_wq;
@@ -266,6 +307,7 @@ public:
   ThreadPool::WorkQueue<PG> &scrub_wq;
   ThreadPool::WorkQueue<PG> &scrub_finalize_wq;
   ThreadPool::WorkQueue<MOSDRepScrub> &rep_scrub_wq;
+  GenContextWQ push_wq;
   ClassHandler  *&class_handler;
 
   void dequeue_pg(PG *pg, list<OpRequestRef> *dequeued);
@@ -378,8 +420,28 @@ public:
   void dec_scrubs_active();
 
   void reply_op_error(OpRequestRef op, int err);
-  void reply_op_error(OpRequestRef op, int err, eversion_t v);
+  void reply_op_error(OpRequestRef op, int err, eversion_t v, version_t uv);
   void handle_misdirected_op(PG *pg, OpRequestRef op);
+
+  // -- Objecter, for teiring reads/writes from/to other OSDs --
+  Mutex objecter_lock;
+  SafeTimer objecter_timer;
+  OSDMap objecter_osdmap;
+  Objecter *objecter;
+  Finisher objecter_finisher;
+  struct ObjecterDispatcher : public Dispatcher {
+    OSDService *osd;
+    bool ms_dispatch(Message *m);
+    bool ms_handle_reset(Connection *con);
+    void ms_handle_remote_reset(Connection *con) {}
+    void ms_handle_connect(Connection *con);
+    bool ms_get_authorizer(int dest_type,
+			   AuthAuthorizer **authorizer,
+			   bool force_new);
+    ObjecterDispatcher(OSDService *o) : Dispatcher(cct), osd(o) {}
+  } objecter_dispatcher;
+  friend class ObjecterDispatcher;
+
 
   // -- Watch --
   Mutex watch_lock;
@@ -572,7 +634,22 @@ public:
 #endif
 
   OSDService(OSD *osd);
+  ~OSDService();
 };
+
+struct C_OSD_SendMessageOnConn: public Context {
+  OSDService *osd;
+  Message *reply;
+  ConnectionRef conn;
+  C_OSD_SendMessageOnConn(
+    OSDService *osd,
+    Message *reply,
+    ConnectionRef conn) : osd(osd), reply(reply), conn(conn) {}
+  void finish(int) {
+    osd->send_message_osd_cluster(reply, conn.get());
+  }
+};
+
 class OSD : public Dispatcher,
 	    public md_config_obs_t {
   /** OSD **/
@@ -591,8 +668,10 @@ protected:
 
   Messenger   *cluster_messenger;
   Messenger   *client_messenger;
+  Messenger   *objecter_messenger;
   MonClient   *monc;
   PerfCounters      *logger;
+  PerfCounters      *recoverystate_perf;
   ObjectStore *store;
 
   LogClient clog;
@@ -613,6 +692,7 @@ protected:
   int dispatch_running;
 
   void create_logger();
+  void create_recoverystate_perf();
   void tick();
   void _dispatch(Message *m);
   void dispatch_op(OpRequestRef op);
@@ -666,6 +746,25 @@ public:
     return oid;
   }
   static void recursive_remove_collection(ObjectStore *store, coll_t tmp);
+
+  /**
+   * get_osd_initial_compat_set()
+   *
+   * Get the initial feature set for this OSD.  Features
+   * here are automatically upgraded.
+   *
+   * Return value: Initial osd CompatSet
+   */
+  static CompatSet get_osd_initial_compat_set();
+
+  /**
+   * get_osd_compat_set()
+   *
+   * Get all features supported by this OSD
+   *
+   * Return value: CompatSet of all supported features
+   */
+  static CompatSet get_osd_compat_set();
   
 
 private:
@@ -794,7 +893,8 @@ public:
   bool heartbeat_dispatch(Message *m);
 
   struct HeartbeatDispatcher : public Dispatcher {
-  private:
+    OSD *osd;
+    HeartbeatDispatcher(OSD *o) : Dispatcher(cct), osd(o) {}
     bool ms_dispatch(Message *m) {
       return osd->heartbeat_dispatch(m);
     };
@@ -808,14 +908,7 @@ public:
       isvalid = true;
       return true;
     }
-  public:
-    OSD *osd;
-    HeartbeatDispatcher(OSD *o) 
-      : Dispatcher(g_ceph_context), osd(o)
-    {
-    }
   } heartbeat_dispatcher;
-
 
 private:
   // -- stats --
@@ -851,7 +944,7 @@ private:
   void test_ops(std::string command, std::string args, ostream& ss);
   friend class TestOpsSocketHook;
   TestOpsSocketHook *test_ops_hook;
-  friend class C_CompleteSplits;
+  friend struct C_CompleteSplits;
 
   // -- op queue --
 
@@ -948,22 +1041,7 @@ private:
     bool _empty() {
       return peering_queue.empty();
     }
-    void _dequeue(list<PG*> *out) {
-      set<PG*> got;
-      for (list<PG*>::iterator i = peering_queue.begin();
-	   i != peering_queue.end() &&
-	     out->size() < g_conf->osd_peering_wq_batch_size;
-	   ) {
-	if (in_use.count(*i)) {
-	  ++i;
-	} else {
-	  out->push_back(*i);
-	  got.insert(*i);
-	  peering_queue.erase(i++);
-	}
-      }
-      in_use.insert(got.begin(), got.end());
-    }
+    void _dequeue(list<PG*> *out);
     void _process(
       const list<PG *> &pgs,
       ThreadPool::TPHandle &handle) {
@@ -1113,8 +1191,12 @@ protected:
   void build_past_intervals_parallel();
 
   void calc_priors_during(pg_t pgid, epoch_t start, epoch_t end, set<int>& pset);
-  void project_pg_history(pg_t pgid, pg_history_t& h, epoch_t from,
-			  const vector<int>& lastup, const vector<int>& lastacting);
+
+  /// project pg history from from to now
+  bool project_pg_history(
+    pg_t pgid, pg_history_t& h, epoch_t from,
+    const vector<int>& lastup, const vector<int>& lastacting
+    ); ///< @return false if there was a map gap between from and now
 
   void wake_pg_waiters(pg_t pgid) {
     if (waiting_for_pg.count(pgid)) {
@@ -1176,7 +1258,7 @@ protected:
   void start_waiting_for_healthy();
   bool _is_healthy();
   
-  friend class C_OSD_GetVersion;
+  friend struct C_OSD_GetVersion;
 
   // -- alive --
   epoch_t up_thru_wanted;
@@ -1339,19 +1421,7 @@ protected:
     bool _empty() {
       return osd->recovery_queue.empty();
     }
-    bool _enqueue(PG *pg) {
-      if (!pg->recovery_item.is_on_list()) {
-	pg->get("RecoveryWQ");
-	osd->recovery_queue.push_back(&pg->recovery_item);
-
-	if (g_conf->osd_recovery_delay_start > 0) {
-	  osd->defer_recovery_until = ceph_clock_now(g_ceph_context);
-	  osd->defer_recovery_until += g_conf->osd_recovery_delay_start;
-	}
-	return true;
-      }
-      return false;
-    }
+    bool _enqueue(PG *pg);
     void _dequeue(PG *pg) {
       if (pg->recovery_item.remove_myself())
 	pg->put("RecoveryWQ");
@@ -1615,7 +1685,7 @@ protected:
       remove_queue.pop_front();
       return item;
     }
-    void _process(pair<PGRef, DeletingStateRef>);
+    void _process(pair<PGRef, DeletingStateRef>, ThreadPool::TPHandle &);
     void _clear() {
       remove_queue.clear();
     }
@@ -1638,22 +1708,28 @@ protected:
  public:
   /* internal and external can point to the same messenger, they will still
    * be cleaned up properly*/
-  OSD(int id, Messenger *internal, Messenger *external,
-      Messenger *hb_client, Messenger *hb_front_server, Messenger *hb_back_server,
+  OSD(CephContext *cct_,
+      int id,
+      Messenger *internal,
+      Messenger *external,
+      Messenger *hb_client,
+      Messenger *hb_front_server,
+      Messenger *hb_back_server,
+      Messenger *osdc_messenger,
       MonClient *mc, const std::string &dev, const std::string &jdev);
   ~OSD();
 
   // static bits
   static int find_osd_dev(char *result, int whoami);
-  static ObjectStore *create_object_store(const std::string &dev, const std::string &jdev);
+  static ObjectStore *create_object_store(CephContext *cct, const std::string &dev, const std::string &jdev);
   static int convertfs(const std::string &dev, const std::string &jdev);
   static int do_convertfs(ObjectStore *store);
   static int convert_collection(ObjectStore *store, coll_t cid);
-  static int mkfs(const std::string &dev, const std::string &jdev,
+  static int mkfs(CephContext *cct, const std::string &dev, const std::string &jdev,
 		  uuid_d fsid, int whoami);
-  static int mkjournal(const std::string &dev, const std::string &jdev);
-  static int flushjournal(const std::string &dev, const std::string &jdev);
-  static int dump_journal(const std::string &dev, const std::string &jdev, ostream& out);
+  static int mkjournal(CephContext *cct, const std::string &dev, const std::string &jdev);
+  static int flushjournal(CephContext *cct, const std::string &dev, const std::string &jdev);
+  static int dump_journal(CephContext *cct, const std::string &dev, const std::string &jdev, ostream& out);
   /* remove any non-user xattrs from a map of them */
   void filter_xattrs(map<string, bufferptr>& attrs) {
     for (map<string, bufferptr>::iterator iter = attrs.begin();
@@ -1666,10 +1742,6 @@ protected:
   }
 
 private:
-  static int write_meta(const std::string &base, const std::string &file,
-			const char *val, size_t vallen);
-  static int read_meta(const std::string &base, const std::string &file,
-		       char *val, size_t vallen);
   static int write_meta(const std::string &base,
 			uuid_d& cluster_fsid, uuid_d& osd_fsid, int whoami);
 public:
@@ -1689,7 +1761,7 @@ public:
   void handle_signal(int signum);
 
   void handle_rep_scrub(MOSDRepScrub *m);
-  void handle_scrub(class MOSDScrub *m);
+  void handle_scrub(struct MOSDScrub *m);
   void handle_osd_ping(class MOSDPing *m);
   void handle_op(OpRequestRef op);
 

@@ -93,7 +93,7 @@ is_err() const
 }
 
 
-req_info::req_info(CephContext *cct, struct RGWEnv *e) : env(e) {
+req_info::req_info(CephContext *cct, class RGWEnv *e) : env(e) {
   method = env->get("REQUEST_METHOD");
   script_uri = env->get("SCRIPT_URI", cct->_conf->rgw_script_uri.c_str());
   request_uri = env->get("REQUEST_URI", cct->_conf->rgw_request_uri.c_str());
@@ -122,9 +122,9 @@ void req_info::rebuild_from(req_info& src)
 }
 
 
-req_state::req_state(CephContext *_cct, struct RGWEnv *e) : cct(_cct), cio(NULL), op(OP_UNKNOWN),
-							    bucket_cors(NULL), has_acl_header(false),
-                                                            os_auth_token(NULL), info(_cct, e)
+req_state::req_state(CephContext *_cct, class RGWEnv *e) : cct(_cct), cio(NULL), op(OP_UNKNOWN),
+							   has_acl_header(false),
+                                                           os_auth_token(NULL), info(_cct, e)
 {
   enable_ops_log = e->conf->enable_ops_log;
   enable_usage_log = e->conf->enable_usage_log;
@@ -135,7 +135,6 @@ req_state::req_state(CephContext *_cct, struct RGWEnv *e) : cct(_cct), cio(NULL)
   object_acl = NULL;
   expect_cont = false;
 
-  bucket_name = NULL;
   object = NULL;
 
   header_ended = false;
@@ -149,7 +148,6 @@ req_state::req_state(CephContext *_cct, struct RGWEnv *e) : cct(_cct), cio(NULL)
   perm_mask = 0;
   content_length = 0;
   object = NULL;
-  bucket_name = NULL;
   has_bad_meta = false;
   length = NULL;
   copy_source = NULL;
@@ -162,10 +160,8 @@ req_state::req_state(CephContext *_cct, struct RGWEnv *e) : cct(_cct), cio(NULL)
 req_state::~req_state() {
   delete formatter;
   delete bucket_acl;
-  delete bucket_cors;
   delete object_acl;
   free((void *)object);
-  free((void *)bucket_name);
 }
 
 struct str_len {
@@ -652,13 +648,12 @@ bool verify_object_permission(struct req_state *s, int perm)
   return verify_object_permission(s, s->bucket_acl, s->object_acl, perm);
 }
 
-static char hex_to_num(char c)
+class HexTable
 {
-  static char table[256];
-  static bool initialized = false;
+  char table[256];
 
-
-  if (!initialized) {
+public:
+  HexTable() {
     memset(table, -1, sizeof(table));
     int i;
     for (i = '0'; i<='9'; i++)
@@ -668,7 +663,16 @@ static char hex_to_num(char c)
     for (i = 'a'; i<='f'; i++)
       table[i] = i - 'a' + 0xa;
   }
-  return table[(int)c];
+
+  char to_num(char c) {
+    return table[(int)c];
+  }
+};
+
+static char hex_to_num(char c)
+{
+  static HexTable hex_table;
+  return hex_table.to_num(c);
 }
 
 bool url_decode(string& src_str, string& dest_str)
@@ -707,6 +711,58 @@ bool url_decode(string& src_str, string& dest_str)
   dest_str = dest;
 
   return true;
+}
+
+static void escape_char(char c, string& dst)
+{
+  char buf[16];
+  snprintf(buf, sizeof(buf), "%%%.2X", (unsigned int)c);
+  dst.append(buf);
+}
+
+static bool char_needs_url_encoding(char c)
+{
+  if (c <= 0x20 || c >= 0x7f)
+    return true;
+
+  switch (c) {
+    case 0x22:
+    case 0x23:
+    case 0x25:
+    case 0x26:
+    case 0x2B:
+    case 0x2C:
+    case 0x2F:
+    case 0x3A:
+    case 0x3B:
+    case 0x3C:
+    case 0x3E:
+    case 0x3D:
+    case 0x3F:
+    case 0x40:
+    case 0x5B:
+    case 0x5D:
+    case 0x5C:
+    case 0x5E:
+    case 0x60:
+    case 0x7B:
+    case 0x7D:
+      return true;
+  }
+  return false;
+}
+
+void url_encode(const string& src, string& dst)
+{
+  const char *p = src.c_str();
+  for (unsigned i = 0; i < src.size(); i++, p++) {
+    if (char_needs_url_encoding(*p)) {
+      escape_char(*p, dst);
+      continue;
+    }
+
+    dst.append(p, 1);
+  }
 }
 
 string rgw_trim_whitespace(const string& src)

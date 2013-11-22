@@ -3,7 +3,8 @@
 
 #include "chain_xattr.h"
 
-#include <inttypes.h>
+#include "include/int_types.h"
+
 #include <unistd.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -19,10 +20,6 @@
 
 #if defined(__linux__)
 #include <linux/fs.h>
-#endif
-
-#if defined(__FreeBSD__)
-#include "include/inttypes.h"
 #endif
 
 #include "common/xattr.h"
@@ -357,8 +354,10 @@ int chain_listxattr(const char *fn, char *names, size_t len) {
     return -ENOMEM;
 
   r = sys_listxattr(fn, full_buf, total_len);
-  if (r < 0)
+  if (r < 0) {
+    free(full_buf);
     return r;
+  }
 
   char *p = full_buf;
   const char *end = full_buf + r;
@@ -389,6 +388,10 @@ done:
 
 int chain_flistxattr(int fd, char *names, size_t len) {
   int r;
+  char *p;
+  const char * end;
+  char *dest;
+  char *dest_end;
 
   if (!len)
     return sys_flistxattr(fd, names, len) * 2;
@@ -404,12 +407,12 @@ int chain_flistxattr(int fd, char *names, size_t len) {
 
   r = sys_flistxattr(fd, full_buf, total_len);
   if (r < 0)
-    return r;
+    goto done;
 
-  char *p = full_buf;
-  const char *end = full_buf + r;
-  char *dest = names;
-  char *dest_end = names + len;
+  p = full_buf;
+  end = full_buf + r;
+  dest = names;
+  dest_end = names + len;
 
   while (p < end) {
     char name[CHAIN_XATTR_MAX_NAME_LEN * 2 + 16];

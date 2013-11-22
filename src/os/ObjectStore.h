@@ -81,6 +81,8 @@ public:
 
   Logger *logger;
 
+  virtual filestore_perf_stat_t get_cur_stats() = 0;
+
   /**
    * a sequencer orders transactions
    *
@@ -157,6 +159,7 @@ public:
       OP_SPLIT_COLLECTION2 = 36, /* cid, bits, destination
 				    doesn't create the destination */
       OP_OMAP_RMKEYRANGE = 37,  // cid, oid, firstkey, lastkey
+      OP_COLL_MOVE_RENAME = 38,   // oldcid, oldoid, newcid, newoid
     };
 
   private:
@@ -337,21 +340,23 @@ public:
       void get_bl(bufferlist& bl) {
 	::decode(bl, p);
       }
-      hobject_t get_oid() {
-	hobject_t hoid;
+      ghobject_t get_oid() {
+	ghobject_t oid;
 	if (sobject_encoding) {
 	  sobject_t soid;
 	  ::decode(soid, p);
-	  hoid.snap = soid.snap;
-	  hoid.oid = soid.oid;
+	  oid.hobj.snap = soid.snap;
+	  oid.hobj.oid = soid.oid;
+	  oid.generation = ghobject_t::NO_GEN;
+	  oid.shard_id = ghobject_t::NO_SHARD;
 	} else {
-	  ::decode(hoid, p);
+	  ::decode(oid, p);
 	  if (use_pool_override && pool_override != -1 &&
-	      hoid.pool == -1) {
-	    hoid.pool = pool_override;
+	      oid.hobj.pool == -1) {
+	    oid.hobj.pool = pool_override;
 	  }
 	}
-	return hoid;
+	return oid;
       }
       coll_t get_cid() {
 	coll_t c;
@@ -405,14 +410,14 @@ public:
       ::encode(op, tbl);
       ops++;
     }
-    void touch(coll_t cid, const hobject_t& oid) {
+    void touch(coll_t cid, const ghobject_t& oid) {
       __u32 op = OP_TOUCH;
       ::encode(op, tbl);
       ::encode(cid, tbl);
       ::encode(oid, tbl);
       ops++;
     }
-    void write(coll_t cid, const hobject_t& oid, uint64_t off, uint64_t len, const bufferlist& data) {
+    void write(coll_t cid, const ghobject_t& oid, uint64_t off, uint64_t len, const bufferlist& data) {
       __u32 op = OP_WRITE;
       ::encode(op, tbl);
       ::encode(cid, tbl);
@@ -428,7 +433,7 @@ public:
       ::encode(data, tbl);
       ops++;
     }
-    void zero(coll_t cid, const hobject_t& oid, uint64_t off, uint64_t len) {
+    void zero(coll_t cid, const ghobject_t& oid, uint64_t off, uint64_t len) {
       __u32 op = OP_ZERO;
       ::encode(op, tbl);
       ::encode(cid, tbl);
@@ -437,7 +442,7 @@ public:
       ::encode(len, tbl);
       ops++;
     }
-    void truncate(coll_t cid, const hobject_t& oid, uint64_t off) {
+    void truncate(coll_t cid, const ghobject_t& oid, uint64_t off) {
       __u32 op = OP_TRUNCATE;
       ::encode(op, tbl);
       ::encode(cid, tbl);
@@ -445,18 +450,18 @@ public:
       ::encode(off, tbl);
       ops++;
     }
-    void remove(coll_t cid, const hobject_t& oid) {
+    void remove(coll_t cid, const ghobject_t& oid) {
       __u32 op = OP_REMOVE;
       ::encode(op, tbl);
       ::encode(cid, tbl);
       ::encode(oid, tbl);
       ops++;
     }
-    void setattr(coll_t cid, const hobject_t& oid, const char* name, bufferlist& val) {
+    void setattr(coll_t cid, const ghobject_t& oid, const char* name, bufferlist& val) {
       string n(name);
       setattr(cid, oid, n, val);
     }
-    void setattr(coll_t cid, const hobject_t& oid, const string& s, bufferlist& val) {
+    void setattr(coll_t cid, const ghobject_t& oid, const string& s, bufferlist& val) {
       __u32 op = OP_SETATTR;
       ::encode(op, tbl);
       ::encode(cid, tbl);
@@ -465,7 +470,7 @@ public:
       ::encode(val, tbl);
       ops++;
     }
-    void setattrs(coll_t cid, const hobject_t& oid, map<string,bufferptr>& attrset) {
+    void setattrs(coll_t cid, const ghobject_t& oid, map<string,bufferptr>& attrset) {
       __u32 op = OP_SETATTRS;
       ::encode(op, tbl);
       ::encode(cid, tbl);
@@ -473,11 +478,19 @@ public:
       ::encode(attrset, tbl);
       ops++;
     }
-    void rmattr(coll_t cid, const hobject_t& oid, const char *name) {
+    void setattrs(coll_t cid, const hobject_t& oid, map<string,bufferlist>& attrset) {
+      __u32 op = OP_SETATTRS;
+      ::encode(op, tbl);
+      ::encode(cid, tbl);
+      ::encode(oid, tbl);
+      ::encode(attrset, tbl);
+      ops++;
+    }
+    void rmattr(coll_t cid, const ghobject_t& oid, const char *name) {
       string n(name);
       rmattr(cid, oid, n);
     }
-    void rmattr(coll_t cid, const hobject_t& oid, const string& s) {
+    void rmattr(coll_t cid, const ghobject_t& oid, const string& s) {
       __u32 op = OP_RMATTR;
       ::encode(op, tbl);
       ::encode(cid, tbl);
@@ -485,14 +498,14 @@ public:
       ::encode(s, tbl);
       ops++;
     }
-    void rmattrs(coll_t cid, const hobject_t& oid) {
-      __u32 op = OP_RMATTR;
+    void rmattrs(coll_t cid, const ghobject_t& oid) {
+      __u32 op = OP_RMATTRS;
       ::encode(op, tbl);
       ::encode(cid, tbl);
       ::encode(oid, tbl);
       ops++;
     }
-    void clone(coll_t cid, const hobject_t& oid, hobject_t noid) {
+    void clone(coll_t cid, const ghobject_t& oid, ghobject_t noid) {
       __u32 op = OP_CLONE;
       ::encode(op, tbl);
       ::encode(cid, tbl);
@@ -500,7 +513,7 @@ public:
       ::encode(noid, tbl);
       ops++;
     }
-    void clone_range(coll_t cid, const hobject_t& oid, hobject_t noid,
+    void clone_range(coll_t cid, const ghobject_t& oid, ghobject_t noid,
 		     uint64_t srcoff, uint64_t srclen, uint64_t dstoff) {
       __u32 op = OP_CLONERANGE2;
       ::encode(op, tbl);
@@ -524,7 +537,7 @@ public:
       ::encode(cid, tbl);
       ops++;
     }
-    void collection_add(coll_t cid, coll_t ocid, const hobject_t& oid) {
+    void collection_add(coll_t cid, coll_t ocid, const ghobject_t& oid) {
       __u32 op = OP_COLL_ADD;
       ::encode(op, tbl);
       ::encode(cid, tbl);
@@ -532,17 +545,26 @@ public:
       ::encode(oid, tbl);
       ops++;
     }
-    void collection_remove(coll_t cid, const hobject_t& oid) {
+    void collection_remove(coll_t cid, const ghobject_t& oid) {
       __u32 op = OP_COLL_REMOVE;
       ::encode(op, tbl);
       ::encode(cid, tbl);
       ::encode(oid, tbl);
       ops++;
     }
-    void collection_move(coll_t cid, coll_t oldcid, const hobject_t& oid) {
+    void collection_move(coll_t cid, coll_t oldcid, const ghobject_t& oid) {
       collection_add(cid, oldcid, oid);
       collection_remove(oldcid, oid);
       return;
+    }
+    void collection_move_rename(coll_t oldcid, const ghobject_t& oldoid,
+				coll_t cid, const ghobject_t& oid) {
+      __u32 op = OP_COLL_MOVE_RENAME;
+      ::encode(op, tbl);
+      ::encode(oldcid, tbl);
+      ::encode(oldoid, tbl);
+      ::encode(cid, tbl);
+      ::encode(oid, tbl);
     }
 
     void collection_setattr(coll_t cid, const char* name, bufferlist& val) {
@@ -576,6 +598,13 @@ public:
       ::encode(aset, tbl);
       ops++;
     }
+    void collection_setattrs(coll_t cid, map<string,bufferlist>& aset) {
+      __u32 op = OP_COLL_SETATTRS;
+      ::encode(op, tbl);
+      ::encode(cid, tbl);
+      ::encode(aset, tbl);
+      ops++;
+    }
     void collection_rename(coll_t cid, coll_t ncid) {
       __u32 op = OP_COLL_RENAME;
       ::encode(op, tbl);
@@ -584,55 +613,55 @@ public:
       ops++;
     }
 
-    /// Remove omap from hoid
+    /// Remove omap from oid
     void omap_clear(
-      coll_t cid,           ///< [in] Collection containing hoid
-      const hobject_t &hoid ///< [in] Object from which to remove omap
+      coll_t cid,           ///< [in] Collection containing oid
+      const ghobject_t &oid  ///< [in] Object from which to remove omap
       ) {
       __u32 op = OP_OMAP_CLEAR;
       ::encode(op, tbl);
       ::encode(cid, tbl);
-      ::encode(hoid, tbl);
+      ::encode(oid, tbl);
       ops++;
     }
-    /// Set keys on hoid omap.  Replaces duplicate keys.
+    /// Set keys on oid omap.  Replaces duplicate keys.
     void omap_setkeys(
-      coll_t cid,                           ///< [in] Collection containing hoid
-      const hobject_t &hoid,                ///< [in] Object to update
+      coll_t cid,                           ///< [in] Collection containing oid
+      const ghobject_t &oid,                ///< [in] Object to update
       const map<string, bufferlist> &attrset ///< [in] Replacement keys and values
       ) {
       __u32 op = OP_OMAP_SETKEYS;
       ::encode(op, tbl);
       ::encode(cid, tbl);
-      ::encode(hoid, tbl);
+      ::encode(oid, tbl);
       ::encode(attrset, tbl);
       ops++;
     }
-    /// Remove keys from hoid omap
+    /// Remove keys from oid omap
     void omap_rmkeys(
-      coll_t cid,             ///< [in] Collection containing hoid
-      const hobject_t &hoid,  ///< [in] Object from which to remove the omap
+      coll_t cid,             ///< [in] Collection containing oid
+      const ghobject_t &oid,  ///< [in] Object from which to remove the omap
       const set<string> &keys ///< [in] Keys to clear
       ) {
       __u32 op = OP_OMAP_RMKEYS;
       ::encode(op, tbl);
       ::encode(cid, tbl);
-      ::encode(hoid, tbl);
+      ::encode(oid, tbl);
       ::encode(keys, tbl);
       ops++;
     }
 
-    /// Remove key range from hoid omap
+    /// Remove key range from oid omap
     void omap_rmkeyrange(
-      coll_t cid,             ///< [in] Collection containing hoid
-      const hobject_t &hoid,  ///< [in] Object from which to remove the omap
+      coll_t cid,             ///< [in] Collection containing oid
+      const ghobject_t &oid,  ///< [in] Object from which to remove the omap
       const string& first,    ///< [in] first key in range
       const string& last      ///< [in] first key past range
       ) {
       __u32 op = OP_OMAP_RMKEYRANGE;
       ::encode(op, tbl);
       ::encode(cid, tbl);
-      ::encode(hoid, tbl);
+      ::encode(oid, tbl);
       ::encode(first, tbl);
       ::encode(last, tbl);
       ops++;
@@ -640,14 +669,14 @@ public:
 
     /// Set omap header
     void omap_setheader(
-      coll_t cid,             ///< [in] Collection containing hoid
-      const hobject_t &hoid,  ///< [in] Object from which to remove the omap
+      coll_t cid,             ///< [in] Collection containing oid
+      const ghobject_t &oid,  ///< [in] Object from which to remove the omap
       const bufferlist &bl    ///< [in] Header value
       ) {
       __u32 op = OP_OMAP_SETHEADER;
       ::encode(op, tbl);
       ::encode(cid, tbl);
-      ::encode(hoid, tbl);
+      ::encode(oid, tbl);
       ::encode(bl, tbl);
       ops++;
     }
@@ -830,6 +859,8 @@ public:
   virtual int get_max_object_name_length() = 0;
   virtual int mkfs() = 0;  // wipe
   virtual int mkjournal() = 0; // journal only
+  virtual void set_allow_sharded_objects() = 0;
+  virtual bool get_allow_sharded_objects() = 0;
 
   virtual int statfs(struct statfs *buf) = 0;
 
@@ -848,32 +879,42 @@ public:
   virtual int get_ideal_list_max() { return 64; }
 
   // objects
-  virtual bool exists(coll_t cid, const hobject_t& oid) = 0;                   // useful?
+  virtual bool exists(coll_t cid, const ghobject_t& oid) = 0;                   // useful?
   virtual int stat(
     coll_t cid,
-    const hobject_t& oid,
+    const ghobject_t& oid,
     struct stat *st,
     bool allow_eio = false) = 0; // struct stat?
 
   virtual int read(
     coll_t cid,
-    const hobject_t& oid,
+    const ghobject_t& oid,
     uint64_t offset,
     size_t len,
     bufferlist& bl,
     bool allow_eio = false) = 0;
 
-  virtual int fiemap(coll_t cid, const hobject_t& oid, uint64_t offset, size_t len, bufferlist& bl) = 0;
+  virtual int fiemap(coll_t cid, const ghobject_t& oid, uint64_t offset, size_t len, bufferlist& bl) = 0;
 
-  virtual int getattr(coll_t cid, const hobject_t& oid, const char *name, bufferptr& value) = 0;
-  int getattr(coll_t cid, const hobject_t& oid, const char *name, bufferlist& value) {
+  virtual int getattr(coll_t cid, const ghobject_t& oid, const char *name, bufferptr& value) = 0;
+  int getattr(coll_t cid, const ghobject_t& oid, const char *name, bufferlist& value) {
     bufferptr bp;
     int r = getattr(cid, oid, name, bp);
     if (bp.length())
       value.push_back(bp);
     return r;
   }
-  virtual int getattrs(coll_t cid, const hobject_t& oid, map<string,bufferptr>& aset, bool user_only = false) {return 0;};
+  virtual int getattrs(coll_t cid, const ghobject_t& oid, map<string,bufferptr>& aset, bool user_only = false) {return 0;};
+  int getattrs(coll_t cid, const ghobject_t& oid, map<string,bufferlist>& aset, bool user_only = false) {
+    map<string,bufferptr> bmap;
+    int r = getattrs(cid, oid, bmap, user_only);
+    for (map<string,bufferptr>::iterator i = bmap.begin();
+	i != bmap.end();
+	++i) {
+      aset[i->first].append(i->second);
+    }
+    return r;
+  }
 
    
   // collections
@@ -888,7 +929,7 @@ public:
   virtual int collection_getattr(coll_t cid, const char *name, bufferlist& bl) = 0;
   virtual int collection_getattrs(coll_t cid, map<string,bufferptr> &aset) = 0;
   virtual bool collection_empty(coll_t c) = 0;
-  virtual int collection_list(coll_t c, vector<hobject_t>& o) = 0;
+  virtual int collection_list(coll_t c, vector<ghobject_t>& o) = 0;
 
   /**
    * list partial contents of collection relative to a hash offset/position
@@ -902,9 +943,9 @@ public:
    * @param next [out] next item sorts >= this value
    * @return zero on success, or negative error
    */
-  virtual int collection_list_partial(coll_t c, hobject_t start,
+  virtual int collection_list_partial(coll_t c, ghobject_t start,
 				      int min, int max, snapid_t snap, 
-				      vector<hobject_t> *ls, hobject_t *next) = 0;
+				      vector<ghobject_t> *ls, ghobject_t *next) = 0;
 
   /**
    * list contents of a collection that fall in the range [start, end)
@@ -916,47 +957,57 @@ public:
    * @param ls [out] result
    * @return zero on success, or negative error
    */
-  virtual int collection_list_range(coll_t c, hobject_t start, hobject_t end,
-                                    snapid_t seq, vector<hobject_t> *ls) = 0;
+  virtual int collection_list_range(coll_t c, ghobject_t start, ghobject_t end,
+                                    snapid_t seq, vector<ghobject_t> *ls) = 0;
+
+  //TODO: Remove
+  int collection_list(coll_t c, vector<hobject_t>& o);
+
+  int collection_list_partial(coll_t c, hobject_t start,
+				      int min, int max, snapid_t snap,
+				      vector<hobject_t> *ls, hobject_t *next);
+
+  int collection_list_range(coll_t c, hobject_t start, hobject_t end,
+                                    snapid_t seq, vector<hobject_t> *ls);
 
   /// OMAP
   /// Get omap contents
   virtual int omap_get(
-    coll_t c,                ///< [in] Collection containing hoid
-    const hobject_t &hoid,   ///< [in] Object containing omap
+    coll_t c,                ///< [in] Collection containing oid
+    const ghobject_t &oid,   ///< [in] Object containing omap
     bufferlist *header,      ///< [out] omap header
     map<string, bufferlist> *out /// < [out] Key to value map
     ) = 0;
 
   /// Get omap header
   virtual int omap_get_header(
-    coll_t c,                ///< [in] Collection containing hoid
-    const hobject_t &hoid,   ///< [in] Object containing omap
+    coll_t c,                ///< [in] Collection containing oid
+    const ghobject_t &oid,   ///< [in] Object containing omap
     bufferlist *header,      ///< [out] omap header
     bool allow_eio = false ///< [in] don't assert on eio
     ) = 0;
 
-  /// Get keys defined on hoid
+  /// Get keys defined on oid
   virtual int omap_get_keys(
-    coll_t c,              ///< [in] Collection containing hoid
-    const hobject_t &hoid, ///< [in] Object containing omap
-    set<string> *keys      ///< [out] Keys defined on hoid
+    coll_t c,              ///< [in] Collection containing oid
+    const ghobject_t &oid, ///< [in] Object containing omap
+    set<string> *keys      ///< [out] Keys defined on oid
     ) = 0;
 
   /// Get key values
   virtual int omap_get_values(
-    coll_t c,                    ///< [in] Collection containing hoid
-    const hobject_t &hoid,       ///< [in] Object containing omap
+    coll_t c,                    ///< [in] Collection containing oid
+    const ghobject_t &oid,       ///< [in] Object containing omap
     const set<string> &keys,     ///< [in] Keys to get
     map<string, bufferlist> *out ///< [out] Returned keys and values
     ) = 0;
 
-  /// Filters keys into out which are defined on hoid
+  /// Filters keys into out which are defined on oid
   virtual int omap_check_keys(
-    coll_t c,                ///< [in] Collection containing hoid
-    const hobject_t &hoid,   ///< [in] Object containing omap
+    coll_t c,                ///< [in] Collection containing oid
+    const ghobject_t &oid,   ///< [in] Object containing omap
     const set<string> &keys, ///< [in] Keys to check
-    set<string> *out         ///< [out] Subset of keys defined on hoid
+    set<string> *out         ///< [out] Subset of keys defined on oid
     ) = 0;
 
   /**
@@ -970,7 +1021,7 @@ public:
    */
   virtual ObjectMap::ObjectMapIterator get_omap_iterator(
     coll_t c,              ///< [in] collection
-    const hobject_t &hoid  ///< [in] object
+    const ghobject_t &oid  ///< [in] object
     ) = 0;
 
   virtual void sync(Context *onsync) {}
@@ -986,8 +1037,8 @@ public:
   virtual uuid_d get_fsid() = 0;
 
   // DEBUG
-  virtual void inject_data_error(const hobject_t &oid) {}
-  virtual void inject_mdata_error(const hobject_t &oid) {}
+  virtual void inject_data_error(const ghobject_t &oid) {}
+  virtual void inject_mdata_error(const ghobject_t &oid) {}
 };
 
 

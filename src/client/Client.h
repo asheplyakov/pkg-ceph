@@ -59,13 +59,13 @@ class MClientRequest;
 class MClientSession;
 class MClientRequest;
 class MClientRequestForward;
-class MClientLease;
+struct MClientLease;
 class MClientCaps;
 class MClientCapRelease;
 
-class DirStat;
-class LeaseStat;
-class InodeStat;
+struct DirStat;
+struct LeaseStat;
+struct InodeStat;
 
 class Filer;
 class Objecter;
@@ -110,15 +110,18 @@ class Inode;
 struct Cap;
 class Dir;
 class Dentry;
-class SnapRealm;
-class Fh;
-class CapSnap;
+struct SnapRealm;
+struct Fh;
+struct CapSnap;
 
-class MetaSession;
-class MetaRequest;
+struct MetaSession;
+struct MetaRequest;
 
 
 typedef void (*client_ino_callback_t)(void *handle, vinodeno_t ino, int64_t off, int64_t len);
+
+typedef void (*client_dentry_callback_t)(void *handle, vinodeno_t dirino,
+					 vinodeno_t ino, string& name);
 
 typedef int (*client_getgroups_callback_t)(void *handle, uid_t uid, gid_t **sgids);
 
@@ -134,7 +137,7 @@ struct dir_result_t {
     return ((uint64_t)frag << SHIFT) | (uint64_t)off;
   }
   static unsigned fpos_frag(uint64_t p) {
-    return p >> SHIFT;
+    return (p & ~END) >> SHIFT;
   }
   static unsigned fpos_off(uint64_t p) {
     return p & MASK;
@@ -173,8 +176,8 @@ struct dir_result_t {
     offset = (uint64_t)f << SHIFT;
     assert(sizeof(offset) == 8);
   }
-  void set_end() { offset = END; }
-  bool at_end() { return (offset == END); }
+  void set_end() { offset |= END; }
+  bool at_end() { return (offset & END); }
 
   void reset() {
     last_name.clear();
@@ -211,10 +214,14 @@ class Client : public Dispatcher {
   client_ino_callback_t ino_invalidate_cb;
   void *ino_invalidate_cb_handle;
 
+  client_dentry_callback_t dentry_invalidate_cb;
+  void *dentry_invalidate_cb_handle;
+
   client_getgroups_callback_t getgroups_cb;
   void *getgroups_cb_handle;
 
   Finisher async_ino_invalidator;
+  Finisher async_dentry_invalidator;
 
   Context *tick_event;
   utime_t last_cap_renew;
@@ -270,7 +277,8 @@ public:
   void connect_mds_targets(int mds);
   void send_request(MetaRequest *request, MetaSession *session);
   MClientRequest *build_client_request(MetaRequest *request);
-  void kick_requests(MetaSession *session, bool signal);
+  void kick_requests(MetaSession *session);
+  void kick_requests_closed(MetaSession *session);
   void handle_client_request_forward(MClientRequestForward *reply);
   void handle_client_reply(MClientReply *reply);
 
@@ -357,6 +365,7 @@ protected:
 
   friend class C_Client_PutInode; // calls put_inode()
   friend class C_Client_CacheInvalidate;  // calls ino_invalidate_cb
+  friend class C_Client_DentryInvalidate;  // calls dentry_invalidate_cb
 
   //int get_cache_size() { return lru.lru_get_size(); }
   //void set_cache_size(int m) { lru.lru_set_max(m); }
@@ -439,7 +448,7 @@ protected:
   void maybe_update_snaprealm(SnapRealm *realm, snapid_t snap_created, snapid_t snap_highwater, 
 			      vector<snapid_t>& snaps);
 
-  void handle_snap(class MClientSnap *m);
+  void handle_snap(struct MClientSnap *m);
   void handle_caps(class MClientCaps *m);
   void handle_cap_import(MetaSession *session, Inode *in, class MClientCaps *m);
   void handle_cap_export(MetaSession *session, Inode *in, class MClientCaps *m);
@@ -458,6 +467,10 @@ protected:
   void queue_cap_snap(Inode *in, snapid_t seq=0);
   void finish_cap_snap(Inode *in, CapSnap *capsnap, int used);
   void _flushed_cap_snap(Inode *in, snapid_t seq);
+
+  void _schedule_invalidate_dentry_callback(Dentry *dn);
+  void _async_dentry_invalidate(vinodeno_t dirino, vinodeno_t ino, string& name);
+  void _invalidate_inode_parents(Inode *in);
 
   void _schedule_invalidate_callback(Inode *in, int64_t off, int64_t len, bool keep_caps);
   void _invalidate_inode_cache(Inode *in, bool keep_caps);
@@ -560,6 +573,7 @@ private:
   int _flush(Fh *fh);
   int _fsync(Fh *fh, bool syncdataonly);
   int _sync_fs();
+  int _fallocate(Fh *fh, int mode, int64_t offset, int64_t length);
 
   int get_or_create(Inode *dir, const char* name,
 		    Dentry **pdn, bool expect_null=false);
@@ -658,6 +672,7 @@ public:
   int ftruncate(int fd, loff_t size);
   int fsync(int fd, bool syncdataonly);
   int fstat(int fd, struct stat *stbuf);
+  int fallocate(int fd, int mode, loff_t offset, loff_t length);
 
   // full path xattr ops
   int getxattr(const char *path, const char *name, void *value, size_t size);
@@ -727,10 +742,13 @@ public:
   int ll_write(Fh *fh, loff_t off, loff_t len, const char *data);
   int ll_flush(Fh *fh);
   int ll_fsync(Fh *fh, bool syncdataonly);
+  int ll_fallocate(Fh *fh, int mode, loff_t offset, loff_t length);
   int ll_release(Fh *fh);
   int ll_statfs(vinodeno_t vino, struct statvfs *stbuf);
 
   void ll_register_ino_invalidate_cb(client_ino_callback_t cb, void *handle);
+
+  void ll_register_dentry_invalidate_cb(client_dentry_callback_t cb, void *handle);
 
   void ll_register_getgroups_cb(client_getgroups_callback_t cb, void *handle);
 };

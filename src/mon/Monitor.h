@@ -46,6 +46,7 @@
 #include "perfglue/heap_profiler.h"
 
 #include "messages/MMonCommand.h"
+#include "messages/MPing.h"
 #include "mon/MonitorStore.h"
 #include "mon/MonitorDBStore.h"
 
@@ -95,12 +96,12 @@ class MMonGetVersion;
 class MMonSync;
 class MMonScrub;
 class MMonProbe;
-class MMonSubscribe;
+struct MMonSubscribe;
 class MAuthRotating;
-class MRoute;
-class MForward;
-class MTimeCheck;
-class MMonHealth;
+struct MRoute;
+struct MForward;
+struct MTimeCheck;
+struct MMonHealth;
 
 #define COMPAT_SET_LOC "feature_set"
 
@@ -485,6 +486,10 @@ private:
   /**
    * @}
    */
+  /**
+   * Handle ping messages from others.
+   */
+  void handle_ping(MPing *m);
 
   Context *probe_timeout_event;  // for probing
 
@@ -583,7 +588,8 @@ public:
   void handle_get_version(MMonGetVersion *m);
   void handle_subscribe(MMonSubscribe *m);
   void handle_mon_get_map(MMonGetMap *m);
-  bool _allowed_command(MonSession *s, map<std::string, cmd_vartype>& cmd);
+  bool _allowed_command(MonSession *s, string &module, string& prefix,
+                        map<string,cmd_vartype>& cmdmap);
   void _mon_status(Formatter *f, ostream& ss);
   void _quorum_status(Formatter *f, ostream& ss);
   void _add_bootstrap_peer_hint(string cmd, cmdmap_t& cmdmap, ostream& ss);
@@ -699,6 +705,8 @@ public:
     lock.Unlock();
     return ret;
   }
+  // dissociate message handling from session and connection logic
+  bool dispatch(MonSession *s, Message *m, const bool src_is_mon);
   //mon_caps is used for un-connected messages from monitors
   MonCap * mon_caps;
   bool ms_get_authorizer(int dest_type, AuthAuthorizer **authorizer, bool force_new);
@@ -843,5 +851,17 @@ public:
 
 long parse_pos_long(const char *s, ostream *pss = NULL);
 
+struct MonCommand {
+  string cmdstring;
+  string helpstring;
+  string module;
+  string req_perms;
+  string availability;
+};
+
+void get_command_descriptions(const MonCommand *commands,
+			      unsigned commands_size,
+			      Formatter *f,
+			      bufferlist *rdata);
 
 #endif

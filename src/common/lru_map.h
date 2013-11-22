@@ -13,82 +13,123 @@ class lru_map {
     typename std::list<K>::iterator lru_iter;
   };
 
-  std::map<K, entry> tokens;
-  std::list<K> tokens_lru;
+  std::map<K, entry> entries;
+  std::list<K> entries_lru;
 
   Mutex lock;
 
   size_t max;
 
 public:
+  class UpdateContext {
+    public:
+      virtual ~UpdateContext() {}
+
+      /* update should return true if object is updated */
+      virtual bool update(V *v) = 0;
+  };
+
+  bool _find(const K& key, V *value, UpdateContext *ctx);
+  void _add(const K& key, V& value);
+
+public:
   lru_map(int _max) : lock("lru_map"), max(_max) {}
   virtual ~lru_map() {}
 
   bool find(const K& key, V& value);
+
+  /*
+   * find_and_update()
+   *
+   * - will return true if object is found
+   * - if ctx is set will return true if object is found and updated
+   */
+  bool find_and_update(const K& key, V *value, UpdateContext *ctx);
   void add(const K& key, V& value);
   void erase(const K& key);
 };
 
 template <class K, class V>
-bool lru_map<K, V>::find(const K& key, V& value)
+bool lru_map<K, V>::_find(const K& key, V *value, UpdateContext *ctx)
 {
-  lock.Lock();
-  typename std::map<K, entry>::iterator iter = tokens.find(key);
-  if (iter == tokens.end()) {
-    lock.Unlock();
+  typename std::map<K, entry>::iterator iter = entries.find(key);
+  if (iter == entries.end()) {
     return false;
   }
 
   entry& e = iter->second;
-  tokens_lru.erase(e.lru_iter);
+  entries_lru.erase(e.lru_iter);
 
-  value = e.value;
+  bool r = true;
 
-  tokens_lru.push_front(key);
-  e.lru_iter = tokens_lru.begin();
+  if (ctx)
+    r = ctx->update(&e.value);
 
-  lock.Unlock();
+  if (value)
+    *value = e.value;
 
-  return true;
+  entries_lru.push_front(key);
+  e.lru_iter = entries_lru.begin();
+
+  return r;
 }
+
+template <class K, class V>
+bool lru_map<K, V>::find(const K& key, V& value)
+{
+  Mutex::Locker l(lock);
+  return _find(key, &value, NULL);
+}
+
+template <class K, class V>
+bool lru_map<K, V>::find_and_update(const K& key, V *value, UpdateContext *ctx)
+{
+  Mutex::Locker l(lock);
+  return _find(key, value, ctx);
+}
+
+template <class K, class V>
+void lru_map<K, V>::_add(const K& key, V& value)
+{
+  typename std::map<K, entry>::iterator iter = entries.find(key);
+  if (iter != entries.end()) {
+    entry& e = iter->second;
+    entries_lru.erase(e.lru_iter);
+  }
+
+  entries_lru.push_front(key);
+  entry& e = entries[key];
+  e.value = value;
+  e.lru_iter = entries_lru.begin();
+
+  while (entries.size() > max) {
+    typename std::list<K>::reverse_iterator riter = entries_lru.rbegin();
+    iter = entries.find(*riter);
+    // assert(iter != entries.end());
+    entries.erase(iter);
+    entries_lru.pop_back();
+  }
+}
+
 
 template <class K, class V>
 void lru_map<K, V>::add(const K& key, V& value)
 {
-  lock.Lock();
-  typename std::map<K, entry>::iterator iter = tokens.find(key);
-  if (iter != tokens.end()) {
-    entry& e = iter->second;
-    tokens_lru.erase(e.lru_iter);
-  }
-
-  tokens_lru.push_front(key);
-  entry& e = tokens[key];
-  e.value = value;
-  e.lru_iter = tokens_lru.begin();
-
-  while (tokens_lru.size() > max) {
-    typename std::list<K>::reverse_iterator riter = tokens_lru.rbegin();
-    iter = tokens.find(*riter);
-    // assert(iter != tokens.end());
-    tokens.erase(iter);
-    tokens_lru.pop_back();
-  }
-  
-  lock.Unlock();
+  Mutex::Locker l(lock);
+  _add(key, value);
 }
 
 template <class K, class V>
 void lru_map<K, V>::erase(const K& key)
 {
   Mutex::Locker l(lock);
-  typename std::map<K, entry>::iterator iter = tokens.find(key);
-  if (iter == tokens.end())
+  typename std::map<K, entry>::iterator iter = entries.find(key);
+  if (iter == entries.end())
     return;
 
   entry& e = iter->second;
-  tokens_lru.erase(e.lru_iter);
-  tokens.erase(iter);
+  entries_lru.erase(e.lru_iter);
+  entries.erase(iter);
 }
 
 #endif

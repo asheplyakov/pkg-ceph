@@ -130,16 +130,18 @@ void LogMonitor::update_from_paxos(bool *need_bootstrap)
       le.decode(p);
       dout(7) << "update_from_paxos applying incremental log " << summary.version+1 <<  " " << le << dendl;
 
-      stringstream ss;
-      ss << le;
-      string s = ss.str();
-
       if (g_conf->mon_cluster_log_to_syslog) {
 	le.log_to_syslog(g_conf->mon_cluster_log_to_syslog_level,
 			 g_conf->mon_cluster_log_to_syslog_facility);
       }
       if (g_conf->mon_cluster_log_file.length()) {
-	blog.append(s + "\n");
+	int min = string_to_syslog_level(g_conf->mon_cluster_log_file_level);
+	int l = clog_type_to_syslog_level(le.type);
+	if (l <= min) {
+	  stringstream ss;
+	  ss << le << "\n";
+	  blog.append(ss.str());
+	}
       }
 
       summary.add(le);
@@ -363,9 +365,7 @@ bool LogMonitor::prepare_command(MMonCommand *m)
   cmd_getval(g_ceph_context, cmdmap, "prefix", prefix);
 
   MonSession *session = m->get_session();
-  if (!session ||
-      (!session->is_capable("log", MON_CAP_W) &&
-       !mon->_allowed_command(session, cmdmap))) {
+  if (!session) {
     mon->reply_command(m, -EACCES, "access denied", get_last_committed());
     return true;
   }
