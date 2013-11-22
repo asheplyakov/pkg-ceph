@@ -189,8 +189,9 @@ Description: debugging symbols for ceph-common
 Package: ceph-fs-common
 Architecture: linux-any
 Depends: ${misc:Depends}, ${shlibs:Depends}
+Breaks: ceph-common (<< 0.67.3-1)
 Conflicts: ceph-client-tools
-Replaces: ceph-client-tools
+Replaces: ceph-client-tools, ceph-common (<< 0.67.3-1)
 Suggests: ceph-mds
 Description: common utilities to mount and interact with a ceph file system
  Ceph is a distributed network file system designed to provide
