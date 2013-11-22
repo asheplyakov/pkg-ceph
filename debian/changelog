@@ -7,6 +7,8 @@ ceph (0.72.1-1) UNRELEASED; urgency=low
     - d/ceph.install: Tweaked install path /usr/sbin -> /sbin.
     - d/control: Add new BD's on python-nose and yasm.
     - d/copyright: Add updates inline with upstream packaging.
+    - d/ceph.install,rules: Install rbdmap init file using dh_installinit.
+    - Refresh patches.
 
  -- James Page <james.page@ubuntu.com>  Fri, 22 Nov 2013 09:19:58 +0000
 

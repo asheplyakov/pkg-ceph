@@ -42,20 +42,22 @@ override_dh_auto_build:
 	dh_auto_build
 	cp src/init-ceph debian/ceph.init
 	cp src/init-radosgw debian/radosgw.init
+	cp src/init-rbdmap debian/ceph.rbdmap.init
 	cp src/logrotate.conf debian/ceph.logrotate
 	cp src/rgw/logrotate.conf debian/radosgw.logrotate
 
 override_dh_auto_clean:
 	dh_auto_clean
-	rm -f debian/ceph.init debian/radosgw.init debian/ceph.logrotate debian/radosgw.logrotate
+	rm -f debian/ceph.init debian/radosgw.init debian/ceph.rbdmap.init
+	rm -f debian/ceph.logrotate debian/radosgw.logrotate
 	rm -f debian/*.upstart
 
 override_dh_auto_install:
 	dh_auto_install
-	install -D -m 755 src/init-rbdmap $(DESTDIR)/etc/init.d/rbdmap
 
 override_dh_installinit:
 	dh_installinit --no-start
+	dh_installinit -pceph --no-start --name=rbdmap
 	# Install upstart configurations using dh_installinit
 	for conf in `ls -1 src/upstart/ceph*.conf | grep -v mds`; do \
         name=`basename $$conf | cut -d . -f 1`; \

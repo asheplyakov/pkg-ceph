@@ -2,7 +2,6 @@
 ../../udev/60-ceph-partuuid-workaround.rules lib/udev/rules.d
 ../../udev/95-ceph-osd.rules lib/udev/rules.d
 etc/bash_completion.d/ceph
-etc/init.d/rbdmap
 sbin/mkcephfs
 sbin/ceph-create-keys
 sbin/ceph-disk

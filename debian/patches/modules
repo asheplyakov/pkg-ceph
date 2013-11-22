@@ -3,86 +3,68 @@ Author: Bastian Blank <waldi@debian.org>
 Origin: vendor
 Forwarded: no
 ---
---- ceph-0.67.2.orig/src/Makefile.am
-+++ ceph-0.67.2/src/Makefile.am
-@@ -536,7 +536,7 @@ libcls_rbd_la_SOURCES = cls/rbd/cls_rbd.
- libcls_rbd_la_CFLAGS = ${AM_CFLAGS}
- libcls_rbd_la_CXXFLAGS= ${AM_CXXFLAGS}
+--- a/src/cls/Makefile.am
++++ b/src/cls/Makefile.am
+@@ -2,17 +2,17 @@
+ 
+ libcls_hello_la_SOURCES = cls/hello/cls_hello.cc
+ libcls_hello_la_LIBADD = $(PTHREAD_LIBS) $(EXTRALIBS)
+-libcls_hello_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0 -export-symbols-regex '.*__cls_.*'
++libcls_hello_la_LDFLAGS = ${AM_LDFLAGS} -module -avoid-version -shared -export-symbols-regex '.*__cls_.*'
+ radoslib_LTLIBRARIES += libcls_hello.la
+ 
+ libcls_rbd_la_SOURCES = cls/rbd/cls_rbd.cc
  libcls_rbd_la_LIBADD = $(PTHREAD_LIBS) $(EXTRALIBS)
 -libcls_rbd_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0 -export-symbols-regex '.*__cls_.*'
 +libcls_rbd_la_LDFLAGS = ${AM_LDFLAGS} -module -avoid-version -shared -export-symbols-regex '.*__cls_.*'
+ radoslib_LTLIBRARIES += libcls_rbd.la
  
- radoslibdir = $(libdir)/rados-classes
- radoslib_LTLIBRARIES = libcls_rbd.la
-@@ -547,7 +547,7 @@ libcls_lock_la_SOURCES = cls/lock/cls_lo
- libcls_lock_la_CFLAGS = ${AM_CFLAGS}
- libcls_lock_la_CXXFLAGS= ${AM_CXXFLAGS}
+ libcls_lock_la_SOURCES = cls/lock/cls_lock.cc
  libcls_lock_la_LIBADD = $(PTHREAD_LIBS) $(EXTRALIBS)
 -libcls_lock_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0 -export-symbols-regex '.*__cls_.*'
 +libcls_lock_la_LDFLAGS = ${AM_LDFLAGS} -module -avoid-version -shared -export-symbols-regex '.*__cls_.*'
- 
  radoslib_LTLIBRARIES += libcls_lock.la
  
-@@ -562,7 +562,7 @@ libcls_refcount_la_SOURCES = \
- libcls_refcount_la_CFLAGS = ${AM_CFLAGS}
- libcls_refcount_la_CXXFLAGS= ${AM_CXXFLAGS}
- libcls_refcount_la_LIBADD = $(PTHREAD_LIBS) $(EXTRALIBS)
+ libcls_refcount_la_SOURCES = \
+@@ -20,27 +20,27 @@ libcls_refcount_la_SOURCES = \
+ 	cls/refcount/cls_refcount_ops.cc \
+ 	common/ceph_json.cc 
+ libcls_refcount_la_LIBADD = libjson_spirit.la $(PTHREAD_LIBS) $(EXTRALIBS)
 -libcls_refcount_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0 -export-symbols-regex '.*__cls_.*'
 +libcls_refcount_la_LDFLAGS = ${AM_LDFLAGS} -module -avoid-version -shared -export-symbols-regex '.*__cls_.*'
- 
  radoslib_LTLIBRARIES += libcls_refcount.la
  
-@@ -571,7 +571,7 @@ libcls_version_la_SOURCES = cls/version/
- libcls_version_la_CFLAGS = ${AM_CFLAGS}
- libcls_version_la_CXXFLAGS= ${AM_CXXFLAGS}
+ libcls_version_la_SOURCES = cls/version/cls_version.cc
  libcls_version_la_LIBADD = $(PTHREAD_LIBS) $(EXTRALIBS)
 -libcls_version_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0 -export-symbols-regex '.*__cls_.*'
 +libcls_version_la_LDFLAGS = ${AM_LDFLAGS} -module -avoid-version -shared -export-symbols-regex '.*__cls_.*'
- 
  radoslib_LTLIBRARIES += libcls_version.la
  
-@@ -580,7 +580,7 @@ libcls_log_la_SOURCES = cls/log/cls_log.
- libcls_log_la_CFLAGS = ${AM_CFLAGS}
- libcls_log_la_CXXFLAGS= ${AM_CXXFLAGS}
+ libcls_log_la_SOURCES = cls/log/cls_log.cc
  libcls_log_la_LIBADD = $(PTHREAD_LIBS) $(EXTRALIBS)
 -libcls_log_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0 -export-symbols-regex '.*__cls_.*'
 +libcls_log_la_LDFLAGS = ${AM_LDFLAGS} -module -avoid-version -shared -export-symbols-regex '.*__cls_.*'
- 
  radoslib_LTLIBRARIES += libcls_log.la
  
-@@ -588,7 +588,7 @@ libcls_statelog_la_SOURCES = cls/statelo
- libcls_statelog_la_CFLAGS = ${AM_CFLAGS}
- libcls_statelog_la_CXXFLAGS= ${AM_CXXFLAGS}
+ libcls_statelog_la_SOURCES = cls/statelog/cls_statelog.cc
  libcls_statelog_la_LIBADD = $(PTHREAD_LIBS) $(EXTRALIBS)
 -libcls_statelog_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0 -export-symbols-regex '.*__cls_.*'
 +libcls_statelog_la_LDFLAGS = ${AM_LDFLAGS} -module -avoid-version -shared -export-symbols-regex '.*__cls_.*'
- 
  radoslib_LTLIBRARIES += libcls_statelog.la
  
-@@ -597,7 +597,7 @@ libcls_replica_log_la_SOURCES = cls/repl
- libcls_replica_log_la_CFLAGS = ${AM_CFLAGS}
- libcls_replica_log_la_CXXFLAGS= ${AM_CXXFLAGS}
+ libcls_replica_log_la_SOURCES = cls/replica_log/cls_replica_log.cc
  libcls_replica_log_la_LIBADD = $(PTHREAD_LIBS) $(EXTRALIBS)
 -libcls_replica_log_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0 -export-symbols-regex '.*__cls_.*'
 +libcls_replica_log_la_LDFLAGS = ${AM_LDFLAGS} -module -avoid-version -shared -export-symbols-regex '.*__cls_.*'
- 
  radoslib_LTLIBRARIES += libcls_replica_log.la
  
-@@ -613,7 +613,7 @@ libcls_rgw_la_SOURCES = \
- libcls_rgw_la_CFLAGS = ${AM_CFLAGS}
- libcls_rgw_la_CXXFLAGS= ${AM_CXXFLAGS}
- libcls_rgw_la_LIBADD = $(PTHREAD_LIBS) $(EXTRALIBS)
+ libcls_rgw_la_SOURCES = \
+@@ -49,7 +49,7 @@ libcls_rgw_la_SOURCES = \
+ 	cls/rgw/cls_rgw_types.cc \
+ 	common/ceph_json.cc
+ libcls_rgw_la_LIBADD = libjson_spirit.la $(PTHREAD_LIBS) $(EXTRALIBS)
 -libcls_rgw_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0 -export-symbols-regex '.*__cls_.*'
 +libcls_rgw_la_LDFLAGS = ${AM_LDFLAGS} -module -avoid-version -shared -export-symbols-regex '.*__cls_.*'
- 
  radoslib_LTLIBRARIES += libcls_rgw.la
  
-@@ -688,7 +688,7 @@ libcls_kvs_la_SOURCES = key_value_store/
- libcls_kvs_la_CFLAGS = ${AM_CFLAGS}
- libcls_kvs_la_CXXFLAGS= ${AM_CXXFLAGS}
- libcls_kvs_la_LIBADD = $(PTHREAD_LIBS) $(EXTRALIBS)
--libcls_kvs_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0 -export-symbols-regex '.*__cls_.*'
-+libcls_kvs_la_LDFLAGS = ${AM_LDFLAGS} -module -avoid-version -shared -export-symbols-regex '.*__cls_.*'
- 
- radoslib_LTLIBRARIES += libcls_kvs.la
- 
+ ## Rados object client classes
