@@ -131,13 +131,14 @@ struct ObjectCacheEntry {
 class ObjectCache {
   std::map<string, ObjectCacheEntry> cache_map;
   std::list<string> lru;
+  unsigned long lru_size;
   Mutex lock;
   CephContext *cct;
 
   void touch_lru(string& name, std::list<string>::iterator& lru_iter);
   void remove_lru(string& name, std::list<string>::iterator& lru_iter);
 public:
-  ObjectCache() : lock("ObjectCache"), cct(NULL) { }
+  ObjectCache() : lru_size(0), lock("ObjectCache"), cct(NULL) { }
   int get(std::string& name, ObjectCacheInfo& bl, uint32_t mask);
   void put(std::string& name, ObjectCacheInfo& bl);
   void remove(std::string& name);
@@ -177,14 +178,13 @@ class RGWCache  : public T
     if (ret < 0)
       return ret;
 
-    ret = T::init_watch();
-    return ret;
+    return 0;
   }
 
-  void finalize() {
-    T::finalize_watch();
-    T::finalize();
+  bool need_watch_notify() {
+    return true;
   }
+
   int distribute_cache(const string& normal_name, rgw_obj& obj, ObjectCacheInfo& obj_info, int op);
   int watch_cb(int opcode, uint64_t ver, bufferlist& bl);
 public:

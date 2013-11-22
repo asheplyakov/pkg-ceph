@@ -36,8 +36,10 @@ void BackTrace::print(std::ostream& out)
     if (begin && end) {
       int len = end - begin;
       char *foo = (char *)malloc(len+1);
-      if (!foo)
-        return;
+      if (!foo) {
+	free(function);
+	return;
+      }
       memcpy(foo, begin, len);
       foo[len] = 0;
 
@@ -55,6 +57,7 @@ void BackTrace::print(std::ostream& out)
       }
       out << " " << (i-skip+1) << ": (" << function << end << std::endl;
       //fprintf(out, "    %s:%s\n", stack.strings[i], function);
+      free(foo);
     } else {
       // didn't find the mangled name, just print the whole line
       out << " " << (i-skip+1) << ": " << strings[i] << std::endl;

@@ -1,15 +1,15 @@
-
 // there must be a better way?
 typedef char bool;
 #define false 0
 #define true  1
+
+#include "include/int_types.h"
 
 #include <netinet/in.h>
 #if defined(__linux__)
 #include <linux/types.h>
 #elif defined(__FreeBSD__)
 #include <sys/types.h>
-#include "include/inttypes.h"
 #endif
 #include <string.h>
 #include <fcntl.h>
@@ -122,8 +122,7 @@ const struct sm_state_t filelock[LOCK_MAX] = {
     [LOCK_EXCL_XSYN] = { LOCK_XSYN, false, LOCK_LOCK, 0,    0,   XCL, 0,   0,   0,   0,   0,CEPH_CAP_GCACHE|CEPH_CAP_GBUFFER,0,0 },
 
     [LOCK_PRE_SCAN]  = { LOCK_SCAN, false, LOCK_LOCK, 0,    0,   0,   0,   0,   0,   0,   0,0,0,0 },
-    [LOCK_SCAN]      = { 0,         false, LOCK_LOCK, 0,    0,   0,   0,   0,   0,   0,   0,0,0,0 },
-    [LOCK_SCAN_LOCK] = { LOCK_LOCK, false, LOCK_LOCK, 0,    0,   0,   0,   0,   0,   0,   0,0,0,0 },
+    [LOCK_SCAN]      = { LOCK_LOCK, false, LOCK_LOCK, 0,    0,   0,   0,   0,   0,   0,   0,0,0,0 },
 };
 
 const struct sm_t sm_filelock = {

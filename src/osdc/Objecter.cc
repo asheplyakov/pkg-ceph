@@ -229,7 +229,8 @@ void Objecter::init_locked()
   assert(!initialized);
 
   schedule_tick();
-  maybe_request_map();
+  if (osdmap->get_epoch() == 0)
+    maybe_request_map();
 
   initialized = true;
 }
@@ -296,7 +297,7 @@ void Objecter::send_linger(LingerOp *info)
     if (ops.count(info->register_tid)) {
       Op *o = ops[info->register_tid];
       op_cancel_map_check(o);
-      cancel_op(o);
+      cancel_linger_op(o);
     }
     info->register_tid = _op_submit(o);
   } else {
@@ -322,8 +323,7 @@ void Objecter::_linger_ack(LingerOp *info, int r)
 {
   ldout(cct, 10) << "_linger_ack " << info->linger_id << dendl;
   if (info->on_reg_ack) {
-    info->on_reg_ack->finish(r);
-    delete info->on_reg_ack;
+    info->on_reg_ack->complete(r);
     info->on_reg_ack = NULL;
   }
 }
@@ -332,8 +332,7 @@ void Objecter::_linger_commit(LingerOp *info, int r)
 {
   ldout(cct, 10) << "_linger_commit " << info->linger_id << dendl;
   if (info->on_reg_commit) {
-    info->on_reg_commit->finish(r);
-    delete info->on_reg_commit;
+    info->on_reg_commit->complete(r);
     info->on_reg_commit = NULL;
   }
 
@@ -359,7 +358,7 @@ tid_t Objecter::linger_mutate(const object_t& oid, const object_locator_t& oloc,
 			      const SnapContext& snapc, utime_t mtime,
 			      bufferlist& inbl, int flags,
 			      Context *onack, Context *oncommit,
-			      eversion_t *objver)
+			      version_t *objver)
 {
   LingerOp *info = new LingerOp;
   info->oid = oid;
@@ -390,7 +389,7 @@ tid_t Objecter::linger_read(const object_t& oid, const object_locator_t& oloc,
 			    ObjectOperation& op,
 			    snapid_t snap, bufferlist& inbl, bufferlist *poutbl, int flags,
 			    Context *onfinish,
-			    eversion_t *objver)
+			    version_t *objver)
 {
   LingerOp *info = new LingerOp;
   info->oid = oid;
@@ -660,7 +659,7 @@ void Objecter::handle_osd_map(MOSDMap *m)
 	send_op(op);
       }
     } else {
-      cancel_op(op);
+      cancel_linger_op(op);
     }
   }
   for (list<LingerOp*>::iterator p = need_resend_linger.begin(); p != need_resend_linger.end(); ++p) {
@@ -687,8 +686,7 @@ void Objecter::handle_osd_map(MOSDMap *m)
     //go through the list and call the onfinish methods
     for (list<pair<Context*, int> >::iterator i = p->second.begin();
 	 i != p->second.end(); ++i) {
-      i->first->finish(i->second);
-      delete i->first;
+      i->first->complete(i->second);
     }
     waiting_for_map.erase(p++);
   }
@@ -1005,7 +1003,7 @@ void Objecter::kick_requests(OSDSession *session)
     if (op->should_resend) {
       resend[op->tid] = op;
     } else {
-      cancel_op(op);
+      cancel_linger_op(op);
     }
   }
   while (!resend.empty()) {
@@ -1245,8 +1243,8 @@ tid_t Objecter::_op_submit(Op *op)
   }
 
   // send?
-  ldout(cct, 10) << "op_submit oid " << op->oid
-           << " " << op->oloc 
+  ldout(cct, 10) << "op_submit oid " << op->base_oid
+           << " " << op->base_oloc << " " << op->target_oloc
 	   << " " << op->ops << " tid " << op->tid
            << " osd." << (op->session ? op->session->osd : -1)
            << dendl;
@@ -1283,6 +1281,32 @@ tid_t Objecter::_op_submit(Op *op)
   return op->tid;
 }
 
+int Objecter::op_cancel(tid_t tid)
+{
+  assert(client_lock.is_locked());
+  assert(initialized);
+
+  map<tid_t, Op*>::iterator p = ops.find(tid);
+  if (p == ops.end()) {
+    ldout(cct, 10) << __func__ << " tid " << tid << " dne" << dendl;
+    return -ENOENT;
+  }
+
+  ldout(cct, 10) << __func__ << " tid " << tid << dendl;
+  Op *op = p->second;
+  if (op->onack) {
+    op->onack->complete(-ECANCELED);
+    op->onack = NULL;
+  }
+  if (op->oncommit) {
+    op->oncommit->complete(-ECANCELED);
+    op->oncommit = NULL;
+  }
+  op_cancel_map_check(op);
+  finish_op(op);
+  return 0;
+}
+
 bool Objecter::is_pg_changed(vector<int>& o, vector<int>& n, bool any_change)
 {
   if (o.empty() && n.empty())
@@ -1300,12 +1324,37 @@ int Objecter::recalc_op_target(Op *op)
 {
   vector<int> acting;
   pg_t pgid = op->pgid;
+
+  bool is_read = op->flags & CEPH_OSD_FLAG_READ;
+  bool is_write = op->flags & CEPH_OSD_FLAG_WRITE;
+
+  bool need_check_tiering = false;
+  if (op->target_oid.name.empty()) {
+    op->target_oid = op->base_oid;
+    need_check_tiering = true;
+  }
+  if (op->target_oloc.empty()) {
+    op->target_oloc = op->base_oloc;
+    need_check_tiering = true;
+  }
+  
+  if (honor_cache_redirects && need_check_tiering) {
+    const pg_pool_t *pi = osdmap->get_pg_pool(op->base_oloc.pool);
+    if (pi) {
+      if (is_read && pi->has_read_tier())
+	op->target_oloc.pool = pi->read_tier;
+      if (is_write && pi->has_write_tier())
+	op->target_oloc.pool = pi->write_tier;
+    }
+  }
+
   if (op->precalc_pgid) {
+    assert(op->base_oid.name.empty()); // make sure this is a listing op
     ldout(cct, 10) << "recalc_op_target have " << pgid << " pool " << osdmap->have_pg_pool(pgid.pool()) << dendl;
     if (!osdmap->have_pg_pool(pgid.pool()))
       return RECALC_OP_TARGET_POOL_DNE;
   } else {
-    int ret = osdmap->object_locator_to_pg(op->oid, op->oloc, pgid);
+    int ret = osdmap->object_locator_to_pg(op->target_oid, op->target_oloc, pgid);
     if (ret == -ENOENT)
       return RECALC_OP_TARGET_POOL_DNE;
   }
@@ -1321,7 +1370,7 @@ int Objecter::recalc_op_target(Op *op)
     op->used_replica = false;
     if (!acting.empty()) {
       int osd;
-      bool read = (op->flags & CEPH_OSD_FLAG_READ) && (op->flags & CEPH_OSD_FLAG_WRITE) == 0;
+      bool read = is_read && !is_write;
       if (read && (op->flags & CEPH_OSD_FLAG_BALANCE_READS)) {
 	int p = rand() % acting.size();
 	if (p)
@@ -1391,12 +1440,10 @@ bool Objecter::recalc_linger_op_target(LingerOp *linger_op)
   return RECALC_OP_TARGET_NO_ACTION;
 }
 
-void Objecter::cancel_op(Op *op)
+void Objecter::cancel_linger_op(Op *op)
 {
   ldout(cct, 15) << "cancel_op " << op->tid << dendl;
 
-  // currently this only works for linger registrations, since we just
-  // throw out the callbacks.
   assert(!op->should_resend);
   delete op->onack;
   delete op->oncommit;
@@ -1447,7 +1494,8 @@ void Objecter::send_op(Op *op)
   op->stamp = ceph_clock_now(cct);
 
   MOSDOp *m = new MOSDOp(client_inc, op->tid, 
-			 op->oid, op->oloc, op->pgid, osdmap->get_epoch(),
+			 op->target_oid, op->target_oloc, op->pgid,
+			 osdmap->get_epoch(),
 			 flags);
 
   m->set_snapid(op->snapid);
@@ -1458,8 +1506,8 @@ void Objecter::send_op(Op *op)
   m->set_mtime(op->mtime);
   m->set_retry_attempt(op->attempts++);
 
-  if (op->version != eversion_t())
-    m->set_version(op->version);  // we're replaying this op!
+  if (op->replay_version != eversion_t())
+    m->set_version(op->replay_version);  // we're replaying this op!
 
   if (op->priority)
     m->set_priority(op->priority);
@@ -1508,6 +1556,15 @@ void Objecter::throttle_op(Op *op, int op_budget)
   }
 }
 
+void Objecter::unregister_op(Op *op)
+{
+  if (op->onack)
+    num_unacked--;
+  if (op->oncommit)
+    num_uncommitted--;
+  ops.erase(op->tid);
+}
+
 /* This function DOES put the passed message before returning */
 void Objecter::handle_osd_op_reply(MOSDOpReply *m)
 {
@@ -1528,7 +1585,8 @@ void Objecter::handle_osd_op_reply(MOSDOpReply *m)
 
   ldout(cct, 7) << "handle_osd_op_reply " << tid
 		<< (m->is_ondisk() ? " ondisk":(m->is_onnvram() ? " onnvram":" ack"))
-		<< " v " << m->get_version() << " in " << m->get_pg()
+		<< " v " << m->get_replay_version() << " uv " << m->get_user_version()
+		<< " in " << m->get_pg()
 		<< " attempt " << m->get_retry_attempt()
 		<< dendl;
   Op *op = ops[tid];
@@ -1553,19 +1611,25 @@ void Objecter::handle_osd_op_reply(MOSDOpReply *m)
 
   int rc = m->get_result();
 
+  if (m->is_redirect_reply()) {
+    ldout(cct, 5) << " got redirect reply; redirecting" << dendl;
+    unregister_op(op);
+    m->get_redirect().combine_with_locator(op->target_oloc, op->target_oid.name);
+    op_submit(op);
+    m->put();
+    return;
+  }
+
   if (rc == -EAGAIN) {
     ldout(cct, 7) << " got -EAGAIN, resubmitting" << dendl;
-    if (op->onack)
-      num_unacked--;
-    if (op->oncommit)
-      num_uncommitted--;
+    unregister_op(op);
     op_submit(op);
     m->put();
     return;
   }
 
   if (op->objver)
-    *op->objver = m->get_version();
+    *op->objver = m->get_user_version();
   if (op->reply_epoch)
     *op->reply_epoch = m->get_map_epoch();
 
@@ -1605,7 +1669,7 @@ void Objecter::handle_osd_op_reply(MOSDOpReply *m)
   // ack|commit -> ack
   if (op->onack) {
     ldout(cct, 15) << "handle_osd_op_reply ack" << dendl;
-    op->version = m->get_version();
+    op->replay_version = m->get_replay_version();
     onack = op->onack;
     op->onack = 0;  // only do callback once
     num_unacked--;
@@ -1637,12 +1701,10 @@ void Objecter::handle_osd_op_reply(MOSDOpReply *m)
 
   // do callbacks
   if (onack) {
-    onack->finish(rc);
-    delete onack;
+    onack->complete(rc);
   }
   if (oncommit) {
-    oncommit->finish(rc);
-    delete oncommit;
+    oncommit->complete(rc);
   }
 
   m->put();
@@ -1661,8 +1723,7 @@ void Objecter::list_objects(ListContext *list_context, Context *onfinish) {
 	   << "\nlist_context->cookie" << list_context->cookie << dendl;
 
   if (list_context->at_end) {
-    onfinish->finish(0);
-    delete onfinish;
+    onfinish->complete(0);
     return;
   }
 
@@ -1682,8 +1743,7 @@ void Objecter::list_objects(ListContext *list_context, Context *onfinish) {
     list_context->starting_pg_num = pg_num;
   }
   if (list_context->current_pg == pg_num){ //this context got all the way through
-    onfinish->finish(0);
-    delete onfinish;
+    onfinish->complete(0);
     return;
   }
 
@@ -1737,9 +1797,8 @@ void Objecter::_list_reply(ListContext *list_context, int r, bufferlist *bl,
     ldout(cct, 20) << "got a response with objects, proceeding" << dendl;
     list_context->list.merge(response.entries);
     if (response_size >= list_context->max_entries) {
-      final_finish->finish(0);
+      final_finish->complete(0);
       delete bl;
-      delete final_finish;
       return;
     }
 
@@ -1771,8 +1830,7 @@ void Objecter::_list_reply(ListContext *list_context, int r, bufferlist *bl,
   ldout(cct, 20) << "out of pgs, returning to" << final_finish << dendl;
   list_context->at_end = true;
   delete bl;
-  final_finish->finish(0);
-  delete final_finish;
+  final_finish->complete(0);
   return;
 }
 
@@ -1814,8 +1872,7 @@ struct C_SelfmanagedSnap : public Context {
       bufferlist::iterator p = bl.begin();
       ::decode(*psnapid, p);
     }
-    fin->finish(r);
-    delete fin;
+    fin->complete(r);
   }
 };
 
@@ -1990,8 +2047,7 @@ void Objecter::handle_pool_op_reply(MPoolOpReply *m)
       wait_for_new_map(op->onfinish, m->epoch, m->replyCode);
     }
     else {
-      op->onfinish->finish(m->replyCode);
-      delete op->onfinish;
+      op->onfinish->complete(m->replyCode);
     }
     op->onfinish = NULL;
     delete op;
@@ -2048,8 +2104,7 @@ void Objecter::handle_get_pool_stats_reply(MGetPoolStatsReply *m)
     *op->pool_stats = m->pool_stats;
     if (m->version > last_seen_pgmap_version)
       last_seen_pgmap_version = m->version;
-    op->onfinish->finish(0);
-    delete op->onfinish;
+    op->onfinish->complete(0);
     poolstat_ops.erase(tid);
     delete op;
 
@@ -2100,8 +2155,7 @@ void Objecter::handle_fs_stats_reply(MStatfsReply *m)
     *(op->stats) = m->h.st;
     if (m->h.version > last_seen_pgmap_version)
       last_seen_pgmap_version = m->h.version;
-    op->onfinish->finish(0);
-    delete op->onfinish;
+    op->onfinish->complete(0);
     statfs_ops.erase(tid);
     delete op;
 
@@ -2143,8 +2197,7 @@ void Objecter::_sg_read_finish(vector<ObjectExtent>& extents, vector<bufferlist>
   ldout(cct, 7) << "_sg_read_finish " << bytes_read << " bytes" << dendl;
 
   if (onfinish) {
-    onfinish->finish(bytes_read);// > 0 ? bytes_read:m->get_result());
-    delete onfinish;
+    onfinish->complete(bytes_read);// > 0 ? bytes_read:m->get_result());
   }
 }
 
@@ -2191,7 +2244,7 @@ void Objecter::dump_active()
   for (map<tid_t,Op*>::iterator p = ops.begin(); p != ops.end(); ++p) {
     Op *op = p->second;
     ldout(cct, 20) << op->tid << "\t" << op->pgid << "\tosd." << (op->session ? op->session->osd : -1)
-	    << "\t" << op->oid << "\t" << op->ops << dendl;
+	    << "\t" << op->base_oid << "\t" << op->ops << dendl;
   }
 }
 
@@ -2222,8 +2275,9 @@ void Objecter::dump_ops(Formatter *fmt) const
     fmt->dump_int("osd", op->session ? op->session->osd : -1);
     fmt->dump_stream("last_sent") << op->stamp;
     fmt->dump_int("attempts", op->attempts);
-    fmt->dump_stream("object_id") << op->oid;
-    fmt->dump_stream("object_locator") << op->oloc;
+    fmt->dump_stream("object_id") << op->base_oid;
+    fmt->dump_stream("object_locator") << op->base_oloc;
+    fmt->dump_stream("target_object_locator") << op->target_oloc;
     fmt->dump_stream("snapid") << op->snapid;
     fmt->dump_stream("snap_context") << op->snapc;
     fmt->dump_stream("mtime") << op->mtime;
@@ -2255,8 +2309,7 @@ void Objecter::dump_linger_ops(Formatter *fmt) const
     fmt->dump_stream("object_id") << op->oid;
     fmt->dump_stream("object_locator") << op->oloc;
     fmt->dump_stream("snapid") << op->snap;
-    fmt->dump_stream("registering") << op->snap;
-    fmt->dump_stream("registered") << op->snap;
+    fmt->dump_stream("registered") << op->registered;
     fmt->close_section(); // linger_op object
   }
   fmt->close_section(); // linger_ops array

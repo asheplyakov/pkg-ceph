@@ -28,16 +28,38 @@
 #define mydout(cct, v) lgeneric_subdout(cct, context, v)
 
 /*
+ * GenContext - abstract callback class
+ */
+template <typename T>
+class GenContext {
+  GenContext(const GenContext& other);
+  const GenContext& operator=(const GenContext& other);
+
+ protected:
+  virtual void finish(T t) = 0;
+
+ public:
+  GenContext() {}
+  virtual ~GenContext() {}       // we want a virtual destructor!!!
+  virtual void complete(T t) {
+    finish(t);
+    delete this;
+  }
+};
+
+/*
  * Context - abstract callback class
  */
 class Context {
   Context(const Context& other);
   const Context& operator=(const Context& other);
 
+ protected:
+  virtual void finish(int r) = 0;
+
  public:
   Context() {}
   virtual ~Context() {}       // we want a virtual destructor!!!
-  virtual void finish(int r) = 0;
   virtual void complete(int r) {
     finish(r);
     delete this;

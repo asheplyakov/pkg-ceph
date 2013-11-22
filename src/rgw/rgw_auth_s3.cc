@@ -15,6 +15,12 @@ static const char *signed_subresources[] = {
   "partNumber",
   "policy",
   "requestPayment",
+  "response-cache-control",
+  "response-content-disposition",
+  "response-content-encoding",
+  "response-content-language",
+  "response-content-type",
+  "response-expires",
   "torrent",
   "uploadId",
   "uploads",
@@ -73,9 +79,9 @@ static void get_canon_resource(const char *request_uri, map<string, string>& sub
   if (!append_str.empty()) {
     s.append(append_str);
   }
-  dout(10) << "get_canon_resource(): dest=" << dest << dendl;
-
   dest = s;
+
+  dout(10) << "get_canon_resource(): dest=" << dest << dendl;
 }
 
 /*

@@ -757,6 +757,10 @@ uint64_t OSDMap::get_features(uint64_t *pmask) const
     if (p->second.flags & pg_pool_t::FLAG_HASHPSPOOL) {
       features |= CEPH_FEATURE_OSDHASHPSPOOL;
     }
+    if (!p->second.tiers.empty() ||
+	p->second.is_tier()) {
+      features |= CEPH_FEATURE_OSD_CACHEPOOL;
+    }
   }
   mask |= CEPH_FEATURE_OSDHASHPSPOOL;
 
@@ -1743,15 +1747,25 @@ void OSDMap::print_summary(Formatter *f, ostream& out) const
 		   "true" : "false");
     f->close_section();
   } else {
-    out << "e" << get_epoch() << ": "
+    out << "     osdmap e" << get_epoch() << ": "
 	<< get_num_osds() << " osds: "
 	<< get_num_up_osds() << " up, "
-	<< get_num_in_osds() << " in";
-    if (test_flag(CEPH_OSDMAP_FULL))
-      out << " full";
-    else if (test_flag(CEPH_OSDMAP_NEARFULL))
-      out << " nearfull";
+	<< get_num_in_osds() << " in\n";
+    if (flags)
+      out << "            flags " << get_flag_string() << "\n";
   }
+}
+
+void OSDMap::print_oneline_summary(ostream& out) const
+{
+  out << "e" << get_epoch() << ": "
+      << get_num_osds() << " osds: "
+      << get_num_up_osds() << " up, "
+      << get_num_in_osds() << " in";
+  if (test_flag(CEPH_OSDMAP_FULL))
+    out << " full";
+  else if (test_flag(CEPH_OSDMAP_NEARFULL))
+    out << " nearfull";
 }
 
 bool OSDMap::crush_ruleset_in_use(int ruleset) const
@@ -1831,7 +1845,9 @@ void OSDMap::build_simple_crush_map(CephContext *cct, CrushWrapper& crush,
   crush.set_type_name(6, "root");
 
   // root
-  int rootid = crush.add_bucket(0, CRUSH_BUCKET_STRAW, CRUSH_HASH_DEFAULT, 6 /* pool */, 0, NULL, NULL);
+  int rootid;
+  int r = crush.add_bucket(0, CRUSH_BUCKET_STRAW, CRUSH_HASH_DEFAULT, 6 /* pool */, 0, NULL, NULL, &rootid);
+  assert(r == 0);
   crush.set_item_name(rootid, "default");
 
   for (int o=0; o<nosd; o++) {
@@ -1961,7 +1977,9 @@ void OSDMap::build_simple_crush_map_from_conf(CephContext *cct, CrushWrapper& cr
   set<string> hosts, racks;
 
   // root
-  int rootid = crush.add_bucket(0, CRUSH_BUCKET_STRAW, CRUSH_HASH_DEFAULT, 6 /* pool */, 0, NULL, NULL);
+  int rootid;
+  int r = crush.add_bucket(0, CRUSH_BUCKET_STRAW, CRUSH_HASH_DEFAULT, 6 /* pool */, 0, NULL, NULL, &rootid);
+  assert(r == 0);
   crush.set_item_name(rootid, "default");
 
   // add osds

@@ -3,7 +3,8 @@
 #ifndef CEPH_MDSTYPES_H
 #define CEPH_MDSTYPES_H
 
-#include <inttypes.h>
+#include "include/int_types.h"
+
 #include <math.h>
 #include <ostream>
 #include <set>
@@ -328,6 +329,7 @@ struct inode_t {
   ceph_file_layout layout;
   vector <int64_t> old_pools;
   uint64_t   size;        // on directory, # dentries
+  uint64_t   max_size_ever; // max size the file has ever been
   uint32_t   truncate_seq;
   uint64_t   truncate_size, truncate_from;
   uint32_t   truncate_pending;
@@ -352,7 +354,8 @@ struct inode_t {
   inode_t() : ino(0), rdev(0),
 	      mode(0), uid(0), gid(0),
 	      nlink(0), anchored(false),
-	      size(0), truncate_seq(0), truncate_size(0), truncate_from(0),
+	      size(0), max_size_ever(0),
+	      truncate_seq(0), truncate_size(0), truncate_from(0),
 	      truncate_pending(0),
 	      time_warp_seq(0),
 	      version(0), file_data_version(0), xattr_version(0), backtrace_version(0) {
@@ -368,6 +371,8 @@ struct inode_t {
   bool is_truncating() const { return (truncate_pending > 0); }
   void truncate(uint64_t old_size, uint64_t new_size) {
     assert(new_size < old_size);
+    if (old_size > max_size_ever)
+      max_size_ever = old_size;
     truncate_from = old_size;
     size = new_size;
     rstat.rbytes = new_size;
@@ -474,6 +479,7 @@ struct fnode_t {
   void decode(bufferlist::iterator& bl);
   void dump(Formatter *f) const;
   static void generate_test_instances(list<fnode_t*>& ls);
+  fnode_t() : version(0) {};
 };
 WRITE_CLASS_ENCODER(fnode_t)
 
@@ -1132,8 +1138,9 @@ class MDSCacheObject {
   // -- state --
   const static int STATE_AUTH      = (1<<30);
   const static int STATE_DIRTY     = (1<<29);
-  const static int STATE_REJOINING = (1<<28);  // replica has not joined w/ primary copy
-  const static int STATE_REJOINUNDEF = (1<<27);  // contents undefined.
+  const static int STATE_NOTIFYREF = (1<<28); // notify dropping ref drop through _put()
+  const static int STATE_REJOINING = (1<<27);  // replica has not joined w/ primary copy
+  const static int STATE_REJOINUNDEF = (1<<26);  // contents undefined.
 
 
   // -- wait --
@@ -1219,6 +1226,7 @@ protected:
 #endif
     assert(ref > 0);
   }
+  virtual void _put() {}
   void put(int by) {
 #ifdef MDS_REF_SET
     if (ref == 0 || ref_map[by] == 0) {
@@ -1234,6 +1242,8 @@ protected:
 #endif
       if (ref == 0)
 	last_put();
+      if (state_test(STATE_NOTIFYREF))
+	_put();
     }
   }
 

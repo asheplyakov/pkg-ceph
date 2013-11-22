@@ -11,7 +11,6 @@
  * Foundation.  See file COPYING.
  * 
  */
-
 #ifndef CEPH_BUFFER_H
 #define CEPH_BUFFER_H
 
@@ -20,7 +19,6 @@
 #include <linux/types.h>
 #elif defined(__FreeBSD__)
 #include <sys/types.h>
-#include "include/inttypes.h"
 #include <stdlib.h>
 #endif
 
@@ -46,6 +44,7 @@ void	*valloc(size_t);
 #include <malloc.h>
 #endif
 
+#include <inttypes.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -104,7 +103,19 @@ public:
   };
 
 
+  /// total bytes allocated
   static int get_total_alloc();
+
+  /// enable/disable alloc tracking
+  static void track_alloc(bool b);
+
+  /// count of cached crc hits (matching input)
+  static int get_cached_crc();
+  /// count of cached crc hits (mismatching input, required adjustment)
+  static int get_cached_crc_adjusted();
+  /// enable/disable tracking of cached crcs
+  static void track_cached_crc(bool b);
+
 
 private:
  
@@ -420,15 +431,7 @@ public:
     ssize_t read_fd(int fd, size_t len);
     int write_file(const char *fn, int mode=0644);
     int write_fd(int fd) const;
-    __u32 crc32c(__u32 crc) {
-      for (std::list<ptr>::const_iterator it = _buffers.begin(); 
-	   it != _buffers.end(); 
-	   ++it)
-	if (it->length())
-	  crc = ceph_crc32c_le(crc, (unsigned char*)it->c_str(), it->length());
-      return crc;
-    }
-
+    uint32_t crc32c(uint32_t crc) const;
   };
 
   /*
@@ -436,7 +439,7 @@ public:
    */
 
   class hash {
-    __u32 crc;
+    uint32_t crc;
 
   public:
     hash() : crc(0) { }
@@ -445,7 +448,7 @@ public:
       crc = bl.crc32c(crc);
     }
 
-    __u32 digest() {
+    uint32_t digest() {
       return crc;
     }
   };

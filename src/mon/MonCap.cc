@@ -148,7 +148,6 @@ void MonCapGrant::expand_profile(entity_name_t name) const
     profile_grants.push_back(MonCapGrant("osd", MON_CAP_R));  // read osdmap
     profile_grants.push_back(MonCapGrant("mon getmap"));
     profile_grants.push_back(MonCapGrant("osd create"));
-    profile_grants.push_back(MonCapGrant("osd crush set"));  // FIXME: constraint this further?
     profile_grants.push_back(MonCapGrant("auth add"));
     profile_grants.back().command_args["entity"] = StringConstraint("", "osd.");
     profile_grants.back().command_args["caps_mon"] = StringConstraint("allow profile osd", "");
@@ -347,7 +346,7 @@ struct MonCapParser : qi::grammar<Iterator, MonCap()>
     quoted_string %=
       lexeme['"' >> +(char_ - '"') >> '"'] | 
       lexeme['\'' >> +(char_ - '\'') >> '\''];
-    unquoted_word %= +char_("a-zA-Z0-9_-");
+    unquoted_word %= +char_("a-zA-Z0-9_.-");
     str %= quoted_string | unquoted_word;
 
     spaces = +lit(' ');

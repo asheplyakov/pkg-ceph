@@ -40,7 +40,7 @@ class MDCluster;
 class Context;
 class bloom_filter;
 
-class ObjectOperation;
+struct ObjectOperation;
 
 ostream& operator<<(ostream& out, class CDir& dir);
 class CDir : public MDSCacheObject {
@@ -286,6 +286,7 @@ protected:
  public:
   CDir(CInode *in, frag_t fg, MDCache *mdcache, bool auth);
   ~CDir() {
+    remove_bloom();
     g_num_dir--;
     g_num_dirs++;
   }
@@ -357,6 +358,7 @@ private:
   void remove_null_dentries();
   void purge_stale_snap_data(const set<snapid_t>& snaps);
 public:
+  void touch_dentries_bottom();
   bool try_trim_snap_dentry(CDentry *dn, const set<snapid_t>& snaps);
 
 

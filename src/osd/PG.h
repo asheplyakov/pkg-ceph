@@ -46,7 +46,9 @@
 #include "common/cmdparse.h"
 #include "common/tracked_int_ptr.hpp"
 #include "common/WorkQueue.h"
+#include "common/ceph_context.h"
 #include "include/str_list.h"
+#include "PGBackend.h"
 
 #include <list>
 #include <memory>
@@ -189,8 +191,11 @@ public:
   /*** PG ****/
 protected:
   OSDService *osd;
+  CephContext *cct;
   OSDriver osdriver;
   SnapMapper snap_mapper;
+
+  virtual PGBackend *get_pgbackend() = 0;
 public:
   void update_snap_mapper_bits(uint32_t bits) {
     snap_mapper.update_bits(bits);
@@ -232,7 +237,6 @@ protected:
    * put_unlock() when done with the current pointer (_most common_).
    */  
   Mutex _lock;
-  Cond _cond;
   atomic_t ref;
 
 #ifdef PG_DEBUG_REFS
@@ -260,14 +264,6 @@ public:
   }
   bool is_locked() const {
     return _lock.is_locked();
-  }
-  void wait() {
-    assert(_lock.is_locked());
-    _cond.Wait(_lock);
-  }
-  void kick() {
-    assert(_lock.is_locked());
-    _cond.Signal();
   }
 
 #ifdef PG_DEBUG_REFS
@@ -392,7 +388,9 @@ public:
     const char *state_name;
     utime_t enter_time;
     const char *get_state_name() { return state_name; }
-    NamedState() : state_name(0), enter_time(ceph_clock_now(g_ceph_context)) {}
+    NamedState(CephContext *cct_, const char *state_name_)
+      : state_name(state_name_),
+        enter_time(ceph_clock_now(cct_)) {};
     virtual ~NamedState() {}
   };
 
@@ -444,14 +442,14 @@ protected:
    */
   struct BackfillInterval {
     // info about a backfill interval on a peer
+    eversion_t version; /// version at which the scan occurred
     map<hobject_t,eversion_t> objects;
     hobject_t begin;
     hobject_t end;
     
     /// clear content
     void clear() {
-      objects.clear();
-      begin = end = hobject_t();
+      *this = BackfillInterval();
     }
 
     void reset(hobject_t start) {
@@ -469,6 +467,14 @@ protected:
       return end == hobject_t::get_max();
     }
 
+    /// removes items <= soid and adjusts begin to the first object
+    void trim_to(const hobject_t &soid) {
+      trim();
+      while (!objects.empty() && objects.begin()->first <= soid) {
+	pop_front();
+      }
+    }
+
     /// Adjusts begin to the first object
     void trim() {
       if (!objects.empty())
@@ -481,10 +487,7 @@ protected:
     void pop_front() {
       assert(!objects.empty());
       objects.erase(objects.begin());
-      if (objects.empty())
-	begin = end;
-      else
-	begin = objects.begin()->first;
+      trim();
     }
 
     /// dump
@@ -524,11 +527,11 @@ protected:
   bool flushed;
 
   // Ops waiting on backfill_pos to change
-  list<OpRequestRef> waiting_for_backfill_pos;
   list<OpRequestRef>            waiting_for_active;
   list<OpRequestRef>            waiting_for_all_missing;
   map<hobject_t, list<OpRequestRef> > waiting_for_missing_object,
-                                        waiting_for_degraded_object;
+			     waiting_for_degraded_object,
+			     waiting_for_blocked_object;
   // Callbacks should assume pg (and nothing else) is locked
   map<hobject_t, list<Context*> > callbacks_for_degraded_object;
   map<eversion_t,list<OpRequestRef> > waiting_for_ack, waiting_for_ondisk;
@@ -536,6 +539,7 @@ protected:
   void split_ops(PG *child, unsigned split_bits);
 
   void requeue_object_waiters(map<hobject_t, list<OpRequestRef> >& m);
+  void requeue_op(OpRequestRef op);
   void requeue_ops(list<OpRequestRef> &l);
 
   // stats that persist lazily
@@ -645,9 +649,14 @@ public:
 
   virtual void check_local() = 0;
 
-  virtual int start_recovery_ops(
+  /**
+   * @param ops_begun returns how many recovery ops the function started
+   * @returns true if any useful work was accomplished; false otherwise
+   */
+  virtual bool start_recovery_ops(
     int max, RecoveryCtx *prctx,
-    ThreadPool::TPHandle &handle) = 0;
+    ThreadPool::TPHandle &handle,
+    int *ops_begun) = 0;
 
   void purge_strays();
 
@@ -874,8 +883,12 @@ public:
   virtual void _scrub(ScrubMap &map) { }
   virtual void _scrub_clear_state() { }
   virtual void _scrub_finish() { }
-  virtual coll_t get_temp_coll() = 0;
-  virtual bool have_temp_coll() = 0;
+  virtual void get_colls(list<coll_t> *out) = 0;
+  virtual void split_colls(
+    pg_t child,
+    int split_bits,
+    int seed,
+    ObjectStore::Transaction *t) = 0;
   virtual bool _report_snap_collection_errors(
     const hobject_t &hoid,
     const map<string, bufferptr> &attrs,
@@ -890,7 +903,7 @@ public:
   void unreg_next_scrub();
 
   void replica_scrub(
-    class MOSDRepScrub *op,
+    struct MOSDRepScrub *op,
     ThreadPool::TPHandle &handle);
   void sub_op_scrub_map(OpRequestRef op);
   void sub_op_scrub_reserve(OpRequestRef op);
@@ -1069,21 +1082,8 @@ public:
 
   /* Encapsulates PG recovery process */
   class RecoveryState {
-    void start_handle(RecoveryCtx *new_ctx) {
-      assert(!rctx);
-      rctx = new_ctx;
-      if (rctx)
-	rctx->start_time = ceph_clock_now(g_ceph_context);
-    }
-
-    void end_handle() {
-      if (rctx) {
-	utime_t dur = ceph_clock_now(g_ceph_context) - rctx->start_time;
-	machine.event_time += dur;
-      }
-      machine.event_count++;
-      rctx = 0;
-    }
+    void start_handle(RecoveryCtx *new_ctx);
+    void end_handle();
 
     /* States */
     struct Initial;
@@ -1806,10 +1806,10 @@ public:
 
 
   // abstract bits
-  void do_request(
+  virtual void do_request(
     OpRequestRef op,
     ThreadPool::TPHandle &handle
-  );
+  ) = 0;
 
   virtual void do_op(OpRequestRef op) = 0;
   virtual void do_sub_op(OpRequestRef op) = 0;
@@ -1819,9 +1819,6 @@ public:
     ThreadPool::TPHandle &handle
   ) = 0;
   virtual void do_backfill(OpRequestRef op) = 0;
-  virtual void do_push(OpRequestRef op) = 0;
-  virtual void do_pull(OpRequestRef op) = 0;
-  virtual void do_push_reply(OpRequestRef op) = 0;
   virtual void snap_trimmer() = 0;
 
   virtual int do_command(cmdmap_t cmdmap, ostream& ss,

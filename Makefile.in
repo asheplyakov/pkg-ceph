@@ -41,19 +41,17 @@ DIST_COMMON = README $(am__configure_deps) $(srcdir)/Makefile.am \
 	compile config.guess config.sub depcomp install-sh ltmain.sh \
 	missing py-compile
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
-am__aclocal_m4_deps = $(top_srcdir)/m4/ac_check_class.m4 \
-	$(top_srcdir)/m4/ac_check_classpath.m4 \
+am__aclocal_m4_deps = $(top_srcdir)/m4/ac_check_classpath.m4 \
 	$(top_srcdir)/m4/ac_prog_jar.m4 \
-	$(top_srcdir)/m4/ac_prog_java.m4 \
-	$(top_srcdir)/m4/ac_prog_java_works.m4 \
 	$(top_srcdir)/m4/ac_prog_javac.m4 \
 	$(top_srcdir)/m4/ac_prog_javac_works.m4 \
 	$(top_srcdir)/m4/ac_prog_javah.m4 \
-	$(top_srcdir)/m4/ac_try_compile_java.m4 \
-	$(top_srcdir)/m4/acx_pthread.m4 $(top_srcdir)/m4/libtool.m4 \
-	$(top_srcdir)/m4/ltoptions.m4 $(top_srcdir)/m4/ltsugar.m4 \
-	$(top_srcdir)/m4/ltversion.m4 $(top_srcdir)/m4/lt~obsolete.m4 \
-	$(top_srcdir)/m4/pkg.m4 $(top_srcdir)/configure.ac
+	$(top_srcdir)/m4/acx_pthread.m4 \
+	$(top_srcdir)/m4/ax_check_compile_flag.m4 \
+	$(top_srcdir)/m4/libtool.m4 $(top_srcdir)/m4/ltoptions.m4 \
+	$(top_srcdir)/m4/ltsugar.m4 $(top_srcdir)/m4/ltversion.m4 \
+	$(top_srcdir)/m4/lt~obsolete.m4 $(top_srcdir)/m4/pkg.m4 \
+	$(top_srcdir)/configure.ac
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 am__CONFIG_DISTCLEAN_FILES = config.status config.cache config.log \
@@ -135,6 +133,9 @@ AUTOHEADER = @AUTOHEADER@
 AUTOMAKE = @AUTOMAKE@
 AWK = @AWK@
 CC = @CC@
+CCAS = @CCAS@
+CCASDEPMODE = @CCASDEPMODE@
+CCASFLAGS = @CCASFLAGS@
 CCDEPMODE = @CCDEPMODE@
 CFLAGS = @CFLAGS@
 CPP = @CPP@
@@ -169,7 +170,6 @@ INSTALL_PROGRAM = @INSTALL_PROGRAM@
 INSTALL_SCRIPT = @INSTALL_SCRIPT@
 INSTALL_STRIP_PROGRAM = @INSTALL_STRIP_PROGRAM@
 JAR = @JAR@
-JAVA = @JAVA@
 JAVAC = @JAVAC@
 JAVAH = @JAVAH@
 JDK_CPPFLAGS = @JDK_CPPFLAGS@
@@ -182,6 +182,8 @@ LIBOBJS = @LIBOBJS@
 LIBS = @LIBS@
 LIBTCMALLOC = @LIBTCMALLOC@
 LIBTOOL = @LIBTOOL@
+LIBZFS_CFLAGS = @LIBZFS_CFLAGS@
+LIBZFS_LIBS = @LIBZFS_LIBS@
 LIPO = @LIPO@
 LN_S = @LN_S@
 LTLIBOBJS = @LTLIBOBJS@
@@ -287,14 +289,14 @@ target_vendor = @target_vendor@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
-uudecode = @uudecode@
 AUTOMAKE_OPTIONS = gnu
 ACLOCAL_AMFLAGS = -I m4
 EXTRA_DIST = autogen.sh ceph.spec.in ceph.spec src/test/run-cli-tests \
 	src/test/run-cli-tests-maybe-unset-ccache src/test/cli \
 	src/test/downloads udev/50-rbd.rules \
 	udev/60-ceph-partuuid-workaround.rules udev/95-ceph-osd.rules \
-	udev/95-ceph-osd-alt.rules
+	udev/95-ceph-osd-alt.rules share/known_hosts_drop.ceph.com \
+	share/id_dsa_drop.ceph.com share/id_dsa_drop.ceph.com.pub
 # the "." here makes sure check-local builds gtest before it is used
 SUBDIRS = . src man
 all: all-recursive
@@ -729,7 +731,7 @@ info: info-recursive
 
 info-am:
 
-install-data-am:
+install-data-am: install-data-local
 
 install-dvi: install-dvi-recursive
 
@@ -788,15 +790,22 @@ uninstall-am:
 	distclean distclean-generic distclean-libtool distclean-tags \
 	distcleancheck distdir distuninstallcheck dvi dvi-am html \
 	html-am info info-am install install-am install-data \
-	install-data-am install-dvi install-dvi-am install-exec \
-	install-exec-am install-html install-html-am install-info \
-	install-info-am install-man install-pdf install-pdf-am \
-	install-ps install-ps-am install-strip installcheck \
-	installcheck-am installdirs installdirs-am maintainer-clean \
-	maintainer-clean-generic mostlyclean mostlyclean-generic \
-	mostlyclean-libtool pdf pdf-am ps ps-am tags tags-recursive \
-	uninstall uninstall-am
+	install-data-am install-data-local install-dvi install-dvi-am \
+	install-exec install-exec-am install-html install-html-am \
+	install-info install-info-am install-man install-pdf \
+	install-pdf-am install-ps install-ps-am install-strip \
+	installcheck installcheck-am installdirs installdirs-am \
+	maintainer-clean maintainer-clean-generic mostlyclean \
+	mostlyclean-generic mostlyclean-libtool pdf pdf-am ps ps-am \
+	tags tags-recursive uninstall uninstall-am
 
+
+# why is it so hard to make autotools to this?
+install-data-local:
+	-mkdir -p $(DESTDIR)$(datadir)/ceph
+	-install -m 644 share/known_hosts_drop.ceph.com $(DESTDIR)$(datadir)/ceph/known_hosts_drop.ceph.com
+	-install -m 644 share/known_hosts_drop.ceph.com $(DESTDIR)$(datadir)/ceph/id_dsa_drop.ceph.com
+	-install -m 644 share/known_hosts_drop.ceph.com $(DESTDIR)$(datadir)/ceph/id_dsa_drop.ceph.com.pub
 
 all-local:
 #	We need gtest to build the rados-api tests. We only build those in

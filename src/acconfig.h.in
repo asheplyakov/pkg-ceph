@@ -37,6 +37,9 @@
 /* Define to 1 if you have the `fuse_getgroups' function. */
 #undef HAVE_FUSE_GETGROUPS
 
+/* we have a recent yasm and are x86_64 */
+#undef HAVE_GOOD_YASM_ELF64
+
 /* Define to 1 if you have the <inttypes.h> header file. */
 #undef HAVE_INTTYPES_H
 
@@ -75,6 +78,9 @@
 /* Define if you have tcmalloc */
 #undef HAVE_LIBTCMALLOC
 
+/* Defined if you have libzfs enabled */
+#undef HAVE_LIBZFS
+
 /* Define to 1 if you have the <memory.h> header file. */
 #undef HAVE_MEMORY_H
 
@@ -86,6 +92,9 @@
 
 /* Define to 1 if you have the <netinet/in.h> header file. */
 #undef HAVE_NETINET_IN_H
+
+/* Define to 1 if you have the `prctl' function. */
+#undef HAVE_PRCTL
 
 /* Define if you have perftools profiler enabled */
 #undef HAVE_PROFILER
@@ -133,6 +142,9 @@
 
 /* Define to 1 if you have the <sys/param.h> header file. */
 #undef HAVE_SYS_PARAM_H
+
+/* Define to 1 if you have the <sys/prctl.h> header file. */
+#undef HAVE_SYS_PRCTL_H
 
 /* Define to 1 if you have the <sys/socket.h> header file. */
 #undef HAVE_SYS_SOCKET_H

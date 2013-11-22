@@ -127,7 +127,8 @@ long g_num_caps = 0;
 set<int> SimpleLock::empty_gather_set;
 
 
-MDCache::MDCache(MDS *m)
+MDCache::MDCache(MDS *m) :
+  delayed_eval_stray(member_offset(CDentry, item_stray))
 {
   mds = m;
   migrator = new Migrator(mds, this);
@@ -510,8 +511,7 @@ void MDCache::_create_system_file_finish(Mutation *mut, CDentry *dn, version_t d
   mut->cleanup();
   delete mut;
 
-  fin->finish(0);
-  delete fin;
+  fin->complete(0);
 
   //if (dir && MDS_INO_IS_MDSDIR(in->ino()))
   //migrator->export_dir(dir, (int)in->ino() - MDS_INO_MDSDIR_OFFSET);
@@ -632,7 +632,7 @@ void MDCache::populate_mydir()
       CDir *dir = strays[i]->get_dirfrag(fg);
       if (!dir)
 	dir = strays[i]->get_or_open_dirfrag(this, fg);
-      if (!dir->is_complete()) {
+      if (dir->get_version() == 0) {
 	dir->fetch(new C_MDS_RetryOpenRoot(this));
 	return;
       }
@@ -653,6 +653,8 @@ void MDCache::populate_mydir()
   assert(!open);    
   open = true;
   mds->queue_waiters(waiting_for_open);
+
+  scan_stray_dir();
 }
 
 void MDCache::open_foreign_mdsdir(inodeno_t ino, Context *fin)
@@ -677,6 +679,7 @@ CDentry *MDCache::get_or_create_stray_dentry(CInode *in)
   } else 
     assert(straydn->get_projected_linkage()->is_null());
 
+  straydn->state_set(CDentry::STATE_STRAY);
   return straydn;
 }
 
@@ -1981,8 +1984,8 @@ void MDCache::predirty_journal_parents(Mutation *mut, EMetaBlob *blob,
     }
 
     bool stop = false;
-    if (!pin->is_auth() || pin->is_ambiguous_auth()) {
-      dout(10) << "predirty_journal_parents !auth or ambig on " << *pin << dendl;
+    if (!pin->can_auth_pin() || pin->is_ambiguous_auth()) {
+      dout(10) << "predirty_journal_parents can't auth pin or ambig on " << *pin << dendl;
       stop = true;
     }
 
@@ -2007,8 +2010,7 @@ void MDCache::predirty_journal_parents(Mutation *mut, EMetaBlob *blob,
 
     if (!stop &&
 	mut->wrlocks.count(&pin->nestlock) == 0 &&
-	(!pin->can_auth_pin() ||
-	 !pin->versionlock.can_wrlock() ||                   // make sure we can take versionlock, too
+	(!pin->versionlock.can_wrlock() ||                   // make sure we can take versionlock, too
 	 //true
 	 !mds->locker->wrlock_start(&pin->nestlock, static_cast<MDRequest*>(mut), true) // can cast only because i'm passing nowait=true
 	 )) {  // ** do not initiate.. see above comment **
@@ -3093,8 +3095,7 @@ void MDCache::handle_resolve_ack(MMDSResolveAck *ack)
       if (mdr->more()->slave_commit) {
 	Context *fin = mdr->more()->slave_commit;
 	mdr->more()->slave_commit = 0;
-	fin->finish(-1);
-	delete fin;
+	fin->complete(-1);
       } else {
 	if (mdr->slave_request) 
 	  mdr->aborted = true;
@@ -5720,6 +5721,7 @@ void MDCache::identify_files_to_recover(vector<CInode*>& recover_q, vector<CInod
     }
 
     if (recover) {
+      in->auth_pin(&in->filelock);
       in->filelock.set_state(LOCK_PRE_SCAN);
       recover_q.push_back(in);
       
@@ -5786,21 +5788,15 @@ void MDCache::do_file_recover()
       dout(10) << "do_file_recover skipping " << in->inode.size
 	       << " " << *in << dendl;
       in->state_clear(CInode::STATE_RECOVERING);
+      mds->locker->eval(in, CEPH_LOCK_IFILE);
       in->auth_unpin(this);
-      if (in->filelock.is_stable()) {
-	bool need_issue = false;
-	mds->locker->eval(&in->filelock, &need_issue);
-	if (in->is_head() && need_issue)
-	  mds->locker->issue_caps(in);
-      } else
-	mds->locker->eval_gather(&in->filelock);
     }
   }
 }
 
 void MDCache::_recovered(CInode *in, int r, uint64_t size, utime_t mtime)
 {
-  dout(10) << "_recovered r=" << r << " size=" << in->inode.size << " mtime=" << in->inode.mtime
+  dout(10) << "_recovered r=" << r << " size=" << size << " mtime=" << mtime
 	   << " for " << *in << dendl;
 
   if (r != 0) {
@@ -5822,6 +5818,7 @@ void MDCache::_recovered(CInode *in, int r, uint64_t size, utime_t mtime)
   } else {
     // journal
     mds->locker->check_inode_max_size(in, true, true, size, false, 0, mtime);
+    mds->locker->eval(in, CEPH_LOCK_IFILE);
     in->auth_unpin(this);
   }
 
@@ -5935,8 +5932,9 @@ void MDCache::truncate_inode_finish(CInode *in, LogSegment *ls)
 
   EUpdate *le = new EUpdate(mds->mdlog, "truncate finish");
   mds->mdlog->start_entry(le);
-  le->metablob.add_dir_context(in->get_parent_dir());
-  le->metablob.add_primary_dentry(in->get_projected_parent_dn(), in, true);
+  CDentry *dn = in->get_projected_parent_dn();
+  le->metablob.add_dir_context(dn->get_dir());
+  le->metablob.add_primary_dentry(dn, in, true);
   le->metablob.add_truncate_finish(in->ino(), ls->offset);
 
   journal_dirty_inode(mut, &le->metablob, in);
@@ -6018,8 +6016,15 @@ bool MDCache::trim(int max)
   }
   dout(7) << "trim max=" << max << "  cur=" << lru.lru_get_size() << dendl;
 
-  map<int, MCacheExpire*> expiremap;
+  // process delayed eval_stray()
+  for (elist<CDentry*>::iterator p = delayed_eval_stray.begin(); !p.end(); ) {
+    CDentry *dn = *p;
+    ++p;
+    dn->item_stray.remove_myself();
+    eval_stray(dn);
+  }
 
+  map<int, MCacheExpire*> expiremap;
   bool is_standby_replay = mds->is_standby_replay();
   int unexpirable = 0;
   list<CDentry*> unexpirables;
@@ -6027,13 +6032,12 @@ bool MDCache::trim(int max)
   while (lru.lru_get_size() + unexpirable > (unsigned)max) {
     CDentry *dn = static_cast<CDentry*>(lru.lru_expire());
     if (!dn) break;
-    if (is_standby_replay && dn->get_linkage() &&
-        dn->get_linkage()->inode->item_open_file.is_on_list()) {
+    if ((is_standby_replay && dn->get_linkage() &&
+        dn->get_linkage()->inode->item_open_file.is_on_list()) ||
+	trim_dentry(dn, expiremap)) {
       unexpirables.push_back(dn);
       ++unexpirable;
-      continue;
     }
-    trim_dentry(dn, expiremap);
   }
   for(list<CDentry*>::iterator i = unexpirables.begin();
       i != unexpirables.end();
@@ -6088,7 +6092,7 @@ void MDCache::send_expire_messages(map<int, MCacheExpire*>& expiremap)
 }
 
 
-void MDCache::trim_dentry(CDentry *dn, map<int, MCacheExpire*>& expiremap)
+bool MDCache::trim_dentry(CDentry *dn, map<int, MCacheExpire*>& expiremap)
 {
   dout(12) << "trim_dentry " << *dn << dendl;
   
@@ -6143,6 +6147,9 @@ void MDCache::trim_dentry(CDentry *dn, map<int, MCacheExpire*>& expiremap)
     CInode *in = dnl->get_inode();
     assert(in);
     trim_inode(dn, in, con, expiremap);
+    // purging stray instead of trimming ?
+    if (dn->get_num_ref() > 0)
+      return true;
   } 
   else {
     assert(dnl->is_null());
@@ -6161,6 +6168,7 @@ void MDCache::trim_dentry(CDentry *dn, map<int, MCacheExpire*>& expiremap)
     migrator->export_empty_import(dir);
   
   if (mds->logger) mds->logger->inc(l_mds_iex);
+  return false;
 }
 
 
@@ -6223,7 +6231,14 @@ void MDCache::trim_inode(CDentry *dn, CInode *in, CDir *con, map<int, MCacheExpi
     trim_dirfrag(*p, con ? con:*p, expiremap);  // if no container (e.g. root dirfrag), use *p
   
   // INODE
-  if (!in->is_auth()) {
+  if (in->is_auth()) {
+    // eval stray after closing dirfrags
+    if (dn) {
+      maybe_eval_stray(in);
+      if (dn->get_num_ref() > 0)
+	return;
+    }
+  } else {
     pair<int,int> auth = in->authority();
     
     dirfrag_t df;
@@ -6305,6 +6320,12 @@ void MDCache::trim_non_auth()
     if (dn->is_auth()) {
       // add back into lru (at the top)
       lru.lru_insert_top(dn);
+
+      if (dn->get_dir()->get_inode()->is_stray()) {
+	dn->state_set(CDentry::STATE_STRAY);
+	if (dnl->is_primary() && dnl->get_inode()->inode.nlink == 0)
+	  dnl->get_inode()->state_set(CInode::STATE_ORPHAN);
+      }
 
       if (!first_auth) {
 	first_auth = dn;
@@ -6726,9 +6747,6 @@ void MDCache::inode_remove_replica(CInode *in, int from, set<SimpleLock *>& gath
   if (in->nestlock.remove_replica(from)) gather_locks.insert(&in->nestlock);
   if (in->flocklock.remove_replica(from)) gather_locks.insert(&in->flocklock);
   if (in->policylock.remove_replica(from)) gather_locks.insert(&in->policylock);
-
-  // trim?
-  maybe_eval_stray(in);
 }
 
 void MDCache::dentry_remove_replica(CDentry *dn, int from, set<SimpleLock *>& gather_locks)
@@ -6738,10 +6756,6 @@ void MDCache::dentry_remove_replica(CDentry *dn, int from, set<SimpleLock *>& ga
   // fix lock
   if (dn->lock.remove_replica(from))
     gather_locks.insert(&dn->lock);
-
-  CDentry::linkage_t *dnl = dn->get_projected_linkage();
-  if (dnl->is_primary())
-    maybe_eval_stray(dnl->get_inode());
 }
 
 void MDCache::trim_client_leases()
@@ -7675,8 +7689,7 @@ public:
     mdcache(mdc), ino(i), want_xlocked(wx), onfinish(c) {}
   void finish(int r) {
     if (mdcache->get_inode(ino)) {
-      onfinish->finish(0);
-      delete onfinish;
+      onfinish->complete(0);
     } else
       mdcache->open_remote_ino(ino, onfinish, want_xlocked);
   }
@@ -7703,8 +7716,7 @@ public:
     if (r == 0)
       mdcache->open_remote_ino_2(ino, anchortrace, want_xlocked, hadino, hadv, onfinish);
     else {
-      onfinish->finish(r);
-      delete onfinish;
+      onfinish->complete(r);
     }
   }
 };
@@ -7753,8 +7765,7 @@ void MDCache::open_remote_ino_2(inodeno_t ino, vector<Anchor>& anchortrace, bool
   if (in->ino() == ino) {
     // success
     dout(10) << "open_remote_ino_2 have " << *in << dendl;
-    onfinish->finish(0);
-    delete onfinish;
+    onfinish->complete(0);
     return;
   } 
 
@@ -7795,8 +7806,7 @@ void MDCache::open_remote_ino_2(inodeno_t ino, vector<Anchor>& anchortrace, bool
 	dout(10) << "expected ino " << anchortrace[i].ino
 		 << " in complete dir " << *dir
 		 << ", got same anchor " << anchortrace[i] << " 2x in a row" << dendl;
-	onfinish->finish(-ENOENT);
-	delete onfinish;
+	onfinish->complete(-ENOENT);
       } else {
 	// hrm.  requery anchor table.
 	dout(10) << "expected ino " << anchortrace[i].ino
@@ -7940,7 +7950,7 @@ void MDCache::_open_ino_backtrace_fetched(inodeno_t ino, bufferlist& bl, int err
   inode_backtrace_t backtrace;
   if (err == 0) {
     ::decode(backtrace, bl);
-    if (backtrace.pool != info.pool) {
+    if (backtrace.pool != info.pool && backtrace.pool != -1) {
       dout(10) << " old object in pool " << info.pool
 	       << ", retrying pool " << backtrace.pool << dendl;
       info.pool = backtrace.pool;
@@ -8408,8 +8418,7 @@ void MDCache::_do_find_ino_peer(find_ino_peer_info_t& fip)
       dout(10) << "_do_find_ino_peer waiting for more peers to be active" << dendl;
     } else {
       dout(10) << "_do_find_ino_peer failed on " << fip.ino << dendl;
-      fip.fin->finish(-ESTALE);
-      delete fip.fin;
+      fip.fin->complete(-ESTALE);
       find_ino_peer.erase(fip.tid);
     }
   } else {
@@ -8521,8 +8530,7 @@ void MDCache::_find_ino_dir(inodeno_t ino, Context *fin, bufferlist& bl, int r)
 {
   dout(10) << "_find_ino_dir " << ino << " got " << r << " " << bl.length() << " bytes" << dendl;
   if (r < 0) {
-    fin->finish(r);
-    delete fin;
+    fin->complete(r);
     return;
   }
 
@@ -8539,8 +8547,7 @@ void MDCache::_find_ino_dir(inodeno_t ino, Context *fin, bufferlist& bl, int r)
     return;
   delete c;  // path_traverse doesn't clean it up for us for r <= 0
   
-  fin->finish(r);
-  delete fin;
+  fin->complete(r);
 }
 
 
@@ -8619,8 +8626,7 @@ void MDCache::request_finish(MDRequest *mdr)
   if (mdr->more()->slave_commit) {
     Context *fin = mdr->more()->slave_commit;
     mdr->more()->slave_commit = 0;
-    fin->finish(0);   // this must re-call request_finish.
-    delete fin;
+    fin->complete(0);   // this must re-call request_finish.
     return; 
   }
 
@@ -8656,9 +8662,9 @@ void MDCache::dispatch_request(MDRequest *mdr)
     mds->server->dispatch_slave_request(mdr);
   } else {
     switch (mdr->internal_op) {
-      
-      // ...
-      
+    case CEPH_MDS_OP_FRAGMENTDIR:
+      dispatch_fragment_dir(mdr);
+      break;
     default:
       assert(0);
     }
@@ -9125,19 +9131,34 @@ void MDCache::_snaprealm_create_finish(MDRequest *mdr, Mutation *mut, CInode *in
 // -------------------------------------------------------------------------------
 // STRAYS
 
-void MDCache::scan_stray_dir()
+struct C_MDC_RetryScanStray : public Context {
+  MDCache *cache;
+  dirfrag_t next;
+  C_MDC_RetryScanStray(MDCache *c,  dirfrag_t n) : cache(c), next(n) { }
+  void finish(int r) {
+    cache->scan_stray_dir(next);
+  }
+};
+
+void MDCache::scan_stray_dir(dirfrag_t next)
 {
-  dout(10) << "scan_stray_dir" << dendl;
-  
+  dout(10) << "scan_stray_dir " << next << dendl;
+
   list<CDir*> ls;
   for (int i = 0; i < NUM_STRAY; ++i) {
-    if (strays[i]) {
-      strays[i]->get_dirfrags(ls);
-    }
+    if (strays[i]->ino() < next.ino)
+      continue;
+    strays[i]->get_dirfrags(ls);
   }
 
   for (list<CDir*>::iterator p = ls.begin(); p != ls.end(); ++p) {
     CDir *dir = *p;
+    if (dir->dirfrag() < next)
+      continue;
+    if (!dir->is_complete()) {
+      dir->fetch(new C_MDC_RetryScanStray(this, dir->dirfrag()));
+      return;
+    }
     for (CDir::map_t::iterator q = dir->items.begin(); q != dir->items.end(); ++q) {
       CDentry *dn = q->second;
       CDentry::linkage_t *dnl = dn->get_projected_linkage();
@@ -9156,7 +9177,7 @@ struct C_MDC_EvalStray : public Context {
   }
 };
 
-void MDCache::eval_stray(CDentry *dn)
+void MDCache::eval_stray(CDentry *dn, bool delay)
 {
   dout(10) << "eval_stray " << *dn << dendl;
   CDentry::linkage_t *dnl = dn->get_projected_linkage();
@@ -9220,9 +9241,13 @@ void MDCache::eval_stray(CDentry *dn)
       dout(20) << " too many dn refs" << dendl;
       return;
     }
-    purge_stray(dn);
+    if (delay) {
+      if (!dn->item_stray.is_on_list())
+	delayed_eval_stray.push_back(&dn->item_stray);
+    } else
+      purge_stray(dn);
   }
-  else if (in->inode.nlink == 1) {
+  else if (in->inode.nlink >= 1) {
     // trivial reintegrate?
     if (!in->remote_parents.empty()) {
       CDentry *rlink = *in->remote_parents.begin();
@@ -9266,14 +9291,6 @@ void MDCache::fetch_backtrace(inodeno_t ino, int64_t pool, bufferlist& bl, Conte
   mds->objecter->getxattr(oid, object_locator_t(pool), "parent", CEPH_NOSNAP, &bl, 0, fin);
 }
 
-void MDCache::remove_backtrace(inodeno_t ino, int64_t pool, Context *fin)
-{
-  SnapContext snapc;
-  object_t oid = CInode::get_object_name(ino, frag_t(), "");
-  mds->objecter->removexattr(oid, object_locator_t(pool), "parent", snapc,
-			     ceph_clock_now(g_ceph_context), 0, NULL, fin);
-}
-
 class C_MDC_PurgeStrayPurged : public Context {
   MDCache *cache;
   CDentry *dn;
@@ -9284,94 +9301,6 @@ public:
     cache->_purge_stray_purged(dn, r);
   }
 };
-
-class C_MDC_PurgeForwardingPointers : public Context {
-  MDCache *cache;
-  CDentry *dn;
-public:
-  bufferlist bl;
-  C_MDC_PurgeForwardingPointers(MDCache *c, CDentry *d) :
-    cache(c), dn(d) {}
-  void finish(int r) {
-    cache->_purge_forwarding_pointers(bl, dn, r);
-  }
-};
-
-class C_MDC_PurgeStray : public Context {
-  MDCache *cache;
-  CDentry *dn;
-public:
-  C_MDC_PurgeStray(MDCache *c, CDentry *d) :
-    cache(c), dn(d) {}
-  void finish(int r) {
-    cache->_purge_stray(dn, r);
-  }
-};
-
-void MDCache::_purge_forwarding_pointers(bufferlist& bl, CDentry *dn, int r)
-{
-  assert(r == 0 || r == -ENOENT || r == -ENODATA);
-  inode_backtrace_t backtrace;
-  if (r == 0)
-    ::decode(backtrace, bl);
-
-  // setup gathering context
-  C_GatherBuilder gather_bld(g_ceph_context);
-
-  // remove all the objects with forwarding pointer backtraces (aka sentinels)
-  for (set<int64_t>::const_iterator i = backtrace.old_pools.begin();
-       i != backtrace.old_pools.end();
-       ++i) {
-    SnapContext snapc;
-    object_t oid = CInode::get_object_name(backtrace.ino, frag_t(), "");
-    object_locator_t oloc(*i);
-
-    mds->objecter->remove(oid, oloc, snapc, ceph_clock_now(g_ceph_context), 0,
-                         NULL, gather_bld.new_sub());
-  }
-
-  if (gather_bld.has_subs()) {
-    gather_bld.set_finisher(new C_MDC_PurgeStray(this, dn));
-    gather_bld.activate();
-  } else {
-    _purge_stray(dn, r);
-  }
-}
-
-void MDCache::_purge_stray(CDentry *dn, int r)
-{
-  // purge the strays
-  CDentry::linkage_t *dnl = dn->get_projected_linkage();
-  CInode *in = dnl->get_inode();
-  dout(10) << "_purge_stray " << *dn << " " << *in << dendl;
-
-  SnapRealm *realm = in->find_snaprealm();
-  SnapContext nullsnap;
-  const SnapContext *snapc;
-  if (realm) {
-    dout(10) << " realm " << *realm << dendl;
-    snapc = &realm->get_snap_context();
-  } else {
-    dout(10) << " NO realm, using null context" << dendl;
-    snapc = &nullsnap;
-    assert(in->last == CEPH_NOSNAP);
-  }
-
-  uint64_t period = (uint64_t)in->inode.layout.fl_object_size * (uint64_t)in->inode.layout.fl_stripe_count;
-  uint64_t cur_max_size = in->inode.get_max_size();
-  uint64_t to = MAX(in->inode.size, cur_max_size);
-  if (to && period) {
-    uint64_t num = (to + period - 1) / period;
-    dout(10) << "purge_stray 0~" << to << " objects 0~" << num << " snapc " << snapc << " on " << *in << dendl;
-    mds->filer->purge_range(in->inode.ino, &in->inode.layout, *snapc,
-                           0, num, ceph_clock_now(g_ceph_context), 0,
-			   new C_MDC_PurgeStrayPurged(this, dn));
-
-  } else {
-    dout(10) << "purge_stray 0 objects snapc " << snapc << " on " << *in << dendl;
-    _purge_stray_purged(dn);
-  }
-}
 
 void MDCache::purge_stray(CDentry *dn)
 {
@@ -9390,24 +9319,90 @@ void MDCache::purge_stray(CDentry *dn)
   dn->get(CDentry::PIN_PURGING);
   in->state_set(CInode::STATE_PURGING);
 
-  
+  if (dn->item_stray.is_on_list())
+    dn->item_stray.remove_myself();
+
+  if (in->is_dirty_parent())
+    in->clear_dirty_parent();
+
   // CHEAT.  there's no real need to journal our intent to purge, since
   // that is implicit in the dentry's presence and non-use in the stray
   // dir.  on recovery, we'll need to re-eval all strays anyway.
   
+  SnapContext nullsnapc;
+  C_GatherBuilder gather(g_ceph_context, new C_MDC_PurgeStrayPurged(this, dn));
+
   if (in->is_dir()) {
-    dout(10) << "purge_stray dir ... implement me!" << dendl;  // FIXME XXX
-    // remove the backtrace
-    remove_backtrace(in->ino(), mds->mdsmap->get_metadata_pool(),
-		     new C_MDC_PurgeStrayPurged(this, dn));
-  } else if (in->is_file()) {
-    // get the backtrace before blowing away the object
-    C_MDC_PurgeForwardingPointers *fin = new C_MDC_PurgeForwardingPointers(this, dn);
-    fetch_backtrace(in->ino(), in->get_inode().layout.fl_pg_pool, fin->bl, fin);
-  } else {
-    // not a dir or file; purged!
-    _purge_stray_purged(dn);
+    object_locator_t oloc(mds->mdsmap->get_metadata_pool());
+    list<frag_t> ls;
+    if (!in->dirfragtree.is_leaf(frag_t()))
+      in->dirfragtree.get_leaves(ls);
+    ls.push_back(frag_t());
+    for (list<frag_t>::iterator p = ls.begin();
+         p != ls.end();
+         ++p) {
+      object_t oid = CInode::get_object_name(in->inode.ino, *p, "");
+      dout(10) << "purge_stray remove dirfrag " << oid << dendl;
+      mds->objecter->remove(oid, oloc, nullsnapc, ceph_clock_now(g_ceph_context),
+                            0, NULL, gather.new_sub());
+    }
+    assert(gather.has_subs());
+    gather.activate();
+    return;
   }
+
+  const SnapContext *snapc;
+  SnapRealm *realm = in->find_snaprealm();
+  if (realm) {
+    dout(10) << " realm " << *realm << dendl;
+    snapc = &realm->get_snap_context();
+  } else {
+    dout(10) << " NO realm, using null context" << dendl;
+    snapc = &nullsnapc;
+    assert(in->last == CEPH_NOSNAP);
+  }
+
+  if (in->is_file()) {
+    uint64_t period = (uint64_t)in->inode.layout.fl_object_size *
+		      (uint64_t)in->inode.layout.fl_stripe_count;
+    uint64_t to = in->inode.get_max_size();
+    to = MAX(in->inode.size, to);
+    // when truncating a file, the filer does not delete stripe objects that are
+    // truncated to zero. so we need to purge stripe objects up to the max size
+    // the file has ever been.
+    to = MAX(in->inode.max_size_ever, to);
+    if (to && period) {
+      uint64_t num = (to + period - 1) / period;
+      dout(10) << "purge_stray 0~" << to << " objects 0~" << num
+	       << " snapc " << snapc << " on " << *in << dendl;
+      mds->filer->purge_range(in->inode.ino, &in->inode.layout, *snapc,
+			      0, num, ceph_clock_now(g_ceph_context), 0,
+			      gather.new_sub());
+    }
+  }
+
+  inode_t *pi = in->get_projected_inode();
+  object_t oid = CInode::get_object_name(pi->ino, frag_t(), "");
+  // remove the backtrace object if it was not purged
+  if (!gather.has_subs()) {
+    object_locator_t oloc(pi->layout.fl_pg_pool);
+    dout(10) << "purge_stray remove backtrace object " << oid
+	     << " pool " << oloc.pool << " snapc " << snapc << dendl;
+    mds->objecter->remove(oid, oloc, *snapc, ceph_clock_now(g_ceph_context), 0,
+			  NULL, gather.new_sub());
+  }
+  // remove old backtrace objects
+  for (vector<int64_t>::iterator p = pi->old_pools.begin();
+       p != pi->old_pools.end();
+       ++p) {
+    object_locator_t oloc(*p);
+    dout(10) << "purge_stray remove backtrace object " << oid
+	     << " old pool " << *p << " snapc " << snapc << dendl;
+    mds->objecter->remove(oid, oloc, *snapc, ceph_clock_now(g_ceph_context), 0,
+			  NULL, gather.new_sub());
+  }
+  assert(gather.has_subs());
+  gather.activate();
 }
 
 class C_MDC_PurgeStrayLogged : public Context {
@@ -9489,9 +9484,6 @@ void MDCache::_purge_stray_logged(CDentry *dn, version_t pdv, LogSegment *ls)
   CInode *in = dn->get_linkage()->get_inode();
   dout(10) << "_purge_stray_logged " << *dn << " " << *in << dendl;
 
-  dn->state_clear(CDentry::STATE_PURGING);
-  dn->put(CDentry::PIN_PURGING);
-
   assert(!in->state_test(CInode::STATE_RECOVERING));
 
   // unlink
@@ -9502,11 +9494,13 @@ void MDCache::_purge_stray_logged(CDentry *dn, version_t pdv, LogSegment *ls)
 
   dn->dir->pop_and_dirty_projected_fnode(ls);
 
+  in->state_clear(CInode::STATE_ORPHAN);
+  dn->state_clear(CDentry::STATE_PURGING);
+  dn->put(CDentry::PIN_PURGING);
+
   // drop inode
   if (in->is_dirty())
     in->mark_clean();
-  if (in->is_dirty_parent())
-    in->clear_dirty_parent();
 
   remove_inode(in);
 
@@ -10648,7 +10642,7 @@ void MDCache::handle_dentry_unlink(MDentryUnlink *m)
 	    !in->state_test(CInode::STATE_EXPORTINGCAPS))
 	  migrator->export_caps(in);
 	
-	lru.lru_bottouch(straydn);  // move stray to end of lru
+	touch_dentry_bottom(straydn); // move stray to end of lru
 	straydn = NULL;
       } else {
 	assert(!straydn);
@@ -10658,7 +10652,7 @@ void MDCache::handle_dentry_unlink(MDentryUnlink *m)
       assert(dnl->is_null());
       
       // move to bottom of lru
-      lru.lru_bottouch(dn);
+      touch_dentry_bottom(dn);
     }
   }
 
@@ -10883,17 +10877,6 @@ public:
   }
 };
 
-
-bool MDCache::can_fragment_lock(CInode *diri)
-{
-  if (!diri->dirfragtreelock.can_wrlock(-1)) {
-    dout(7) << "can_fragment: can't wrlock dftlock" << dendl;
-    mds->locker->scatter_nudge(&diri->dirfragtreelock, NULL);
-    return false;
-  }
-  return true;
-}
-
 bool MDCache::can_fragment(CInode *diri, list<CDir*>& dirs)
 {
   if (mds->mdsmap->is_degraded()) {
@@ -10905,8 +10888,8 @@ bool MDCache::can_fragment(CInode *diri, list<CDir*>& dirs)
     dout(7) << "can_fragment: i won't merge|split anything in stray" << dendl;
     return false;
   }
-  if (diri->is_mdsdir() || diri->ino() == MDS_INO_CEPH) {
-    dout(7) << "can_fragment: i won't fragment the mdsdir or .ceph" << dendl;
+  if (diri->is_mdsdir() || diri->is_stray() || diri->ino() == MDS_INO_CEPH) {
+    dout(7) << "can_fragment: i won't fragment the mdsdir or straydir or .ceph" << dendl;
     return false;
   }
 
@@ -10941,11 +10924,6 @@ void MDCache::split_dir(CDir *dir, int bits)
 
   if (!can_fragment(diri, dirs))
     return;
-  if (!can_fragment_lock(diri)) {
-    dout(10) << " requeuing dir " << dir->dirfrag() << dendl;
-    mds->balancer->queue_split(dir);
-    return;
-  }
 
   C_GatherBuilder gather(g_ceph_context, 
 	  new C_MDC_FragmentFrozen(this, dirs, dir->get_frag(), bits));
@@ -10973,18 +10951,13 @@ void MDCache::merge_dir(CInode *diri, frag_t frag)
 
   if (!can_fragment(diri, dirs))
     return;
-  if (!can_fragment_lock(diri)) {
-    //dout(10) << " requeuing dir " << dir->dirfrag() << dendl;
-    //mds->mdbalancer->split_queue.insert(dir->dirfrag());
-    return;
-  }
 
   CDir *first = dirs.front();
   int bits = first->get_frag().bits() - frag.bits();
   dout(10) << " we are merginb by " << bits << " bits" << dendl;
 
   C_GatherBuilder gather(g_ceph_context,
-	  new C_MDC_FragmentFrozen(this, dirs, frag, bits));
+	  new C_MDC_FragmentFrozen(this, dirs, frag, -bits));
   fragment_freeze_dirs(dirs, gather);
   gather.activate();
 
@@ -11083,66 +11056,144 @@ void MDCache::fragment_unmark_unfreeze_dirs(list<CDir*>& dirs)
   }
 }
 
-class C_MDC_FragmentLoggedAndStored : public Context {
+class C_MDC_FragmentPrep : public Context {
   MDCache *mdcache;
-  Mutation *mut;
-  list<CDir*> resultfrags;
-  frag_t basefrag;
-  int bits;
+  MDRequest *mdr;
 public:
-  C_MDC_FragmentLoggedAndStored(MDCache *m, Mutation *mu, list<CDir*>& r, frag_t bf, int bi) : 
-    mdcache(m), mut(mu), resultfrags(r), basefrag(bf), bits(bi) {}
+  C_MDC_FragmentPrep(MDCache *m, MDRequest *r) : mdcache(m), mdr(r) {}
   virtual void finish(int r) {
-    mdcache->fragment_logged_and_stored(mut, resultfrags, basefrag, bits);
+    mdcache->_fragment_logged(mdr);
+  }
+};
+
+class C_MDC_FragmentStore : public Context {
+  MDCache *mdcache;
+  MDRequest *mdr;
+public:
+  C_MDC_FragmentStore(MDCache *m, MDRequest *r) : mdcache(m), mdr(r) {}
+  virtual void finish(int r) {
+    mdcache->_fragment_stored(mdr);
+  }
+};
+
+class C_MDC_FragmentCommit : public Context {
+  MDCache *mdcache;
+  dirfrag_t basedirfrag;
+  list<CDir*> resultfrags;
+public:
+  C_MDC_FragmentCommit(MDCache *m, inodeno_t ino, frag_t f, list<CDir*>& l) :
+    mdcache(m), basedirfrag(ino, f) {
+    resultfrags.swap(l);
+  }
+  virtual void finish(int r) {
+    mdcache->_fragment_committed(basedirfrag, resultfrags);
+  }
+};
+
+class C_MDC_FragmentFinish : public Context {
+  MDCache *mdcache;
+  dirfrag_t basedirfrag;
+  list<CDir*> resultfrags;
+public:
+  C_MDC_FragmentFinish(MDCache *m, dirfrag_t f, list<CDir*>& l) :
+    mdcache(m), basedirfrag(f) {
+    resultfrags.swap(l);
+  }
+  virtual void finish(int r) {
+    mdcache->_fragment_finish(basedirfrag, resultfrags);
   }
 };
 
 void MDCache::fragment_frozen(list<CDir*>& dirs, frag_t basefrag, int bits)
 {
-  CInode *diri = dirs.front()->get_inode();
+  dout(10) << "fragment_frozen " << dirs << " " << basefrag << " by " << bits
+	   << " on " << dirs.front()->get_inode() << dendl;
 
-  if (bits > 0) {
+  if (bits > 0)
     assert(dirs.size() == 1);
-  } else {
-    assert(bits < 0);
+  else if (bits < 0)
+    assert(dirs.size() > 1);
+  else
+    assert(0);
+
+  MDRequest *mdr = request_start_internal(CEPH_MDS_OP_FRAGMENTDIR);
+  fragment_info_t &info = fragment_requests[mdr->reqid];
+  info.basefrag = basefrag;
+  info.bits = bits;
+  info.dirs = dirs;
+
+  dispatch_fragment_dir(mdr);
+}
+
+void MDCache::dispatch_fragment_dir(MDRequest *mdr)
+{
+  map<metareqid_t, fragment_info_t>::iterator it = fragment_requests.find(mdr->reqid);
+  assert(it != fragment_requests.end());
+  fragment_info_t &info = it->second;
+  CInode *diri = info.dirs.front()->get_inode();
+
+  dout(10) << "dispatch_fragment_dir " << info.resultfrags << " "
+	   << info.basefrag << " bits " << info.bits << " on " << *diri << dendl;
+
+  // avoid freeze dir deadlock
+  if (!mdr->is_auth_pinned(diri)) {
+    if (!diri->can_auth_pin()) {
+      dout(10) << " can't auth_pin " << *diri << ", requeuing dir "
+	       << info.dirs.front()->dirfrag() << dendl;
+      if (info.bits > 0)
+	mds->balancer->queue_split(info.dirs.front());
+      else
+	mds->balancer->queue_merge(info.dirs.front());
+      fragment_unmark_unfreeze_dirs(info.dirs);
+      fragment_requests.erase(mdr->reqid);
+      request_finish(mdr);
+      return;
+    }
+    mdr->auth_pin(diri);
   }
 
-  dout(10) << "fragment_frozen " << dirs << " " << basefrag << " by " << bits 
-	   << " on " << *diri << dendl;
-
-  // wrlock dirfragtreelock
-  if (!diri->dirfragtreelock.can_wrlock(-1)) {
-    dout(10) << " can't wrlock " << diri->dirfragtreelock << " on " << *diri << dendl;
-    fragment_unmark_unfreeze_dirs(dirs);
-    return;
-  }
-  diri->dirfragtreelock.get_wrlock(true);
-
+  set<SimpleLock*> rdlocks, wrlocks, xlocks;
+  wrlocks.insert(&diri->dirfragtreelock);
   // prevent a racing gather on any other scatterlocks too
-  diri->nestlock.get_wrlock(true);
-  diri->filelock.get_wrlock(true);
+  wrlocks.insert(&diri->nestlock);
+  wrlocks.insert(&diri->filelock);
+  if (!mds->locker->acquire_locks(mdr, rdlocks, wrlocks, xlocks))
+    return;
+
+  mdr->ls = mds->mdlog->get_current_segment();
+  EFragment *le = new EFragment(mds->mdlog, EFragment::OP_PREPARE, diri->ino(),
+			        info.basefrag, info.bits);
+  mds->mdlog->start_entry(le);
+
+  for (list<CDir*>::iterator p = info.dirs.begin(); p != info.dirs.end(); ++p) {
+    CDir *dir = *p;
+    dirfrag_rollback rollback;
+    rollback.fnode = dir->fnode;
+    le->add_orig_frag(dir->get_frag(), &rollback);
+  }
 
   // refragment
-  list<CDir*> resultfrags;
   list<Context*> waiters;
-  adjust_dir_fragments(diri, dirs, basefrag, bits, resultfrags, waiters, false);
+  adjust_dir_fragments(diri, info.dirs, info.basefrag, info.bits,
+		       info.resultfrags, waiters, false);
   if (g_conf->mds_debug_frag)
     diri->verify_dirfrags();
   mds->queue_waiters(waiters);
 
-  // journal
-  Mutation *mut = new Mutation;
+  for (list<frag_t>::iterator p = le->orig_frags.begin(); p != le->orig_frags.end(); ++p)
+    assert(!diri->dirfragtree.is_leaf(*p));
 
-  mut->ls = mds->mdlog->get_current_segment();
-  EFragment *le = new EFragment(mds->mdlog, EFragment::OP_PREPARE, diri->ino(), basefrag, bits);
-  mds->mdlog->start_entry(le);
-
-  le->metablob.add_dir_context(*resultfrags.begin());
+  le->metablob.add_dir_context(*info.resultfrags.begin());
+  for (list<CDir*>::iterator p = info.resultfrags.begin();
+       p != info.resultfrags.end();
+       ++p) {
+    le->metablob.add_dir(*p, false);
+  }
 
   // dft lock
   mds->locker->mark_updated_scatterlock(&diri->dirfragtreelock);
-  mut->ls->dirty_dirfrag_dirfragtree.push_back(&diri->item_dirty_dirfrag_dirfragtree);
-  mut->add_updated_lock(&diri->dirfragtreelock);
+  mdr->ls->dirty_dirfrag_dirfragtree.push_back(&diri->item_dirty_dirfrag_dirfragtree);
+  mdr->add_updated_lock(&diri->dirfragtreelock);
 
   /*
   // filelock
@@ -11156,48 +11207,57 @@ void MDCache::fragment_frozen(list<CDir*>& dirs, frag_t basefrag, int bits)
   mut->add_updated_lock(&diri->nestlock);
   */
 
-  // freeze, journal, and store resulting frags
-  C_GatherBuilder gather(g_ceph_context,
-		      new C_MDC_FragmentLoggedAndStored(this, mut,
-				  resultfrags, basefrag, bits));
+  add_uncommitted_fragment(dirfrag_t(diri->ino(), info.basefrag), info.bits, le->orig_frags, mdr->ls);
+  mds->mdlog->submit_entry(le, new C_MDC_FragmentPrep(this, mdr));
+  mds->mdlog->flush();
+}
 
-  for (list<CDir*>::iterator p = resultfrags.begin();
-       p != resultfrags.end();
+void MDCache::_fragment_logged(MDRequest *mdr)
+{
+  map<metareqid_t, fragment_info_t>::iterator it = fragment_requests.find(mdr->reqid);
+  assert(it != fragment_requests.end());
+  fragment_info_t &info = it->second;
+  CInode *diri = info.resultfrags.front()->get_inode();
+
+  dout(10) << "fragment_logged " << info.resultfrags << " " << info.basefrag
+	   << " bits " << info.bits << " on " << *diri << dendl;
+
+  // store resulting frags
+  C_GatherBuilder gather(g_ceph_context, new C_MDC_FragmentStore(this, mdr));
+
+  for (list<CDir*>::iterator p = info.resultfrags.begin();
+       p != info.resultfrags.end();
        ++p) {
     CDir *dir = *p;
-    dout(10) << " result frag " << *dir << dendl;
-    le->metablob.add_dir(dir, false);
+    dout(10) << " storing result frag " << *dir << dendl;
 
     // freeze and store them too
+    dir->auth_pin(this);
     dir->state_set(CDir::STATE_FRAGMENTING);
     dir->commit(0, gather.new_sub(), true);  // ignore authpinnability
   }
 
-  mds->mdlog->submit_entry(le, gather.new_sub());
-  mds->mdlog->flush();
   gather.activate();
 }
 
-void MDCache::fragment_logged_and_stored(Mutation *mut, list<CDir*>& resultfrags, frag_t basefrag, int bits)
+void MDCache::_fragment_stored(MDRequest *mdr)
 {
-  CInode *diri = resultfrags.front()->get_inode();
+  map<metareqid_t, fragment_info_t>::iterator it = fragment_requests.find(mdr->reqid);
+  assert(it != fragment_requests.end());
+  fragment_info_t &info = it->second;
+  CInode *diri = info.resultfrags.front()->get_inode();
 
-  dout(10) << "fragment_logged_and_stored " << resultfrags << " " << basefrag << " bits " << bits 
-	   << " on " << *diri << dendl;
-  
-  // journal commit
-  EFragment *le = new EFragment(mds->mdlog, EFragment::OP_COMMIT, diri->ino(), basefrag, bits);
-  mds->mdlog->start_entry(le);
-  mds->mdlog->submit_entry(le);
+  dout(10) << "fragment_stored " << info.resultfrags << " " << info.basefrag
+	   << " bits " << info.bits << " on " << *diri << dendl;
 
   // tell peers
-  CDir *first = *resultfrags.begin();
+  CDir *first = *info.resultfrags.begin();
   for (map<int,int>::iterator p = first->replica_map.begin();
        p != first->replica_map.end();
        ++p) {
     if (mds->mdsmap->get_state(p->first) <= MDSMap::STATE_REJOIN)
       continue;
-    MMDSFragmentNotify *notify = new MMDSFragmentNotify(diri->ino(), basefrag, bits);
+    MMDSFragmentNotify *notify = new MMDSFragmentNotify(diri->ino(), info.basefrag, info.bits);
 
     /*
     // freshly replicate new dirs to peers
@@ -11208,26 +11268,15 @@ void MDCache::fragment_logged_and_stored(Mutation *mut, list<CDir*>& resultfrags
     mds->send_message_mds(notify, p->first);
   } 
   
-  mut->apply();  // mark scatterlock
-  mds->locker->drop_locks(mut);
-  mut->cleanup();
-  delete mut;
-
-  // drop dft wrlock
-  bool need_issue = false;
-  mds->locker->wrlock_finish(&diri->dirfragtreelock, NULL, &need_issue);
-  mds->locker->wrlock_finish(&diri->nestlock, NULL, &need_issue);
-  mds->locker->wrlock_finish(&diri->filelock, NULL, &need_issue);
+  mdr->apply();  // mark scatterlock
+  mds->locker->drop_locks(mdr);
 
   // unfreeze resulting frags
-  for (list<CDir*>::iterator p = resultfrags.begin();
-       p != resultfrags.end();
+  for (list<CDir*>::iterator p = info.resultfrags.begin();
+       p != info.resultfrags.end();
        ++p) {
     CDir *dir = *p;
     dout(10) << " result frag " << *dir << dendl;
-    
-    // unmark, unfreeze
-    dir->state_clear(CDir::STATE_FRAGMENTING);  
 
     for (CDir::map_t::iterator p = dir->items.begin();
 	 p != dir->items.end();
@@ -11238,13 +11287,72 @@ void MDCache::fragment_logged_and_stored(Mutation *mut, list<CDir*>& resultfrags
       dn->put(CDentry::PIN_FRAGMENTING);
     }
 
+    // unfreeze
     dir->unfreeze_dir();
   }
 
-  if (need_issue)
-    mds->locker->issue_caps(diri);
+  // journal commit
+  EFragment *le = new EFragment(mds->mdlog, EFragment::OP_COMMIT,
+				diri->ino(), info.basefrag, info.bits);
+  mds->mdlog->start_submit_entry(le, new C_MDC_FragmentCommit(this, diri->ino(), info.basefrag,
+							      info.resultfrags));
+
+  fragment_requests.erase(it);
+  request_finish(mdr);
 }
 
+void MDCache::_fragment_committed(dirfrag_t basedirfrag, list<CDir*>& resultfrags)
+{
+  dout(10) << "fragment_committed " << basedirfrag << dendl;
+  map<dirfrag_t, ufragment>::iterator it = uncommitted_fragments.find(basedirfrag);
+  assert(it != uncommitted_fragments.end());
+  ufragment &uf = it->second;
+
+  // remove old frags
+  C_GatherBuilder gather(g_ceph_context, new C_MDC_FragmentFinish(this, basedirfrag, resultfrags));
+
+  SnapContext nullsnapc;
+  object_locator_t oloc(mds->mdsmap->get_metadata_pool());
+  for (list<frag_t>::iterator p = uf.old_frags.begin();
+       p != uf.old_frags.end();
+       ++p) {
+    object_t oid = CInode::get_object_name(basedirfrag.ino, *p, "");
+    ObjectOperation op;
+    if (*p == frag_t()) {
+      // backtrace object
+      dout(10) << " truncate orphan dirfrag " << oid << dendl;
+      op.truncate(0);
+    } else {
+      dout(10) << " removing orphan dirfrag " << oid << dendl;
+      op.remove();
+    }
+    mds->objecter->mutate(oid, oloc, op, nullsnapc, ceph_clock_now(g_ceph_context),
+			  0, NULL, gather.new_sub());
+  }
+
+  assert(gather.has_subs());
+  gather.activate();
+}
+
+void MDCache::_fragment_finish(dirfrag_t basedirfrag, list<CDir*>& resultfrags)
+{
+  dout(10) << "fragment_finish " << basedirfrag << dendl;
+  map<dirfrag_t, ufragment>::iterator it = uncommitted_fragments.find(basedirfrag);
+  assert(it != uncommitted_fragments.end());
+  ufragment &uf = it->second;
+
+  // unmark & auth_unpin
+  for (list<CDir*>::iterator p = resultfrags.begin(); p != resultfrags.end(); ++p) {
+    (*p)->state_clear(CDir::STATE_FRAGMENTING);
+    (*p)->auth_unpin(this);
+  }
+
+  EFragment *le = new EFragment(mds->mdlog, EFragment::OP_FINISH,
+			        basedirfrag.ino, basedirfrag.frag, uf.bits);
+  mds->mdlog->start_submit_entry(le);
+
+  finish_uncommitted_fragment(basedirfrag, EFragment::OP_FINISH);
+}
 
 /* This function DOES put the passed message before returning */
 void MDCache::handle_fragment_notify(MMDSFragmentNotify *notify)
@@ -11290,26 +11398,140 @@ void MDCache::handle_fragment_notify(MMDSFragmentNotify *notify)
   notify->put();
 }
 
+void MDCache::add_uncommitted_fragment(dirfrag_t basedirfrag, int bits, list<frag_t>& old_frags,
+				       LogSegment *ls, bufferlist *rollback)
+{
+  dout(10) << "add_uncommitted_fragment: base dirfrag " << basedirfrag << " bits " << bits << dendl;
+  assert(!uncommitted_fragments.count(basedirfrag));
+  ufragment& uf = uncommitted_fragments[basedirfrag];
+  uf.old_frags = old_frags;
+  uf.bits = bits;
+  uf.ls = ls;
+  ls->uncommitted_fragments.insert(basedirfrag);
+  if (rollback)
+    uf.rollback.swap(*rollback);
+}
+
+void MDCache::finish_uncommitted_fragment(dirfrag_t basedirfrag, int op)
+{
+  dout(10) << "finish_uncommitted_fragments: base dirfrag " << basedirfrag
+	   << " op " << EFragment::op_name(op) << dendl;
+  map<dirfrag_t, ufragment>::iterator it = uncommitted_fragments.find(basedirfrag);
+  if (it != uncommitted_fragments.end()) {
+    ufragment& uf = it->second;
+    if (op != EFragment::OP_FINISH && !uf.old_frags.empty()) {
+      uf.committed = true;
+    } else {
+      uf.ls->uncommitted_fragments.erase(basedirfrag);
+      mds->queue_waiters(uf.waiters);
+      uncommitted_fragments.erase(it);
+    }
+  }
+}
+
+void MDCache::rollback_uncommitted_fragment(dirfrag_t basedirfrag, list<frag_t>& old_frags)
+{
+  dout(10) << "rollback_uncommitted_fragment: base dirfrag " << basedirfrag
+           << " old_frags (" << old_frags << ")" << dendl;
+  map<dirfrag_t, ufragment>::iterator it = uncommitted_fragments.find(basedirfrag);
+  if (it != uncommitted_fragments.end()) {
+    ufragment& uf = it->second;
+    if (!uf.old_frags.empty()) {
+      uf.old_frags.swap(old_frags);
+      uf.committed = true;
+    } else {
+      uf.ls->uncommitted_fragments.erase(basedirfrag);
+      uncommitted_fragments.erase(it);
+    }
+  }
+}
 
 void MDCache::rollback_uncommitted_fragments()
 {
   dout(10) << "rollback_uncommitted_fragments: " << uncommitted_fragments.size() << " pending" << dendl;
-  for (set< pair<dirfrag_t,int> >::iterator p = uncommitted_fragments.begin();
+  for (map<dirfrag_t, ufragment>::iterator p = uncommitted_fragments.begin();
        p != uncommitted_fragments.end();
        ++p) {
+    ufragment &uf = p->second;
     CInode *diri = get_inode(p->first.ino);
     assert(diri);
-    dout(10) << " rolling back " << p->first << " refragment by " << p->second << " bits" << dendl;
+
+    if (uf.committed) {
+      list<CDir*> frags;
+      diri->get_dirfrags_under(p->first.frag, frags);
+      for (list<CDir*>::iterator q = frags.begin(); q != frags.end(); ++q) {
+	CDir *dir = *q;
+	dir->auth_pin(this);
+	dir->state_set(CDir::STATE_FRAGMENTING);
+      }
+      _fragment_committed(p->first, frags);
+      continue;
+    }
+
+    dout(10) << " rolling back " << p->first << " refragment by " << uf.bits << " bits" << dendl;
+
+    LogSegment *ls = mds->mdlog->get_current_segment();
+    EFragment *le = new EFragment(mds->mdlog, EFragment::OP_ROLLBACK, diri->ino(), p->first.frag, uf.bits);
+    mds->mdlog->start_entry(le);
+
+    list<frag_t> old_frags;
+    diri->dirfragtree.get_leaves_under(p->first.frag, old_frags);
+
     list<CDir*> resultfrags;
-    list<Context*> waiters;
-    adjust_dir_fragments(diri, p->first.frag, -p->second, resultfrags, waiters, true);
+    if (uf.old_frags.empty()) {
+      // created by old format EFragment
+      list<Context*> waiters;
+      adjust_dir_fragments(diri, p->first.frag, -uf.bits, resultfrags, waiters, true);
+    } else {
+      bufferlist::iterator bp = uf.rollback.begin();
+      for (list<frag_t>::iterator q = uf.old_frags.begin(); q != uf.old_frags.end(); ++q) {
+	CDir *dir = force_dir_fragment(diri, *q);
+	resultfrags.push_back(dir);
+
+	dirfrag_rollback rollback;
+	::decode(rollback, bp);
+
+	dir->set_version(rollback.fnode.version);
+	dir->fnode = rollback.fnode;
+
+	dir->_mark_dirty(ls);
+
+	if (!(dir->fnode.rstat == dir->fnode.accounted_rstat)) {
+	  dout(10) << "    dirty nestinfo on " << *dir << dendl;
+	  mds->locker->mark_updated_scatterlock(&dir->inode->nestlock);
+	  ls->dirty_dirfrag_nest.push_back(&dir->inode->item_dirty_dirfrag_nest);
+	  dir->get_inode()->nestlock.mark_dirty();
+	}
+	if (!(dir->fnode.fragstat == dir->fnode.accounted_fragstat)) {
+	  dout(10) << "    dirty fragstat on " << *dir << dendl;
+	  mds->locker->mark_updated_scatterlock(&dir->inode->filelock);
+	  ls->dirty_dirfrag_dir.push_back(&dir->inode->item_dirty_dirfrag_dir);
+	  dir->get_inode()->filelock.mark_dirty();
+	}
+
+	le->add_orig_frag(dir->get_frag());
+	le->metablob.add_dir_context(dir);
+	le->metablob.add_dir(dir, true);
+      }
+    }
+
     if (g_conf->mds_debug_frag)
       diri->verify_dirfrags();
 
-    EFragment *le = new EFragment(mds->mdlog, EFragment::OP_ROLLBACK, diri->ino(), p->first.frag, p->second);
-    mds->mdlog->start_submit_entry(le);
+    for (list<frag_t>::iterator q = old_frags.begin(); q != old_frags.end(); ++q)
+      assert(!diri->dirfragtree.is_leaf(*q));
+
+    for (list<CDir*>::iterator q = resultfrags.begin(); q != resultfrags.end(); ++q) {
+      CDir *dir = *q;
+      dir->auth_pin(this);
+      dir->state_set(CDir::STATE_FRAGMENTING);
+    }
+
+    mds->mdlog->submit_entry(le);
+
+    uf.old_frags.swap(old_frags);
+    _fragment_committed(p->first, resultfrags);
   }
-  uncommitted_fragments.clear();
 }
 
 

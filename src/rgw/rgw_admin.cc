@@ -62,6 +62,9 @@ void _usage()
   cerr << "  bucket check               check bucket index\n";
   cerr << "  object rm                  remove object\n";
   cerr << "  object unlink              unlink object from bucket index\n";
+  cerr << "  quota set                  set quota params\n";
+  cerr << "  quota enable               enable quota\n";
+  cerr << "  quota disable              disable quota\n";
   cerr << "  region get                 show region info\n";
   cerr << "  regions list               list all regions set on this cluster\n";
   cerr << "  region set                 set region info (requires infile)\n";
@@ -114,6 +117,7 @@ void _usage()
   cerr << "   --access=<access>         Set access permissions for sub-user, should be one\n";
   cerr << "                             of read, write, readwrite, full\n";
   cerr << "   --display-name=<name>\n";
+  cerr << "   --system                  set the system flag on the user\n";
   cerr << "   --bucket=<bucket>\n";
   cerr << "   --pool=<pool>\n";
   cerr << "   --object=<object>\n";
@@ -126,6 +130,7 @@ void _usage()
   cerr << "                               mdlog trim\n";
   cerr << "                               replica mdlog get/delete\n";
   cerr << "                               replica datalog get/delete\n";
+  cerr << "   --metadata-key=<key>      key to retrieve metadata from with metadata get\n";
   cerr << "   --rgw-region=<region>     region in which radosgw is running\n";
   cerr << "   --rgw-zone=<zone>         zone in which radosgw is running\n";
   cerr << "   --fix                     besides checking bucket index, will also fix it\n";
@@ -152,6 +157,11 @@ void _usage()
   cerr << "   --yes-i-really-mean-it    required for certain operations\n";
   cerr << "\n";
   cerr << "<date> := \"YYYY-MM-DD[ hh:mm:ss]\"\n";
+  cerr << "\nQuota options:\n";
+  cerr << "   --bucket                  specified bucket for quota command\n";
+  cerr << "   --max-objects             specify max objects (negative value to disable)\n";
+  cerr << "   --max-size                specify max size (in bytes, negative value to disable)\n";
+  cerr << "   --quota-scope             scope of quota (bucket, user)\n";
   cerr << "\n";
   generic_client_usage();
 }
@@ -201,6 +211,9 @@ enum {
   OPT_OBJECT_RM,
   OPT_OBJECT_UNLINK,
   OPT_OBJECT_STAT,
+  OPT_QUOTA_SET,
+  OPT_QUOTA_ENABLE,
+  OPT_QUOTA_DISABLE,
   OPT_GC_LIST,
   OPT_GC_PROCESS,
   OPT_REGION_GET,
@@ -251,6 +264,7 @@ static int get_cmd(const char *cmd, const char *prev_cmd, bool *need_more)
       strcmp(cmd, "opstate") == 0 ||
       strcmp(cmd, "pool") == 0 ||
       strcmp(cmd, "pools") == 0 ||
+      strcmp(cmd, "quota") == 0 ||
       strcmp(cmd, "region") == 0 ||
       strcmp(cmd, "regions") == 0 ||
       strcmp(cmd, "region-map") == 0 ||
@@ -360,6 +374,13 @@ static int get_cmd(const char *cmd, const char *prev_cmd, bool *need_more)
       return OPT_REGION_SET;
     if (strcmp(cmd, "default") == 0)
       return OPT_REGION_DEFAULT;
+  } else if (strcmp(prev_cmd, "quota") == 0) {
+    if (strcmp(cmd, "set") == 0)
+      return OPT_QUOTA_SET;
+    if (strcmp(cmd, "enable") == 0)
+      return OPT_QUOTA_ENABLE;
+    if (strcmp(cmd, "disable") == 0)
+      return OPT_QUOTA_DISABLE;
   } else if (strcmp(prev_cmd, "regions") == 0) {
     if (strcmp(cmd, "list") == 0)
       return OPT_REGION_LIST;
@@ -445,27 +466,6 @@ ReplicaLogType get_replicalog_type(const string& name) {
     return ReplicaLog_Bucket;
 
   return ReplicaLog_Invalid;
-}
-
-string escape_str(string& src, char c)
-{
-  int pos = 0;
-  string dest;
-
-  do {
-    int new_pos = src.find(c, pos);
-    if (new_pos >= 0) {
-      dest += src.substr(pos, new_pos - pos);
-      dest += "\\";
-      dest += c;
-    } else {
-      dest += src.substr(pos);
-      return dest;
-    }
-    pos = new_pos + 1;
-  } while (pos < (int)src.size());
-
-  return dest;
 }
 
 static void show_user_info(RGWUserInfo& info, Formatter *formatter)
@@ -658,6 +658,67 @@ static bool dump_string(const char *field_name, bufferlist& bl, Formatter *f)
   return true;
 }
 
+void set_quota_info(RGWQuotaInfo& quota, int opt_cmd, int64_t max_size, int64_t max_objects,
+                    bool have_max_size, bool have_max_objects)
+{
+  switch (opt_cmd) {
+    case OPT_QUOTA_ENABLE:
+      quota.enabled = true;
+
+      // falling through on purpose
+
+    case OPT_QUOTA_SET:
+      if (have_max_objects) {
+        quota.max_objects = max_objects;
+      }
+      if (have_max_size) {
+        quota.max_size_kb = rgw_rounded_kb(max_size);
+      }
+      break;
+    case OPT_QUOTA_DISABLE:
+      quota.enabled = false;
+      break;
+  }
+}
+
+int set_bucket_quota(RGWRados *store, int opt_cmd, string& bucket_name, int64_t max_size, int64_t max_objects,
+                     bool have_max_size, bool have_max_objects)
+{
+  RGWBucketInfo bucket_info;
+  map<string, bufferlist> attrs;
+  int r = store->get_bucket_info(NULL, bucket_name, bucket_info, NULL, &attrs);
+  if (r < 0) {
+    cerr << "could not get bucket info for bucket=" << bucket_name << ": " << cpp_strerror(-r) << std::endl;
+    return -r;
+  }
+
+  set_quota_info(bucket_info.quota, opt_cmd, max_size, max_objects, have_max_size, have_max_objects);
+
+   r = store->put_bucket_instance_info(bucket_info, false, 0, &attrs);
+  if (r < 0) {
+    cerr << "ERROR: failed writing bucket instance info: " << cpp_strerror(-r) << std::endl;
+    return -r;
+  }
+  return 0;
+}
+
+int set_user_bucket_quota(int opt_cmd, RGWUser& user, RGWUserAdminOpState& op_state, int64_t max_size, int64_t max_objects,
+                          bool have_max_size, bool have_max_objects)
+{
+  RGWUserInfo& user_info = op_state.get_user_info();
+
+  set_quota_info(user_info.bucket_quota, opt_cmd, max_size, max_objects, have_max_size, have_max_objects);
+
+  op_state.set_bucket_quota(user_info.bucket_quota);
+
+  string err;
+  int r = user.modify(op_state, &err);
+  if (r < 0) {
+    cerr << "ERROR: failed updating user info: " << cpp_strerror(-r) << ": " << err << std::endl;
+    return -r;
+  }
+  return 0;
+}
 
 int main(int argc, char **argv) 
 {
@@ -719,9 +780,16 @@ int main(int argc, char **argv)
   string replica_log_type_str;
   ReplicaLogType replica_log_type = ReplicaLog_Invalid;
   string op_mask_str;
+  string quota_scope;
+
+  int64_t max_objects = -1;
+  int64_t max_size = -1;
+  bool have_max_objects = false;
+  bool have_max_size = false;
 
   std::string val;
   std::ostringstream errs;
+  string err;
   long long tmp = 0;
   for (std::vector<const char*>::iterator i = args.begin(); i != args.end(); ) {
     if (ceph_argparse_double_dash(args, i)) {
@@ -786,6 +854,20 @@ int main(int argc, char **argv)
       max_buckets = atoi(val.c_str());
     } else if (ceph_argparse_witharg(args, i, &val, "--max-entries", (char*)NULL)) {
       max_entries = atoi(val.c_str());
+    } else if (ceph_argparse_witharg(args, i, &val, "--max-size", (char*)NULL)) {
+      max_size = (int64_t)strict_strtoll(val.c_str(), 10, &err);
+      if (!err.empty()) {
+        cerr << "ERROR: failed to parse max size: " << err << std::endl;
+        return EINVAL;
+      }
+      have_max_size = true;
+    } else if (ceph_argparse_witharg(args, i, &val, "--max-objects", (char*)NULL)) {
+      max_objects = (int64_t)strict_strtoll(val.c_str(), 10, &err);
+      if (!err.empty()) {
+        cerr << "ERROR: failed to parse max objects: " << err << std::endl;
+        return EINVAL;
+      }
+      have_max_objects = true;
     } else if (ceph_argparse_witharg(args, i, &val, "--date", "--time", (char*)NULL)) {
       date = val;
       if (end_date.empty())
@@ -846,6 +928,8 @@ int main(int argc, char **argv)
       start_marker = val;
     } else if (ceph_argparse_witharg(args, i, &val, "--end-marker", (char*)NULL)) {
       end_marker = val;
+    } else if (ceph_argparse_witharg(args, i, &val, "--quota-scope", (char*)NULL)) {
+      quota_scope = val;
     } else if (ceph_argparse_witharg(args, i, &val, "--replica-log-type", (char*)NULL)) {
       replica_log_type_str = val;
       replica_log_type = get_replicalog_type(replica_log_type_str);
@@ -853,6 +937,9 @@ int main(int argc, char **argv)
         cerr << "ERROR: invalid replica log type" << std::endl;
         return EINVAL;
       }
+    } else if (strncmp(*i, "-", 1) == 0) {
+      cerr << "ERROR: invalid flag " << *i << std::endl;
+      return EINVAL;
     } else {
       ++i;
     }
@@ -1888,7 +1975,7 @@ next:
 
       bool truncated;
       do {
-        int ret = meta_log->list_entries(handle, 1000, entries, &truncated);
+	  int ret = meta_log->list_entries(handle, 1000, entries, NULL, &truncated);
         if (ret < 0) {
           cerr << "ERROR: meta_log->list_entries(): " << cpp_strerror(-ret) << std::endl;
           return -ret;
@@ -2221,6 +2308,29 @@ next:
       ret = logger.delete_bound(bucket, daemon_id);
       if (ret < 0)
         return -ret;
+    }
+  }
+
+  bool quota_op = (opt_cmd == OPT_QUOTA_SET || opt_cmd == OPT_QUOTA_ENABLE || opt_cmd == OPT_QUOTA_DISABLE);
+
+  if (quota_op) {
+    if (bucket_name.empty() && user_id.empty()) {
+      cerr << "ERROR: bucket name or uid is required for quota operation" << std::endl;
+      return EINVAL;
+    }
+
+    if (!bucket_name.empty()) {
+      if (!quota_scope.empty() && quota_scope != "bucket") {
+        cerr << "ERROR: invalid quota scope specification." << std::endl;
+        return EINVAL;
+      }
+      set_bucket_quota(store, opt_cmd, bucket_name, max_size, max_objects, have_max_size, have_max_objects);
+    } else if (!user_id.empty()) {
+      if (quota_scope != "bucket") {
+        cerr << "ERROR: only bucket-level user quota can be handled. Please specify --quota-scope=bucket" << std::endl;
+        return EINVAL;
+      }
+      set_user_bucket_quota(opt_cmd, user, user_op, max_size, max_objects, have_max_size, have_max_objects);
     }
   }
   return 0;

@@ -104,8 +104,7 @@ public:
       for (list<Context *>::iterator i = on_commit.begin();
 	   i != on_commit.end();
 	   on_commit.erase(i++)) {
-	(*i)->finish(0);
-	delete *i;
+	(*i)->complete(0);
       }
       return 0;
     }
@@ -125,6 +124,24 @@ public:
 
   int submit_transaction(Transaction trans) {
     return static_cast<TransactionImpl_*>(trans.get())->complete();
+  }
+
+  uint64_t get_estimated_size(map<string,uint64_t> &extras) {
+    uint64_t total_size = 0;
+
+    for (map<pair<string,string>,bufferlist>::iterator p = db.begin();
+         p != db.end(); ++p) {
+      string prefix = p->first.first;
+      bufferlist &bl = p->second;
+
+      uint64_t sz = bl.length();
+      total_size += sz;
+      if (extras.count(prefix) == 0)
+        extras[prefix] = 0;
+      extras[prefix] += sz;
+    }
+
+    return total_size;
   }
 
 private:

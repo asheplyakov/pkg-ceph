@@ -11,13 +11,13 @@
  * Foundation.  See file COPYING.
  * 
  */
-
 #ifndef CEPH_ENCODING_H
 #define CEPH_ENCODING_H
 
+#include "include/int_types.h"
+
 #include <tr1/memory>
 
-#include "inttypes.h"
 #include "byteorder.h"
 #include "buffer.h"
 #include "assert.h"
@@ -555,6 +555,17 @@ inline void decode(std::map<T,U>& m, bufferlist::iterator& p)
   __u32 n;
   decode(n, p);
   m.clear();
+  while (n--) {
+    T k;
+    decode(k, p);
+    decode(m[k], p);
+  }
+}
+template<class T, class U>
+inline void decode_noclear(std::map<T,U>& m, bufferlist::iterator& p)
+{
+  __u32 n;
+  decode(n, p);
   while (n--) {
     T k;
     decode(k, p);

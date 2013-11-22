@@ -20,6 +20,7 @@
 #include "rgw_bucket.h"
 #include "rgw_acl.h"
 #include "rgw_cors.h"
+#include "rgw_quota.h"
 
 using namespace std;
 
@@ -34,15 +35,31 @@ protected:
   struct req_state *s;
   RGWHandler *dialect_handler;
   RGWRados *store;
+  RGWCORSConfiguration bucket_cors;
+  bool cors_exist;
+  RGWQuotaInfo bucket_quota;
+
+  virtual int init_quota();
 public:
-  RGWOp() : s(NULL), dialect_handler(NULL), store(NULL) {}
+  RGWOp() : s(NULL), dialect_handler(NULL), store(NULL), cors_exist(false) {}
   virtual ~RGWOp() {}
+
+  virtual int init_processing() {
+    int ret = init_quota();
+    if (ret < 0)
+      return ret;
+
+    return 0;
+  }
 
   virtual void init(RGWRados *store, struct req_state *s, RGWHandler *dialect_handler) {
     this->store = store;
     this->s = s;
     this->dialect_handler = dialect_handler;
   }
+  int read_bucket_cors();
+  bool generate_cors_headers(string& origin, string& method, string& headers, string& exp_headers, unsigned *max_age);
+
   virtual int verify_params() { return 0; }
   virtual bool prefetch_data() { return false; }
   virtual int verify_permission() = 0;
@@ -443,9 +460,6 @@ protected:
 
   int init_common();
 
-protected:
-  bool parse_copy_location(const char *src, string& bucket_name, string& object);
-
 public:
   RGWCopyObj() {
     if_mod = NULL;
@@ -464,6 +478,8 @@ public:
     replace_attrs = false;
     last_ofs = 0;
   }
+
+  static bool parse_copy_location(const char *src, string& bucket_name, string& object);
 
   virtual void init(RGWRados *store, struct req_state *s, RGWHandler *h) {
     RGWOp::init(store, s, h);
@@ -526,7 +542,6 @@ public:
 class RGWGetCORS : public RGWOp {
 protected:
   int ret;
-  RGWCORSConfiguration bucket_cors;
 
 public:
   RGWGetCORS() : ret(0) {}
@@ -586,7 +601,7 @@ public:
   }
 
   int verify_permission() {return 0;}
-  int validate_cors_request();
+  int validate_cors_request(RGWCORSConfiguration *cc);
   void execute();
   void get_response_params(string& allowed_hdrs, string& exp_hdrs, unsigned *max_age);
   virtual void send_response() = 0;

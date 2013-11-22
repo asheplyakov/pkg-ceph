@@ -1136,6 +1136,19 @@ void Pipe::unregister_pipe()
   }
 }
 
+void Pipe::join()
+{
+  ldout(msgr->cct, 20) << "join" << dendl;
+  if (writer_thread.is_started())
+    writer_thread.join();
+  if (reader_thread.is_started())
+    reader_thread.join();
+  if (delay_thread) {
+    ldout(msgr->cct, 20) << "joining delay_thread" << dendl;
+    delay_thread->stop();
+    delay_thread->join();
+  }
+}
 
 void Pipe::requeue_sent()
 {
@@ -1684,7 +1697,7 @@ int Pipe::read_message(Message **pm)
   if (connection_state->has_feature(CEPH_FEATURE_NOSRCADDR)) {
     if (tcp_read((char*)&header, sizeof(header)) < 0)
       return -1;
-    header_crc = ceph_crc32c_le(0, (unsigned char *)&header, sizeof(header) - sizeof(header.crc));
+    header_crc = ceph_crc32c(0, (unsigned char *)&header, sizeof(header) - sizeof(header.crc));
   } else {
     ceph_msg_header_old oldheader;
     if (tcp_read((char*)&oldheader, sizeof(oldheader)) < 0)
@@ -1694,7 +1707,7 @@ int Pipe::read_message(Message **pm)
     header.src = oldheader.src.name;
     header.reserved = oldheader.reserved;
     header.crc = oldheader.crc;
-    header_crc = ceph_crc32c_le(0, (unsigned char *)&oldheader, sizeof(oldheader) - sizeof(oldheader.crc));
+    header_crc = ceph_crc32c(0, (unsigned char *)&oldheader, sizeof(oldheader) - sizeof(oldheader.crc));
   }
 
   ldout(msgr->cct,20) << "reader got envelope type=" << header.type
@@ -2028,8 +2041,8 @@ int Pipe::write_message(ceph_msg_header& header, ceph_msg_footer& footer, buffer
     oldheader.src.addr = connection_state->get_peer_addr();
     oldheader.orig_src = oldheader.src;
     oldheader.reserved = header.reserved;
-    oldheader.crc = ceph_crc32c_le(0, (unsigned char*)&oldheader,
-			      sizeof(oldheader) - sizeof(oldheader.crc));
+    oldheader.crc = ceph_crc32c(0, (unsigned char*)&oldheader,
+				sizeof(oldheader) - sizeof(oldheader.crc));
     msgvec[msg.msg_iovlen].iov_base = (char*)&oldheader;
     msgvec[msg.msg_iovlen].iov_len = sizeof(oldheader);
     msglen += sizeof(oldheader);

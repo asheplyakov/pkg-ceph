@@ -9,7 +9,7 @@
 # common
 #################################################################################
 Name:		ceph
-Version:	0.67.2
+Version:	0.72.1
 Release:	0%{?dist}
 Summary:	User space components of the Ceph file system
 License:	GPL-2.0
@@ -37,11 +37,13 @@ BuildRequires:	perl
 BuildRequires:	gdbm
 BuildRequires:	pkgconfig
 BuildRequires:	python
+BuildRequires:	python-nose
 BuildRequires:  libaio-devel
 BuildRequires:  libcurl-devel
 BuildRequires:  libxml2-devel
 BuildRequires:  libuuid-devel
 BuildRequires:  leveldb-devel > 1.2
+BuildRequires:  yasm
 %if 0%{?rhel_version} || 0%{?centos_version} || 0%{?fedora}
 BuildRequires:  snappy-devel
 %endif
@@ -125,7 +127,6 @@ Requires:	apache2-mod_fcgid
 %else
 BuildRequires:	expat-devel
 BuildRequires:	fcgi-devel
-Requires:	mod_fcgid
 %endif
 %description radosgw
 radosgw is an S3 HTTP REST gateway for the RADOS object store. It is
@@ -238,18 +239,12 @@ License:	LGPL-2.0
 Requires:	java
 Requires:	libcephfs_jni1 = %{version}-%{release}
 BuildRequires:  java-devel
-%if 0%{?suse_version} > 1220
 Requires:       junit4
 BuildRequires:  junit4
-%else
-Requires:       junit
-BuildRequires:  junit
-%endif
-BuildRequires:  junit
 %description -n cephfs-java
 This package contains the Java libraries for the Ceph File System.
 
-%if (0%{?centos} || 0%{?opensuse} || 0%{?suse_version})
+%if 0%{?opensuse} || 0%{?suse_version}
 %debug_package
 %endif
 
@@ -274,11 +269,9 @@ export RPM_OPT_FLAGS=`echo $RPM_OPT_FLAGS | sed -e 's/i386/i486/'`
 
 %{configure}	CPPFLAGS="$java_inc" \
 		--prefix=/usr \
-		--sbindir=/sbin \
 		--localstatedir=/var \
 		--sysconfdir=/etc \
 		--docdir=%{_docdir}/ceph \
-		--without-hadoop \
 		--with-nss \
 		--without-cryptopp \
 		--with-rest-bench \
@@ -384,6 +377,9 @@ fi
 %dir %{_docdir}/ceph
 %{_docdir}/ceph/sample.ceph.conf
 %{_docdir}/ceph/sample.fetch_config
+%{_datadir}/ceph/known_hosts_drop.ceph.com
+%{_datadir}/ceph/id_dsa_drop.ceph.com
+%{_datadir}/ceph/id_dsa_drop.ceph.com.pub
 %{_bindir}/ceph
 %{_bindir}/cephfs
 %{_bindir}/ceph-conf
@@ -394,13 +390,13 @@ fi
 %{_bindir}/osdmaptool
 %{_bindir}/ceph-authtool
 %{_bindir}/ceph-syn
+%{_bindir}/ceph-post-file
 %{_bindir}/ceph-run
 %{_bindir}/ceph-mon
 %{_bindir}/ceph-mds
 %{_bindir}/ceph-osd
 %{_bindir}/ceph-rbdnamer
 %{_bindir}/ceph-dencoder
-%{_bindir}/ceph-rest-api
 %{_bindir}/librados-config
 %{_bindir}/rados
 %{_bindir}/rbd
@@ -418,6 +414,7 @@ fi
 /sbin/mount.ceph
 %dir %{_libdir}/rados-classes
 %{_libdir}/rados-classes/libcls_rbd.so*
+%{_libdir}/rados-classes/libcls_hello.so*
 %{_libdir}/rados-classes/libcls_rgw.so*
 %{_libdir}/rados-classes/libcls_lock.so*
 %{_libdir}/rados-classes/libcls_kvs.so*
@@ -445,6 +442,7 @@ fi
 %{_mandir}/man8/mkcephfs.8*
 %{_mandir}/man8/ceph-run.8*
 %{_mandir}/man8/ceph-syn.8*
+%{_mandir}/man8/ceph-post-file.8*
 %{_mandir}/man8/ceph-dencoder.8*
 %{_mandir}/man8/ceph-rest-api.8*
 %{_mandir}/man8/crushtool.8*
@@ -612,8 +610,10 @@ fi
 %{_bindir}/ceph_smalliobenchfs
 %{_bindir}/ceph_smalliobenchrbd
 %{_bindir}/ceph_filestore_dump
+%{_bindir}/ceph_filestore_tool
 %{_bindir}/ceph_streamtest
 %{_bindir}/ceph_test_cfuse_cache_invalidate
+%{_bindir}/ceph_test_cls_hello
 %{_bindir}/ceph_test_cls_lock
 %{_bindir}/ceph_test_cls_log
 %{_bindir}/ceph_test_cls_rbd
@@ -665,12 +665,12 @@ fi
 %{_bindir}/ceph_test_rados_watch_notify
 %{_bindir}/ceph_test_signal_handlers
 %{_bindir}/ceph_test_snap_mapper
-%{_bindir}/ceph_test_store_tool
 %{_bindir}/ceph_test_timers
 %{_bindir}/ceph_tpbench
 %{_bindir}/ceph_xattr_bench
 %{_bindir}/ceph-monstore-tool
 %{_bindir}/ceph-osdomap-tool
+%{_bindir}/ceph-kvstore-tool
 
 %files -n libcephfs_jni1
 %defattr(-,root,root,-)

@@ -6,6 +6,7 @@
 #include "rgw_acl_s3.h"
 #include "rgw_cache.h"
 #include "rgw_bucket.h"
+#include "rgw_keystone.h"
 
 #include "common/ceph_json.h"
 #include "common/Formatter.h"
@@ -395,6 +396,7 @@ void RGWUserInfo::dump(Formatter *f) const
   }
   encode_json("default_placement", default_placement, f);
   encode_json("placement_tags", placement_tags, f);
+  encode_json("bucket_quota", bucket_quota, f);
 }
 
 
@@ -445,6 +447,21 @@ void RGWUserInfo::decode_json(JSONObj *obj)
   system = (__u8)sys;
   JSONDecoder::decode_json("default_placement", default_placement, obj);
   JSONDecoder::decode_json("placement_tags", placement_tags, obj);
+  JSONDecoder::decode_json("bucket_quota", bucket_quota, obj);
+}
+
+void RGWQuotaInfo::dump(Formatter *f) const
+{
+  f->dump_bool("enabled", enabled);
+  f->dump_int("max_size_kb", max_size_kb);
+  f->dump_int("max_objects", max_objects);
+}
+
+void RGWQuotaInfo::decode_json(JSONObj *obj)
+{
+  JSONDecoder::decode_json("max_size_kb", max_size_kb, obj);
+  JSONDecoder::decode_json("max_objects", max_objects, obj);
+  JSONDecoder::decode_json("enabled", enabled, obj);
 }
 
 void rgw_bucket::dump(Formatter *f) const
@@ -496,6 +513,7 @@ void RGWBucketInfo::dump(Formatter *f) const
   encode_json("region", region, f);
   encode_json("placement_rule", placement_rule, f);
   encode_json("has_instance_obj", has_instance_obj, f);
+  encode_json("quota", quota, f);
 }
 
 void RGWBucketInfo::decode_json(JSONObj *obj) {
@@ -506,6 +524,7 @@ void RGWBucketInfo::decode_json(JSONObj *obj) {
   JSONDecoder::decode_json("region", region, obj);
   JSONDecoder::decode_json("placement_rule", placement_rule, obj);
   JSONDecoder::decode_json("has_instance_obj", has_instance_obj, obj);
+  JSONDecoder::decode_json("quota", quota, obj);
 }
 
 void RGWObjEnt::dump(Formatter *f) const
@@ -672,12 +691,14 @@ void RGWRegionMap::dump(Formatter *f) const
 {
   encode_json("regions", regions, f);
   encode_json("master_region", master_region, f);
+  encode_json("bucket_quota", bucket_quota, f);
 }
 
 void RGWRegionMap::decode_json(JSONObj *obj)
 {
   JSONDecoder::decode_json("regions", regions, obj);
   JSONDecoder::decode_json("master_region", master_region, obj);
+  JSONDecoder::decode_json("bucket_quota", bucket_quota, obj);
 }
 
 void RGWMetadataLogInfo::dump(Formatter *f) const
@@ -704,3 +725,70 @@ void RGWDataChangesLogInfo::decode_json(JSONObj *obj)
   JSONDecoder::decode_json("last_update", last_update, obj);
 }
 
+void KeystoneToken::Metadata::decode_json(JSONObj *obj)
+{
+  JSONDecoder::decode_json("is_admin", is_admin, obj);
+}
+
+void KeystoneToken::Service::Endpoint::decode_json(JSONObj *obj)
+{
+  JSONDecoder::decode_json("id", id, obj);
+  JSONDecoder::decode_json("adminURL", admin_url, obj);
+  JSONDecoder::decode_json("publicURL", public_url, obj);
+  JSONDecoder::decode_json("internalURL", internal_url, obj);
+  JSONDecoder::decode_json("region", region, obj);
+}
+
+void KeystoneToken::Service::decode_json(JSONObj *obj)
+{
+  JSONDecoder::decode_json("type", type, obj, true);
+  JSONDecoder::decode_json("name", name, obj, true);
+  JSONDecoder::decode_json("endpoints", endpoints, obj);
+}
+
+void KeystoneToken::Token::Tenant::decode_json(JSONObj *obj)
+{
+  JSONDecoder::decode_json("id", id, obj, true);
+  JSONDecoder::decode_json("name", name, obj, true);
+  JSONDecoder::decode_json("description", description, obj);
+  JSONDecoder::decode_json("enabled", enabled, obj);
+}
+
+void KeystoneToken::Token::decode_json(JSONObj *obj)
+{
+  string expires_iso8601;
+  struct tm t;
+
+  JSONDecoder::decode_json("id", id, obj, true);
+  JSONDecoder::decode_json("tenant", tenant, obj, true);
+  JSONDecoder::decode_json("expires", expires_iso8601, obj, true);
+
+  if (parse_iso8601(expires_iso8601.c_str(), &t)) {
+    expires = timegm(&t);
+  } else {
+    expires = 0;
+    throw JSONDecoder::err("Failed to parse ISO8601 expiration date from Keystone response.");
+  }
+}
+
+void KeystoneToken::User::Role::decode_json(JSONObj *obj)
+{
+  JSONDecoder::decode_json("id", id, obj);
+  JSONDecoder::decode_json("name", name, obj);
+}
+
+void KeystoneToken::User::decode_json(JSONObj *obj)
+{
+  JSONDecoder::decode_json("id", id, obj, true);
+  JSONDecoder::decode_json("name", name, obj);
+  JSONDecoder::decode_json("username", user_name, obj, true);
+  JSONDecoder::decode_json("roles", roles, obj);
+}
+
+void KeystoneToken::decode_json(JSONObj *access_obj)
+{
+  JSONDecoder::decode_json("metadata", metadata, access_obj);
+  JSONDecoder::decode_json("token", token, access_obj, true);
+  JSONDecoder::decode_json("user", user, access_obj, true);
+  JSONDecoder::decode_json("serviceCatalog", service_catalog, access_obj);
+}

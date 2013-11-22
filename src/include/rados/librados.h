@@ -10,7 +10,6 @@ extern "C" {
 #include <linux/types.h>
 #elif defined(__FreeBSD__)
 #include <sys/types.h>
-#include "include/inttypes.h"
 #endif
 #include <string.h>
 #include "rados_types.h"
@@ -24,7 +23,7 @@ extern "C" {
 #endif
 
 #define LIBRADOS_VER_MAJOR 0
-#define LIBRADOS_VER_MINOR 53
+#define LIBRADOS_VER_MINOR 68
 #define LIBRADOS_VER_EXTRA 0
 
 #define LIBRADOS_VERSION(maj, min, extra) ((maj << 16) + (min << 8) + extra)
@@ -223,6 +222,23 @@ int rados_create2(rados_t *pcluster, const char *const clustername,
  * @returns 0 on success, negative error code on failure
  */
 int rados_create_with_context(rados_t *cluster, rados_config_t cct);
+
+/**
+ * Ping the monitor with ID @p mon_id, storing the resulting reply in
+ * @p buf (if specified) with a maximum size of @p len.
+ *
+ * The result buffer is allocated on the heap; the caller is
+ * expected to release that memory with rados_buffer_free().  The
+ * buffer and length pointers can be NULL, in which case they are
+ * not filled in.
+ *
+ * @param      cluster    cluster handle
+ * @param[in]  mon_id     ID of the monitor to ping
+ * @param[out] outstr     double pointer with the resulting reply
+ * @param[out] outstrlen  pointer with the size of the reply in @p outstr
+ */
+int rados_ping_monitor(rados_t cluster, const char *mon_id,
+                       char **outstr, size_t *outstrlen);
 
 /**
  * Connect to the cluster.
@@ -565,7 +581,7 @@ int rados_pool_create_with_auid(rados_t cluster, const char *pool_name, uint64_t
  * @returns 0 on success, negative error code on failure
  */
 int rados_pool_create_with_crush_rule(rados_t cluster, const char *pool_name,
-				      __u8 crush_rule_num);
+				      uint8_t crush_rule_num);
 
 /**
  * Create a pool with a specific CRUSH rule and auid
@@ -580,7 +596,7 @@ int rados_pool_create_with_crush_rule(rados_t cluster, const char *pool_name,
  * @returns 0 on success, negative error code on failure
  */
 int rados_pool_create_with_all(rados_t cluster, const char *pool_name, uint64_t auid,
-			       __u8 crush_rule_num);
+			       uint8_t crush_rule_num);
 
 /**
  * Delete a pool and all data inside it

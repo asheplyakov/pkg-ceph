@@ -18,12 +18,12 @@ namespace librados
 {
   using ceph::bufferlist;
 
-  class AioCompletionImpl;
+  struct AioCompletionImpl;
   class IoCtx;
-  class IoCtxImpl;
+  struct IoCtxImpl;
   class ObjectOperationImpl;
-  class ObjListCtx;
-  class PoolAsyncCompletionImpl;
+  struct ObjListCtx;
+  struct PoolAsyncCompletionImpl;
   class RadosClient;
 
   typedef void *list_ctx_t;
@@ -96,7 +96,8 @@ namespace librados
     bool is_complete_and_cb();
     bool is_safe_and_cb();
     int get_return_value();
-    int get_version();
+    int get_version();  ///< DEPRECATED get_version() only returns 32-bits
+    uint64_t get_version64();
     void release();
     AioCompletionImpl *pc;
   };
@@ -132,11 +133,16 @@ namespace librados
    * BALANCE_READS and LOCALIZE_READS should only be used
    * when reading from data you're certain won't change,
    * like a snapshot, or where eventual consistency is ok.
+   *
+   * ORDER_READS_WRITES will order reads the same way writes are
+   * ordered (e.g., waiting for degraded objects).  In particular, it
+   * will make a write followed by a read sequence be preserved.
    */
   enum ObjectOperationGlobalFlags {
     OPERATION_NOFLAG         = 0,
     OPERATION_BALANCE_READS  = 1,
     OPERATION_LOCALIZE_READS = 2,
+    OPERATION_ORDER_READS_WRITES = 4,
   };
 
   /*
@@ -264,6 +270,26 @@ namespace librados
      */
     void omap_rm_keys(const std::set<std::string> &to_rm);
 
+    /**
+     * Copy an object
+     *
+     * Copies an object from another location.  The operation is atomic in that
+     * the copy either succeeds in its entirety or fails (e.g., because the
+     * source object was modified while the copy was in progress).
+     *
+     * @param src source object name
+     * @param src_ioctx ioctx for the source object
+     * @param version current version of the source object
+     */
+    void copy_from(const std::string& src, const IoCtx& src_ioctx, uint64_t src_version);
+
+    /**
+     * undirty an object
+     *
+     * Clear an objects dirty flag
+     */
+    void undirty();
+
     friend class IoCtx;
   };
 
@@ -382,6 +408,14 @@ namespace librados
      */
     void list_snaps(snap_set_t *out_snaps, int *prval);
 
+    /**
+     * query dirty state of an object
+     *
+     * @param out_dirty [out] pointer to resulting bool
+     * @param prval [out] place error code in prval upon completion
+     */
+    void is_dirty(bool *isdirty, int *prval);
+
   };
 
   /* IoCtx : This is a context in which we can perform I/O.
@@ -425,8 +459,23 @@ namespace librados
     int create(const std::string& oid, bool exclusive);
     int create(const std::string& oid, bool exclusive, const std::string& category);
 
+    /**
+     * write bytes to an object at a specified offset
+     *
+     * NOTE: this call steals the contents of @param bl.
+     */
     int write(const std::string& oid, bufferlist& bl, size_t len, uint64_t off);
+    /**
+     * append bytes to an object
+     *
+     * NOTE: this call steals the contents of @param bl.
+     */
     int append(const std::string& oid, bufferlist& bl, size_t len);
+    /**
+     * replace object contents with provided data
+     *
+     * NOTE: this call steals the contents of @param bl.
+     */
     int write_full(const std::string& oid, bufferlist& bl);
     int clone_range(const std::string& dst_oid, uint64_t dst_off,
                    const std::string& src_oid, uint64_t src_off,
@@ -443,7 +492,17 @@ namespace librados
     int stat(const std::string& oid, uint64_t *psize, time_t *pmtime);
     int exec(const std::string& oid, const char *cls, const char *method,
 	     bufferlist& inbl, bufferlist& outbl);
+    /**
+     * modify object tmap based on encoded update sequence
+     *
+     * NOTE: this call steals the contents of @param bl
+     */
     int tmap_update(const std::string& oid, bufferlist& cmdbl);
+    /**
+     * replace object contents with provided encoded tmap data
+     *
+     * NOTE: this call steals the contents of @param bl
+     */
     int tmap_put(const std::string& oid, bufferlist& bl);
     int tmap_get(const std::string& oid, bufferlist& bl);
 
@@ -673,6 +732,7 @@ namespace librados
     IoCtx(IoCtxImpl *io_ctx_impl_);
 
     friend class Rados; // Only Rados can use our private constructor to create IoCtxes.
+    friend class ObjectWriteOperation;  // copy_from needs to see our IoCtxImpl
 
     IoCtxImpl *io_ctx_impl;
   };
@@ -729,7 +789,12 @@ namespace librados
     int cluster_stat(cluster_stat_t& result);
     int cluster_fsid(std::string *fsid);
 
-    /* pool aio */
+    /*
+     * pool aio
+     *
+     * It is up to the caller to release the completion handler, even if the pool_create_async()
+     * and/or pool_delete_async() fails and does not send the async request
+     */
     static PoolAsyncCompletion *pool_async_create_completion();
 
    // -- aio --

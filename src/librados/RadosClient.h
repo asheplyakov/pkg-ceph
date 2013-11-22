@@ -25,9 +25,9 @@
 
 #include "IoCtxImpl.h"
 
-class AuthAuthorizer;
+struct AuthAuthorizer;
 class CephContext;
-class Connection;
+struct Connection;
 struct md_config_t;
 class Message;
 class MWatchNotify;
@@ -77,6 +77,7 @@ public:
 
   RadosClient(CephContext *cct_);
   ~RadosClient();
+  int ping_monitor(string mon_id, string *result);
   int connect();
   void shutdown();
 

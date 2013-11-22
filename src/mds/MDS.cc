@@ -800,7 +800,9 @@ void MDS::handle_command(MMonCommand *m)
      clog.info() << "tcmalloc not enabled, can't use heap profiler commands\n";
    else {
      ostringstream ss;
-     ceph_heap_profiler_handle_command(m->cmd, ss);
+     vector<std::string> cmdargs;
+     cmdargs.insert(cmdargs.begin(), m->cmd.begin()+1, m->cmd.end());
+     ceph_heap_profiler_handle_command(cmdargs, ss);
      clog.info() << ss.str();
    }
  } else dout(0) << "unrecognized command! " << m->cmd << dendl;
@@ -1140,7 +1142,9 @@ void MDS::boot_create()
   // start with a fresh journal
   dout(10) << "boot_create creating fresh journal" << dendl;
   mdlog->create(fin.new_sub());
-  mdlog->start_new_segment(fin.new_sub());
+
+  // open new journal segment, but do not journal subtree map (yet)
+  mdlog->prepare_new_segment();
 
   if (whoami == mdsmap->get_root()) {
     dout(3) << "boot_create creating fresh hierarchy" << dendl;
@@ -1170,6 +1174,12 @@ void MDS::boot_create()
     snapserver->save(fin.new_sub());
     snapserver->handle_mds_recovery(whoami);
   }
+
+  // ok now journal it
+  mdlog->journal_segment_subtree_map();
+  mdlog->wait_for_safe(fin.new_sub());
+  mdlog->flush();
+
   fin.activate();
 }
 
@@ -1177,9 +1187,6 @@ void MDS::creating_done()
 {
   dout(1)<< "creating_done" << dendl;
   request_state(MDSMap::STATE_ACTIVE);
-
-  // start new segment
-  mdlog->start_new_segment(0);
 }
 
 
@@ -1518,7 +1525,6 @@ void MDS::active_start()
     mdcache->open_root();
 
   mdcache->clean_open_file_lists();
-  mdcache->scan_stray_dir();
   mdcache->export_remaining_imported_caps();
   finish_contexts(g_ceph_context, waiting_for_replay);  // kick waiters
   finish_contexts(g_ceph_context, waiting_for_active);  // kick waiters
@@ -1889,8 +1895,7 @@ bool MDS::_dispatch(Message *m)
     ls.swap(finished_queue);
     while (!ls.empty()) {
       dout(10) << " finish " << ls.front() << dendl;
-      ls.front()->finish(0);
-      delete ls.front();
+      ls.front()->complete(0);
       ls.pop_front();
       
       // give other threads (beacon!) a chance
@@ -2176,10 +2181,10 @@ bool MDS::ms_verify_authorizer(Connection *con, int peer_type,
 
 void MDS::ms_handle_accept(Connection *con)
 {
+  Mutex::Locker l(mds_lock);
   Session *s = static_cast<Session *>(con->get_priv());
   dout(10) << "ms_handle_accept " << con->get_peer_addr() << " con " << con << " session " << s << dendl;
   if (s) {
-    s->put();
     if (s->connection != con) {
       dout(10) << " session connection " << s->connection << " -> " << con << dendl;
       s->connection = con;
@@ -2190,5 +2195,6 @@ void MDS::ms_handle_accept(Connection *con)
 	s->preopen_out_queue.pop_front();
       }
     }
+    s->put();
   }
 }

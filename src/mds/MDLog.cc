@@ -173,8 +173,7 @@ void MDLog::submit_entry(LogEvent *le, Context *c)
   if (!g_conf->mds_log) {
     // hack: log is disabled.
     if (c) {
-      c->finish(0);
-      delete c;
+      c->complete(0);
     }
     return;
   }
@@ -245,8 +244,7 @@ void MDLog::wait_for_safe(Context *c)
     journaler->wait_for_flush(c);
   } else {
     // hack: bypass.
-    c->finish(0);
-    delete c;
+    c->complete(0);
   }
 }
 
@@ -269,16 +267,19 @@ void MDLog::cap()
 
 void MDLog::start_new_segment(Context *onsync)
 {
-  dout(7) << "start_new_segment at " << journaler->get_write_pos() << dendl;
-
-  segments[journaler->get_write_pos()] = new LogSegment(journaler->get_write_pos());
-
-  ESubtreeMap *le = mds->mdcache->create_subtree_map();
-  submit_entry(le);
+  prepare_new_segment();
+  journal_segment_subtree_map();
   if (onsync) {
-    wait_for_safe(onsync);  
+    wait_for_safe(onsync);
     flush();
   }
+}
+
+void MDLog::prepare_new_segment()
+{
+  dout(7) << __func__ << " at " << journaler->get_write_pos() << dendl;
+
+  segments[journaler->get_write_pos()] = new LogSegment(journaler->get_write_pos());
 
   logger->inc(l_mdl_segadd);
   logger->set(l_mdl_seg, segments.size());
@@ -287,6 +288,12 @@ void MDLog::start_new_segment(Context *onsync)
   dout(10) << "Advancing to next stray directory on mds " << mds->get_nodeid() 
 	   << dendl;
   mds->mdcache->advance_stray();
+}
+
+void MDLog::journal_segment_subtree_map()
+{
+  dout(7) << __func__ << dendl;
+  submit_entry(mds->mdcache->create_subtree_map());
 }
 
 void MDLog::trim(int m)
@@ -442,8 +449,7 @@ void MDLog::replay(Context *c)
   if (journaler->get_read_pos() == journaler->get_write_pos()) {
     dout(10) << "replay - journal empty, done." << dendl;
     if (c) {
-      c->finish(0);
-      delete c;
+      c->complete(0);
     }
     return;
   }
@@ -493,7 +499,11 @@ void MDLog::_replay_thread()
     if (journaler->get_error()) {
       r = journaler->get_error();
       dout(0) << "_replay journaler got error " << r << ", aborting" << dendl;
-      if (r == -EINVAL) {
+      if (r == -ENOENT) {
+	// journal has been trimmed by somebody else?
+	assert(journaler->is_readonly());
+	r = -EAGAIN;
+      } else if (r == -EINVAL) {
         if (journaler->get_read_pos() < journaler->get_expire_pos()) {
           // this should only happen if you're following somebody else
           assert(journaler->is_readonly());
@@ -599,7 +609,7 @@ void MDLog::_replay_thread()
   }
 
   dout(10) << "_replay_thread kicking waiters" << dendl;
-  finish_contexts(g_ceph_context, waitfor_replay, 0);  
+  finish_contexts(g_ceph_context, waitfor_replay, r);  
 
   dout(10) << "_replay_thread finish" << dendl;
   mds->mds_lock.Unlock();

@@ -269,7 +269,7 @@ static int read_policy(RGWRados *store, struct req_state *s,
   string oid = object;
   rgw_obj obj;
 
-  if (bucket_info.flags & BUCKET_SUSPENDED) {
+  if (!s->system_request && bucket_info.flags & BUCKET_SUSPENDED) {
     ldout(s->cct, 0) << "NOTICE: bucket " << bucket_info.bucket.name << " is suspended" << dendl;
     return -ERR_USER_SUSPENDED;
   }
@@ -292,7 +292,7 @@ static int read_policy(RGWRados *store, struct req_state *s,
     if (ret < 0)
       return ret;
     string& owner = bucket_policy.get_owner().get_id();
-    if (owner.compare(s->user.user_id) != 0 &&
+    if (!s->system_request && owner.compare(s->user.user_id) != 0 &&
         !bucket_policy.verify_permission(s->user.user_id, s->perm_mask, RGW_PERM_READ))
       ret = -EACCES;
     else
@@ -339,7 +339,7 @@ static int rgw_build_policies(RGWRados *store, struct req_state *s, bool only_bu
       s->local_source = store->region.equals(region);
     }
   }
-    
+
   if (s->bucket_name_str.size()) {
     s->bucket_exists = true;
     if (s->bucket_instance_id.empty()) {
@@ -418,9 +418,160 @@ int RGWOp::verify_op_mask()
     return -EPERM;
   }
 
+  if (!s->system_request && (required_mask & RGW_OP_TYPE_MODIFY) && !store->zone.is_master)  {
+    ldout(s->cct, 5) << "NOTICE: modify request to a non-master zone by a non-system user, permission denied"  << dendl;
+    return -EPERM;
+  }
+
   return 0;
 }
 
+int RGWOp::init_quota()
+{
+  /* no quota enforcement for system requests */
+  if (s->system_request)
+    return 0;
+
+  /* init quota related stuff */
+  if (!(s->user.op_mask & RGW_OP_TYPE_MODIFY)) {
+    return 0;
+  }
+
+  /* only interested in object related ops */
+  if (s->object_str.empty()) {
+    return 0;
+  }
+
+  if (s->bucket_info.quota.enabled) {
+    bucket_quota = s->bucket_info.quota;
+    return 0;
+  }
+  if (s->user.user_id == s->bucket_owner.get_id()) {
+    if (s->user.bucket_quota.enabled) {
+      bucket_quota = s->user.bucket_quota;
+      return 0;
+    }
+  } else {
+    RGWUserInfo owner_info;
+    int r = rgw_get_user_info_by_uid(store, s->bucket_info.owner, owner_info);
+    if (r < 0)
+      return r;
+
+    if (owner_info.bucket_quota.enabled) {
+      bucket_quota = owner_info.bucket_quota;
+      return 0;
+    }
+  }
+
+  bucket_quota = store->region_map.bucket_quota;
+  return 0;
+}
+
+static bool validate_cors_rule_method(RGWCORSRule *rule, const char *req_meth) {
+  uint8_t flags = 0;
+  if (strcmp(req_meth, "GET") == 0) flags = RGW_CORS_GET;
+  else if (strcmp(req_meth, "POST") == 0) flags = RGW_CORS_POST;
+  else if (strcmp(req_meth, "PUT") == 0) flags = RGW_CORS_PUT;
+  else if (strcmp(req_meth, "DELETE") == 0) flags = RGW_CORS_DELETE;
+  else if (strcmp(req_meth, "HEAD") == 0) flags = RGW_CORS_HEAD;
+
+  if ((rule->get_allowed_methods() & flags) == flags) {
+    dout(10) << "Method " << req_meth << " is supported" << dendl;
+  } else {
+    dout(5) << "Method " << req_meth << " is not supported" << dendl;
+    return false;
+  }
+
+  return true;
+}
+
+int RGWOp::read_bucket_cors()
+{
+  bufferlist bl;
+
+  map<string, bufferlist>::iterator aiter = s->bucket_attrs.find(RGW_ATTR_CORS);
+  if (aiter == s->bucket_attrs.end()) {
+    ldout(s->cct, 20) << "no CORS configuration attr found" << dendl;
+    cors_exist = false;
+    return 0; /* no CORS configuration found */
+  }
+
+  cors_exist = true;
+
+  bl = aiter->second;
+
+  bufferlist::iterator iter = bl.begin();
+  try {
+    bucket_cors.decode(iter);
+  } catch (buffer::error& err) {
+    ldout(s->cct, 0) << "ERROR: could not decode policy, caught buffer::error" << dendl;
+    return -EIO;
+  }
+  if (s->cct->_conf->subsys.should_gather(ceph_subsys_rgw, 15)) {
+    RGWCORSConfiguration_S3 *s3cors = static_cast<RGWCORSConfiguration_S3 *>(&bucket_cors);
+    ldout(s->cct, 15) << "Read RGWCORSConfiguration";
+    s3cors->to_xml(*_dout);
+    *_dout << dendl;
+  }
+  return 0;
+}
+
+static void get_cors_response_headers(RGWCORSRule *rule, const char *req_hdrs, string& hdrs, string& exp_hdrs, unsigned *max_age) {
+  if (req_hdrs) {
+    list<string> hl;
+    get_str_list(req_hdrs, hl);
+    for(list<string>::iterator it = hl.begin(); it != hl.end(); ++it) {
+      if (!rule->is_header_allowed((*it).c_str(), (*it).length())) {
+        dout(5) << "Header " << (*it) << " is not registered in this rule" << dendl;
+      } else {
+        if (hdrs.length() > 0) hdrs.append(",");
+        hdrs.append((*it));
+      }
+    }
+  }
+  rule->format_exp_headers(exp_hdrs);
+  *max_age = rule->get_max_age();
+}
+
+bool RGWOp::generate_cors_headers(string& origin, string& method, string& headers, string& exp_headers, unsigned *max_age)
+{
+  const char *orig = s->info.env->get("HTTP_ORIGIN");
+  if (!orig) {
+    return false;
+  }
+  origin = orig;
+  int ret = read_bucket_cors();
+  if (ret < 0) {
+    return false;
+  }
+
+  if (!cors_exist) {
+    dout(2) << "No CORS configuration set yet for this bucket" << dendl;
+    return false;
+  }
+
+  RGWCORSRule *rule = bucket_cors.host_name_rule(orig);
+  if (!rule)
+    return false;
+
+  const char *req_meth = s->info.env->get("HTTP_ACCESS_CONTROL_REQUEST_METHOD");
+  if (!req_meth) {
+    req_meth = s->info.method;
+  }
+
+  if (req_meth)
+    method = req_meth;
+
+  if (!validate_cors_rule_method(rule, req_meth)) {
+    return false;
+  }
+
+  const char *req_hdrs = s->info.env->get("HTTP_ACCESS_CONTROL_ALLOW_HEADERS");
+
+  get_cors_response_headers(rule, req_hdrs, headers, exp_headers, max_age);
+
+  return true;
+}
 
 int RGWGetObj::read_user_manifest_part(rgw_bucket& bucket, RGWObjEnt& ent, RGWAccessControlPolicy *bucket_policy, off_t start_ofs, off_t end_ofs)
 {
@@ -1066,7 +1217,7 @@ void RGWDeleteBucket::execute()
 {
   ret = -EINVAL;
 
-  if (!s->bucket_name)
+  if (s->bucket_name_str.empty())
     return;
 
   RGWObjVersionTracker ot;
@@ -1166,7 +1317,7 @@ int RGWPutObjProcessor_Multipart::prepare(RGWRados *store, void *obj_ctx)
 
 int RGWPutObjProcessor_Multipart::do_complete(string& etag, time_t *mtime, time_t set_mtime, map<string, bufferlist>& attrs)
 {
-  complete_parts();
+  complete_writing_data();
 
   RGWRados::PutObjMetaExtraParams params;
   params.set_mtime = set_mtime;
@@ -1258,6 +1409,14 @@ void RGWPutObj::execute()
     ldout(s->cct, 15) << "supplied_md5=" << supplied_md5 << dendl;
   }
 
+  if (!chunked_upload) { /* with chunked upload we don't know how big is the upload.
+                            we also check sizes at the end anyway */
+    ret = store->check_quota(s->bucket, bucket_quota, s->content_length);
+    if (ret < 0) {
+      goto done;
+    }
+  }
+
   if (supplied_etag) {
     strncpy(supplied_md5, supplied_etag, sizeof(supplied_md5) - 1);
     supplied_md5[sizeof(supplied_md5) - 1] = '\0';
@@ -1301,6 +1460,11 @@ void RGWPutObj::execute()
   }
   s->obj_size = ofs;
   perfcounter->inc(l_rgw_put_b, s->obj_size);
+
+  ret = store->check_quota(s->bucket, bucket_quota, s->obj_size);
+  if (ret < 0) {
+    goto done;
+  }
 
   hash.Final(m);
 
@@ -1499,6 +1663,13 @@ void RGWPutMetadata::execute()
     }
   }
 
+  map<string, string>::iterator giter;
+  for (giter = s->generic_attrs.begin(); giter != s->generic_attrs.end(); ++giter) {
+    bufferlist& attrbl = attrs[giter->first];
+    const string& val = giter->second;
+    attrbl.append(val.c_str(), val.size() + 1);
+  }
+
   if (has_policy) {
     policy.encode(bl);
     attrs[RGW_ATTR_ACL] = bl;
@@ -1539,8 +1710,6 @@ bool RGWCopyObj::parse_copy_location(const char *src, string& bucket_name, strin
 
   url_decode(url_src, dec_src);
   src = dec_src.c_str();
-
-  ldout(s->cct, 15) << "decoded obj=" << src << dendl;
 
   if (*src == '/') ++src;
 
@@ -1835,37 +2004,6 @@ void RGWPutACLs::execute()
   }
 }
 
-static int read_bucket_cors(RGWRados *store, struct req_state *s, RGWCORSConfiguration *bucket_cors, bool *exist)
-{
-  bufferlist bl;
-
-  map<string, bufferlist>::iterator aiter = s->bucket_attrs.find(RGW_ATTR_CORS);
-  if (aiter == s->bucket_attrs.end()) {
-    ldout(s->cct, 20) << "no CORS configuration attr found" << dendl;
-    *exist = false;
-    return 0; /* no CORS configuration found */
-  }
-
-  *exist = true;
-
-  bl = aiter->second;
-
-  bufferlist::iterator iter = bl.begin();
-  try {
-    bucket_cors->decode(iter);
-  } catch (buffer::error& err) {
-    ldout(s->cct, 0) << "ERROR: could not decode policy, caught buffer::error" << dendl;
-    return -EIO;
-  }
-  if (s->cct->_conf->subsys.should_gather(ceph_subsys_rgw, 15)) {
-    RGWCORSConfiguration_S3 *s3cors = static_cast<RGWCORSConfiguration_S3 *>(bucket_cors);
-    ldout(s->cct, 15) << "Read RGWCORSConfiguration";
-    s3cors->to_xml(*_dout);
-    *_dout << dendl;
-  }
-  return 0;
-}
-
 int RGWGetCORS::verify_permission()
 {
   if (s->user.user_id.compare(s->bucket_owner.get_id()) != 0)
@@ -1876,9 +2014,7 @@ int RGWGetCORS::verify_permission()
 
 void RGWGetCORS::execute()
 {
-  bool cors_exist;
-
-  ret = read_bucket_cors(store, s, &bucket_cors, &cors_exist);
+  ret = read_bucket_cors();
   if (ret < 0)
     return ;
 
@@ -1922,9 +2058,7 @@ int RGWDeleteCORS::verify_permission()
 
 void RGWDeleteCORS::execute()
 {
-  bool cors_exist;
-  RGWCORSConfiguration bucket_cors;
-  ret = read_bucket_cors(store, s, &bucket_cors, &cors_exist);
+  ret = read_bucket_cors();
   if (ret < 0)
     return;
 
@@ -1961,52 +2095,34 @@ void RGWDeleteCORS::execute()
 }
 
 void RGWOptionsCORS::get_response_params(string& hdrs, string& exp_hdrs, unsigned *max_age) {
-  if (req_hdrs) {
-    list<string> hl;
-    get_str_list(req_hdrs, hl);
-    for(list<string>::iterator it = hl.begin(); it != hl.end(); ++it) {
-      if (!rule->is_header_allowed((*it).c_str(), (*it).length())) {
-        dout(5) << "Header " << (*it) << " is not registered in this rule" << dendl;
-      } else {
-        if (hdrs.length() > 0)hdrs.append(",");
-        hdrs.append((*it));
-      }
-    }
-  }
-  rule->format_exp_headers(exp_hdrs);
-  *max_age = rule->get_max_age();
+  get_cors_response_headers(rule, req_hdrs, hdrs, exp_hdrs, max_age);
 }
 
-int RGWOptionsCORS::validate_cors_request() {
-  RGWCORSConfiguration *cc = s->bucket_cors;
+int RGWOptionsCORS::validate_cors_request(RGWCORSConfiguration *cc) {
   rule = cc->host_name_rule(origin);
   if (!rule) {
-    dout(10) << "There is no corsrule present for " << origin << dendl;
+    dout(10) << "There is no cors rule present for " << origin << dendl;
     return -ENOENT;
   }
 
-  uint8_t flags = 0;
-  if (strcmp(req_meth, "GET") == 0) flags = RGW_CORS_GET;
-  else if (strcmp(req_meth, "POST") == 0) flags = RGW_CORS_POST;
-  else if (strcmp(req_meth, "PUT") == 0) flags = RGW_CORS_PUT;
-  else if (strcmp(req_meth, "DELETE") == 0) flags = RGW_CORS_DELETE;
-  else if (strcmp(req_meth, "HEAD") == 0) flags = RGW_CORS_HEAD;
-
-  if ((rule->get_allowed_methods() & flags) == flags) {
-    dout(10) << "Method " << req_meth << " is supported" << dendl;
-  } else {
-    dout(5) << "Method " << req_meth << " is not supported" << dendl;
-    req_meth = NULL;
-    return -ENOTSUP;
+  if (!validate_cors_rule_method(rule, req_meth)) {
+    return -ENOENT;
   }
   return 0;
 }
 
 void RGWOptionsCORS::execute()
 {
-  if (!s->bucket_cors) {
-    dout(2) << "No CORS configuration set yet for this bucket" << dendl;
-    ret = -EACCES;
+  ret = read_bucket_cors();
+  if (ret < 0)
+    return;
+
+  origin = s->info.env->get("HTTP_ORIGIN");
+  if (!origin) {
+    dout(0) << 
+    "Preflight request without mandatory Origin header"
+    << dendl;
+    ret = -EINVAL;
     return;
   }
   req_meth = s->info.env->get("HTTP_ACCESS_CONTROL_REQUEST_METHOD");
@@ -2014,19 +2130,16 @@ void RGWOptionsCORS::execute()
     dout(0) << 
     "Preflight request without mandatory Access-control-request-method header"
     << dendl;
-    ret = -EACCES;
+    ret = -EINVAL;
     return;
   }
-  origin = s->info.env->get("HTTP_ORIGIN");
-  if (!origin) {
-    dout(0) << 
-    "Preflight request without mandatory Origin header"
-    << dendl;
-    ret = -EACCES;
+  if (!cors_exist) {
+    dout(2) << "No CORS configuration set yet for this bucket" << dendl;
+    ret = -ENOENT;
     return;
   }
   req_hdrs = s->info.env->get("HTTP_ACCESS_CONTROL_ALLOW_HEADERS");
-  ret = validate_cors_request();
+  ret = validate_cors_request(&bucket_cors);
   if (!rule) {
     origin = req_meth = NULL;
     return;

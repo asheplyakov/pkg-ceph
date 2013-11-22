@@ -30,6 +30,8 @@ OPTION(daemonize, OPT_BOOL, false) // default changed by common_preinit()
 OPTION(pid_file, OPT_STR, "") // default changed by common_preinit()
 OPTION(chdir, OPT_STR, "/")
 OPTION(max_open_files, OPT_LONGLONG, 0)
+OPTION(restapi_log_level, OPT_STR, "") 	// default set by Python code
+OPTION(restapi_base_url, OPT_STR, "")	// "
 OPTION(fatal_signal_handlers, OPT_BOOL, true)
 
 OPTION(log_file, OPT_STR, "/var/log/ceph/$cluster-$name.log") // default changed by common_preinit()
@@ -51,6 +53,7 @@ OPTION(mon_cluster_log_to_syslog, OPT_BOOL, false)
 OPTION(mon_cluster_log_to_syslog_level, OPT_STR, "info")   // this level and above
 OPTION(mon_cluster_log_to_syslog_facility, OPT_STR, "daemon")
 OPTION(mon_cluster_log_file, OPT_STR, "/var/log/ceph/$cluster.log")
+OPTION(mon_cluster_log_file_level, OPT_STR, "info")
 
 DEFAULT_SUBSYS(0, 5)
 SUBSYS(lockdep, 0, 1)
@@ -88,7 +91,6 @@ SUBSYS(finisher, 1, 1)
 SUBSYS(heartbeatmap, 1, 5)
 SUBSYS(perfcounter, 1, 5)
 SUBSYS(rgw, 1, 5)                 // log level for the Rados gateway
-SUBSYS(hadoop, 1, 5)
 SUBSYS(javaclient, 1, 5)
 SUBSYS(asok, 1, 5)
 SUBSYS(throttle, 1, 1)
@@ -156,6 +158,10 @@ OPTION(mon_timecheck_interval, OPT_FLOAT, 300.0) // on leader, timecheck (clock 
 OPTION(mon_accept_timeout, OPT_FLOAT, 10.0)    // on leader, if paxos update isn't accepted
 OPTION(mon_pg_create_interval, OPT_FLOAT, 30.0) // no more than every 30s
 OPTION(mon_pg_stuck_threshold, OPT_INT, 300) // number of seconds after which pgs can be considered inactive, unclean, or stale (see doc/control.rst under dump_stuck for more info)
+OPTION(mon_pg_warn_min_per_osd, OPT_INT, 20)  // min # pgs per (in) osd before we warn the admin
+OPTION(mon_pg_warn_max_object_skew, OPT_FLOAT, 10.0) // max skew few average in objects per pg
+OPTION(mon_pg_warn_min_objects, OPT_INT, 10000)  // do not warn below this object #
+OPTION(mon_pg_warn_min_pool_objects, OPT_INT, 1000)  // do not warn on pools below this object #
 OPTION(mon_osd_full_ratio, OPT_FLOAT, .95) // what % full makes an OSD "full"
 OPTION(mon_osd_nearfull_ratio, OPT_FLOAT, .85) // what % full makes an OSD near full
 OPTION(mon_globalid_prealloc, OPT_INT, 100)   // how many globalids to prealloc
@@ -199,7 +205,8 @@ OPTION(mon_leveldb_bloom_size, OPT_INT, 0) // monitor's leveldb bloom bits per e
 OPTION(mon_leveldb_max_open_files, OPT_INT, 0) // monitor's leveldb max open files
 OPTION(mon_leveldb_compression, OPT_BOOL, false) // monitor's leveldb uses compression
 OPTION(mon_leveldb_paranoid, OPT_BOOL, false)   // monitor's leveldb paranoid flag
-OPTION(mon_leveldb_log, OPT_STR, "")
+OPTION(mon_leveldb_log, OPT_STR, "/dev/null")
+OPTION(mon_leveldb_size_warn, OPT_U64, 40*1024*1024*1024) // issue a warning when the monitor's leveldb goes over 40GB (in bytes)
 OPTION(paxos_stash_full_interval, OPT_INT, 25)   // how often (in commits) to stash a full copy of the PaxosService state
 OPTION(paxos_max_join_drift, OPT_INT, 10) // max paxos iterations before we must first sync the monitor stores
 OPTION(paxos_propose_interval, OPT_DOUBLE, 1.0)  // gather updates for this long before proposing a map update
@@ -240,6 +247,7 @@ OPTION(client_readahead_max_periods, OPT_LONGLONG, 4)  // as multiple of file la
 OPTION(client_snapdir, OPT_STR, ".snap")
 OPTION(client_mountpoint, OPT_STR, "/")
 OPTION(client_notify_timeout, OPT_INT, 10) // in seconds
+OPTION(osd_client_watch_timeout, OPT_INT, 30) // in seconds
 OPTION(client_caps_release_delay, OPT_INT, 5) // in seconds
 OPTION(client_oc, OPT_BOOL, true)
 OPTION(client_oc_size, OPT_INT, 1024*1024* 200)    // MB * n
@@ -356,12 +364,6 @@ OPTION(mds_standby_replay, OPT_BOOL, false)
 // If true, compact leveldb store on mount
 OPTION(osd_compact_leveldb_on_mount, OPT_BOOL, false)
 
-// If true, uses tmap as initial value for omap on old objects
-OPTION(osd_auto_upgrade_tmap, OPT_BOOL, true)
-
-// If true, TMAPPUT sets uses_tmap DEBUGGING ONLY
-OPTION(osd_tmapput_sets_uses_tmap, OPT_BOOL, false)
-
 // Maximum number of backfills to or from a single osd
 OPTION(osd_max_backfills, OPT_U64, 10)
 
@@ -402,6 +404,11 @@ OPTION(osd_op_pq_min_cost, OPT_U64, 65536)
 OPTION(osd_disk_threads, OPT_INT, 1)
 OPTION(osd_recovery_threads, OPT_INT, 1)
 OPTION(osd_recover_clone_overlap, OPT_BOOL, true)   // preserve clone_overlap during recovery/migration
+
+// Only use clone_overlap for recovery if there are fewer than
+// osd_recover_clone_overlap_limit entries in the overlap set
+OPTION(osd_recover_clone_overlap_limit, OPT_INT, 10)
+
 OPTION(osd_backfill_scan_min, OPT_INT, 64)
 OPTION(osd_backfill_scan_max, OPT_INT, 512)
 OPTION(osd_op_thread_timeout, OPT_INT, 15)
@@ -417,6 +424,11 @@ OPTION(osd_heartbeat_addr, OPT_ADDR, entity_addr_t())
 OPTION(osd_heartbeat_interval, OPT_INT, 6)       // (seconds) how often we ping peers
 OPTION(osd_heartbeat_grace, OPT_INT, 20)         // (seconds) how long before we decide a peer has failed
 OPTION(osd_heartbeat_min_peers, OPT_INT, 10)     // minimum number of peers
+
+// minimum number of peers tha tmust be reachable to mark ourselves
+// back up after being wrongly marked down.
+OPTION(osd_heartbeat_min_healthy_ratio, OPT_FLOAT, .33)
+
 OPTION(osd_mon_heartbeat_interval, OPT_INT, 30)  // (seconds) how often to ping monitor if no peers
 OPTION(osd_mon_report_interval_max, OPT_INT, 120)
 OPTION(osd_mon_report_interval_min, OPT_INT, 5)  // pg stats, failures, up_thru, boot.
@@ -429,6 +441,7 @@ OPTION(osd_recovery_delay_start, OPT_FLOAT, 0)
 OPTION(osd_recovery_max_active, OPT_INT, 15)
 OPTION(osd_recovery_max_single_start, OPT_INT, 5)
 OPTION(osd_recovery_max_chunk, OPT_U64, 8<<20)  // max size of push chunk
+OPTION(osd_copyfrom_max_chunk, OPT_U64, 8<<20)   // max size of a COPYFROM chunk
 OPTION(osd_push_per_object_cost, OPT_U64, 1000)  // push cost per object
 OPTION(osd_max_push_cost, OPT_U64, 8<<20)  // max size of push message
 OPTION(osd_max_push_objects, OPT_U64, 10)  // max objects in single push op
@@ -481,7 +494,7 @@ OPTION(osd_leveldb_bloom_size, OPT_INT, 0) // OSD's leveldb bloom bits per entry
 OPTION(osd_leveldb_max_open_files, OPT_INT, 0) // OSD's leveldb max open files
 OPTION(osd_leveldb_compression, OPT_BOOL, true) // OSD's leveldb uses compression
 OPTION(osd_leveldb_paranoid, OPT_BOOL, false) // OSD's leveldb paranoid flag
-OPTION(osd_leveldb_log, OPT_STR, "")  // enable OSD leveldb log file
+OPTION(osd_leveldb_log, OPT_STR, "/dev/null")  // enable OSD leveldb log file
 
 // determines whether PGLog::check() compares written out log to stored log
 OPTION(osd_debug_pg_log_writeout, OPT_BOOL, false)
@@ -505,11 +518,12 @@ OPTION(osd_recovery_op_warn_multiple, OPT_U32, 16)
 OPTION(osd_mon_shutdown_timeout, OPT_DOUBLE, 5)
 
 OPTION(osd_max_object_size, OPT_U64, 100*1024L*1024L*1024L) // OSD's maximum object size
-OPTION(osd_max_attr_size, OPT_U64, 65536)
+OPTION(osd_max_attr_size, OPT_U64, 0)
 
 OPTION(filestore, OPT_BOOL, false)
 
 /// filestore wb throttle limits
+OPTION(filestore_wbthrottle_enable, OPT_BOOL, true)
 OPTION(filestore_wbthrottle_btrfs_bytes_start_flusher, OPT_U64, 41943040)
 OPTION(filestore_wbthrottle_btrfs_bytes_hard_limit, OPT_U64, 419430400)
 OPTION(filestore_wbthrottle_btrfs_ios_start_flusher, OPT_U64, 500)
@@ -532,17 +546,28 @@ OPTION(filestore_index_retry_probability, OPT_DOUBLE, 0)
 OPTION(filestore_debug_inject_read_err, OPT_BOOL, false)
 
 OPTION(filestore_debug_omap_check, OPT_BOOL, 0) // Expensive debugging check on sync
+
 // Use omap for xattrs for attrs over
-OPTION(filestore_xattr_use_omap, OPT_BOOL, false)
 // filestore_max_inline_xattr_size or
-OPTION(filestore_max_inline_xattr_size, OPT_U32, 512)
+OPTION(filestore_max_inline_xattr_size, OPT_U32, 0)	//Override
+OPTION(filestore_max_inline_xattr_size_xfs, OPT_U32, 65536)
+OPTION(filestore_max_inline_xattr_size_btrfs, OPT_U32, 2048)
+OPTION(filestore_max_inline_xattr_size_other, OPT_U32, 512)
+
 // for more than filestore_max_inline_xattrs attrs
-OPTION(filestore_max_inline_xattrs, OPT_U32, 2)
+OPTION(filestore_max_inline_xattrs, OPT_U32, 0)	//Override
+OPTION(filestore_max_inline_xattrs_xfs, OPT_U32, 10)
+OPTION(filestore_max_inline_xattrs_btrfs, OPT_U32, 10)
+OPTION(filestore_max_inline_xattrs_other, OPT_U32, 2)
+
+OPTION(filestore_sloppy_crc, OPT_BOOL, false)         // track sloppy crcs
+OPTION(filestore_sloppy_crc_block_size, OPT_INT, 65536)
 
 OPTION(filestore_max_sync_interval, OPT_DOUBLE, 5)    // seconds
 OPTION(filestore_min_sync_interval, OPT_DOUBLE, .01)  // seconds
 OPTION(filestore_btrfs_snap, OPT_BOOL, true)
 OPTION(filestore_btrfs_clone_range, OPT_BOOL, true)
+OPTION(filestore_zfs_snap, OPT_BOOL, false) // zfsonlinux is still unstable
 OPTION(filestore_fsync_flushes_journal_data, OPT_BOOL, false)
 OPTION(filestore_fiemap, OPT_BOOL, false)     // (try to) use fiemap
 OPTION(filestore_journal_parallel, OPT_BOOL, false)
@@ -639,6 +664,8 @@ OPTION(rgw_keystone_admin_token, OPT_STR, "")  // keystone admin token (shared s
 OPTION(rgw_keystone_accepted_roles, OPT_STR, "Member, admin")  // roles required to serve requests
 OPTION(rgw_keystone_token_cache_size, OPT_INT, 10000)  // max number of entries in keystone token cache
 OPTION(rgw_keystone_revocation_interval, OPT_INT, 15 * 60)  // seconds between tokens revocation check
+OPTION(rgw_s3_auth_use_rados, OPT_BOOL, true)  // should we try to use the internal credentials for s3?
+OPTION(rgw_s3_auth_use_keystone, OPT_BOOL, false)  // should we try to use keystone for s3?
 OPTION(rgw_admin_entry, OPT_STR, "admin")  // entry point for which a url is considered an admin request
 OPTION(rgw_enforce_swift_acls, OPT_BOOL, true)
 OPTION(rgw_swift_token_expiration, OPT_INT, 24 * 3600) // time in seconds for swift token expiration
@@ -695,6 +722,10 @@ OPTION(rgw_data_log_changes_size, OPT_INT, 1000) // number of in-memory entries 
 OPTION(rgw_data_log_num_shards, OPT_INT, 128) // number of objects to keep data changes log on
 OPTION(rgw_data_log_obj_prefix, OPT_STR, "data_log") // 
 OPTION(rgw_replica_log_obj_prefix, OPT_STR, "replica_log") // 
+
+OPTION(rgw_bucket_quota_ttl, OPT_INT, 600) // time for cached bucket stats to be cached within rgw instance
+OPTION(rgw_bucket_quota_soft_threshold, OPT_DOUBLE, 0.95) // threshold from which we don't rely on cached info for quota decisions
+OPTION(rgw_bucket_quota_cache_size, OPT_INT, 10000) // number of entries in bucket quota cache
 
 OPTION(mutex_perf_counter, OPT_BOOL, false) // enable/disable mutex perf counter
 

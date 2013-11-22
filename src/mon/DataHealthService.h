@@ -25,7 +25,7 @@
 #include "common/config.h"
 #include "global/signal_handler.h"
 
-class MMonHealth;
+struct MMonHealth;
 
 class DataHealthService :
   public HealthService
@@ -34,6 +34,7 @@ class DataHealthService :
   int last_warned_percent;
 
   void handle_tell(MMonHealth *m);
+  int update_store_stats(DataStats &ours);
   int update_stats();
   void share_stats();
 
