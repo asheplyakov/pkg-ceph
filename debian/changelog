@@ -1,4 +1,4 @@
-ceph (0.72.1-1ubuntu1) UNRELEASED; urgency=low
+ceph (0.72.1-2) UNRELEASED; urgency=low
 
   * Fix upgrade failures from ceph < 0.67.3-1 (Closes: #728164):
     - d/control: ceph-mds Breaks/Replaces ceph (<< 0.67.3-1).
