@@ -9,8 +9,8 @@ ceph (0.72.1-1) UNRELEASED; urgency=low
     - d/copyright: Add updates inline with upstream packaging.
     - d/ceph.install,rules: Install rbdmap init file using dh_installinit.
     - Refresh patches.
-  * d/control,rules: Disable unit testing; it requires a forked version of cram
-    and is still trying to download dependencies using virtualenv.
+  * d/control,rules: Disable unit testing; it requires a forked version of
+    cram and is still trying to download dependencies using virtualenv.
 
  -- James Page <james.page@ubuntu.com>  Fri, 22 Nov 2013 09:19:58 +0000
 
