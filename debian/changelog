@@ -1,7 +1,8 @@
 ceph (0.72.1-1ubuntu1) UNRELEASED; urgency=low
 
   * Fix upgrade failures from ceph < 0.67.3-1 (Closes: #728164):
-    - d/control: ceph-mds Breaks/Replaces ceph (<< 0.67.3-1). 
+    - d/control: ceph-mds Breaks/Replaces ceph (<< 0.67.3-1).
+  * d/rules,control: Use google-perftools on armhf and powerpc archs.
 
  -- James Page <james.page@ubuntu.com>  Fri, 22 Nov 2013 20:02:20 +0000
 

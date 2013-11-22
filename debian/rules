@@ -21,12 +21,12 @@ ifeq ($(DEB_HOST_ARCH), armel)
   extraopts += --without-libatomic-ops
 endif
 
-# TODO powerpc support?
-ifneq ($(DEB_HOST_ARCH), i386)
-ifneq ($(DEB_HOST_ARCH), amd64)
-  # libgoogle-perftools-dev is only available on i386 and amd64
+# Only selected architectures support gperftools
+gperftools_archs = i386 amd64 powerpc armhf
+ifneq (,$(filter $(DEB_HOST_ARCH), $(gperftools_archs)))
+  extraopts += --with-tcmalloc
+else
   extraopts += --without-tcmalloc
-endif
 endif
 
 # Use system provided libs3
