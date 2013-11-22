@@ -1,4 +1,4 @@
-ceph (0.72.1-1) UNRELEASED; urgency=low
+ceph (0.72.1-1) unstable; urgency=low
 
   * New upstream stable release:
     - d/ceph-test.install: Add new ceph_filestore_tool, ceph-kvstore-tool
@@ -6,13 +6,13 @@ ceph (0.72.1-1) UNRELEASED; urgency=low
     - d/ceph-common.install: Add new ceph-post-file binary and manpage.
     - d/ceph.install: Tweaked install path /usr/sbin -> /sbin.
     - d/control: Add new BD's on python-nose and yasm.
-    - d/copyright: Add updates inline with upstream packaging.
+    - d/copyright: Updates inline with changes in codebase.
     - d/ceph.install,rules: Install rbdmap init file using dh_installinit.
     - Refresh patches.
   * d/control,rules: Disable unit testing; it requires a forked version of
     cram and is still trying to download dependencies using virtualenv.
 
- -- James Page <james.page@ubuntu.com>  Fri, 22 Nov 2013 09:19:58 +0000
+ -- James Page <james.page@ubuntu.com>  Fri, 22 Nov 2013 13:02:29 +0000
 
 ceph (0.67.3-1) unstable; urgency=low
 
