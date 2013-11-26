@@ -36,7 +36,7 @@ extraopts += --with-system-libs3
 	dh $@ --with javahelper --with python2 --with autoreconf --parallel
 
 override_dh_auto_configure:
-	dh_auto_configure -- --sbindir=/sbin $(extraopts)
+	dh_auto_configure -- $(extraopts)
 
 override_dh_auto_build:
 	dh_auto_build
