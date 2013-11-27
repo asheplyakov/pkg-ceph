@@ -71,7 +71,7 @@ override_dh_installinit:
     done
 	for conf in `ls -1 src/upstart/radosgw*.conf`; do \
         name=`basename $$conf | cut -d . -f 1`; \
-        [ $$name = "radosgw" ] && name="ceph-radosgw";\
+        [ $$name = "radosgw" ] && name="radosgw-instance";\
         cp $$conf debian/radosgw.$$name.upstart; \
         dh_installinit -pradosgw --no-start --name=$$name; \
     done
