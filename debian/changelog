@@ -2,6 +2,9 @@ ceph (0.72.1-3) UNRELEASED; urgency=low
 
   * d/rules,ceph.install: Correct install paths for ceph-* helpers. 
   * d/p/modules: Mark libcls_kvs.so as module.
+  * d/rules: Rename radosgw upstart configuration to ceph-radosgw to
+    avoid namespace conflict with init script which breaks backwards
+    compatibility (LP: #1255464).
 
  -- James Page <james.page@ubuntu.com>  Tue, 26 Nov 2013 22:11:19 +0000
 
