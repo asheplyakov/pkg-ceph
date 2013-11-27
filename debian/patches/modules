@@ -1,7 +1,8 @@
 Description: Properly mark library modules
 Author: Bastian Blank <waldi@debian.org>
 Origin: vendor
-Forwarded: no
+Forwarded: https://github.com/ceph/ceph/commit/909a733fe7119fc1bf123b3739e3acc6f2135b6a
+
 ---
 --- a/src/cls/Makefile.am
 +++ b/src/cls/Makefile.am
@@ -68,3 +69,13 @@ Forwarded: no
  radoslib_LTLIBRARIES += libcls_rgw.la
  
  ## Rados object client classes
+--- a/src/key_value_store/Makefile.am
++++ b/src/key_value_store/Makefile.am
+@@ -1,6 +1,6 @@
+ libcls_kvs_la_SOURCES = key_value_store/cls_kvs.cc
+ libcls_kvs_la_LIBADD = $(PTHREAD_LIBS) $(EXTRALIBS)
+-libcls_kvs_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0 -export-symbols-regex '.*__cls_.*'
++libcls_kvs_la_LDFLAGS = ${AM_LDFLAGS} -module -avoid-version -shared -export-symbols-regex '.*__cls_.*'
+ radoslib_LTLIBRARIES += libcls_kvs.la
+ 
+ noinst_HEADERS += \
