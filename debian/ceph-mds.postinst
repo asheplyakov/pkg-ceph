@@ -21,12 +21,14 @@ set -e
 
 case "$1" in
 	configure)
-		invoke-rc.d ceph-mds-all start || {
-			RESULT=$?
-			if [ $RESULT != 100 ]; then
-				exit $RESULT
-			fi
-		}
+		if [ -x /sbin/start ]; then
+			invoke-rc.d ceph-mds-all start || {
+				RESULT=$?
+				if [ $RESULT != 100 ]; then
+					exit $RESULT
+				fi
+			}
+		fi
 	;;
 	abort-upgrade|abort-remove|abort-deconfigure)
 		:

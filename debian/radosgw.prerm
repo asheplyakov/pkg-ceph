@@ -5,12 +5,14 @@ set -e
 
 case "$1" in
     remove)
-	invoke-rc.d radosgw-all stop || {
-            RESULT=$?
-            if [ $RESULT != 100 ]; then
-                exit $RESULT
-            fi
-        }
+	if [ -x /sbin/stop ]; then
+		invoke-rc.d radosgw-all stop || {
+	            RESULT=$?
+	            if [ $RESULT != 100 ]; then
+        	        exit $RESULT
+	            fi
+	        }
+	fi
 	invoke-rc.d radosgw stop || {
 	    RESULT=$?
 	    if [ $RESULT != 100 ]; then

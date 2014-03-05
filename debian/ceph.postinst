@@ -28,12 +28,14 @@ set -e
 case "$1" in
 	configure)
 		rm -f /etc/init/ceph.conf
-		invoke-rc.d ceph-all start || {
-			RESULT=$?
-			if [ $RESULT != 100 ]; then
-				exit $RESULT
-			fi
-		}
+		if [ -x /sbin/start ]; then
+			invoke-rc.d ceph-all start || {
+				RESULT=$?
+				if [ $RESULT != 100 ]; then
+					exit $RESULT
+				fi
+			}
+		fi
 	;;
 	abort-upgrade|abort-remove|abort-deconfigure)
 		:
