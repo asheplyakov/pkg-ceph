@@ -1,4 +1,4 @@
-ceph (0.72.2-2) UNRELEASED; urgency=medium
+ceph (0.72.2-2) unstable; urgency=medium
 
   * d/radosgw.{postinst,postrm,preinst}: Handle renaming of radosgw
     upstart configuration on upgrade@0.72.1-3.
@@ -6,7 +6,7 @@ ceph (0.72.2-2) UNRELEASED; urgency=medium
     is running upstart before trying to start/stop upstart configurations
     (Closes: #734241, #738845, #738845).
 
- -- James Page <james.page@ubuntu.com>  Tue, 14 Jan 2014 14:49:35 +0000
+ -- James Page <jamespage@debian.org>  Sat, 08 Mar 2014 16:48:28 +0000
 
 ceph (0.72.2-1) unstable; urgency=medium
 
