@@ -1,79 +1,79 @@
-usr/bin/ceph-coverage
-usr/bin/ceph-kvstore-tool
-usr/bin/ceph-monstore-tool
-usr/bin/ceph-osdomap-tool
-usr/bin/ceph_bench_log
-usr/bin/ceph_dupstore
-usr/bin/ceph_filestore_dump
-usr/bin/ceph_filestore_tool
-usr/bin/ceph_kvstorebench
-usr/bin/ceph_multi_stress_watch
-usr/bin/ceph_omapbench
-usr/bin/ceph_psim
-usr/bin/ceph_radosacl
-usr/bin/ceph_rgw_jsonparser
-usr/bin/ceph_rgw_multiparser
-usr/bin/ceph_scratchtool
-usr/bin/ceph_scratchtoolpp
-usr/bin/ceph_smalliobench
-usr/bin/ceph_smalliobenchdumb
-usr/bin/ceph_smalliobenchfs
-usr/bin/ceph_smalliobenchrbd
-usr/bin/ceph_streamtest
-usr/bin/ceph_test_cfuse_cache_invalidate
-usr/bin/ceph_test_cls_hello
-usr/bin/ceph_test_cls_lock
-usr/bin/ceph_test_cls_log
-usr/bin/ceph_test_cls_rbd
-usr/bin/ceph_test_cls_refcount
-usr/bin/ceph_test_cls_replica_log
-usr/bin/ceph_test_cls_rgw
-usr/bin/ceph_test_cls_rgw_log
-usr/bin/ceph_test_cls_rgw_meta
-usr/bin/ceph_test_cls_rgw_opstate
-usr/bin/ceph_test_cls_statelog
-usr/bin/ceph_test_cls_version
-usr/bin/ceph_test_cors
-usr/bin/ceph_test_crypto
-usr/bin/ceph_test_filejournal
-usr/bin/ceph_test_filestore
-usr/bin/ceph_test_filestore_idempotent
-usr/bin/ceph_test_filestore_idempotent_sequence
-usr/bin/ceph_test_filestore_workloadgen
-usr/bin/ceph_test_ioctls
-usr/bin/ceph_test_keys
-usr/bin/ceph_test_keyvaluedb_atomicity
-usr/bin/ceph_test_keyvaluedb_iterators
-usr/bin/ceph_test_libcephfs
-usr/bin/ceph_test_librbd
-usr/bin/ceph_test_librbd_fsx
-usr/bin/ceph_test_mon_workloadgen
-usr/bin/ceph_test_msgr
-usr/bin/ceph_test_mutate
-usr/bin/ceph_test_object_map
-usr/bin/ceph_test_objectcacher_stress
-usr/bin/ceph_test_rados
-usr/bin/ceph_test_rados_api_aio
-usr/bin/ceph_test_rados_api_cls
-usr/bin/ceph_test_rados_api_cmd
-usr/bin/ceph_test_rados_api_io
-usr/bin/ceph_test_rados_api_list
-usr/bin/ceph_test_rados_api_lock
-usr/bin/ceph_test_rados_api_misc
-usr/bin/ceph_test_rados_api_pool
-usr/bin/ceph_test_rados_api_snapshots
-usr/bin/ceph_test_rados_api_stat
-usr/bin/ceph_test_rados_api_watch_notify
-usr/bin/ceph_test_rados_delete_pools_parallel
-usr/bin/ceph_test_rados_list_parallel
-usr/bin/ceph_test_rados_open_pools_parallel
-usr/bin/ceph_test_rados_watch_notify
-usr/bin/ceph_test_rewrite_latency
-usr/bin/ceph_test_signal_handlers
-usr/bin/ceph_test_snap_mapper
-usr/bin/ceph_test_stress_watch
-usr/bin/ceph_test_timers
-usr/bin/ceph_test_trans
-usr/bin/ceph_tpbench
-usr/bin/ceph_xattr_bench
+usr/bin/ceph-coverage /usr/lib/ceph/bin
+usr/bin/ceph-kvstore-tool /usr/lib/ceph/bin
+usr/bin/ceph-monstore-tool /usr/lib/ceph/bin
+usr/bin/ceph-osdomap-tool /usr/lib/ceph/bin
+usr/bin/ceph_bench_log /usr/lib/ceph/bin
+usr/bin/ceph_dupstore /usr/lib/ceph/bin
+usr/bin/ceph_filestore_dump /usr/lib/ceph/bin
+usr/bin/ceph_filestore_tool /usr/lib/ceph/bin
+usr/bin/ceph_kvstorebench /usr/lib/ceph/bin
+usr/bin/ceph_multi_stress_watch /usr/lib/ceph/bin
+usr/bin/ceph_omapbench /usr/lib/ceph/bin
+usr/bin/ceph_psim /usr/lib/ceph/bin
+usr/bin/ceph_radosacl /usr/lib/ceph/bin
+usr/bin/ceph_rgw_jsonparser /usr/lib/ceph/bin
+usr/bin/ceph_rgw_multiparser /usr/lib/ceph/bin
+usr/bin/ceph_scratchtool /usr/lib/ceph/bin
+usr/bin/ceph_scratchtoolpp /usr/lib/ceph/bin
+usr/bin/ceph_smalliobench /usr/lib/ceph/bin
+usr/bin/ceph_smalliobenchdumb /usr/lib/ceph/bin
+usr/bin/ceph_smalliobenchfs /usr/lib/ceph/bin
+usr/bin/ceph_smalliobenchrbd /usr/lib/ceph/bin
+usr/bin/ceph_streamtest /usr/lib/ceph/bin
+usr/bin/ceph_test_cfuse_cache_invalidate /usr/lib/ceph/bin
+usr/bin/ceph_test_cls_hello /usr/lib/ceph/bin
+usr/bin/ceph_test_cls_lock /usr/lib/ceph/bin
+usr/bin/ceph_test_cls_log /usr/lib/ceph/bin
+usr/bin/ceph_test_cls_rbd /usr/lib/ceph/bin
+usr/bin/ceph_test_cls_refcount /usr/lib/ceph/bin
+usr/bin/ceph_test_cls_replica_log /usr/lib/ceph/bin
+usr/bin/ceph_test_cls_rgw /usr/lib/ceph/bin
+usr/bin/ceph_test_cls_rgw_log /usr/lib/ceph/bin
+usr/bin/ceph_test_cls_rgw_meta /usr/lib/ceph/bin
+usr/bin/ceph_test_cls_rgw_opstate /usr/lib/ceph/bin
+usr/bin/ceph_test_cls_statelog /usr/lib/ceph/bin
+usr/bin/ceph_test_cls_version /usr/lib/ceph/bin
+usr/bin/ceph_test_cors /usr/lib/ceph/bin
+usr/bin/ceph_test_crypto /usr/lib/ceph/bin
+usr/bin/ceph_test_filejournal /usr/lib/ceph/bin
+usr/bin/ceph_test_filestore /usr/lib/ceph/bin
+usr/bin/ceph_test_filestore_idempotent /usr/lib/ceph/bin
+usr/bin/ceph_test_filestore_idempotent_sequence /usr/lib/ceph/bin
+usr/bin/ceph_test_filestore_workloadgen /usr/lib/ceph/bin
+usr/bin/ceph_test_ioctls /usr/lib/ceph/bin
+usr/bin/ceph_test_keys /usr/lib/ceph/bin
+usr/bin/ceph_test_keyvaluedb_atomicity /usr/lib/ceph/bin
+usr/bin/ceph_test_keyvaluedb_iterators /usr/lib/ceph/bin
+usr/bin/ceph_test_libcephfs /usr/lib/ceph/bin
+usr/bin/ceph_test_librbd /usr/lib/ceph/bin
+usr/bin/ceph_test_librbd_fsx /usr/lib/ceph/bin
+usr/bin/ceph_test_mon_workloadgen /usr/lib/ceph/bin
+usr/bin/ceph_test_msgr /usr/lib/ceph/bin
+usr/bin/ceph_test_mutate /usr/lib/ceph/bin
+usr/bin/ceph_test_object_map /usr/lib/ceph/bin
+usr/bin/ceph_test_objectcacher_stress /usr/lib/ceph/bin
+usr/bin/ceph_test_rados /usr/lib/ceph/bin
+usr/bin/ceph_test_rados_api_aio /usr/lib/ceph/bin
+usr/bin/ceph_test_rados_api_cls /usr/lib/ceph/bin
+usr/bin/ceph_test_rados_api_cmd /usr/lib/ceph/bin
+usr/bin/ceph_test_rados_api_io /usr/lib/ceph/bin
+usr/bin/ceph_test_rados_api_list /usr/lib/ceph/bin
+usr/bin/ceph_test_rados_api_lock /usr/lib/ceph/bin
+usr/bin/ceph_test_rados_api_misc /usr/lib/ceph/bin
+usr/bin/ceph_test_rados_api_pool /usr/lib/ceph/bin
+usr/bin/ceph_test_rados_api_snapshots /usr/lib/ceph/bin
+usr/bin/ceph_test_rados_api_stat /usr/lib/ceph/bin
+usr/bin/ceph_test_rados_api_watch_notify /usr/lib/ceph/bin
+usr/bin/ceph_test_rados_delete_pools_parallel /usr/lib/ceph/bin
+usr/bin/ceph_test_rados_list_parallel /usr/lib/ceph/bin
+usr/bin/ceph_test_rados_open_pools_parallel /usr/lib/ceph/bin
+usr/bin/ceph_test_rados_watch_notify /usr/lib/ceph/bin
+usr/bin/ceph_test_rewrite_latency /usr/lib/ceph/bin
+usr/bin/ceph_test_signal_handlers /usr/lib/ceph/bin
+usr/bin/ceph_test_snap_mapper /usr/lib/ceph/bin
+usr/bin/ceph_test_stress_watch /usr/lib/ceph/bin
+usr/bin/ceph_test_timers /usr/lib/ceph/bin
+usr/bin/ceph_test_trans /usr/lib/ceph/bin
+usr/bin/ceph_tpbench /usr/lib/ceph/bin
+usr/bin/ceph_xattr_bench /usr/lib/ceph/bin
 usr/share/java/libcephfs-test.jar

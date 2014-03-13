@@ -1,3 +1,10 @@
+ceph (0.72.2-3) UNRELEASED; urgency=medium
+
+  * d/ceph-test.install: Install test binaries to /usr/lib/ceph/bin; they
+    really don't need to be installed on the default path.
+
+ -- James Page <james.page@ubuntu.com>  Thu, 13 Mar 2014 14:12:47 +0000
+
 ceph (0.72.2-2) unstable; urgency=medium
 
   * d/radosgw.{postinst,postrm,preinst}: Handle renaming of radosgw
