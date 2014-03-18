@@ -9,7 +9,7 @@
 # common
 #################################################################################
 Name:		ceph
-Version:	0.72.2
+Version:	0.77
 Release:	0%{?dist}
 Summary:	User space components of the Ceph file system
 License:	GPL-2.0
@@ -29,6 +29,7 @@ Requires:	util-linux
 Requires:	hdparm
 Requires(post):	binutils
 BuildRoot:      %{_tmppath}/%{name}-%{version}-build
+BuildRequires:	make
 BuildRequires:	gcc-c++
 BuildRequires:	libtool
 BuildRequires:	boost-devel
@@ -38,10 +39,12 @@ BuildRequires:	gdbm
 BuildRequires:	pkgconfig
 BuildRequires:	python
 BuildRequires:	python-nose
+BuildRequires:	python-argparse
 BuildRequires:  libaio-devel
 BuildRequires:  libcurl-devel
 BuildRequires:  libxml2-devel
 BuildRequires:  libuuid-devel
+BuildRequires:  libblkid-devel >= 2.17
 BuildRequires:  leveldb-devel > 1.2
 BuildRequires:  yasm
 %if 0%{?rhel_version} || 0%{?centos_version} || 0%{?fedora}
@@ -312,7 +315,7 @@ chmod 0644 $RPM_BUILD_ROOT%{_docdir}/ceph/sample.fetch_config
 install -m 0644 -D udev/50-rbd.rules $RPM_BUILD_ROOT/lib/udev/rules.d/50-rbd.rules
 install -m 0644 -D udev/60-ceph-partuuid-workaround.rules $RPM_BUILD_ROOT/lib/udev/rules.d/60-ceph-partuuid-workaround.rules
 
-%if 0%{?centos}
+%if (0%{?rhel} || 0%{?rhel} < 7)
 install -m 0644 -D udev/95-ceph-osd-alt.rules $RPM_BUILD_ROOT/lib/udev/rules.d/95-ceph-osd.rules
 %else
 install -m 0644 -D udev/95-ceph-osd.rules $RPM_BUILD_ROOT/lib/udev/rules.d/95-ceph-osd.rules
@@ -328,7 +331,7 @@ mkdir -p $RPM_BUILD_ROOT%{_localstatedir}/lib/ceph/osd
 mkdir -p $RPM_BUILD_ROOT%{_localstatedir}/lib/ceph/mds
 mkdir -p $RPM_BUILD_ROOT%{_localstatedir}/lib/ceph/bootstrap-osd
 mkdir -p $RPM_BUILD_ROOT%{_localstatedir}/lib/ceph/bootstrap-mds
-
+mkdir -p $RPM_BUILD_ROOT%{_localstatedir}/log/radosgw
 
 %if %{defined suse_version}
 # Fedora seems to have some problems with this macro, use it only on SUSE
@@ -364,7 +367,7 @@ fi
 %endif
 # Package removal cleanup
 if [ "$1" -eq "0" ] ; then
-    rm -rf /var/log/ceph 
+    rm -rf /var/log/ceph
     rm -rf /etc/ceph
 fi
 
@@ -391,6 +394,7 @@ fi
 %{_bindir}/ceph-authtool
 %{_bindir}/ceph-syn
 %{_bindir}/ceph-post-file
+%{_bindir}/ceph-crush-location
 %{_bindir}/ceph-run
 %{_bindir}/ceph-mon
 %{_bindir}/ceph-mds
@@ -412,6 +416,7 @@ fi
 %{_sbindir}/rcceph
 /sbin/mkcephfs
 /sbin/mount.ceph
+%{_libdir}/ceph
 %dir %{_libdir}/rados-classes
 %{_libdir}/rados-classes/libcls_rbd.so*
 %{_libdir}/rados-classes/libcls_hello.so*
@@ -423,7 +428,13 @@ fi
 %{_libdir}/rados-classes/libcls_replica_log.so*
 %{_libdir}/rados-classes/libcls_statelog.so*
 %{_libdir}/rados-classes/libcls_version.so*
-%{_libdir}/ceph
+%dir %{_libdir}/ceph/erasure-code
+%{_libdir}/ceph/erasure-code/libec_example.so*
+%{_libdir}/ceph/erasure-code/libec_fail_to_initialize.so*
+%{_libdir}/ceph/erasure-code/libec_fail_to_register.so*
+%{_libdir}/ceph/erasure-code/libec_hangs.so*
+%{_libdir}/ceph/erasure-code/libec_jerasure.so*
+%{_libdir}/ceph/erasure-code/libec_missing_entry_point.so*
 /lib/udev/rules.d/50-rbd.rules
 /lib/udev/rules.d/60-ceph-partuuid-workaround.rules
 /lib/udev/rules.d/95-ceph-osd.rules
@@ -497,6 +508,7 @@ fi
 %{_includedir}/rados/crc32c.h
 %{_includedir}/rados/rados_types.h
 %{_includedir}/rados/rados_types.hpp
+%{_includedir}/rados/memory.h
 %dir %{_includedir}/rbd
 %{_includedir}/rbd/librbd.h
 %{_includedir}/rbd/librbd.hpp
@@ -515,6 +527,7 @@ fi
 %{_mandir}/man8/radosgw.8*
 %{_mandir}/man8/radosgw-admin.8*
 %{_sbindir}/rcceph-radosgw
+%dir %{_localstatedir}/log/radosgw/
 
 %post radosgw
 /sbin/ldconfig
@@ -533,6 +546,11 @@ fi
 %restart_on_update ceph-radosgw
 %insserv_cleanup
 %endif
+# Package removal cleanup
+if [ "$1" -eq "0" ] ; then
+    rm -rf /var/log/radosgw
+fi
+
 
 #################################################################################
 %if %{with ocf}
@@ -598,6 +616,7 @@ fi
 %{_bindir}/ceph_dupstore
 %{_bindir}/ceph_kvstorebench
 %{_bindir}/ceph_multi_stress_watch
+%{_bindir}/ceph_erasure_code_benchmark
 %{_bindir}/ceph_omapbench
 %{_bindir}/ceph_psim
 %{_bindir}/ceph_radosacl
@@ -612,6 +631,7 @@ fi
 %{_bindir}/ceph_filestore_dump
 %{_bindir}/ceph_filestore_tool
 %{_bindir}/ceph_streamtest
+%{_bindir}/ceph_test_c_headers
 %{_bindir}/ceph_test_cfuse_cache_invalidate
 %{_bindir}/ceph_test_cls_hello
 %{_bindir}/ceph_test_cls_lock
@@ -631,6 +651,7 @@ fi
 %{_bindir}/ceph_test_filestore_idempotent
 %{_bindir}/ceph_test_filestore_idempotent_sequence
 %{_bindir}/ceph_test_filestore_workloadgen
+%{_bindir}/ceph_test_get_blkdev_size
 %{_bindir}/ceph_test_ioctls
 %{_bindir}/ceph_test_keyvaluedb_atomicity
 %{_bindir}/ceph_test_keyvaluedb_iterators
@@ -648,6 +669,7 @@ fi
 %{_bindir}/ceph_test_rados_api_list
 %{_bindir}/ceph_test_rados_api_lock
 %{_bindir}/ceph_test_rados_api_misc
+%{_bindir}/ceph_test_rados_api_tier
 %{_bindir}/ceph_test_rados_api_pool
 %{_bindir}/ceph_test_rados_api_snapshots
 %{_bindir}/ceph_test_rados_api_stat

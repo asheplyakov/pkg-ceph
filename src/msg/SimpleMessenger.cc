@@ -23,6 +23,7 @@
 #include "common/Timer.h"
 #include "common/errno.h"
 #include "auth/Crypto.h"
+#include "include/Spinlock.h"
 
 #define dout_subsys ceph_subsys_ms
 #undef dout_prefix
@@ -53,7 +54,7 @@ SimpleMessenger::SimpleMessenger(CephContext *cct, entity_name_t name,
     timeout(0),
     local_connection(new Connection(this))
 {
-  pthread_spin_init(&global_seq_lock, PTHREAD_PROCESS_PRIVATE);
+  ceph_spin_init(&global_seq_lock);
   init_local_connection();
 }
 
@@ -277,9 +278,9 @@ int SimpleMessenger::rebind(const set<int>& avoid_ports)
 {
   ldout(cct,1) << "rebind avoid " << avoid_ports << dendl;
   assert(did_bind);
-  int r = accepter.rebind(avoid_ports);
+  accepter.stop();
   mark_down_all();
-  return r;
+  return accepter.rebind(avoid_ports);
 }
 
 int SimpleMessenger::start()
@@ -574,7 +575,7 @@ void SimpleMessenger::mark_down_all()
   accepting_pipes.clear();
 
   while (!rank_pipe.empty()) {
-    hash_map<entity_addr_t,Pipe*>::iterator it = rank_pipe.begin();
+    ceph::unordered_map<entity_addr_t,Pipe*>::iterator it = rank_pipe.begin();
     Pipe *p = it->second;
     ldout(cct,5) << "mark_down_all " << it->first << " " << p << dendl;
     rank_pipe.erase(it);

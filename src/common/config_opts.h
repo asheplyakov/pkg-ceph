@@ -79,6 +79,7 @@ SUBSYS(osd, 0, 5)
 SUBSYS(optracker, 0, 5)
 SUBSYS(objclass, 0, 5)
 SUBSYS(filestore, 1, 3)
+SUBSYS(keyvaluestore, 1, 3)
 SUBSYS(journal, 1, 3)
 SUBSYS(ms, 0, 5)
 SUBSYS(mon, 1, 5)
@@ -148,6 +149,7 @@ OPTION(mon_osd_down_out_subtree_limit, OPT_STR, "rack")   // smallest crush unit
 OPTION(mon_osd_min_up_ratio, OPT_DOUBLE, .3)    // min osds required to be up to mark things down
 OPTION(mon_osd_min_in_ratio, OPT_DOUBLE, .3)   // min osds required to be in to mark things out
 OPTION(mon_osd_max_op_age, OPT_DOUBLE, 32)     // max op age before we get concerned (make it a power of 2)
+OPTION(mon_osd_max_split_count, OPT_INT, 32) // largest number of PGs per "involved" OSD to let split create
 OPTION(mon_stat_smooth_intervals, OPT_INT, 2)  // smooth stats over last N PGMap maps
 OPTION(mon_lease, OPT_FLOAT, 5)       // lease interval
 OPTION(mon_lease_renew_interval, OPT_FLOAT, 3) // on leader, to renew the lease
@@ -167,9 +169,12 @@ OPTION(mon_osd_nearfull_ratio, OPT_FLOAT, .85) // what % full makes an OSD near 
 OPTION(mon_globalid_prealloc, OPT_INT, 100)   // how many globalids to prealloc
 OPTION(mon_osd_report_timeout, OPT_INT, 900)    // grace period before declaring unresponsive OSDs dead
 OPTION(mon_force_standby_active, OPT_BOOL, true) // should mons force standby-replay mds to be active
+OPTION(mon_warn_on_old_mons, OPT_BOOL, true) // should mons set health to WARN if part of quorum is old?
+OPTION(mon_warn_on_legacy_crush_tunables, OPT_BOOL, true) // warn if crush tunables are not optimal
 OPTION(mon_min_osdmap_epochs, OPT_INT, 500)
 OPTION(mon_max_pgmap_epochs, OPT_INT, 500)
 OPTION(mon_max_log_epochs, OPT_INT, 500)
+OPTION(mon_max_mdsmap_epochs, OPT_INT, 500)
 OPTION(mon_max_osd, OPT_INT, 10000)
 OPTION(mon_probe_timeout, OPT_DOUBLE, 2.0)
 OPTION(mon_slurp_timeout, OPT_DOUBLE, 10.0)
@@ -191,6 +196,7 @@ OPTION(mon_inject_sync_get_chunk_delay, OPT_DOUBLE, 0)  // inject N second delay
 OPTION(mon_osd_min_down_reporters, OPT_INT, 1)   // number of OSDs who need to report a down OSD for it to count
 OPTION(mon_osd_min_down_reports, OPT_INT, 3)     // number of times a down OSD must be reported for it to count
 OPTION(mon_osd_force_trim_to, OPT_INT, 0)   // force mon to trim maps to this point, regardless of min_last_epoch_clean (dangerous, use with care)
+OPTION(mon_mds_force_trim_to, OPT_INT, 0)   // force mon to trim mdsmaps to this point (dangerous, use with care)
 
 // dump transactions
 OPTION(mon_debug_dump_transactions, OPT_BOOL, false)
@@ -205,7 +211,7 @@ OPTION(mon_leveldb_bloom_size, OPT_INT, 0) // monitor's leveldb bloom bits per e
 OPTION(mon_leveldb_max_open_files, OPT_INT, 0) // monitor's leveldb max open files
 OPTION(mon_leveldb_compression, OPT_BOOL, false) // monitor's leveldb uses compression
 OPTION(mon_leveldb_paranoid, OPT_BOOL, false)   // monitor's leveldb paranoid flag
-OPTION(mon_leveldb_log, OPT_STR, "/dev/null")
+OPTION(mon_leveldb_log, OPT_STR, "")
 OPTION(mon_leveldb_size_warn, OPT_U64, 40*1024*1024*1024) // issue a warning when the monitor's leveldb goes over 40GB (in bytes)
 OPTION(paxos_stash_full_interval, OPT_INT, 25)   // how often (in commits) to stash a full copy of the PaxosService state
 OPTION(paxos_max_join_drift, OPT_INT, 10) // max paxos iterations before we must first sync the monitor stores
@@ -257,6 +263,7 @@ OPTION(client_oc_max_dirty_age, OPT_DOUBLE, 5.0)      // max age in cache before
 OPTION(client_oc_max_objects, OPT_INT, 1000)      // max objects in cache
 OPTION(client_debug_force_sync_read, OPT_BOOL, false)     // always read synchronously (go to osds)
 OPTION(client_debug_inject_tick_delay, OPT_INT, 0) // delay the client tick for a number of seconds
+OPTION(client_max_inline_size, OPT_U64, 4096)
 // note: the max amount of "in flight" dirty data is roughly (max - target)
 OPTION(fuse_use_invalidate_cb, OPT_BOOL, false) // use fuse 2.8+ invalidate callback to keep page cache consistent
 OPTION(fuse_allow_other, OPT_BOOL, true)
@@ -264,6 +271,10 @@ OPTION(fuse_default_permissions, OPT_BOOL, true)
 OPTION(fuse_big_writes, OPT_BOOL, true)
 OPTION(fuse_atomic_o_trunc, OPT_BOOL, true)
 OPTION(fuse_debug, OPT_BOOL, false)
+OPTION(fuse_multithreaded, OPT_BOOL, false)
+
+OPTION(crush_location, OPT_STR, "")       // whitespace-separated list of key=value pairs describing crush location
+
 OPTION(objecter_tick_interval, OPT_DOUBLE, 5.0)
 OPTION(objecter_timeout, OPT_DOUBLE, 10.0)    // before we ask for a map
 OPTION(objecter_inflight_op_bytes, OPT_U64, 1024*1024*100) // max in-flight data (both directions)
@@ -279,14 +290,14 @@ OPTION(mds_max_file_size, OPT_U64, 1ULL << 40)
 OPTION(mds_cache_size, OPT_INT, 100000)
 OPTION(mds_cache_mid, OPT_FLOAT, .7)
 OPTION(mds_mem_max, OPT_INT, 1048576)        // KB
-OPTION(mds_dir_commit_ratio, OPT_FLOAT, .5)
-OPTION(mds_dir_max_commit_size, OPT_INT, 90) // MB
+OPTION(mds_dir_max_commit_size, OPT_INT, 10) // MB
 OPTION(mds_decay_halflife, OPT_FLOAT, 5)
 OPTION(mds_beacon_interval, OPT_FLOAT, 4)
 OPTION(mds_beacon_grace, OPT_FLOAT, 15)
 OPTION(mds_enforce_unique_name, OPT_BOOL, true)
 OPTION(mds_blacklist_interval, OPT_FLOAT, 24.0*60.0)  // how long to blacklist failed nodes
 OPTION(mds_session_timeout, OPT_FLOAT, 60)    // cap bits and leases time out if client idle
+OPTION(mds_freeze_tree_timeout, OPT_FLOAT, 30)    // cap bits and leases time out if client idle
 OPTION(mds_session_autoclose, OPT_FLOAT, 300) // autoclose idle session
 OPTION(mds_reconnect_timeout, OPT_FLOAT, 45)  // seconds to wait for clients during mds restart
 	      //  make it (mds_session_timeout - mds_beacon_grace)
@@ -295,7 +306,6 @@ OPTION(mds_dirstat_min_interval, OPT_FLOAT, 1)    // try to avoid propagating mo
 OPTION(mds_scatter_nudge_interval, OPT_FLOAT, 5)  // how quickly dirstat changes propagate up the hierarchy
 OPTION(mds_client_prealloc_inos, OPT_INT, 1000)
 OPTION(mds_early_reply, OPT_BOOL, true)
-OPTION(mds_use_tmap, OPT_BOOL, true)        // use trivialmap for dir updates
 OPTION(mds_default_dir_hash, OPT_INT, CEPH_STR_HASH_RJENKINS)
 OPTION(mds_log, OPT_BOOL, true)
 OPTION(mds_log_skip_corrupt_events, OPT_BOOL, false)
@@ -384,15 +394,26 @@ OPTION(osd_client_message_cap, OPT_U64, 100)              // num client messages
 OPTION(osd_pg_bits, OPT_INT, 6)  // bits per osd
 OPTION(osd_pgp_bits, OPT_INT, 6)  // bits per osd
 OPTION(osd_crush_chooseleaf_type, OPT_INT, 1) // 1 = host
-OPTION(osd_min_rep, OPT_INT, 1)
-OPTION(osd_max_rep, OPT_INT, 10)
-OPTION(osd_pool_default_crush_rule, OPT_INT, 0)
-OPTION(osd_pool_default_size, OPT_INT, 2)
+OPTION(osd_pool_default_crush_rule, OPT_INT, -1) // deprecated for osd_pool_default_crush_replicated_ruleset
+OPTION(osd_pool_default_crush_replicated_ruleset, OPT_INT, CEPH_DEFAULT_CRUSH_REPLICATED_RULESET)
+OPTION(osd_pool_default_crush_erasure_ruleset, OPT_INT, CEPH_DEFAULT_CRUSH_ERASURE_RULESET)
+OPTION(osd_pool_default_size, OPT_INT, 3)
 OPTION(osd_pool_default_min_size, OPT_INT, 0)  // 0 means no specific default; ceph will use size-size/2
 OPTION(osd_pool_default_pg_num, OPT_INT, 8) // number of PGs for new pools. Configure in global or mon section of ceph.conf
 OPTION(osd_pool_default_pgp_num, OPT_INT, 8) // number of PGs for placement purposes. Should be equal to pg_num
+OPTION(osd_pool_default_erasure_code_directory, OPT_STR, CEPH_PKGLIBDIR"/erasure-code") // default for the erasure-code-directory=XXX property of osd pool create
+OPTION(osd_pool_default_erasure_code_properties,
+       OPT_STR,
+       "erasure-code-plugin=jerasure "
+       "erasure-code-technique=cauchy_good "
+       "erasure-code-packetsize=3072 "
+       "erasure-code-k=4 "
+       "erasure-code-m=2 "
+       ) // default properties of osd pool create
 OPTION(osd_pool_default_flags, OPT_INT, 0)   // default flags for new pools
-OPTION(osd_pool_default_flag_hashpspool, OPT_BOOL, false)   // use new pg hashing to prevent pool/pg overlap
+OPTION(osd_pool_default_flag_hashpspool, OPT_BOOL, true)   // use new pg hashing to prevent pool/pg overlap
+OPTION(osd_hit_set_min_size, OPT_INT, 1000)  // min target size for a HitSet
+OPTION(osd_hit_set_namespace, OPT_STR, ".ceph-internal") // rados namespace for hit_set tracking
 OPTION(osd_map_dedup, OPT_BOOL, true)
 OPTION(osd_map_cache_size, OPT_INT, 500)
 OPTION(osd_map_message_max, OPT_INT, 100)  // max maps per MOSDMap message
@@ -494,10 +515,20 @@ OPTION(osd_leveldb_bloom_size, OPT_INT, 0) // OSD's leveldb bloom bits per entry
 OPTION(osd_leveldb_max_open_files, OPT_INT, 0) // OSD's leveldb max open files
 OPTION(osd_leveldb_compression, OPT_BOOL, true) // OSD's leveldb uses compression
 OPTION(osd_leveldb_paranoid, OPT_BOOL, false) // OSD's leveldb paranoid flag
-OPTION(osd_leveldb_log, OPT_STR, "/dev/null")  // enable OSD leveldb log file
+OPTION(osd_leveldb_log, OPT_STR, "")  // enable OSD leveldb log file
 
 // determines whether PGLog::check() compares written out log to stored log
 OPTION(osd_debug_pg_log_writeout, OPT_BOOL, false)
+
+OPTION(leveldb_write_buffer_size, OPT_U64, 0) // leveldb write buffer size
+OPTION(leveldb_cache_size, OPT_U64, 0) // leveldb cache size
+OPTION(leveldb_block_size, OPT_U64, 0) // leveldb block size
+OPTION(leveldb_bloom_size, OPT_INT, 0) // leveldb bloom bits per entry
+OPTION(leveldb_max_open_files, OPT_INT, 0) // leveldb max open files
+OPTION(leveldb_compression, OPT_BOOL, true) // leveldb uses compression
+OPTION(leveldb_paranoid, OPT_BOOL, false) // leveldb paranoid flag
+OPTION(leveldb_log, OPT_STR, "/dev/null")  // enable leveldb log file
+OPTION(leveldb_compact_on_mount, OPT_BOOL, false)
 
 /**
  * osd_client_op_priority and osd_recovery_op_priority adjust the relative
@@ -520,7 +551,12 @@ OPTION(osd_mon_shutdown_timeout, OPT_DOUBLE, 5)
 OPTION(osd_max_object_size, OPT_U64, 100*1024L*1024L*1024L) // OSD's maximum object size
 OPTION(osd_max_attr_size, OPT_U64, 0)
 
-OPTION(filestore, OPT_BOOL, false)
+OPTION(osd_objectstore, OPT_STR, "filestore")  // ObjectStore backend type
+// Override maintaining compatibility with older OSDs
+// Set to true for testing.  Users should NOT set this.
+OPTION(osd_debug_override_acting_compat, OPT_BOOL, false)
+
+OPTION(filestore_debug_disable_sharded_check, OPT_BOOL, false)
 
 /// filestore wb throttle limits
 OPTION(filestore_wbthrottle_enable, OPT_BOOL, true)
@@ -620,6 +656,8 @@ OPTION(rbd_cache_block_writes_upfront, OPT_BOOL, false) // whether to block writ
 OPTION(rbd_concurrent_management_ops, OPT_INT, 10) // how many operations can be in flight for a management operation like deleting or resizing an image
 OPTION(rbd_balance_snap_reads, OPT_BOOL, false)
 OPTION(rbd_localize_snap_reads, OPT_BOOL, false)
+OPTION(rbd_balance_parent_reads, OPT_BOOL, false)
+OPTION(rbd_localize_parent_reads, OPT_BOOL, true)
 
 /*
  * The following options change the behavior for librbd's image creation methods that
@@ -659,8 +697,12 @@ OPTION(rgw_swift_url, OPT_STR, "")             // the swift url, being published
 OPTION(rgw_swift_url_prefix, OPT_STR, "swift") // entry point for which a url is considered a swift url
 OPTION(rgw_swift_auth_url, OPT_STR, "")        // default URL to go and verify tokens for v1 auth (if not using internal swift auth)
 OPTION(rgw_swift_auth_entry, OPT_STR, "auth")  // entry point for which a url is considered a swift auth url
+OPTION(rgw_swift_tenant_name, OPT_STR, "")  // tenant name to use for swift access
 OPTION(rgw_keystone_url, OPT_STR, "")  // url for keystone server
 OPTION(rgw_keystone_admin_token, OPT_STR, "")  // keystone admin token (shared secret)
+OPTION(rgw_keystone_admin_user, OPT_STR, "")  // keystone admin user name
+OPTION(rgw_keystone_admin_password, OPT_STR, "")  // keystone admin user password
+OPTION(rgw_keystone_admin_tenant, OPT_STR, "")  // keystone admin user tenant
 OPTION(rgw_keystone_accepted_roles, OPT_STR, "Member, admin")  // roles required to serve requests
 OPTION(rgw_keystone_token_cache_size, OPT_INT, 10000)  // max number of entries in keystone token cache
 OPTION(rgw_keystone_revocation_interval, OPT_INT, 15 * 60)  // seconds between tokens revocation check
@@ -709,6 +751,7 @@ OPTION(rgw_exit_timeout_secs, OPT_INT, 120) // how many seconds to wait for proc
 OPTION(rgw_get_obj_window_size, OPT_INT, 16 << 20) // window size in bytes for single get obj request
 OPTION(rgw_get_obj_max_req_size, OPT_INT, 4 << 20) // max length of a single get obj rados op
 OPTION(rgw_relaxed_s3_bucket_names, OPT_BOOL, false) // enable relaxed bucket name rules for US region buckets
+OPTION(rgw_defer_to_bucket_acls, OPT_STR, "") // if the user has bucket perms, use those before key perms (recurse and full_control)
 OPTION(rgw_list_buckets_max_chunk, OPT_INT, 1000) // max buckets to retrieve in a single op when listing user buckets
 OPTION(rgw_md_log_max_shards, OPT_INT, 64) // max shards for metadata log
 OPTION(rgw_num_zone_opstate_shards, OPT_INT, 128) // max shards for keeping inter-region copy progress info
@@ -726,6 +769,17 @@ OPTION(rgw_replica_log_obj_prefix, OPT_STR, "replica_log") //
 OPTION(rgw_bucket_quota_ttl, OPT_INT, 600) // time for cached bucket stats to be cached within rgw instance
 OPTION(rgw_bucket_quota_soft_threshold, OPT_DOUBLE, 0.95) // threshold from which we don't rely on cached info for quota decisions
 OPTION(rgw_bucket_quota_cache_size, OPT_INT, 10000) // number of entries in bucket quota cache
+
+OPTION(rgw_expose_bucket, OPT_BOOL, false) // Return the bucket name in the 'Bucket' response header
+
+OPTION(rgw_frontends, OPT_STR, "") // alternative front ends
+
+OPTION(rgw_user_quota_bucket_sync_interval, OPT_INT, 180) // time period for accumulating modified buckets before syncing stats
+OPTION(rgw_user_quota_sync_interval, OPT_INT, 3600 * 24) // time period for accumulating modified buckets before syncing entire user stats
+OPTION(rgw_user_quota_sync_idle_users, OPT_BOOL, false) // whether stats for idle users be fully synced
+OPTION(rgw_user_quota_sync_wait_time, OPT_INT, 3600 * 24) // min time between two full stats syc for non-idle users
+
+OPTION(rgw_multipart_min_part_size, OPT_INT, 5 * 1024 * 1024) // min size for each part (except for last one) in multipart upload
 
 OPTION(mutex_perf_counter, OPT_BOOL, false) // enable/disable mutex perf counter
 

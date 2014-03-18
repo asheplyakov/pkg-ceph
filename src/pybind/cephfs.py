@@ -3,6 +3,7 @@ This module is a thin wrapper around libcephfs.
 """
 from ctypes import CDLL, c_char_p, c_size_t, c_void_p, c_int, c_long, c_uint, c_ulong, \
     create_string_buffer, byref, Structure
+from ctypes.util import find_library
 import errno
 
 class Error(Exception):
@@ -114,6 +115,21 @@ class cephfs_stat(Structure):
                 ('__unused2', c_long),
                 ('__unused3', c_long) ]
 
+def load_libcephfs():
+    """
+    Load the libcephfs shared library.
+    """
+    libcephfs_path = find_library('cephfs')
+    if libcephfs_path:
+        return CDLL(libcephfs_path)
+
+    # try harder, find_library() doesn't search LD_LIBRARY_PATH
+    # in addition, it doesn't seem work on centos 6.4 (see e46d2ca067b5)
+    try:
+        return CDLL('libcephfs.so.1')
+    except OSError as e:
+        raise EnvironmentError("Unable to load libcephfs: %s" % e)
+
 class LibCephFS(object):
     """libcephfs python wrapper"""
     def require_state(self, *args):
@@ -124,7 +140,7 @@ class LibCephFS(object):
                                   "CephFS object in state %s." % (self.state))
 
     def __init__(self, conf=None, conffile=None):
-        self.libcephfs = CDLL('libcephfs.so.1')
+        self.libcephfs = load_libcephfs()
         self.cluster = c_void_p()
 
         if conffile is not None and not isinstance(conffile, str):

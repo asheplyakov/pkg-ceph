@@ -21,7 +21,7 @@
 
 class MMonElection : public Message {
 
-  static const int HEAD_VERSION = 4;
+  static const int HEAD_VERSION = 5;
   static const int COMPAT_VERSION = 2;
 
 public:
@@ -45,6 +45,7 @@ public:
   bufferlist monmap_bl;
   set<int> quorum;
   uint64_t quorum_features;
+  bufferlist sharing_bl;
   /* the following were both used in the next branch for a while
    * on user cluster, so we've left them in for compatibility. */
   version_t defunct_one;
@@ -74,7 +75,7 @@ public:
   }
   
   void encode_payload(uint64_t features) {
-    if (monmap_bl.length() && (features & CEPH_FEATURE_MONENC) == 0) {
+    if (monmap_bl.length() && (features != CEPH_FEATURES_ALL)) {
       // reencode old-format monmap
       MonMap t;
       t.decode(monmap_bl);
@@ -90,6 +91,7 @@ public:
     ::encode(quorum_features, payload);
     ::encode(defunct_one, payload);
     ::encode(defunct_two, payload);
+    ::encode(sharing_bl, payload);
   }
   void decode_payload() {
     bufferlist::iterator p = payload.begin();
@@ -109,6 +111,8 @@ public:
       ::decode(defunct_one, p);
       ::decode(defunct_two, p);
     }
+    if (header.version >= 5)
+      ::decode(sharing_bl, p);
   }
   
 };

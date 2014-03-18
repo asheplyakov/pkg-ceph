@@ -20,10 +20,10 @@
 #include "include/histogram.h"
 #include "include/xlist.h"
 #include "msg/Message.h"
-#include <tr1/memory>
+#include "include/memory.h"
 
 class TrackedOp;
-typedef std::tr1::shared_ptr<TrackedOp> TrackedOpRef;
+typedef ceph::shared_ptr<TrackedOp> TrackedOpRef;
 
 class OpTracker;
 class OpHistory {
@@ -31,12 +31,11 @@ class OpHistory {
   set<pair<double, TrackedOpRef> > duration;
   void cleanup(utime_t now);
   bool shutdown;
-  OpTracker *tracker;
   uint32_t history_size;
   uint32_t history_duration;
 
 public:
-  OpHistory(OpTracker *tracker_) : shutdown(false), tracker(tracker_),
+  OpHistory() : shutdown(false),
   history_size(0), history_duration(0) {}
   ~OpHistory() {
     assert(arrived.empty());
@@ -70,7 +69,7 @@ class OpTracker {
 public:
   CephContext *cct;
   OpTracker(CephContext *cct_) : seq(0), ops_in_flight_lock("OpTracker mutex"),
-      history(this), complaint_time(0), log_threshold(0), cct(cct_) {}
+      complaint_time(0), log_threshold(0), cct(cct_) {}
   void set_complaint_and_threshold(float time, int threshold) {
     complaint_time = time;
     log_threshold = threshold;

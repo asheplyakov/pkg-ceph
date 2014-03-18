@@ -42,12 +42,11 @@
 
 #include <map>
 #include <memory>
-#include <tr1/memory>
+#include "include/memory.h"
 using namespace std;
 
-#include <ext/hash_map>
-#include <ext/hash_set>
-using namespace __gnu_cxx;
+#include "include/unordered_map.h"
+#include "include/unordered_set.h"
 
 #include "Watch.h"
 #include "common/shared_cache.hpp"
@@ -66,18 +65,22 @@ enum {
   l_osd_op_inb,
   l_osd_op_outb,
   l_osd_op_lat,
+  l_osd_op_process_lat,
   l_osd_op_r,
   l_osd_op_r_outb,
   l_osd_op_r_lat,
+  l_osd_op_r_process_lat,
   l_osd_op_w,
   l_osd_op_w_inb,
   l_osd_op_w_rlat,
   l_osd_op_w_lat,
+  l_osd_op_w_process_lat,
   l_osd_op_rw,
   l_osd_op_rw_inb,
   l_osd_op_rw_outb,
   l_osd_op_rw_rlat,
   l_osd_op_rw_lat,
+  l_osd_op_rw_process_lat,
 
   l_osd_sop,
   l_osd_sop_inb,
@@ -179,7 +182,7 @@ class HistoricOpsSocketHook;
 class TestOpsSocketHook;
 struct C_CompleteSplits;
 
-typedef std::tr1::shared_ptr<ObjectStore::Sequencer> SequencerRef;
+typedef ceph::shared_ptr<ObjectStore::Sequencer> SequencerRef;
 
 class DeletingState {
   Mutex lock;
@@ -279,7 +282,7 @@ public:
     return status != DELETED_DIR;
   } ///< @return true if we don't need to recreate the collection
 };
-typedef std::tr1::shared_ptr<DeletingState> DeletingStateRef;
+typedef ceph::shared_ptr<DeletingState> DeletingStateRef;
 
 class OSD;
 class OSDService {
@@ -308,6 +311,7 @@ public:
   ThreadPool::WorkQueue<PG> &scrub_finalize_wq;
   ThreadPool::WorkQueue<MOSDRepScrub> &rep_scrub_wq;
   GenContextWQ push_wq;
+  GenContextWQ gen_wq;
   ClassHandler  *&class_handler;
 
   void dequeue_pg(PG *pg, list<OpRequestRef> *dequeued);
@@ -440,7 +444,7 @@ public:
 			   bool force_new);
     ObjecterDispatcher(OSDService *o) : Dispatcher(cct), osd(o) {}
   } objecter_dispatcher;
-  friend class ObjecterDispatcher;
+  friend struct ObjecterDispatcher;
 
 
   // -- Watch --
@@ -697,7 +701,7 @@ protected:
   void _dispatch(Message *m);
   void dispatch_op(OpRequestRef op);
 
-  void check_osdmap_features();
+  void check_osdmap_features(ObjectStore *store);
 
   // asok
   friend class OSDSocketHook;
@@ -1142,7 +1146,7 @@ private:
 
 protected:
   // -- placement groups --
-  hash_map<pg_t, PG*> pg_map;
+  ceph::unordered_map<pg_t, PG*> pg_map;
   map<pg_t, list<OpRequestRef> > waiting_for_pg;
   map<pg_t, list<PG::CephPeeringEvtRef> > peering_wait_for_split;
   PGRecoveryStats pg_recovery_stats;
@@ -1220,7 +1224,7 @@ protected:
     set<int> prior;
     pg_t parent;
   };
-  hash_map<pg_t, create_pg_info> creating_pgs;
+  ceph::unordered_map<pg_t, create_pg_info> creating_pgs;
   double debug_drop_pg_create_probability;
   int debug_drop_pg_create_duration;
   int debug_drop_pg_create_left;  // 0 if we just dropped the last one, -1 if we can drop more
@@ -1254,6 +1258,7 @@ protected:
   void start_boot();
   void _maybe_boot(epoch_t oldest, epoch_t newest);
   void _send_boot();
+  void _collect_metadata(map<string,string> *pmeta);
 
   void start_waiting_for_healthy();
   bool _is_healthy();
@@ -1318,8 +1323,10 @@ protected:
   // -- generic pg peering --
   PG::RecoveryCtx create_context();
   bool compat_must_dispatch_immediately(PG *pg);
-  void dispatch_context(PG::RecoveryCtx &ctx, PG *pg, OSDMapRef curmap);
-  void dispatch_context_transaction(PG::RecoveryCtx &ctx, PG *pg);
+  void dispatch_context(PG::RecoveryCtx &ctx, PG *pg, OSDMapRef curmap,
+                        ThreadPool::TPHandle *handle = NULL);
+  void dispatch_context_transaction(PG::RecoveryCtx &ctx, PG *pg,
+                                    ThreadPool::TPHandle *handle = NULL);
   void do_notifies(map< int,vector<pair<pg_notify_t, pg_interval_map_t> > >& notify_list,
 		   OSDMapRef map);
   void do_queries(map< int, map<pg_t,pg_query_t> >& query_map,
@@ -1559,12 +1566,11 @@ protected:
 
   struct ScrubFinalizeWQ : public ThreadPool::WorkQueue<PG> {
   private:
-    OSD *osd;
     xlist<PG*> scrub_finalize_queue;
 
   public:
-    ScrubFinalizeWQ(OSD *o, time_t ti, ThreadPool *tp)
-      : ThreadPool::WorkQueue<PG>("OSD::ScrubFinalizeWQ", ti, ti*10, tp), osd(o) {}
+    ScrubFinalizeWQ(time_t ti, ThreadPool *tp)
+      : ThreadPool::WorkQueue<PG>("OSD::ScrubFinalizeWQ", ti, ti*10, tp) {}
 
     bool _empty() {
       return scrub_finalize_queue.empty();
@@ -1709,6 +1715,7 @@ protected:
   /* internal and external can point to the same messenger, they will still
    * be cleaned up properly*/
   OSD(CephContext *cct_,
+      ObjectStore *store_,
       int id,
       Messenger *internal,
       Messenger *external,
@@ -1721,15 +1728,11 @@ protected:
 
   // static bits
   static int find_osd_dev(char *result, int whoami);
-  static ObjectStore *create_object_store(CephContext *cct, const std::string &dev, const std::string &jdev);
-  static int convertfs(const std::string &dev, const std::string &jdev);
   static int do_convertfs(ObjectStore *store);
   static int convert_collection(ObjectStore *store, coll_t cid);
-  static int mkfs(CephContext *cct, const std::string &dev, const std::string &jdev,
+  static int mkfs(CephContext *cct, ObjectStore *store,
+		  const string& dev,
 		  uuid_d fsid, int whoami);
-  static int mkjournal(CephContext *cct, const std::string &dev, const std::string &jdev);
-  static int flushjournal(CephContext *cct, const std::string &dev, const std::string &jdev);
-  static int dump_journal(CephContext *cct, const std::string &dev, const std::string &jdev, ostream& out);
   /* remove any non-user xattrs from a map of them */
   void filter_xattrs(map<string, bufferptr>& attrs) {
     for (map<string, bufferptr>::iterator iter = attrs.begin();
@@ -1742,12 +1745,11 @@ protected:
   }
 
 private:
-  static int write_meta(const std::string &base,
+  static int write_meta(ObjectStore *store,
 			uuid_d& cluster_fsid, uuid_d& osd_fsid, int whoami);
 public:
-  static int peek_meta(const std::string &dev, string& magic,
+  static int peek_meta(ObjectStore *store, string& magic,
 		       uuid_d& cluster_fsid, uuid_d& osd_fsid, int& whoami);
-  static int peek_journal_fsid(std::string jpath, uuid_d& fsid);
   
 
   // startup/shutdown

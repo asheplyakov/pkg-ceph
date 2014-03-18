@@ -30,6 +30,7 @@
 #include "common/config.h"
 #include "include/assert.h"
 #include "include/str_list.h"
+#include "include/compat.h"
 
 #define dout_subsys ceph_subsys_mon
 #undef dout_prefix
@@ -44,7 +45,7 @@ ostream& operator<<(ostream& out, LogMonitor& pm)
 {
   /*
   std::stringstream ss;
-  for (hash_map<int,int>::iterator p = pm.pg_map.num_pg_by_state.begin();
+  for (ceph::unordered_map<int,int>::iterator p = pm.pg_map.num_pg_by_state.begin();
        p != pm.pg_map.num_pg_by_state.end();
        ++p) {
     if (p != pm.pg_map.num_pg_by_state.begin())
@@ -381,7 +382,8 @@ bool LogMonitor::prepare_command(MMonCommand *m)
     le.msg = str_join(logtext, " ");
     pending_summary.add(le);
     pending_log.insert(pair<utime_t,LogEntry>(le.stamp, le));
-    wait_for_finished_proposal(new Monitor::C_Command(mon, m, 0, string(), get_last_committed()));
+    wait_for_finished_proposal(new Monitor::C_Command(mon, m, 0, string(),
+					      get_last_committed() + 1));
     return true;
   }
 

@@ -3,6 +3,12 @@
 /* fallocate(2) is supported */
 #undef CEPH_HAVE_FALLOCATE
 
+/* F_SETPIPE_SZ is supported */
+#undef CEPH_HAVE_SETPIPE_SZ
+
+/* splice(2) is supported */
+#undef CEPH_HAVE_SPLICE
+
 /* Define if darwin/osx */
 #undef DARWIN
 
@@ -18,6 +24,9 @@
 /* Define to 1 if you have the <arpa/inet.h> header file. */
 #undef HAVE_ARPA_INET_H
 
+/* Define to 1 if you have the <arpa/nameser_compat.h> header file. */
+#undef HAVE_ARPA_NAMESER_COMPAT_H
+
 /* have boost::random::discrete_distribution */
 #undef HAVE_BOOST_RANDOM_DISCRETE_DISTRIBUTION
 
@@ -31,14 +40,32 @@
 /* Define to 1 if you have the <dlfcn.h> header file. */
 #undef HAVE_DLFCN_H
 
+/* Define to 1 if you have fdatasync. */
+#undef HAVE_FDATASYNC
+
 /* linux/fiemap.h was found, fiemap ioctl will be used */
 #undef HAVE_FIEMAP_H
+
+/* Define if the C complier supports __func__ */
+#undef HAVE_FUNC
 
 /* Define to 1 if you have the `fuse_getgroups' function. */
 #undef HAVE_FUSE_GETGROUPS
 
 /* we have a recent yasm and are x86_64 */
 #undef HAVE_GOOD_YASM_ELF64
+
+/* Define to 1 if the system has the type `int16_t'. */
+#undef HAVE_INT16_T
+
+/* Define to 1 if the system has the type `int32_t'. */
+#undef HAVE_INT32_T
+
+/* Define to 1 if the system has the type `int64_t'. */
+#undef HAVE_INT64_T
+
+/* Define to 1 if the system has the type `int8_t'. */
+#undef HAVE_INT8_T
 
 /* Define to 1 if you have the <inttypes.h> header file. */
 #undef HAVE_INTTYPES_H
@@ -48,6 +75,14 @@
 
 /* Defined if you don't have atomic_ops */
 #undef HAVE_LIBAIO
+
+/* Define to 1 if you have the `boost_program_options' library
+   (-lboost_program_options). */
+#undef HAVE_LIBBOOST_PROGRAM_OPTIONS
+
+/* Define to 1 if you have the `boost_program_options-mt' library
+   (-lboost_program_options-mt). */
+#undef HAVE_LIBBOOST_PROGRAM_OPTIONS_MT
 
 /* Define to 1 if you have the `boost_system' library (-lboost_system). */
 #undef HAVE_LIBBOOST_SYSTEM
@@ -81,6 +116,12 @@
 /* Defined if you have libzfs enabled */
 #undef HAVE_LIBZFS
 
+/* Define to 1 if you have the <linux/types.h> header file. */
+#undef HAVE_LINUX_TYPES_H
+
+/* Define to 1 if you have the <linux/version.h> header file. */
+#undef HAVE_LINUX_VERSION_H
+
 /* Define to 1 if you have the <memory.h> header file. */
 #undef HAVE_MEMORY_H
 
@@ -93,14 +134,38 @@
 /* Define to 1 if you have the <netinet/in.h> header file. */
 #undef HAVE_NETINET_IN_H
 
+/* Define to 1 if you have the `pipe2' function. */
+#undef HAVE_PIPE2
+
+/* Define to 1 if you have the `posix_fadvise' function. */
+#undef HAVE_POSIX_FADVISE
+
+/* Define to 1 if you have the `posix_fallocate' function. */
+#undef HAVE_POSIX_FALLOCATE
+
 /* Define to 1 if you have the `prctl' function. */
 #undef HAVE_PRCTL
+
+/* Define if the C complier supports __PRETTY_FUNCTION__ */
+#undef HAVE_PRETTY_FUNC
 
 /* Define if you have perftools profiler enabled */
 #undef HAVE_PROFILER
 
 /* Define if you have POSIX threads libraries and header files. */
 #undef HAVE_PTHREAD
+
+/* Define if you have pthread_spin_init */
+#undef HAVE_PTHREAD_SPINLOCK
+
+/* define if the compiler supports static_cast<> */
+#undef HAVE_STATIC_CAST
+
+/* Define if you have struct stat.st_mtimespec.tv_nsec */
+#undef HAVE_STAT_ST_MTIMESPEC_TV_NSEC
+
+/* Define if you have struct stat.st_mtim.tv_nsec */
+#undef HAVE_STAT_ST_MTIM_TV_NSEC
 
 /* Define to 1 if you have the <stdint.h> header file. */
 #undef HAVE_STDINT_H
@@ -173,11 +238,65 @@
 /* Define to 1 if you have the <sys/xattr.h> header file. */
 #undef HAVE_SYS_XATTR_H
 
+/* Define to 1 if the system has the type `uint16_t'. */
+#undef HAVE_UINT16_T
+
+/* Define to 1 if the system has the type `uint32_t'. */
+#undef HAVE_UINT32_T
+
+/* Define to 1 if the system has the type `uint64_t'. */
+#undef HAVE_UINT64_T
+
+/* Define to 1 if the system has the type `uint8_t'. */
+#undef HAVE_UINT8_T
+
 /* Define to 1 if you have the <unistd.h> header file. */
 #undef HAVE_UNISTD_H
 
 /* Define to 1 if you have the <utime.h> header file. */
 #undef HAVE_UTIME_H
+
+/* Define to 1 if the system has the type `__be16'. */
+#undef HAVE___BE16
+
+/* Define to 1 if the system has the type `__be32'. */
+#undef HAVE___BE32
+
+/* Define to 1 if the system has the type `__be64'. */
+#undef HAVE___BE64
+
+/* Define to 1 if the system has the type `__le16'. */
+#undef HAVE___LE16
+
+/* Define to 1 if the system has the type `__le32'. */
+#undef HAVE___LE32
+
+/* Define to 1 if the system has the type `__le64'. */
+#undef HAVE___LE64
+
+/* Define to 1 if the system has the type `__s16'. */
+#undef HAVE___S16
+
+/* Define to 1 if the system has the type `__s32'. */
+#undef HAVE___S32
+
+/* Define to 1 if the system has the type `__s64'. */
+#undef HAVE___S64
+
+/* Define to 1 if the system has the type `__s8'. */
+#undef HAVE___S8
+
+/* Define to 1 if the system has the type `__u16'. */
+#undef HAVE___U16
+
+/* Define to 1 if the system has the type `__u32'. */
+#undef HAVE___U32
+
+/* Define to 1 if the system has the type `__u64'. */
+#undef HAVE___U64
+
+/* Define to 1 if the system has the type `__u8'. */
+#undef HAVE___U8
 
 /* Define to the sub-directory in which libtool stores uninstalled libraries.
    */
