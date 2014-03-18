@@ -23,7 +23,7 @@
 #include <boost/statechart/transition.hpp>
 #include <boost/statechart/event_base.hpp>
 #include <boost/scoped_ptr.hpp>
-#include <tr1/memory>
+#include "include/memory.h"
 
 // re-include our assert to clobber boost's
 #include "include/assert.h" 
@@ -55,9 +55,8 @@
 #include <string>
 using namespace std;
 
-#include <ext/hash_map>
-#include <ext/hash_set>
-using namespace __gnu_cxx;
+#include "include/unordered_map.h"
+#include "include/unordered_set.h"
 
 
 //#define DEBUG_RECOVERY_OIDS   // track set of recovering oids explicitly, to find counting bugs
@@ -313,7 +312,7 @@ public:
    * (if they have one) */
   xlist<PG*>::item recovery_item, scrub_item, scrub_finalize_item, snap_trim_item, stat_queue_item;
   int recovery_ops_active;
-  bool waiting_on_backfill;
+  set<int> waiting_on_backfill;
 #ifdef DEBUG_RECOVERY_OIDS
   set<hobject_t> recovering_oids;
 #endif
@@ -333,7 +332,7 @@ public:
 
   // primary state
  public:
-  vector<int> up, acting, want_acting;
+  vector<int> up, acting, want_acting, actingbackfill;
   map<int,eversion_t> peer_last_complete_ondisk;
   eversion_t  min_last_complete_ondisk;  // up: min over last_complete_ondisk, peer_last_complete_ondisk
   eversion_t  pg_trim_to;
@@ -417,8 +416,6 @@ protected:
   // primary-only, recovery-only state
   set<int>             might_have_unfound;  // These osds might have objects on them
 					    // which are unfound on the primary
-  bool need_flush;     // need to flush before any new activity
-
   epoch_t last_peering_reset;
 
 
@@ -458,13 +455,13 @@ protected:
     }
 
     /// true if there are no objects in this interval
-    bool empty() {
+    bool empty() const {
       return objects.empty();
     }
 
     /// true if interval extends to the end of the range
-    bool extends_to_end() {
-      return end == hobject_t::get_max();
+    bool extends_to_end() const {
+      return end.is_max();
     }
 
     /// removes items <= soid and adjusts begin to the first object
@@ -508,23 +505,28 @@ protected:
   };
   
   BackfillInterval backfill_info;
-  BackfillInterval peer_backfill_info;
-  int backfill_target;
+  map<int, BackfillInterval> peer_backfill_info;
   bool backfill_reserved;
   bool backfill_reserving;
 
   friend class OSD;
 
 public:
-  int get_backfill_target() const {
-    return backfill_target;
+  vector<int> backfill_targets;
+
+  bool is_backfill_targets(int osd) {
+    if (std::find(backfill_targets.begin(), backfill_targets.end(), osd)
+        != backfill_targets.end())
+      return true;
+    else
+      return false;
   }
 
 protected:
 
 
   // pg waiters
-  bool flushed;
+  unsigned flushes_in_progress;
 
   // Ops waiting on backfill_pos to change
   list<OpRequestRef>            waiting_for_active;
@@ -551,8 +553,9 @@ protected:
   pg_stat_t pg_stats_publish;
 
   // for ordering writes
-  std::tr1::shared_ptr<ObjectStore::Sequencer> osr;
+  ceph::shared_ptr<ObjectStore::Sequencer> osr;
 
+  void _update_calc_stats();
   void publish_stats_to_osd();
   void clear_publish_stats();
 
@@ -568,6 +571,11 @@ public:
   bool is_up(int osd) const { 
     for (unsigned i=0; i<up.size(); i++)
       if (up[i] == osd) return true;
+    return false;
+  }
+  bool is_actingbackfill(int osd) const {
+    for (unsigned i=0; i<actingbackfill.size(); i++)
+      if (actingbackfill[i] == osd) return true;
     return false;
   }
   
@@ -591,10 +599,11 @@ public:
 
   bool calc_min_last_complete_ondisk() {
     eversion_t min = last_complete_ondisk;
-    for (unsigned i=1; i<acting.size(); i++) {
-      if (peer_last_complete_ondisk.count(acting[i]) == 0)
+    assert(actingbackfill.size() > 0);
+    for (unsigned i=1; i<actingbackfill.size(); i++) {
+      if (peer_last_complete_ondisk.count(actingbackfill[i]) == 0)
 	return false;   // we don't have complete info
-      eversion_t a = peer_last_complete_ondisk[acting[i]];
+      eversion_t a = peer_last_complete_ondisk[actingbackfill[i]];
       if (a < min)
 	min = a;
     }
@@ -611,6 +620,97 @@ public:
   void proc_master_log(ObjectStore::Transaction& t, pg_info_t &oinfo, pg_log_t &olog,
 		       pg_missing_t& omissing, int from);
   bool proc_replica_info(int from, const pg_info_t &info);
+
+
+  struct LogEntryTrimmer : public ObjectModDesc::Visitor {
+    const hobject_t &soid;
+    PG *pg;
+    ObjectStore::Transaction *t;
+    LogEntryTrimmer(const hobject_t &soid, PG *pg, ObjectStore::Transaction *t)
+      : soid(soid), pg(pg), t(t) {}
+    void rmobject(version_t old_version) {
+      pg->get_pgbackend()->trim_stashed_object(
+	soid,
+	old_version,
+	t);
+    }
+  };
+
+  struct SnapRollBacker : public ObjectModDesc::Visitor {
+    const hobject_t &soid;
+    PG *pg;
+    ObjectStore::Transaction *t;
+    SnapRollBacker(const hobject_t &soid, PG *pg, ObjectStore::Transaction *t)
+      : soid(soid), pg(pg), t(t) {}
+    void update_snaps(set<snapid_t> &snaps) {
+      pg->update_object_snap_mapping(t, soid, snaps);
+    }
+    void create() {
+      pg->clear_object_snap_mapping(
+	t,
+	soid);
+    }
+  };
+
+  struct PGLogEntryHandler : public PGLog::LogEntryHandler {
+    map<hobject_t, list<pg_log_entry_t> > to_rollback;
+    set<hobject_t> cannot_rollback;
+    set<hobject_t> to_remove;
+    list<pg_log_entry_t> to_trim;
+    
+    // LogEntryHandler
+    void remove(const hobject_t &hoid) {
+      to_remove.insert(hoid);
+    }
+    void rollback(const pg_log_entry_t &entry) {
+      assert(!cannot_rollback.count(entry.soid));
+      to_rollback[entry.soid].push_back(entry);
+    }
+    void cant_rollback(const pg_log_entry_t &entry) {
+      to_rollback.erase(entry.soid);
+      cannot_rollback.insert(entry.soid);
+    }
+    void trim(const pg_log_entry_t &entry) {
+      to_trim.push_back(entry);
+    }
+
+    void apply(PG *pg, ObjectStore::Transaction *t) {
+      for (map<hobject_t, list<pg_log_entry_t> >::iterator i =
+	     to_rollback.begin();
+	   i != to_rollback.end();
+	   ++i) {
+	for (list<pg_log_entry_t>::reverse_iterator j = i->second.rbegin();
+	     j != i->second.rend();
+	     ++j) {
+	  assert(j->mod_desc.can_rollback());
+	  pg->get_pgbackend()->rollback(j->soid, j->mod_desc, t);
+	  SnapRollBacker rollbacker(j->soid, pg, t);
+	  j->mod_desc.visit(&rollbacker);
+	}
+      }
+      for (set<hobject_t>::iterator i = to_remove.begin();
+	   i != to_remove.end();
+	   ++i) {
+	pg->get_pgbackend()->rollback_create(*i, t);
+	pg->remove_snap_mapped_object(*t, *i);
+      }
+      for (list<pg_log_entry_t>::reverse_iterator i = to_trim.rbegin();
+	   i != to_trim.rend();
+	   ++i) {
+	LogEntryTrimmer trimmer(i->soid, pg, t);
+	i->mod_desc.visit(&trimmer);
+      }
+    }
+  };
+  
+  friend struct SnapRollBacker;
+  friend struct PGLogEntryHandler;
+  friend struct LogEntryTrimmer;
+  void update_object_snap_mapping(
+    ObjectStore::Transaction *t, const hobject_t &soid,
+    const set<snapid_t> &snaps);
+  void clear_object_snap_mapping(
+    ObjectStore::Transaction *t, const hobject_t &soid);
   void remove_snap_mapped_object(
     ObjectStore::Transaction& t, const hobject_t& soid);
   void merge_log(ObjectStore::Transaction& t, pg_info_t &oinfo, pg_log_t &olog, int from);
@@ -626,7 +726,7 @@ public:
   void trim_write_ahead();
 
   map<int, pg_info_t>::const_iterator find_best_info(const map<int, pg_info_t> &infos) const;
-  bool calc_acting(int& newest_update_osd, vector<int>& want) const;
+  bool calc_acting(int& newest_update_osd, vector<int>& want, vector<int>& backfill) const;
   bool choose_acting(int& newest_update_osd);
   void build_might_have_unfound();
   void replay_queued_ops();
@@ -839,24 +939,6 @@ public:
   int active_pushes;
 
   void repair_object(const hobject_t& soid, ScrubMap::object *po, int bad_peer, int ok_peer);
-  map<int, ScrubMap *>::const_iterator _select_auth_object(
-    const hobject_t &obj,
-    const map<int,ScrubMap*> &maps);
-
-  enum error_type {
-    CLEAN,
-    DEEP_ERROR,
-    SHALLOW_ERROR
-  };
-  enum error_type _compare_scrub_objects(ScrubMap::object &auth,
-			      ScrubMap::object &candidate,
-			      ostream &errorstream);
-  void _compare_scrubmaps(const map<int,ScrubMap*> &maps,  
-			  map<hobject_t, set<int> > &missing,
-			  map<hobject_t, set<int> > &inconsistent,
-			  map<hobject_t, int> &authoritative,
-			  map<hobject_t, set<int> > &inconsistent_snapcolls,
-			  ostream &errorstream);
   void scrub(ThreadPool::TPHandle &handle);
   void classic_scrub(ThreadPool::TPHandle &handle);
   void chunky_scrub(ThreadPool::TPHandle &handle);
@@ -866,9 +948,6 @@ public:
   void scrub_finish();
   void scrub_clear_state();
   bool scrub_gather_replica_maps();
-  void _scan_list(
-    ScrubMap &map, vector<hobject_t> &ls, bool deep,
-    ThreadPool::TPHandle &handle);
   void _scan_snaps(ScrubMap &map);
   void _request_scrub_map_classic(int replica, eversion_t version);
   void _request_scrub_map(int replica, eversion_t version,
@@ -957,7 +1036,7 @@ public:
     const boost::statechart::event_base &get_event() { return *evt; }
     string get_desc() { return desc; }
   };
-  typedef std::tr1::shared_ptr<CephPeeringEvt> CephPeeringEvtRef;
+  typedef ceph::shared_ptr<CephPeeringEvt> CephPeeringEvtRef;
   list<CephPeeringEvtRef> peering_queue;  // op queue
   list<CephPeeringEvtRef> peering_waiters;
 
@@ -1074,8 +1153,8 @@ public:
   TrivialEvent(LocalRecoveryReserved)
   TrivialEvent(RemoteRecoveryReserved)
   TrivialEvent(AllRemotesReserved)
+  TrivialEvent(AllBackfillsReserved)
   TrivialEvent(Recovering)
-  TrivialEvent(WaitRemoteBackfillReserved)
   TrivialEvent(GoClean)
 
   TrivialEvent(AllReplicasActivated)
@@ -1281,7 +1360,6 @@ public:
 
     struct Peering : boost::statechart::state< Peering, Primary, GetInfo >, NamedState {
       std::auto_ptr< PriorSet > prior_set;
-      bool flushed;
 
       Peering(my_context ctx);
       void exit();
@@ -1302,6 +1380,7 @@ public:
       void exit();
 
       const set<int> sorted_acting_set;
+      const set<int> sorted_backfill_set;
       bool all_replicas_activated;
 
       typedef boost::mpl::list <
@@ -1360,8 +1439,10 @@ public:
     struct WaitRemoteBackfillReserved : boost::statechart::state< WaitRemoteBackfillReserved, Active >, NamedState {
       typedef boost::mpl::list<
 	boost::statechart::custom_reaction< RemoteBackfillReserved >,
-	boost::statechart::custom_reaction< RemoteReservationRejected >
+	boost::statechart::custom_reaction< RemoteReservationRejected >,
+	boost::statechart::transition< AllBackfillsReserved, Backfilling >
 	> reactions;
+      set<int>::const_iterator backfill_osd_it;
       WaitRemoteBackfillReserved(my_context ctx);
       void exit();
       boost::statechart::result react(const RemoteBackfillReserved& evt);
@@ -1600,10 +1681,12 @@ public:
 
     struct Incomplete : boost::statechart::state< Incomplete, Peering>, NamedState {
       typedef boost::mpl::list <
-	boost::statechart::custom_reaction< AdvMap >
+	boost::statechart::custom_reaction< AdvMap >,
+	boost::statechart::custom_reaction< MNotifyRec >
 	> reactions;
       Incomplete(my_context ctx);
       boost::statechart::result react(const AdvMap &advmap);
+      boost::statechart::result react(const MNotifyRec& infoevt);
       void exit();
     };
 
@@ -1702,9 +1785,18 @@ public:
     __u8 info_struct_v, bool dirty_big_info, bool force_ver = false);
   void write_if_dirty(ObjectStore::Transaction& t);
 
+  eversion_t get_next_version() const {
+    eversion_t at_version(get_osdmap()->get_epoch(),
+			  pg_log.get_head().version+1);
+    assert(at_version > info.last_update);
+    assert(at_version > pg_log.get_head());
+    return at_version;
+  }
+
   void add_log_entry(pg_log_entry_t& e, bufferlist& log_bl);
   void append_log(
-    vector<pg_log_entry_t>& logv, eversion_t trim_to, ObjectStore::Transaction &t);
+    vector<pg_log_entry_t>& logv, eversion_t trim_to, ObjectStore::Transaction &t,
+    bool transaction_applied = true);
   bool check_log_for_corruption(ObjectStore *store);
   void trim_peers();
 
@@ -1829,6 +1921,7 @@ public:
   virtual bool same_for_rep_modify_since(epoch_t e) = 0;
 
   virtual void on_role_change() = 0;
+  virtual void on_pool_change() = 0;
   virtual void on_change(ObjectStore::Transaction *t) = 0;
   virtual void on_activate() = 0;
   virtual void on_flushed() = 0;

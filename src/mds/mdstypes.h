@@ -24,6 +24,7 @@ using namespace std;
 
 #include <boost/pool/pool.hpp>
 #include "include/assert.h"
+#include "include/hash_namespace.h"
 
 #define CEPH_FS_ONDISK_MAGIC "ceph fs volume v011"
 
@@ -36,6 +37,9 @@ using namespace std;
 #define MDS_PORT_LOCKER  0x300
 #define MDS_PORT_MIGRATOR 0x400
 
+// FIXME: this should not be hardcoded
+#define MDS_DATA_POOL		0
+#define MDS_METADATA_POOL	1
 
 #define MAX_MDS                   0x100
 #define NUM_STRAY                 10
@@ -245,7 +249,7 @@ inline bool operator<(const vinodeno_t &l, const vinodeno_t &r) {
     (l.ino == r.ino && l.snapid < r.snapid);
 }
 
-namespace __gnu_cxx {
+CEPH_HASH_NAMESPACE_START
   template<> struct hash<vinodeno_t> {
     size_t operator()(const vinodeno_t &vino) const { 
       hash<inodeno_t> H;
@@ -253,7 +257,7 @@ namespace __gnu_cxx {
       return H(vino.ino) ^ I(vino.snapid);
     }
   };
-}
+CEPH_HASH_NAMESPACE_END
 
 
 
@@ -336,6 +340,8 @@ struct inode_t {
   utime_t    mtime;   // file data modify time.
   utime_t    atime;   // file data access time.
   uint32_t   time_warp_seq;  // count of (potential) mtime/atime timewarps (i.e., utimes())
+  bufferlist inline_data;
+  version_t  inline_version;
 
   map<client_t,client_writeable_range_t> client_ranges;  // client(s) can write to these ranges
 
@@ -358,6 +364,7 @@ struct inode_t {
 	      truncate_seq(0), truncate_size(0), truncate_from(0),
 	      truncate_pending(0),
 	      time_warp_seq(0),
+	      inline_version(1),
 	      version(0), file_data_version(0), xattr_version(0), backtrace_version(0) {
     clear_layout();
     memset(&dir_layout, 0, sizeof(dir_layout));
@@ -538,43 +545,40 @@ struct dentry_key_t {
   // encode into something that can be decoded as a string.
   // name_ (head) or name_%x (!head)
   void encode(bufferlist& bl) const {
-    __u32 l = strlen(name) + 1;
+    string key;
+    encode(key);
+    ::encode(key, bl);
+  }
+  void encode(string& key) const {
     char b[20];
     if (snapid != CEPH_NOSNAP) {
       uint64_t val(snapid);
       snprintf(b, sizeof(b), "%" PRIx64, val);
-      l += strlen(b);
     } else {
       snprintf(b, sizeof(b), "%s", "head");
-      l += 4;
     }
-    ::encode(l, bl);
-    bl.append(name, strlen(name));
-    bl.append("_", 1);
-    bl.append(b);
+    ostringstream oss;
+    oss << name << "_" << b;
+    key = oss.str();
   }
   static void decode_helper(bufferlist::iterator& bl, string& nm, snapid_t& sn) {
-    string foo;
-    ::decode(foo, bl);
-
-    int i = foo.length()-1;
-    while (foo[i] != '_' && i)
-      i--;
-    assert(i);
-    if (i+5 == (int)foo.length() &&
-	foo[i+1] == 'h' &&
-	foo[i+2] == 'e' &&
-	foo[i+3] == 'a' &&
-	foo[i+4] == 'd') {
+    string key;
+    ::decode(key, bl);
+    decode_helper(key, nm, sn);
+  }
+  static void decode_helper(const string& key, string& nm, snapid_t& sn) {
+    size_t i = key.find_last_of('_');
+    assert(i != string::npos);
+    if (key.compare(i+1, string::npos, "head") == 0) {
       // name_head
       sn = CEPH_NOSNAP;
     } else {
       // name_%x
       long long unsigned x = 0;
-      sscanf(foo.c_str() + i + 1, "%llx", &x);
+      sscanf(key.c_str() + i + 1, "%llx", &x);
       sn = x;
     }  
-    nm = string(foo.c_str(), i);
+    nm = string(key.c_str(), i);
   }
 };
 
@@ -680,14 +684,14 @@ inline bool operator<=(const metareqid_t& l, const metareqid_t& r) {
 inline bool operator>(const metareqid_t& l, const metareqid_t& r) { return !(l <= r); }
 inline bool operator>=(const metareqid_t& l, const metareqid_t& r) { return !(l < r); }
 
-namespace __gnu_cxx {
+CEPH_HASH_NAMESPACE_START
   template<> struct hash<metareqid_t> {
     size_t operator()(const metareqid_t &r) const { 
       hash<uint64_t> H;
       return H(r.name.num()) ^ H(r.name.type()) ^ H(r.tid);
     }
   };
-}
+CEPH_HASH_NAMESPACE_END
 
 
 // cap info for client reconnect
@@ -803,7 +807,7 @@ inline bool operator==(dirfrag_t l, dirfrag_t r) {
   return l.ino == r.ino && l.frag == r.frag;
 }
 
-namespace __gnu_cxx {
+CEPH_HASH_NAMESPACE_START
   template<> struct hash<dirfrag_t> {
     size_t operator()(const dirfrag_t &df) const { 
       static rjhash<uint64_t> H;
@@ -811,7 +815,7 @@ namespace __gnu_cxx {
       return H(df.ino) ^ I(df.frag);
     }
   };
-}
+CEPH_HASH_NAMESPACE_END
 
 
 
@@ -1294,26 +1298,26 @@ protected:
   // --------------------------------------------
   // replication (across mds cluster)
  protected:
-  __s16        replica_nonce; // [replica] defined on replica
-  map<int,int> replica_map;   // [auth] mds -> nonce
+  unsigned		replica_nonce; // [replica] defined on replica
+  map<int,unsigned>	replica_map;   // [auth] mds -> nonce
 
  public:
   bool is_replicated() { return !replica_map.empty(); }
   bool is_replica(int mds) { return replica_map.count(mds); }
   int num_replicas() { return replica_map.size(); }
-  int add_replica(int mds) {
+  unsigned add_replica(int mds) {
     if (replica_map.count(mds)) 
       return ++replica_map[mds];  // inc nonce
     if (replica_map.empty()) 
       get(PIN_REPLICATED);
     return replica_map[mds] = 1;
   }
-  void add_replica(int mds, int nonce) {
+  void add_replica(int mds, unsigned nonce) {
     if (replica_map.empty()) 
       get(PIN_REPLICATED);
     replica_map[mds] = nonce;
   }
-  int get_replica_nonce(int mds) {
+  unsigned get_replica_nonce(int mds) {
     assert(replica_map.count(mds));
     return replica_map[mds];
   }
@@ -1328,18 +1332,18 @@ protected:
       put(PIN_REPLICATED);
     replica_map.clear();
   }
-  map<int,int>::iterator replicas_begin() { return replica_map.begin(); }
-  map<int,int>::iterator replicas_end() { return replica_map.end(); }
-  const map<int,int>& get_replicas() { return replica_map; }
+  map<int,unsigned>::iterator replicas_begin() { return replica_map.begin(); }
+  map<int,unsigned>::iterator replicas_end() { return replica_map.end(); }
+  const map<int,unsigned>& get_replicas() { return replica_map; }
   void list_replicas(set<int>& ls) {
-    for (map<int,int>::const_iterator p = replica_map.begin();
+    for (map<int,unsigned>::const_iterator p = replica_map.begin();
 	 p != replica_map.end();
 	 ++p) 
       ls.insert(p->first);
   }
 
-  int get_replica_nonce() { return replica_nonce;}
-  void set_replica_nonce(int n) { replica_nonce = n; }
+  unsigned get_replica_nonce() { return replica_nonce; }
+  void set_replica_nonce(unsigned n) { replica_nonce = n; }
 
 
   // ---------------------------------------------

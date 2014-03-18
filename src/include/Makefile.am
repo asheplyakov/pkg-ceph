@@ -15,7 +15,8 @@ rados_include_DATA = \
 	$(srcdir)/include/rados/librados.hpp \
 	$(srcdir)/include/buffer.h \
 	$(srcdir)/include/page.h \
-	$(srcdir)/include/crc32c.h
+	$(srcdir)/include/crc32c.h \
+	$(srcdir)/include/memory.h
 
 noinst_HEADERS += \
 	include/Context.h \
@@ -59,6 +60,7 @@ noinst_HEADERS += \
 	include/rbd_types.h \
 	include/statlite.h \
 	include/str_list.h \
+	include/str_map.h \
 	include/stringify.h \
 	include/triple.h \
 	include/types.h \
@@ -78,4 +80,11 @@ noinst_HEADERS += \
 	include/rbd/features.h \
 	include/rbd/librbd.h \
 	include/rbd/librbd.hpp\
-	include/util.h
+	include/util.h\
+	include/stat.h \
+	include/on_exit.h \
+	include/memory.h \
+	include/rados/memory.h \
+	include/hash_namespace.h \
+	include/unordered_set.h \
+	include/unordered_map.h

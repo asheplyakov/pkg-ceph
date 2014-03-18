@@ -2,17 +2,17 @@
 
 libcls_hello_la_SOURCES = cls/hello/cls_hello.cc
 libcls_hello_la_LIBADD = $(PTHREAD_LIBS) $(EXTRALIBS)
-libcls_hello_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0 -export-symbols-regex '.*__cls_.*'
+libcls_hello_la_LDFLAGS = ${AM_LDFLAGS} -module -avoid-version -shared -export-symbols-regex '.*__cls_.*'
 radoslib_LTLIBRARIES += libcls_hello.la
 
 libcls_rbd_la_SOURCES = cls/rbd/cls_rbd.cc
 libcls_rbd_la_LIBADD = $(PTHREAD_LIBS) $(EXTRALIBS)
-libcls_rbd_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0 -export-symbols-regex '.*__cls_.*'
+libcls_rbd_la_LDFLAGS = ${AM_LDFLAGS} -module -avoid-version -shared -export-symbols-regex '.*__cls_.*'
 radoslib_LTLIBRARIES += libcls_rbd.la
 
 libcls_lock_la_SOURCES = cls/lock/cls_lock.cc
 libcls_lock_la_LIBADD = $(PTHREAD_LIBS) $(EXTRALIBS)
-libcls_lock_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0 -export-symbols-regex '.*__cls_.*'
+libcls_lock_la_LDFLAGS = ${AM_LDFLAGS} -module -avoid-version -shared -export-symbols-regex '.*__cls_.*'
 radoslib_LTLIBRARIES += libcls_lock.la
 
 libcls_refcount_la_SOURCES = \
@@ -20,28 +20,33 @@ libcls_refcount_la_SOURCES = \
 	cls/refcount/cls_refcount_ops.cc \
 	common/ceph_json.cc 
 libcls_refcount_la_LIBADD = libjson_spirit.la $(PTHREAD_LIBS) $(EXTRALIBS)
-libcls_refcount_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0 -export-symbols-regex '.*__cls_.*'
+libcls_refcount_la_LDFLAGS = ${AM_LDFLAGS} -module -avoid-version -shared -export-symbols-regex '.*__cls_.*'
 radoslib_LTLIBRARIES += libcls_refcount.la
 
 libcls_version_la_SOURCES = cls/version/cls_version.cc
 libcls_version_la_LIBADD = $(PTHREAD_LIBS) $(EXTRALIBS)
-libcls_version_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0 -export-symbols-regex '.*__cls_.*'
+libcls_version_la_LDFLAGS = ${AM_LDFLAGS} -module -avoid-version -shared -export-symbols-regex '.*__cls_.*'
 radoslib_LTLIBRARIES += libcls_version.la
 
 libcls_log_la_SOURCES = cls/log/cls_log.cc
 libcls_log_la_LIBADD = $(PTHREAD_LIBS) $(EXTRALIBS)
-libcls_log_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0 -export-symbols-regex '.*__cls_.*'
+libcls_log_la_LDFLAGS = ${AM_LDFLAGS} -module -avoid-version -shared -export-symbols-regex '.*__cls_.*'
 radoslib_LTLIBRARIES += libcls_log.la
 
 libcls_statelog_la_SOURCES = cls/statelog/cls_statelog.cc
 libcls_statelog_la_LIBADD = $(PTHREAD_LIBS) $(EXTRALIBS)
-libcls_statelog_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0 -export-symbols-regex '.*__cls_.*'
+libcls_statelog_la_LDFLAGS = ${AM_LDFLAGS} -module -avoid-version -shared -export-symbols-regex '.*__cls_.*'
 radoslib_LTLIBRARIES += libcls_statelog.la
 
 libcls_replica_log_la_SOURCES = cls/replica_log/cls_replica_log.cc
 libcls_replica_log_la_LIBADD = $(PTHREAD_LIBS) $(EXTRALIBS)
-libcls_replica_log_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0 -export-symbols-regex '.*__cls_.*'
+libcls_replica_log_la_LDFLAGS = ${AM_LDFLAGS} -module -avoid-version -shared -export-symbols-regex '.*__cls_.*'
 radoslib_LTLIBRARIES += libcls_replica_log.la
+
+libcls_user_la_SOURCES = cls/user/cls_user.cc
+libcls_user_la_LIBADD = $(PTHREAD_LIBS) $(EXTRALIBS)
+libcls_user_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0 -export-symbols-regex '.*__cls_.*'
+radoslib_LTLIBRARIES += libcls_user.la
 
 libcls_rgw_la_SOURCES = \
 	cls/rgw/cls_rgw.cc \
@@ -49,7 +54,7 @@ libcls_rgw_la_SOURCES = \
 	cls/rgw/cls_rgw_types.cc \
 	common/ceph_json.cc
 libcls_rgw_la_LIBADD = libjson_spirit.la $(PTHREAD_LIBS) $(EXTRALIBS)
-libcls_rgw_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0 -export-symbols-regex '.*__cls_.*'
+libcls_rgw_la_LDFLAGS = ${AM_LDFLAGS} -module -avoid-version -shared -export-symbols-regex '.*__cls_.*'
 radoslib_LTLIBRARIES += libcls_rgw.la
 
 ## Rados object client classes
@@ -95,6 +100,12 @@ DENCODER_DEPS += libcls_rgw_client.la
 libcls_rbd_client_la_SOURCES = cls/rbd/cls_rbd_client.cc
 noinst_LTLIBRARIES += libcls_rbd_client.la
 
+libcls_user_client_a_SOURCES = cls/user/cls_user_client.cc \
+	cls/user/cls_user_types.cc \
+	cls/user/cls_user_ops.cc
+DENCODER_DEPS += libcls_user_client.a
+
+noinst_LIBRARIES += libcls_user_client.a
 
 noinst_HEADERS += \
 	cls/lock/cls_lock_types.h \
@@ -118,5 +129,8 @@ noinst_HEADERS += \
 	cls/replica_log/cls_replica_log_client.h \
 	cls/rgw/cls_rgw_client.h \
 	cls/rgw/cls_rgw_ops.h \
-	cls/rgw/cls_rgw_types.h
+	cls/rgw/cls_rgw_types.h \
+	cls/user/cls_user_client.h \
+	cls/user/cls_user_ops.h \
+	cls/user/cls_user_types.h
 

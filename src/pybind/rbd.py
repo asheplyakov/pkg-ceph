@@ -18,6 +18,7 @@ methods, a :class:`TypeError` will be raised.
 from ctypes import CDLL, c_char, c_char_p, c_size_t, c_void_p, c_int, \
     create_string_buffer, byref, Structure, c_uint64, c_int64, c_uint8, \
     CFUNCTYPE
+from ctypes.util import find_library
 import ctypes
 import errno
 
@@ -116,12 +117,27 @@ class rbd_snap_info_t(Structure):
                 ("size", c_uint64),
                 ("name", c_char_p)]
 
+def load_librbd():
+    """
+    Load the librbd shared library.
+    """
+    librbd_path = find_library('rbd')
+    if librbd_path:
+        return CDLL(librbd_path)
+
+    # try harder, find_library() doesn't search LD_LIBRARY_PATH
+    # in addition, it doesn't seem work on centos 6.4 (see e46d2ca067b5)
+    try:
+        return CDLL('librbd.so.1')
+    except OSError as e:
+        raise EnvironmentError("Unable to load librbd: %s" % e)
+
 class RBD(object):
     """
     This class wraps librbd CRUD functions.
     """
     def __init__(self):
-        self.librbd = CDLL('librbd.so.1')
+        self.librbd = load_librbd()
 
     def version(self):
         """
@@ -330,7 +346,7 @@ class Image(object):
         :type read_only: bool
         """
         self.closed = True
-        self.librbd = CDLL('librbd.so.1')
+        self.librbd = load_librbd()
         self.image = c_void_p()
         self.name = name
         if not isinstance(name, str):

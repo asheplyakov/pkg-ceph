@@ -433,7 +433,7 @@ m4data_DATA = m4/gtest.m4
 
 # We define the global AM_CPPFLAGS as everything we compile includes from these
 # directories.
-AM_CPPFLAGS = -I$(srcdir) -I$(srcdir)/include
+AM_CPPFLAGS = -I$(srcdir) -I$(srcdir)/include -DGTEST_HAS_TR1_TUPLE=0
 @HAVE_PTHREADS_FALSE@AM_CXXFLAGS = -DGTEST_HAS_PTHREAD=0
 
 # Modifies compiler and linker flags for pthreads compatibility.

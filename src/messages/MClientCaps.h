@@ -21,14 +21,17 @@
 
 class MClientCaps : public Message {
 
-  static const int HEAD_VERSION = 2;   // added flock metadata
+  static const int HEAD_VERSION = 4;   // added flock metadata, inline data
   static const int COMPAT_VERSION = 1;
 
  public:
   struct ceph_mds_caps head;
+  struct ceph_mds_cap_peer peer;
   bufferlist snapbl;
   bufferlist xattrbl;
   bufferlist flockbl;
+  version_t  inline_version;
+  bufferlist inline_data;
 
   int      get_caps() { return head.caps; }
   int      get_wanted() { return head.wanted; }
@@ -73,8 +76,18 @@ class MClientCaps : public Message {
   void set_mtime(const utime_t &t) { t.encode_timeval(&head.mtime); }
   void set_atime(const utime_t &t) { t.encode_timeval(&head.atime); }
 
+  void set_cap_peer(uint64_t id, ceph_seq_t seq, ceph_seq_t mseq, int mds, int flags) {
+    peer.cap_id = id;
+    peer.seq = seq;
+    peer.mseq = mseq;
+    peer.mds = mds;
+    peer.flags = flags;
+  }
+
   MClientCaps()
-    : Message(CEPH_MSG_CLIENT_CAPS, HEAD_VERSION, COMPAT_VERSION) { }
+    : Message(CEPH_MSG_CLIENT_CAPS, HEAD_VERSION, COMPAT_VERSION) {
+    inline_version = 0;
+  }
   MClientCaps(int op,
 	      inodeno_t ino,
 	      inodeno_t realm,
@@ -95,6 +108,8 @@ class MClientCaps : public Message {
     head.wanted = wanted;
     head.dirty = dirty;
     head.migrate_seq = mseq;
+    peer.cap_id = 0;
+    inline_version = 0;
   }
   MClientCaps(int op,
 	      inodeno_t ino, inodeno_t realm,
@@ -106,6 +121,8 @@ class MClientCaps : public Message {
     head.realm = realm;
     head.cap_id = id;
     head.migrate_seq = mseq;
+    peer.cap_id = 0;
+    inline_version = 0;
   }
 private:
   ~MClientCaps() {}
@@ -151,10 +168,29 @@ public:
     // conditionally decode flock metadata
     if (header.version >= 2)
       ::decode(flockbl, p);
+
+    if (header.version >= 3) {
+      if (head.op == CEPH_CAP_OP_IMPORT)
+	::decode(peer, p);
+      else if (head.op == CEPH_CAP_OP_EXPORT)
+	memcpy(&peer, &head.peer, sizeof(peer));
+    }
+
+    if (header.version >= 4) {
+      ::decode(inline_version, p);
+      ::decode(inline_data, p);
+    } else {
+      inline_version = CEPH_INLINE_NONE;
+    }
   }
   void encode_payload(uint64_t features) {
     head.snap_trace_len = snapbl.length();
     head.xattr_len = xattrbl.length();
+
+    // record peer in unused fields of cap export message
+    if ((features & CEPH_FEATURE_EXPORT_PEER) && head.op == CEPH_CAP_OP_EXPORT)
+      memcpy(&head.peer, &peer, sizeof(peer));
+
     ::encode(head, payload);
     ::encode_nohead(snapbl, payload);
 
@@ -164,7 +200,24 @@ public:
     if (features & CEPH_FEATURE_FLOCK) {
       ::encode(flockbl, payload);
     } else {
-      header.version = 1;  // old
+      header.version = 1;
+      return;
+    }
+
+    if (features & CEPH_FEATURE_EXPORT_PEER) {
+      if (head.op == CEPH_CAP_OP_IMPORT)
+	::encode(peer, payload);
+    } else {
+      header.version = 2;
+      return;
+    }
+
+    if (features & CEPH_FEATURE_MDS_INLINE_DATA) {
+      ::encode(inline_version, payload);
+      ::encode(inline_data, payload);
+    } else {
+      header.version = 3;
+      return;
     }
   }
 };

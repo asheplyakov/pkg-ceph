@@ -48,7 +48,25 @@ ostream& Pipe::_pipe_prefix(std::ostream *_dout) {
 		<< ").";
 }
 
+/*
+ * This optimization may not be available on all platforms (e.g. OSX).
+ * Apparently a similar approach based on TCP_CORK can be used.
+ */
+#ifndef MSG_MORE
+# define MSG_MORE 0
+#endif
 
+/*
+ * On BSD SO_NOSIGPIPE can be set via setsockopt to block SIGPIPE.
+ */
+#ifndef MSG_NOSIGNAL
+# define MSG_NOSIGNAL 0
+# ifdef SO_NOSIGPIPE
+#  define CEPH_USE_SO_NOSIGPIPE
+# else
+#  error "Cannot block SIGPIPE!"
+# endif
+#endif
 
 /**************************************
  * Pipe
@@ -754,6 +772,16 @@ void Pipe::set_socket_options()
       ldout(msgr->cct,0) << "couldn't set SO_RCVBUF to " << size << ": " << cpp_strerror(r) << dendl;
     }
   }
+
+  // block ESIGPIPE
+#ifdef CEPH_USE_SO_NOSIGPIPE
+  int val = 1;
+  int r = ::setsockopt(sd, SOL_SOCKET, SO_NOSIGPIPE, (void*)&val, sizeof(val));
+  if (r) {
+    r = -errno;
+    ldout(msgr->cct,0) << "couldn't set SO_NOSIGPIPE: " << cpp_strerror(r) << dendl;
+  }
+#endif
 }
 
 int Pipe::connect()
@@ -1126,7 +1154,7 @@ void Pipe::register_pipe()
 void Pipe::unregister_pipe()
 {
   assert(msgr->lock.is_locked());
-  hash_map<entity_addr_t,Pipe*>::iterator p = msgr->rank_pipe.find(peer_addr);
+  ceph::unordered_map<entity_addr_t,Pipe*>::iterator p = msgr->rank_pipe.find(peer_addr);
   if (p != msgr->rank_pipe.end() && p->second == this) {
     ldout(msgr->cct,10) << "unregister_pipe" << dendl;
     msgr->rank_pipe.erase(p);

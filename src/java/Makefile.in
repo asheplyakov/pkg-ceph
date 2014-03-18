@@ -48,7 +48,10 @@ am__aclocal_m4_deps = $(top_srcdir)/m4/ac_check_classpath.m4 \
 	$(top_srcdir)/m4/ac_prog_javac_works.m4 \
 	$(top_srcdir)/m4/ac_prog_javah.m4 \
 	$(top_srcdir)/m4/acx_pthread.m4 \
+	$(top_srcdir)/m4/ax_c_pretty_func.m4 \
+	$(top_srcdir)/m4/ax_c_var_func.m4 \
 	$(top_srcdir)/m4/ax_check_compile_flag.m4 \
+	$(top_srcdir)/m4/ax_cxx_static_cast.m4 \
 	$(top_srcdir)/m4/libtool.m4 $(top_srcdir)/m4/ltoptions.m4 \
 	$(top_srcdir)/m4/ltsugar.m4 $(top_srcdir)/m4/ltversion.m4 \
 	$(top_srcdir)/m4/lt~obsolete.m4 $(top_srcdir)/m4/pkg.m4 \
@@ -106,6 +109,7 @@ AUTOCONF = @AUTOCONF@
 AUTOHEADER = @AUTOHEADER@
 AUTOMAKE = @AUTOMAKE@
 AWK = @AWK@
+BOOST_PROGRAM_OPTIONS_LIBS = @BOOST_PROGRAM_OPTIONS_LIBS@
 CC = @CC@
 CCAS = @CCAS@
 CCASDEPMODE = @CCASDEPMODE@
@@ -147,6 +151,7 @@ JAR = @JAR@
 JAVAC = @JAVAC@
 JAVAH = @JAVAH@
 JDK_CPPFLAGS = @JDK_CPPFLAGS@
+KEYUTILS_LIB = @KEYUTILS_LIB@
 LD = @LD@
 LDFLAGS = @LDFLAGS@
 LIBEDIT_CFLAGS = @LIBEDIT_CFLAGS@
@@ -192,6 +197,7 @@ PYTHON_PLATFORM = @PYTHON_PLATFORM@
 PYTHON_PREFIX = @PYTHON_PREFIX@
 PYTHON_VERSION = @PYTHON_VERSION@
 RANLIB = @RANLIB@
+RESOLV_LIBS = @RESOLV_LIBS@
 RPM_RELEASE = @RPM_RELEASE@
 SED = @SED@
 SET_MAKE = @SET_MAKE@
