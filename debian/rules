@@ -22,7 +22,7 @@ ifeq ($(DEB_HOST_ARCH), armel)
 endif
 
 # Only selected architectures support gperftools
-gperftools_archs = i386 amd64 powerpc armhf
+gperftools_archs = i386 amd64 powerpc armhf ppc64el
 ifneq (,$(filter $(DEB_HOST_ARCH), $(gperftools_archs)))
   extraopts += --with-tcmalloc
 else
@@ -59,7 +59,7 @@ override_dh_installinit:
 	dh_installinit --no-start
 	dh_installinit -pceph --no-start --name=rbdmap
 	# Install upstart configurations using dh_installinit
-	for conf in `ls -1 src/upstart/ceph*.conf | grep -v mds`; do \
+	for conf in `ls -1 src/upstart/ceph*.conf src/upstart/rbdmap.conf | grep -v mds`; do \
         name=`basename $$conf | cut -d . -f 1`; \
         cp $$conf debian/ceph.$$name.upstart; \
         dh_installinit -pceph --no-start --name=$$name; \

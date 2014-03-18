@@ -4,6 +4,7 @@ usr/bin/ceph-monstore-tool /usr/lib/ceph/bin
 usr/bin/ceph-osdomap-tool /usr/lib/ceph/bin
 usr/bin/ceph_bench_log /usr/lib/ceph/bin
 usr/bin/ceph_dupstore /usr/lib/ceph/bin
+usr/bin/ceph_erasure_code_benchmark /usr/lib/ceph/bin
 usr/bin/ceph_filestore_dump /usr/lib/ceph/bin
 usr/bin/ceph_filestore_tool /usr/lib/ceph/bin
 usr/bin/ceph_kvstorebench /usr/lib/ceph/bin
@@ -63,6 +64,7 @@ usr/bin/ceph_test_rados_api_misc /usr/lib/ceph/bin
 usr/bin/ceph_test_rados_api_pool /usr/lib/ceph/bin
 usr/bin/ceph_test_rados_api_snapshots /usr/lib/ceph/bin
 usr/bin/ceph_test_rados_api_stat /usr/lib/ceph/bin
+usr/bin/ceph_test_rados_api_tier /usr/lib/ceph/bin
 usr/bin/ceph_test_rados_api_watch_notify /usr/lib/ceph/bin
 usr/bin/ceph_test_rados_delete_pools_parallel /usr/lib/ceph/bin
 usr/bin/ceph_test_rados_list_parallel /usr/lib/ceph/bin

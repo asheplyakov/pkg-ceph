@@ -1,0 +1,26 @@
+Description: Mark modules as actually being modules
+Author: James Page <james.page@ubuntu.com>
+Forwarded: no
+
+--- a/src/cls/Makefile.am
++++ b/src/cls/Makefile.am
+@@ -45,7 +45,7 @@ radoslib_LTLIBRARIES += libcls_replica_l
+ 
+ libcls_user_la_SOURCES = cls/user/cls_user.cc
+ libcls_user_la_LIBADD = $(PTHREAD_LIBS) $(EXTRALIBS)
+-libcls_user_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0 -export-symbols-regex '.*__cls_.*'
++libcls_user_la_LDFLAGS = ${AM_LDFLAGS} -module -avoid-version -shared -export-symbols-regex '.*__cls_.*'
+ radoslib_LTLIBRARIES += libcls_user.la
+ 
+ libcls_rgw_la_SOURCES = \
+--- a/src/osd/ErasureCodePluginJerasure/Makefile.am
++++ b/src/osd/ErasureCodePluginJerasure/Makefile.am
+@@ -20,7 +20,7 @@ noinst_HEADERS += \
+ libec_jerasure_la_CFLAGS = ${AM_CFLAGS} 
+ libec_jerasure_la_CXXFLAGS= ${AM_CXXFLAGS} 
+ libec_jerasure_la_LIBADD = $(PTHREAD_LIBS) $(EXTRALIBS)
+-libec_jerasure_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0
++libec_jerasure_la_LDFLAGS = ${AM_LDFLAGS} -module -avoid-version -shared
+ if LINUX
+ libec_jerasure_la_LDFLAGS += -export-symbols-regex '.*__erasure_code_.*'
+ endif
