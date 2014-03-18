@@ -7,6 +7,9 @@ ceph (0.77-1) UNRELEASED; urgency=medium
     - d/ceph.install: Only install libec_jerasure.so.
   * d/ceph-test.install: Install test binaries to /usr/lib/ceph/bin; they
     really don't need to be installed on the default path.
+  * d/{ceph|radosgw|ceph-mds}.lintian-overrides: Add overrides for intentional
+    difference in naming and structure between upstart configurations and
+    init.d scripts.
 
  -- James Page <james.page@ubuntu.com>  Tue, 18 Mar 2014 18:08:23 +0000
 

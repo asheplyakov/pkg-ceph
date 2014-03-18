@@ -1,0 +1,7 @@
+# Ceph upstart configuration don't have equivalent init scripts
+ceph-mds: init.d-script-not-marked-as-conffile etc/init.d/ceph-mds-all
+ceph-mds: init.d-script-not-included-in-package etc/init.d/ceph-mds-all
+ceph-mds: init.d-script-not-marked-as-conffile etc/init.d/ceph-mds
+ceph-mds: init.d-script-not-included-in-package etc/init.d/ceph-mds
+ceph-mds: init.d-script-not-marked-as-conffile etc/init.d/ceph-mds-all-starter
+ceph-mds: init.d-script-not-included-in-package etc/init.d/ceph-mds-all-starter

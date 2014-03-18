@@ -1,0 +1,7 @@
+# Ceph upstart configuration's don't have init.d equivalents
+radosgw: init.d-script-not-marked-as-conffile etc/init.d/radosgw-all-starter
+radosgw: init.d-script-not-included-in-package etc/init.d/radosgw-all-starter
+radosgw: init.d-script-not-marked-as-conffile etc/init.d/radosgw-instance
+radosgw: init.d-script-not-included-in-package etc/init.d/radosgw-instance
+radosgw: init.d-script-not-marked-as-conffile etc/init.d/radosgw-all
+radosgw: init.d-script-not-included-in-package etc/init.d/radosgw-all
