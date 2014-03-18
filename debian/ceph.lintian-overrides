@@ -15,3 +15,12 @@ ceph: init.d-script-not-marked-as-conffile etc/init.d/ceph-mon-all-starter
 ceph: init.d-script-not-included-in-package etc/init.d/ceph-mon-all-starter
 ceph: init.d-script-not-marked-as-conffile etc/init.d/ceph-osd-all-starter
 ceph: init.d-script-not-included-in-package etc/init.d/ceph-osd-all-starter
+ceph: postrm-does-not-call-updaterc.d-for-init.d-script etc/init.d/ceph-mon-all-starter
+ceph: postrm-does-not-call-updaterc.d-for-init.d-script etc/init.d/ceph-osd
+ceph: postrm-does-not-call-updaterc.d-for-init.d-script etc/init.d/ceph-osd-all
+ceph: postrm-does-not-call-updaterc.d-for-init.d-script etc/init.d/ceph-mon
+ceph: postrm-does-not-call-updaterc.d-for-init.d-script etc/init.d/ceph-create-keys
+ceph: postrm-does-not-call-updaterc.d-for-init.d-script etc/init.d/ceph-mon-all
+ceph: postrm-does-not-call-updaterc.d-for-init.d-script etc/init.d/rbdmap
+ceph: postrm-does-not-call-updaterc.d-for-init.d-script etc/init.d/ceph-all
+ceph: postrm-does-not-call-updaterc.d-for-init.d-script etc/init.d/ceph-osd-all-starter
