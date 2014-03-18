@@ -1,9 +1,11 @@
-ceph (0.72.2-3) UNRELEASED; urgency=medium
+ceph (0.77-1) UNRELEASED; urgency=medium
 
+  * New upstream release:
+    - d/patches/*: Drop upstreamed patches.
   * d/ceph-test.install: Install test binaries to /usr/lib/ceph/bin; they
     really don't need to be installed on the default path.
 
- -- James Page <james.page@ubuntu.com>  Thu, 13 Mar 2014 14:12:47 +0000
+ -- James Page <james.page@ubuntu.com>  Tue, 18 Mar 2014 18:08:23 +0000
 
 ceph (0.72.2-2) unstable; urgency=medium
 
