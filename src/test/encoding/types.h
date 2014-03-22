@@ -36,7 +36,7 @@ TYPEWITHSTRAYDATA(OSDMap::Incremental)
 #include "crush/CrushWrapper.h"
 TYPE_NOCOPY(CrushWrapper)
 
-#include "include/histogram.h"
+#include "common/histogram.h"
 TYPE(pow2_hist_t)
 
 #include "osd/osd_types.h"
@@ -81,6 +81,15 @@ TYPE(obj_list_snap_response_t)
 TYPE(PullOp)
 TYPE(PushOp)
 TYPE(PushReplyOp)
+
+#include "osd/ECUtil.h"
+TYPE(ECUtil::HashInfo)
+
+#include "osd/ECMsgTypes.h"
+TYPE(ECSubWrite)
+TYPE(ECSubWriteReply)
+TYPE(ECSubRead)
+TYPE(ECSubReadReply)
 
 #include "osd/HitSet.h"
 TYPE(ExplicitHashHitSet)

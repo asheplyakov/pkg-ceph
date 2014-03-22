@@ -24,6 +24,22 @@ bool CrushWrapper::has_v2_rules() const
   return false;
 }
 
+bool CrushWrapper::has_v3_rules() const
+{
+  // check rules for use of SET_CHOOSELEAF_VARY_R step
+  for (unsigned i=0; i<crush->max_rules; i++) {
+    crush_rule *r = crush->rules[i];
+    if (!r)
+      continue;
+    for (unsigned j=0; j<r->len; j++) {
+      if (r->steps[j].op == CRUSH_RULE_SET_CHOOSELEAF_VARY_R)
+	return true;
+    }
+  }
+  return false;
+}
+
+
 void CrushWrapper::find_takes(set<int>& roots) const
 {
   for (unsigned i=0; i<crush->max_rules; i++) {
@@ -872,6 +888,7 @@ void CrushWrapper::encode(bufferlist& bl, bool lean) const
   ::encode(crush->choose_local_fallback_tries, bl);
   ::encode(crush->choose_total_tries, bl);
   ::encode(crush->chooseleaf_descend_once, bl);
+  ::encode(crush->chooseleaf_vary_r, bl);
 }
 
 static void decode_32_or_64_string_map(map<int32_t,string>& m, bufferlist::iterator& blp)
@@ -951,6 +968,9 @@ void CrushWrapper::decode(bufferlist::iterator& blp)
     }
     if (!blp.end()) {
       ::decode(crush->chooseleaf_descend_once, blp);
+    }
+    if (!blp.end()) {
+      ::decode(crush->chooseleaf_vary_r, blp);
     }
     finalize();
   }
@@ -1137,7 +1157,9 @@ void CrushWrapper::dump_tunables(Formatter *f) const
   f->dump_int("chooseleaf_descend_once", get_chooseleaf_descend_once());
 
   // be helpful about it
-  if (has_bobtail_tunables())
+  if (has_firefly_tunables())
+    f->dump_string("profile", "firefly");
+  else if (has_bobtail_tunables())
     f->dump_string("profile", "bobtail");
   else if (has_argonaut_tunables())
     f->dump_string("profile", "argonaut");
@@ -1155,66 +1177,77 @@ void CrushWrapper::dump_rules(Formatter *f) const
   for (int i=0; i<get_max_rules(); i++) {
     if (!rule_exists(i))
       continue;
-    f->open_object_section("rule");
-    f->dump_int("rule_id", i);
-    if (get_rule_name(i))
-      f->dump_string("rule_name", get_rule_name(i));
-    f->dump_int("ruleset", get_rule_mask_ruleset(i));
-    f->dump_int("type", get_rule_mask_type(i));
-    f->dump_int("min_size", get_rule_mask_min_size(i));
-    f->dump_int("max_size", get_rule_mask_max_size(i));
-    f->open_array_section("steps");
-    for (int j=0; j<get_rule_len(i); j++) {
-      f->open_object_section("step");
-      switch (get_rule_op(i, j)) {
-      case CRUSH_RULE_NOOP:
-	f->dump_string("op", "noop");
-	break;
-      case CRUSH_RULE_TAKE:
-	f->dump_string("op", "take");
-	f->dump_int("item", get_rule_arg1(i, j));
-	break;
-      case CRUSH_RULE_EMIT:
-	f->dump_string("op", "emit");
-	break;
-      case CRUSH_RULE_CHOOSE_FIRSTN:
-	f->dump_string("op", "choose_firstn");
-	f->dump_int("num", get_rule_arg1(i, j));
-	f->dump_string("type", get_type_name(get_rule_arg2(i, j)));
-	break;
-      case CRUSH_RULE_CHOOSE_INDEP:
-	f->dump_string("op", "choose_indep");
-	f->dump_int("num", get_rule_arg1(i, j));
-	f->dump_string("type", get_type_name(get_rule_arg2(i, j)));
-	break;
-      case CRUSH_RULE_CHOOSELEAF_FIRSTN:
-	f->dump_string("op", "chooseleaf_firstn");
-	f->dump_int("num", get_rule_arg1(i, j));
-	f->dump_string("type", get_type_name(get_rule_arg2(i, j)));
-	break;
-      case CRUSH_RULE_CHOOSELEAF_INDEP:
-	f->dump_string("op", "chooseleaf_indep");
-	f->dump_int("num", get_rule_arg1(i, j));
-	f->dump_string("type", get_type_name(get_rule_arg2(i, j)));
-	break;
-      case CRUSH_RULE_SET_CHOOSE_TRIES:
-	f->dump_string("op", "set_choose_tries");
-	f->dump_int("num", get_rule_arg1(i, j));
-	break;
-      case CRUSH_RULE_SET_CHOOSELEAF_TRIES:
-	f->dump_string("op", "set_chooseleaf_tries");
-	f->dump_int("num", get_rule_arg1(i, j));
-	break;
-      default:
-	f->dump_int("opcode", get_rule_op(i, j));
-	f->dump_int("arg1", get_rule_arg1(i, j));
-	f->dump_int("arg2", get_rule_arg2(i, j));
+    dump_rule(i, f);
+  }
+}
+
+void CrushWrapper::dump_rule(int ruleset, Formatter *f) const
+{
+  f->open_object_section("rule");
+  f->dump_int("rule_id", ruleset);
+  if (get_rule_name(ruleset))
+    f->dump_string("rule_name", get_rule_name(ruleset));
+  f->dump_int("ruleset", get_rule_mask_ruleset(ruleset));
+  f->dump_int("type", get_rule_mask_type(ruleset));
+  f->dump_int("min_size", get_rule_mask_min_size(ruleset));
+  f->dump_int("max_size", get_rule_mask_max_size(ruleset));
+  f->open_array_section("steps");
+  for (int j=0; j<get_rule_len(ruleset); j++) {
+    f->open_object_section("step");
+    switch (get_rule_op(ruleset, j)) {
+    case CRUSH_RULE_NOOP:
+      f->dump_string("op", "noop");
+      break;
+    case CRUSH_RULE_TAKE:
+      f->dump_string("op", "take");
+      {
+        int item = get_rule_arg1(ruleset, j);
+        f->dump_int("item", item);
+
+        const char *name = get_item_name(item);
+        f->dump_string("item_name", name ? name : "");
       }
-      f->close_section();
+      break;
+    case CRUSH_RULE_EMIT:
+      f->dump_string("op", "emit");
+      break;
+    case CRUSH_RULE_CHOOSE_FIRSTN:
+      f->dump_string("op", "choose_firstn");
+      f->dump_int("num", get_rule_arg1(ruleset, j));
+      f->dump_string("type", get_type_name(get_rule_arg2(ruleset, j)));
+      break;
+    case CRUSH_RULE_CHOOSE_INDEP:
+      f->dump_string("op", "choose_indep");
+      f->dump_int("num", get_rule_arg1(ruleset, j));
+      f->dump_string("type", get_type_name(get_rule_arg2(ruleset, j)));
+      break;
+    case CRUSH_RULE_CHOOSELEAF_FIRSTN:
+      f->dump_string("op", "chooseleaf_firstn");
+      f->dump_int("num", get_rule_arg1(ruleset, j));
+      f->dump_string("type", get_type_name(get_rule_arg2(ruleset, j)));
+      break;
+    case CRUSH_RULE_CHOOSELEAF_INDEP:
+      f->dump_string("op", "chooseleaf_indep");
+      f->dump_int("num", get_rule_arg1(ruleset, j));
+      f->dump_string("type", get_type_name(get_rule_arg2(ruleset, j)));
+      break;
+    case CRUSH_RULE_SET_CHOOSE_TRIES:
+      f->dump_string("op", "set_choose_tries");
+      f->dump_int("num", get_rule_arg1(ruleset, j));
+      break;
+    case CRUSH_RULE_SET_CHOOSELEAF_TRIES:
+      f->dump_string("op", "set_chooseleaf_tries");
+      f->dump_int("num", get_rule_arg1(ruleset, j));
+      break;
+    default:
+      f->dump_int("opcode", get_rule_op(ruleset, j));
+      f->dump_int("arg1", get_rule_arg1(ruleset, j));
+      f->dump_int("arg2", get_rule_arg2(ruleset, j));
     }
     f->close_section();
-    f->close_section();
   }
+  f->close_section();
+  f->close_section();
 }
 
 void CrushWrapper::list_rules(Formatter *f) const
@@ -1375,9 +1408,9 @@ bool CrushWrapper::is_valid_crush_name(const string& s)
 }
 
 bool CrushWrapper::is_valid_crush_loc(CephContext *cct,
-                                      const map<string,string> loc)
+                                      const map<string,string>& loc)
 {
-  for (map<string,string>::const_iterator l = loc.begin(); l != loc.end(); l++) {
+  for (map<string,string>::const_iterator l = loc.begin(); l != loc.end(); ++l) {
     if (!is_valid_crush_name(l->first) ||
         !is_valid_crush_name(l->second)) {
       ldout(cct, 1) << "loc["

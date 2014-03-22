@@ -95,11 +95,6 @@ public:
     return ret;
   }
 
-  /// @return true if object is snapdir
-  bool is_snapdir() const {
-    return snap == CEPH_SNAPDIR;
-  }
-
   /// @return snapdir version of this hobject_t
   hobject_t get_snapdir() const {
     hobject_t ret(*this);
@@ -247,6 +242,7 @@ struct ghobject_t {
 
 public:
   static const shard_t NO_SHARD = UINT8_MAX;
+  static shard_t no_shard() { return NO_SHARD; }
   static const gen_t NO_GEN = UINT64_MAX;
 
   ghobject_t() : generation(NO_GEN), shard_id(NO_SHARD) {}

@@ -66,6 +66,9 @@ MonClient::MonClient(CephContext *cct_) :
   want_monmap(true),
   want_keys(0), global_id(0),
   authenticate_err(0),
+  session_established_context(NULL),
+  had_a_connection(false),
+  reopen_interval_multiplier(1.0),
   auth(NULL),
   keyring(NULL),
   rotating_secrets(NULL),
@@ -77,6 +80,7 @@ MonClient::MonClient(CephContext *cct_) :
 MonClient::~MonClient()
 {
   delete auth_supported;
+  delete session_established_context;
   delete auth;
   delete keyring;
   delete rotating_secrets;
@@ -462,6 +466,7 @@ int MonClient::authenticate(double timeout)
 
 void MonClient::handle_auth(MAuthReply *m)
 {
+  Context *cb = NULL;
   bufferlist::iterator p = m->result_bl.begin();
   if (state == MC_STATE_NEGOTIATING) {
     if (!auth || (int)m->protocol != auth->get_protocol()) {
@@ -521,11 +526,20 @@ void MonClient::handle_auth(MAuthReply *m)
 	log_client->reset_session();
 	send_log();
       }
+      if (session_established_context) {
+        cb = session_established_context;
+        session_established_context = NULL;
+      }
     }
   
     _check_auth_tickets();
   }
   auth_cond.SignalAll();
+  if (cb) {
+    monc_lock.Unlock();
+    cb->complete(0);
+    monc_lock.Lock();
+  }
 }
 
 
@@ -601,8 +615,18 @@ void MonClient::_reopen_session(int rank, string name)
     version_requests.erase(version_requests.begin());
   }
 
+  // adjust timeouts if necessary
+  if (had_a_connection) {
+    reopen_interval_multiplier *= cct->_conf->mon_client_hunt_interval_backoff;
+    if (reopen_interval_multiplier >
+          cct->_conf->mon_client_hunt_interval_max_multiple)
+      reopen_interval_multiplier =
+          cct->_conf->mon_client_hunt_interval_max_multiple;
+  }
+
   // restart authentication handshake
   state = MC_STATE_NEGOTIATING;
+  hunting = true;
 
   MAuth *m = new MAuth;
   m->protocol = 0;
@@ -633,7 +657,6 @@ bool MonClient::ms_handle_reset(Connection *con)
 	return true;
       
       ldout(cct, 0) << "hunting for new mon" << dendl;
-      hunting = true;
       _reopen_session();
     }
   }
@@ -646,6 +669,10 @@ void MonClient::_finish_hunting()
   if (hunting) {
     ldout(cct, 1) << "found mon." << cur_mon << dendl; 
     hunting = false;
+    had_a_connection = true;
+    reopen_interval_multiplier /= 2.0;
+    if (reopen_interval_multiplier < 1.0)
+      reopen_interval_multiplier = 1.0;
   }
 }
 
@@ -684,7 +711,8 @@ void MonClient::tick()
 void MonClient::schedule_tick()
 {
   if (hunting)
-    timer.add_event_after(cct->_conf->mon_client_hunt_interval, new C_Tick(this));
+    timer.add_event_after(cct->_conf->mon_client_hunt_interval
+                          * reopen_interval_multiplier, new C_Tick(this));
   else
     timer.add_event_after(cct->_conf->mon_client_ping_interval, new C_Tick(this));
 }
@@ -882,6 +910,23 @@ void MonClient::handle_mon_command_ack(MMonCommandAck *ack)
   ack->put();
 }
 
+int MonClient::_cancel_mon_command(uint64_t tid, int r)
+{
+  assert(monc_lock.is_locked());
+
+  map<tid_t, MonCommand*>::iterator it = mon_commands.find(tid);
+  if (it == mon_commands.end()) {
+    ldout(cct, 10) << __func__ << " tid " << tid << " dne" << dendl;
+    return -ENOENT;
+  }
+
+  ldout(cct, 10) << __func__ << " tid " << tid << dendl;
+
+  MonCommand *cmd = it->second;
+  _finish_command(cmd, -ETIMEDOUT, "");
+  return 0;
+}
+
 void MonClient::_finish_command(MonCommand *r, int ret, string rs)
 {
   ldout(cct, 10) << "_finish_command " << r->tid << " = " << ret << " " << rs << dendl;
@@ -907,13 +952,17 @@ int MonClient::start_mon_command(const vector<string>& cmd,
   r->poutbl = outbl;
   r->prs = outs;
   r->onfinish = onfinish;
+  if (cct->_conf->rados_mon_op_timeout > 0) {
+    r->ontimeout = new C_CancelMonCommand(r->tid, this);
+    timer.add_event_after(cct->_conf->rados_mon_op_timeout, r->ontimeout);
+  }
   mon_commands[r->tid] = r;
   _send_command(r);
   // can't fail
   return 0;
 }
 
-int MonClient::start_mon_command(string name,
+int MonClient::start_mon_command(const string &mon_name,
 				 const vector<string>& cmd,
 				 const bufferlist& inbl,
 				 bufferlist *outbl, string *outs,
@@ -921,7 +970,7 @@ int MonClient::start_mon_command(string name,
 {
   Mutex::Locker l(monc_lock);
   MonCommand *r = new MonCommand(++last_mon_command_tid);
-  r->target_name = name;
+  r->target_name = mon_name;
   r->cmd = cmd;
   r->inbl = inbl;
   r->poutbl = outbl;

@@ -179,6 +179,9 @@ private:
   int authenticate_err;
 
   list<Message*> waiting_for_session;
+  Context *session_established_context;
+  bool had_a_connection;
+  double reopen_interval_multiplier;
 
   string _pick_random_mon();
   void _finish_hunting();
@@ -246,6 +249,22 @@ public:
     Mutex::Locker l(monc_lock);
     _sub_unwant(what);
   }
+  /**
+   * Increase the requested subscription start point. If you do increase
+   * the value, apply the passed-in flags as well; otherwise do nothing.
+   */
+  bool sub_want_increment(string what, version_t start, unsigned flags) {
+    Mutex::Locker l(monc_lock);
+    map<string,ceph_mon_subscribe_item>::iterator i =
+            sub_have.find(what);
+    if (i == sub_have.end() || i->second.start < start) {
+      ceph_mon_subscribe_item& item = sub_have[what];
+      item.start = start;
+      item.flags = flags;
+      return true;
+    }
+    return false;
+  }
   
   KeyRing *keyring;
   RotatingKeyRing *rotating_secrets;
@@ -280,8 +299,19 @@ public:
     Mutex::Locker l(monc_lock);
     _send_mon_message(m);
   }
-  void reopen_session() {
+  /**
+   * If you specify a callback, you should not call
+   * reopen_session() again until it has been triggered. The MonClient
+   * will behave, but the first callback could be triggered after
+   * the session has been killed and the MonClient has started trying
+   * to reconnect to another monitor.
+   */
+  void reopen_session(Context *cb=NULL) {
     Mutex::Locker l(monc_lock);
+    if (cb) {
+      delete session_established_context;
+      session_established_context = cb;
+    }
     _reopen_session();
   }
 
@@ -344,18 +374,30 @@ private:
     bufferlist *poutbl;
     string *prs;
     int *prval;
-    Context *onfinish;
+    Context *onfinish, *ontimeout;
 
     MonCommand(uint64_t t)
       : target_rank(-1),
 	tid(t),
-	poutbl(NULL), prs(NULL), prval(NULL), onfinish(NULL)
+	poutbl(NULL), prs(NULL), prval(NULL), onfinish(NULL), ontimeout(NULL)
     {}
   };
   map<uint64_t,MonCommand*> mon_commands;
 
+  class C_CancelMonCommand : public Context
+  {
+    uint64_t tid;
+    MonClient *monc;
+  public:
+    C_CancelMonCommand(uint64_t tid, MonClient *monc) : tid(tid), monc(monc) {}
+    void finish(int r) {
+      monc->_cancel_mon_command(tid, -ETIMEDOUT);
+    }
+  };
+
   void _send_command(MonCommand *r);
   void _resend_mon_commands();
+  int _cancel_mon_command(uint64_t tid, int r);
   void _finish_command(MonCommand *r, int ret, string rs);
   void handle_mon_command_ack(MMonCommandAck *ack);
 
@@ -367,7 +409,7 @@ public:
 			const vector<string>& cmd, const bufferlist& inbl,
 			bufferlist *outbl, string *outs,
 			Context *onfinish);
-  int start_mon_command(const string mon_name,  ///< mon name, with mon. prefix
+  int start_mon_command(const string &mon_name,  ///< mon name, with mon. prefix
 			const vector<string>& cmd, const bufferlist& inbl,
 			bufferlist *outbl, string *outs,
 			Context *onfinish);

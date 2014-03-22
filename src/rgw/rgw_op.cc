@@ -342,7 +342,7 @@ static int rgw_build_policies(RGWRados *store, struct req_state *s, bool only_bu
     }
   }
 
-  if (s->bucket_name_str.size()) {
+  if (!s->bucket_name_str.empty()) {
     s->bucket_exists = true;
     if (s->bucket_instance_id.empty()) {
       ret = store->get_bucket_info(s->obj_ctx, s->bucket_name_str, s->bucket_info, NULL, &s->bucket_attrs);
@@ -358,9 +358,13 @@ static int rgw_build_policies(RGWRados *store, struct req_state *s, bool only_bu
     }
     s->bucket = s->bucket_info.bucket;
 
-    string no_obj;
-    RGWAccessControlPolicy bucket_acl(s->cct);
-    ret = read_policy(store, s, s->bucket_info, s->bucket_attrs, s->bucket_acl, s->bucket, no_obj);
+    if (s->bucket_exists) {
+      string no_obj;
+      ret = read_policy(store, s, s->bucket_info, s->bucket_attrs, s->bucket_acl, s->bucket, no_obj);
+    } else {
+      s->bucket_acl->create_default(s->user.user_id, s->user.display_name);
+      ret = -ERR_NO_SUCH_BUCKET;
+    }
 
     s->bucket_owner = s->bucket_acl->get_owner();
 
@@ -382,7 +386,10 @@ static int rgw_build_policies(RGWRados *store, struct req_state *s, bool only_bu
 
   /* we're passed only_bucket = true when we specifically need the bucket's
      acls, that happens on write operations */
-  if (!only_bucket) {
+  if (!only_bucket && !s->object_str.empty()) {
+    if (!s->bucket_exists) {
+      return -ERR_NO_SUCH_BUCKET;
+    }
     s->object_acl = new RGWAccessControlPolicy(s->cct);
 
     obj_str = s->object_str;
@@ -1150,6 +1157,7 @@ void RGWCreateBucket::execute()
   RGWAccessControlPolicy old_policy(s->cct);
   map<string, bufferlist> attrs;
   bufferlist aclbl;
+  bufferlist corsbl;
   bool existed;
   int r;
   rgw_obj obj(store->zone.domain_root, s->bucket_name_str);
@@ -1223,6 +1231,10 @@ void RGWCreateBucket::execute()
 
   attrs[RGW_ATTR_ACL] = aclbl;
 
+  if (has_cors) {
+    cors_config.encode(corsbl);
+    attrs[RGW_ATTR_CORS] = corsbl;
+  }
   s->bucket.name = s->bucket_name_str;
   ret = store->create_bucket(s->user, s->bucket, region_name, placement_rule, attrs, info, pobjv,
                              &ep_objv, creation_time, pmaster_bucket, true);
@@ -1363,16 +1375,36 @@ int RGWPutObjProcessor_Multipart::prepare(RGWRados *store, void *obj_ctx)
 
   part_num = s->info.args.get("partNumber");
   if (part_num.empty()) {
+    ldout(s->cct, 10) << "part number is empty" << dendl;
     return -EINVAL;
   }
 
-  oid = mp.get_part(part_num);
+  string err;
+  uint64_t num = (uint64_t)strict_strtol(part_num.c_str(), 10, &err);
 
-  head_obj.init_ns(bucket, oid, mp_ns);
-  oid_prefix = oid;
-  oid_prefix.append("_");
+  if (!err.empty()) {
+    ldout(s->cct, 10) << "bad part number: " << part_num << ": " << err << dendl;
+    return -EINVAL;
+  }
+
+  string upload_prefix = oid + "." + upload_id;
+
+  rgw_obj target_obj;
+  target_obj.init(bucket, oid);
+
+  manifest.set_prefix(upload_prefix);
+
+  manifest.set_multipart_part_rule(store->ctx()->_conf->rgw_obj_stripe_size, num);
+
+  int r = manifest_gen.create_begin(store->ctx(), &manifest, bucket, target_obj);
+  if (r < 0) {
+    return r;
+  }
+
+  head_obj = manifest_gen.get_cur_obj();
   cur_obj = head_obj;
-  add_obj(head_obj);
+  add_obj(cur_obj);
+
   return 0;
 }
 
@@ -2582,7 +2614,7 @@ void RGWCompleteMultipart::execute()
         return;
       }
 
-      char etag[CEPH_CRYPTO_MD5_DIGESTSIZE];
+      char petag[CEPH_CRYPTO_MD5_DIGESTSIZE];
       if (iter->first != (int)obj_iter->first) {
         ldout(s->cct, 0) << "NOTICE: parts num mismatch: next requested: " << iter->first << " next uploaded: " << obj_iter->first << dendl;
         ret = -ERR_INVALID_PART;
@@ -2595,8 +2627,8 @@ void RGWCompleteMultipart::execute()
         return;
       }
 
-      hex_to_buf(obj_iter->second.etag.c_str(), etag, CEPH_CRYPTO_MD5_DIGESTSIZE);
-      hash.Update((const byte *)etag, sizeof(etag));
+      hex_to_buf(obj_iter->second.etag.c_str(), petag, CEPH_CRYPTO_MD5_DIGESTSIZE);
+      hash.Update((const byte *)petag, sizeof(petag));
 
       RGWUploadPartInfo& obj_part = obj_iter->second;
 
@@ -2606,11 +2638,9 @@ void RGWCompleteMultipart::execute()
       src_obj.init_ns(s->bucket, oid, mp_ns);
 
       if (obj_part.manifest.empty()) {
-        RGWObjManifestPart& part = manifest.objs[ofs];
-
-        part.loc = src_obj;
-        part.loc_ofs = 0;
-        part.size = part_size;
+        ldout(s->cct, 0) << "ERROR: empty manifest for object part: obj=" << src_obj << dendl;
+        ret = -ERR_INVALID_PART;
+        return;
       } else {
         manifest.append(obj_part.manifest);
       }
@@ -2625,6 +2655,7 @@ void RGWCompleteMultipart::execute()
   buf_to_hex((unsigned char *)final_etag, sizeof(final_etag), final_etag_str);
   snprintf(&final_etag_str[CEPH_CRYPTO_MD5_DIGESTSIZE * 2],  sizeof(final_etag_str) - CEPH_CRYPTO_MD5_DIGESTSIZE * 2,
            "-%lld", (long long)parts->parts.size());
+  etag = final_etag_str;
   ldout(s->cct, 10) << "calculated etag: " << final_etag_str << dendl;
 
   etag_bl.append(final_etag_str, strlen(final_etag_str) + 1);
@@ -2632,8 +2663,6 @@ void RGWCompleteMultipart::execute()
   attrs[RGW_ATTR_ETAG] = etag_bl;
 
   target_obj.init(s->bucket, s->object_str);
-
-  manifest.obj_size = ofs;
 
   store->set_atomic(s->obj_ctx, target_obj);
 
@@ -2713,10 +2742,10 @@ void RGWAbortMultipart::execute()
           return;
       } else {
         RGWObjManifest& manifest = obj_part.manifest;
-        map<uint64_t, RGWObjManifestPart>::iterator oiter;
-        for (oiter = manifest.objs.begin(); oiter != manifest.objs.end(); ++oiter) {
-          RGWObjManifestPart& part = oiter->second;
-          ret = store->delete_obj(s->obj_ctx, owner, part.loc);
+        RGWObjManifest::obj_iterator oiter;
+        for (oiter = manifest.obj_begin(); oiter != manifest.obj_end(); ++oiter) {
+          rgw_obj loc = oiter.get_location();
+          ret = store->delete_obj(s->obj_ctx, owner, loc);
           if (ret < 0 && ret != -ENOENT)
             return;
         }

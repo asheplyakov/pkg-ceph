@@ -101,6 +101,8 @@ void usage(ostream& out)
 "   setomapheader <obj-name> <val>\n"
 "   tmap-to-omap <obj-name>          convert tmap keys/values to omap\n"
 "   listwatchers <obj-name>          list the watchers of this object\n"
+"   set-alloc-hint <obj-name> <expected-object-size> <expected-write-size>\n"
+"                                    set allocation hint for an object\n"
 "\n"
 "IMPORT AND EXPORT\n"
 "   import [options] <local-directory> <rados-pool>\n"
@@ -845,7 +847,7 @@ protected:
     return io_ctx.read(oid, bl, len, 0);
   }
   int sync_write(const std::string& oid, bufferlist& bl, size_t len) {
-    return io_ctx.write(oid, bl, len, 0);
+    return io_ctx.write_full(oid, bl);
   }
 
   int sync_remove(const std::string& oid) {
@@ -1358,7 +1360,11 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
   // list pools?
   if (strcmp(nargs[0], "lspools") == 0) {
     list<string> vec;
-    rados.pool_list(vec);
+    ret = rados.pool_list(vec);
+    if (ret < 0) {
+      cerr << "error listing pools: " << cpp_strerror(ret) << std::endl;
+      goto out;
+    }
     for (list<string>::iterator i = vec.begin(); i != vec.end(); ++i)
       cout << *i << std::endl;
   }
@@ -1366,13 +1372,22 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
     // pools
     list<string> vec;
 
-    if (!pool_name)
-      rados.pool_list(vec);
-    else
+    if (!pool_name) {
+      ret = rados.pool_list(vec);
+      if (ret < 0) {
+	cerr << "error listing pools: " << cpp_strerror(ret) << std::endl;
+	goto out;
+      }
+    } else {
       vec.push_back(pool_name);
+    }
 
     map<string, map<string, pool_stat_t> > stats;
-    rados.get_pool_stats(vec, category, stats);
+    ret = rados.get_pool_stats(vec, category, stats);
+    if (ret < 0) {
+      cerr << "error fetching pool stats: " << cpp_strerror(ret) << std::endl;
+      goto out;
+    }
 
     if (!formatter) {
       printf("%-15s %-15s"
@@ -1449,7 +1464,11 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
 
     // total
     cluster_stat_t tstats;
-    rados.cluster_stat(tstats);
+    ret = rados.cluster_stat(tstats);
+    if (ret < 0) {
+      cerr << "error getting total cluster usage: " << cpp_strerror(ret) << std::endl;
+      goto out;
+    }
     if (!formatter) {
       printf("  total used    %12lld %12lld\n", (long long unsigned)tstats.kb_used,
 	     (long long unsigned)tstats.num_objects);
@@ -2180,6 +2199,27 @@ static int rados_tool_common(const std::map < std::string, std::string > &opts,
     ret = io_ctx.notify(oid, 0, bl);
     if (ret != 0)
       cerr << "error calling notify: " << ret << std::endl;
+  } else if (strcmp(nargs[0], "set-alloc-hint") == 0) {
+    if (!pool_name || nargs.size() < 4)
+      usage_exit();
+    string err;
+    string oid(nargs[1]);
+    uint64_t expected_object_size = strict_strtoll(nargs[2], 10, &err);
+    if (!err.empty()) {
+      cerr << "couldn't parse expected_object_size: " << err << std::endl;
+      usage_exit();
+    }
+    uint64_t expected_write_size = strict_strtoll(nargs[3], 10, &err);
+    if (!err.empty()) {
+      cerr << "couldn't parse expected_write_size: " << err << std::endl;
+      usage_exit();
+    }
+    ret = io_ctx.set_alloc_hint(oid, expected_object_size, expected_write_size);
+    if (ret < 0) {
+      cerr << "error setting alloc-hint " << pool_name << "/" << oid << ": "
+           << strerror_r(-ret, buf, sizeof(buf)) << std::endl;
+      goto out;
+    }
   } else if (strcmp(nargs[0], "load-gen") == 0) {
     if (!pool_name) {
       cerr << "error: must specify pool" << std::endl;

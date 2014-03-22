@@ -62,6 +62,26 @@ string ceph_osd_flag_string(unsigned flags)
   return string("-");
 }
 
+void pg_shard_t::encode(bufferlist &bl) const
+{
+  ENCODE_START(1, 1, bl);
+  ::encode(osd, bl);
+  ::encode(shard, bl);
+  ENCODE_FINISH(bl);
+}
+void pg_shard_t::decode(bufferlist::iterator &bl)
+{
+  DECODE_START(1, bl);
+  ::decode(osd, bl);
+  ::decode(shard, bl);
+  DECODE_FINISH(bl);
+}
+
+ostream &operator<<(ostream &lhs, const pg_shard_t &rhs)
+{
+  return lhs << '(' << rhs.osd << ',' << (unsigned)(rhs.shard) << ')';
+}
+
 // -- osd_reqid_t --
 void osd_reqid_t::encode(bufferlist &bl) const
 {
@@ -193,40 +213,6 @@ void request_redirect_t::generate_test_instances(list<request_redirect_t*>& o)
   o.push_back(new request_redirect_t(loc));
 }
 
-// -- pow2_hist_t --
-void pow2_hist_t::dump(Formatter *f) const
-{
-  f->open_array_section("histogram");
-  for (vector<int>::const_iterator p = h.begin(); p != h.end(); ++p)
-    f->dump_int("count", *p);
-  f->close_section();
-  f->dump_int("upper_bound", upper_bound());
-}
-
-void pow2_hist_t::encode(bufferlist& bl) const
-{
-  ENCODE_START(1, 1, bl);
-  ::encode(h, bl);
-  ENCODE_FINISH(bl);
-}
-
-void pow2_hist_t::decode(bufferlist::iterator& p)
-{
-  DECODE_START(1, p);
-  ::decode(h, p);
-  DECODE_FINISH(p);
-}
-
-void pow2_hist_t::generate_test_instances(list<pow2_hist_t*>& ls)
-{
-  ls.push_back(new pow2_hist_t);
-  ls.push_back(new pow2_hist_t);
-  ls.back()->h.push_back(1);
-  ls.back()->h.push_back(3);
-  ls.back()->h.push_back(0);
-  ls.back()->h.push_back(2);
-}
-
 void objectstore_perf_stat_t::dump(Formatter *f) const
 {
   f->dump_unsigned("commit_latency_ms", filestore_commit_latency);
@@ -356,6 +342,50 @@ bool pg_t::parse(const char *s)
   return true;
 }
 
+bool spg_t::parse(const char *s)
+{
+  pgid.set_preferred(-1);
+  shard = ghobject_t::NO_SHARD;
+  uint64_t ppool;
+  uint32_t pseed;
+  int32_t pref;
+  uint32_t pshard;
+  int r = sscanf(s, "%llu.%x", (long long unsigned *)&ppool, &pseed);
+  if (r < 2)
+    return false;
+  pgid.set_pool(ppool);
+  pgid.set_ps(pseed);
+
+  const char *p = strchr(s, 'p');
+  if (p) {
+    r = sscanf(p, "p%d", &pref);
+    if (r == 1) {
+      pgid.set_preferred(pref);
+    } else {
+      return false;
+    }
+  }
+
+  p = strchr(s, 's');
+  if (p) {
+    r = sscanf(p, "s%d", &pshard);
+    if (r == 1) {
+      shard = pshard;
+    } else {
+      return false;
+    }
+  }
+  return true;
+}
+
+ostream& operator<<(ostream& out, const spg_t &pg)
+{
+  out << pg.pgid;
+  if (!pg.is_no_shard())
+    out << "s" << (unsigned)pg.shard;
+  return out;
+}
+
 bool pg_t::is_split(unsigned old_pg_num, unsigned new_pg_num, set<pg_t> *children) const
 {
   assert(m_seed < old_pg_num);
@@ -451,7 +481,7 @@ ostream& operator<<(ostream& out, const pg_t &pg)
 
 const coll_t coll_t::META_COLL("meta");
 
-bool coll_t::is_temp(pg_t& pgid) const
+bool coll_t::is_temp(spg_t& pgid) const
 {
   const char *cstr(str.c_str());
   if (!pgid.parse(cstr))
@@ -464,7 +494,7 @@ bool coll_t::is_temp(pg_t& pgid) const
   return false;
 }
 
-bool coll_t::is_pg(pg_t& pgid, snapid_t& snap) const
+bool coll_t::is_pg(spg_t& pgid, snapid_t& snap) const
 {
   const char *cstr(str.c_str());
 
@@ -484,7 +514,7 @@ bool coll_t::is_pg(pg_t& pgid, snapid_t& snap) const
   return true;
 }
 
-bool coll_t::is_pg_prefix(pg_t& pgid) const
+bool coll_t::is_pg_prefix(spg_t& pgid) const
 {
   const char *cstr(str.c_str());
 
@@ -496,7 +526,7 @@ bool coll_t::is_pg_prefix(pg_t& pgid) const
   return true;
 }
 
-bool coll_t::is_removal(uint64_t *seq, pg_t *pgid) const
+bool coll_t::is_removal(uint64_t *seq, spg_t *pgid) const
 {
   if (str.substr(0, 11) != string("FORREMOVAL_"))
     return false;
@@ -528,13 +558,13 @@ void coll_t::decode(bufferlist::iterator& bl)
   ::decode(struct_v, bl);
   switch (struct_v) {
   case 1: {
-    pg_t pgid;
+    spg_t pgid;
     snapid_t snap;
 
     ::decode(pgid, bl);
     ::decode(snap, bl);
     // infer the type
-    if (pgid == pg_t() && snap == 0)
+    if (pgid == spg_t() && snap == 0)
       str = "meta";
     else
       str = pg_and_snap_to_str(pgid, snap);
@@ -543,7 +573,7 @@ void coll_t::decode(bufferlist::iterator& bl)
 
   case 2: {
     __u8 type;
-    pg_t pgid;
+    spg_t pgid;
     snapid_t snap;
     
     ::decode(type, bl);
@@ -743,6 +773,14 @@ void pg_pool_t::dump(Formatter *f) const
   f->dump_int("read_tier", read_tier);
   f->dump_int("write_tier", write_tier);
   f->dump_string("cache_mode", get_cache_mode_name());
+  f->dump_unsigned("target_max_bytes", target_max_bytes);
+  f->dump_unsigned("target_max_objects", target_max_objects);
+  f->dump_unsigned("cache_target_dirty_ratio_micro",
+		   cache_target_dirty_ratio_micro);
+  f->dump_unsigned("cache_target_full_ratio_micro",
+		   cache_target_full_ratio_micro);
+  f->dump_unsigned("cache_min_flush_age", cache_min_flush_age);
+  f->dump_unsigned("cache_min_evict_age", cache_min_evict_age);
   f->open_object_section("properties");
   for (map<string,string>::const_iterator i = properties.begin();
        i != properties.end();
@@ -756,6 +794,7 @@ void pg_pool_t::dump(Formatter *f) const
   f->close_section(); // hit_set_params
   f->dump_unsigned("hit_set_period", hit_set_period);
   f->dump_unsigned("hit_set_count", hit_set_count);
+  f->dump_unsigned("stripe_width", get_stripe_width());
 }
 
 
@@ -773,6 +812,17 @@ void pg_pool_t::calc_pg_masks()
 {
   pg_num_mask = (1 << calc_bits_of(pg_num-1)) - 1;
   pgp_num_mask = (1 << calc_bits_of(pgp_num-1)) - 1;
+}
+
+unsigned pg_pool_t::get_pg_num_divisor(pg_t pgid) const
+{
+  if (pg_num == pg_num_mask + 1)
+    return pg_num;                    // power-of-2 split
+  unsigned mask = pg_num_mask >> 1;
+  if ((pgid.ps() & mask) < (pg_num & mask))
+    return pg_num_mask + 1;           // smaller bin size (already split)
+  else
+    return (pg_num_mask + 1) >> 1;    // bigger bin (not yet split)
 }
 
 /*
@@ -924,6 +974,23 @@ ps_t pg_pool_t::raw_pg_to_pps(pg_t pg) const
   }
 }
 
+uint32_t pg_pool_t::get_random_pg_position(pg_t pg, uint32_t seed) const
+{
+  uint32_t r = crush_hash32_2(CRUSH_HASH_RJENKINS1, seed, 123);
+  if (pg_num == pg_num_mask + 1) {
+    r &= ~pg_num_mask;
+  } else {
+    unsigned smaller_mask = pg_num_mask >> 1;
+    if ((pg.ps() & smaller_mask) < (pg_num & smaller_mask)) {
+      r &= ~pg_num_mask;
+    } else {
+      r &= ~smaller_mask;
+    }
+  }
+  r |= pg.ps();
+  return r;
+}
+
 void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
 {
   if ((features & CEPH_FEATURE_PGPOOL3) == 0) {
@@ -979,7 +1046,7 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
   }
 
   __u8 encode_compat = 5;
-  ENCODE_START(11, encode_compat, bl);
+  ENCODE_START(13, encode_compat, bl);
   ::encode(type, bl);
   ::encode(size, bl);
   ::encode(crush_ruleset, bl);
@@ -1012,12 +1079,19 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
   ::encode(hit_set_params, bl);
   ::encode(hit_set_period, bl);
   ::encode(hit_set_count, bl);
+  ::encode(stripe_width, bl);
+  ::encode(target_max_bytes, bl);
+  ::encode(target_max_objects, bl);
+  ::encode(cache_target_dirty_ratio_micro, bl);
+  ::encode(cache_target_full_ratio_micro, bl);
+  ::encode(cache_min_flush_age, bl);
+  ::encode(cache_min_evict_age, bl);
   ENCODE_FINISH_NEW_COMPAT(bl, encode_compat);
 }
 
 void pg_pool_t::decode(bufferlist::iterator& bl)
 {
-  DECODE_START_LEGACY_COMPAT_LEN(11, 5, 5, bl);
+  DECODE_START_LEGACY_COMPAT_LEN(13, 5, 5, bl);
   ::decode(type, bl);
   ::decode(size, bl);
   ::decode(crush_ruleset, bl);
@@ -1091,6 +1165,27 @@ void pg_pool_t::decode(bufferlist::iterator& bl)
     hit_set_period = def.hit_set_period;
     hit_set_count = def.hit_set_count;
   }
+  if (struct_v >= 12) {
+    ::decode(stripe_width, bl);
+  } else {
+    set_stripe_width(0);
+  }
+  if (struct_v >= 13) {
+    ::decode(target_max_bytes, bl);
+    ::decode(target_max_objects, bl);
+    ::decode(cache_target_dirty_ratio_micro, bl);
+    ::decode(cache_target_full_ratio_micro, bl);
+    ::decode(cache_min_flush_age, bl);
+    ::decode(cache_min_evict_age, bl);
+  } else {
+    target_max_bytes = 0;
+    target_max_objects = 0;
+    cache_target_dirty_ratio_micro = 0;
+    cache_target_full_ratio_micro = 0;
+    cache_min_flush_age = 0;
+    cache_min_evict_age = 0;
+  }
+
   DECODE_FINISH(bl);
   calc_pg_masks();
 }
@@ -1137,6 +1232,13 @@ void pg_pool_t::generate_test_instances(list<pg_pool_t*>& o)
   a.hit_set_params = HitSet::Params(new BloomHitSet::Params);
   a.hit_set_period = 3600;
   a.hit_set_count = 8;
+  a.set_stripe_width(12345);
+  a.target_max_bytes = 1238132132;
+  a.target_max_objects = 1232132;
+  a.cache_target_dirty_ratio_micro = 187232;
+  a.cache_target_full_ratio_micro = 987222;
+  a.cache_min_flush_age = 231;
+  a.cache_min_evict_age = 2321;
   o.push_back(new pg_pool_t(a));
 }
 
@@ -1169,11 +1271,16 @@ ostream& operator<<(ostream& out, const pg_pool_t& p)
     out << " write_tier " << p.write_tier;
   if (p.cache_mode)
     out << " cache_mode " << p.get_cache_mode_name();
+  if (p.target_max_bytes)
+    out << " target_bytes " << p.target_max_bytes;
+  if (p.target_max_objects)
+    out << " target_objects " << p.target_max_objects;
   if (p.hit_set_params.get_type() != HitSet::TYPE_NONE) {
     out << " hit_set " << p.hit_set_params
 	<< " " << p.hit_set_period << "s"
 	<< " x" << p.hit_set_count;
   }
+  out << " stripe_width " << p.get_stripe_width();
   return out;
 }
 
@@ -1434,6 +1541,8 @@ void pg_stat_t::dump(Formatter *f) const
   for (vector<int>::const_iterator p = acting.begin(); p != acting.end(); ++p)
     f->dump_int("osd", *p);
   f->close_section();
+  f->dump_int("up_primary", up_primary);
+  f->dump_int("acting_primary", acting_primary);
 }
 
 void pg_stat_t::dump_brief(Formatter *f) const
@@ -1447,11 +1556,13 @@ void pg_stat_t::dump_brief(Formatter *f) const
   for (vector<int>::const_iterator p = acting.begin(); p != acting.end(); ++p)
     f->dump_int("osd", *p);
   f->close_section();
+  f->dump_int("up_primary", up_primary);
+  f->dump_int("acting_primary", acting_primary);
 }
 
 void pg_stat_t::encode(bufferlist &bl) const
 {
-  ENCODE_START(14, 8, bl);
+  ENCODE_START(15, 8, bl);
   ::encode(version, bl);
   ::encode(reported_seq, bl);
   ::encode(reported_epoch, bl);
@@ -1481,12 +1592,14 @@ void pg_stat_t::encode(bufferlist &bl) const
   ::encode(last_clean_scrub_stamp, bl);
   ::encode(last_became_active, bl);
   ::encode(dirty_stats_invalid, bl);
+  ::encode(up_primary, bl);
+  ::encode(acting_primary, bl);
   ENCODE_FINISH(bl);
 }
 
 void pg_stat_t::decode(bufferlist::iterator &bl)
 {
-  DECODE_START_LEGACY_COMPAT_LEN(14, 8, 8, bl);
+  DECODE_START_LEGACY_COMPAT_LEN(15, 8, 8, bl);
   ::decode(version, bl);
   ::decode(reported_seq, bl);
   ::decode(reported_epoch, bl);
@@ -1573,6 +1686,13 @@ void pg_stat_t::decode(bufferlist::iterator &bl)
     // encoder may not have supported num_objects_dirty accounting.
     dirty_stats_invalid = true;
   }
+  if (struct_v >= 15) {
+    ::decode(up_primary, bl);
+    ::decode(acting_primary, bl);
+  } else {
+    up_primary = up.size() ? up[0] : -1;
+    acting_primary = acting.size() ? acting[0] : -1;
+  }
   DECODE_FINISH(bl);
 }
 
@@ -1608,7 +1728,15 @@ void pg_stat_t::generate_test_instances(list<pg_stat_t*>& o)
   a.log_size = 99;
   a.ondisk_log_size = 88;
   a.up.push_back(123);
+  a.up_primary = 123;
   a.acting.push_back(456);
+  a.acting_primary = 456;
+  o.push_back(new pg_stat_t(a));
+
+  a.up.push_back(124);
+  a.up_primary = 124;
+  a.acting.push_back(124);
+  a.acting_primary = 124;
   o.push_back(new pg_stat_t(a));
 }
 
@@ -1771,8 +1899,8 @@ void pg_history_t::generate_test_instances(list<pg_history_t*>& o)
 
 void pg_info_t::encode(bufferlist &bl) const
 {
-  ENCODE_START(29, 26, bl);
-  ::encode(pgid, bl);
+  ENCODE_START(30, 26, bl);
+  ::encode(pgid.pgid, bl);
   ::encode(last_update, bl);
   ::encode(last_complete, bl);
   ::encode(log_tail, bl);
@@ -1783,6 +1911,7 @@ void pg_info_t::encode(bufferlist &bl) const
   ::encode(last_epoch_started, bl);
   ::encode(last_user_version, bl);
   ::encode(hit_set, bl);
+  ::encode(pgid.shard, bl);
   ENCODE_FINISH(bl);
 }
 
@@ -1792,9 +1921,9 @@ void pg_info_t::decode(bufferlist::iterator &bl)
   if (struct_v < 23) {
     old_pg_t opgid;
     ::decode(opgid, bl);
-    pgid = opgid;
+    pgid.pgid = opgid;
   } else {
-    ::decode(pgid, bl);
+    ::decode(pgid.pgid, bl);
   }
   ::decode(last_update, bl);
   ::decode(last_complete, bl);
@@ -1824,6 +1953,10 @@ void pg_info_t::decode(bufferlist::iterator &bl)
     last_user_version = last_update.version;
   if (struct_v >= 29)
     ::decode(hit_set, bl);
+  if (struct_v >= 30)
+    ::decode(pgid.shard, bl);
+  else
+    pgid.shard = ghobject_t::no_shard();
   DECODE_FINISH(bl);
 }
 
@@ -1862,7 +1995,7 @@ void pg_info_t::generate_test_instances(list<pg_info_t*>& o)
   list<pg_history_t*> h;
   pg_history_t::generate_test_instances(h);
   o.back()->history = *h.back();
-  o.back()->pgid = pg_t(1, 2, -1);
+  o.back()->pgid = spg_t(pg_t(1, 2, -1), ghobject_t::no_shard());
   o.back()->last_update = eversion_t(3, 4);
   o.back()->last_complete = eversion_t(5, 6);
   o.back()->last_user_version = 2;
@@ -1883,24 +2016,35 @@ void pg_info_t::generate_test_instances(list<pg_info_t*>& o)
 // -- pg_notify_t --
 void pg_notify_t::encode(bufferlist &bl) const
 {
-  ENCODE_START(1, 1, bl);
+  ENCODE_START(2, 1, bl);
   ::encode(query_epoch, bl);
   ::encode(epoch_sent, bl);
   ::encode(info, bl);
+  ::encode(to, bl);
+  ::encode(from, bl);
   ENCODE_FINISH(bl);
 }
 
 void pg_notify_t::decode(bufferlist::iterator &bl)
 {
-  DECODE_START(1, bl);
+  DECODE_START(2, bl);
   ::decode(query_epoch, bl);
   ::decode(epoch_sent, bl);
   ::decode(info, bl);
+  if (struct_v >= 2) {
+    ::decode(to, bl);
+    ::decode(from, bl);
+  } else {
+    to = ghobject_t::NO_SHARD;
+    from = ghobject_t::NO_SHARD;
+  }
   DECODE_FINISH(bl);
 }
 
 void pg_notify_t::dump(Formatter *f) const
 {
+  f->dump_int("from", from);
+  f->dump_int("to", to);
   f->dump_stream("query_epoch") << query_epoch;
   f->dump_stream("epoch_sent") << epoch_sent;
   {
@@ -1912,38 +2056,50 @@ void pg_notify_t::dump(Formatter *f) const
 
 void pg_notify_t::generate_test_instances(list<pg_notify_t*>& o)
 {
-  o.push_back(new pg_notify_t(1,1,pg_info_t()));
-  o.push_back(new pg_notify_t(3,10,pg_info_t()));
+  o.push_back(new pg_notify_t(3, ghobject_t::NO_SHARD, 1 ,1 , pg_info_t()));
+  o.push_back(new pg_notify_t(0, 0, 3, 10, pg_info_t()));
 }
 
 ostream &operator<<(ostream &lhs, const pg_notify_t &notify)
 {
-  return lhs << "(query_epoch:" << notify.query_epoch
-	     << ", epoch_sent:" << notify.epoch_sent
-	     << ", info:" << notify.info << ")";
+  lhs << "(query_epoch:" << notify.query_epoch
+      << ", epoch_sent:" << notify.epoch_sent
+      << ", info:" << notify.info;
+  if (notify.from != ghobject_t::NO_SHARD ||
+      notify.to != ghobject_t::NO_SHARD)
+    lhs << " " << (unsigned)notify.from
+	<< "->" << (unsigned)notify.to;
+  return lhs << ")";
 }
 
 // -- pg_interval_t --
 
 void pg_interval_t::encode(bufferlist& bl) const
 {
-  ENCODE_START(2, 2, bl);
+  ENCODE_START(3, 2, bl);
   ::encode(first, bl);
   ::encode(last, bl);
   ::encode(up, bl);
   ::encode(acting, bl);
   ::encode(maybe_went_rw, bl);
+  ::encode(primary, bl);
   ENCODE_FINISH(bl);
 }
 
 void pg_interval_t::decode(bufferlist::iterator& bl)
 {
-  DECODE_START_LEGACY_COMPAT_LEN(2, 2, 2, bl);
+  DECODE_START_LEGACY_COMPAT_LEN(3, 2, 2, bl);
   ::decode(first, bl);
   ::decode(last, bl);
   ::decode(up, bl);
   ::decode(acting, bl);
   ::decode(maybe_went_rw, bl);
+  if (struct_v >= 3) {
+    ::decode(primary, bl);
+  } else {
+    if (acting.size())
+      primary = acting[0];
+  }
   DECODE_FINISH(bl);
 }
 
@@ -1975,6 +2131,8 @@ void pg_interval_t::generate_test_instances(list<pg_interval_t*>& o)
 }
 
 bool pg_interval_t::check_new_interval(
+  int old_primary,
+  int new_primary,
   const vector<int> &old_acting,
   const vector<int> &new_acting,
   const vector<int> &old_up,
@@ -1989,7 +2147,8 @@ bool pg_interval_t::check_new_interval(
   std::ostream *out)
 {
   // remember past interval
-  if (new_acting != old_acting || new_up != old_up ||
+  if (old_primary != new_primary ||
+      new_acting != old_acting || new_up != old_up ||
       (!(lastmap->get_pools().count(pool_id))) ||
       (lastmap->get_pools().find(pool_id)->second.min_size !=
        osdmap->get_pools().find(pool_id)->second.min_size)  ||
@@ -2000,24 +2159,25 @@ bool pg_interval_t::check_new_interval(
     i.last = osdmap->get_epoch() - 1;
     i.acting = old_acting;
     i.up = old_up;
+    i.primary = old_primary;
 
-    if (!i.acting.empty() &&
+    if (!i.acting.empty() && i.primary != -1 &&
 	i.acting.size() >=
 	lastmap->get_pools().find(pool_id)->second.min_size) {
       if (out)
 	*out << "generate_past_intervals " << i
 	     << ": not rw,"
-	     << " up_thru " << lastmap->get_up_thru(i.acting[0])
-	     << " up_from " << lastmap->get_up_from(i.acting[0])
+	     << " up_thru " << lastmap->get_up_thru(i.primary)
+	     << " up_from " << lastmap->get_up_from(i.primary)
 	     << " last_epoch_clean " << last_epoch_clean
 	     << std::endl;
-      if (lastmap->get_up_thru(i.acting[0]) >= i.first &&
-	  lastmap->get_up_from(i.acting[0]) <= i.first) {
+      if (lastmap->get_up_thru(i.primary) >= i.first &&
+	  lastmap->get_up_from(i.primary) <= i.first) {
 	i.maybe_went_rw = true;
 	if (out)
 	  *out << "generate_past_intervals " << i
-	       << " : primary up " << lastmap->get_up_from(i.acting[0])
-	       << "-" << lastmap->get_up_thru(i.acting[0])
+	       << " : primary up " << lastmap->get_up_from(i.primary)
+	       << "-" << lastmap->get_up_thru(i.primary)
 	       << " includes interval"
 	       << std::endl;
       } else if (last_epoch_clean >= i.first &&
@@ -2039,8 +2199,8 @@ bool pg_interval_t::check_new_interval(
 	i.maybe_went_rw = false;
 	if (out)
 	  *out << "generate_past_intervals " << i
-	       << " : primary up " << lastmap->get_up_from(i.acting[0])
-	       << "-" << lastmap->get_up_thru(i.acting[0])
+	       << " : primary up " << lastmap->get_up_from(i.primary)
+	       << "-" << lastmap->get_up_thru(i.primary)
 	       << " does not include interval"
 	       << std::endl;
       }
@@ -2070,11 +2230,13 @@ ostream& operator<<(ostream& out, const pg_interval_t& i)
 
 void pg_query_t::encode(bufferlist &bl, uint64_t features) const {
   if (features & CEPH_FEATURE_QUERY_T) {
-    ENCODE_START(2, 2, bl);
+    ENCODE_START(3, 2, bl);
     ::encode(type, bl);
     ::encode(since, bl);
     history.encode(bl);
     ::encode(epoch_sent, bl);
+    ::encode(to, bl);
+    ::encode(from, bl);
     ENCODE_FINISH(bl);
   } else {
     ::encode(type, bl);
@@ -2086,11 +2248,18 @@ void pg_query_t::encode(bufferlist &bl, uint64_t features) const {
 void pg_query_t::decode(bufferlist::iterator &bl) {
   bufferlist::iterator bl2 = bl;
   try {
-    DECODE_START(2, bl);
+    DECODE_START(3, bl);
     ::decode(type, bl);
     ::decode(since, bl);
     history.decode(bl);
     ::decode(epoch_sent, bl);
+    if (struct_v >= 3) {
+      ::decode(to, bl);
+      ::decode(from, bl);
+    } else {
+      to = ghobject_t::NO_SHARD;
+      from = ghobject_t::NO_SHARD;
+    }
     DECODE_FINISH(bl);
   } catch (...) {
     bl = bl2;
@@ -2102,6 +2271,8 @@ void pg_query_t::decode(bufferlist::iterator &bl) {
 
 void pg_query_t::dump(Formatter *f) const
 {
+  f->dump_int("from", from);
+  f->dump_int("to", to);
   f->dump_string("type", get_type_name());
   f->dump_stream("since") << since;
   f->dump_stream("epoch_sent") << epoch_sent;
@@ -2114,10 +2285,13 @@ void pg_query_t::generate_test_instances(list<pg_query_t*>& o)
   o.push_back(new pg_query_t());
   list<pg_history_t*> h;
   pg_history_t::generate_test_instances(h);
-  o.push_back(new pg_query_t(pg_query_t::INFO, *h.back(), 4));
-  o.push_back(new pg_query_t(pg_query_t::MISSING, *h.back(), 4));
-  o.push_back(new pg_query_t(pg_query_t::LOG, eversion_t(4, 5), *h.back(), 4));
-  o.push_back(new pg_query_t(pg_query_t::FULLLOG, *h.back(), 5));
+  o.push_back(new pg_query_t(pg_query_t::INFO, 1, 2, *h.back(), 4));
+  o.push_back(new pg_query_t(pg_query_t::MISSING, 2, 3, *h.back(), 4));
+  o.push_back(new pg_query_t(pg_query_t::LOG, 0, 0,
+			     eversion_t(4, 5), *h.back(), 4));
+  o.push_back(new pg_query_t(pg_query_t::FULLLOG,
+			     ghobject_t::NO_SHARD, ghobject_t::NO_SHARD,
+			     *h.back(), 5));
 }
 
 // -- ObjectModDesc --
@@ -4107,6 +4281,10 @@ ostream& operator<<(ostream& out, const OSDOp& op)
       out << " max " << op.op.copy_get.max;
     case CEPH_OSD_OP_COPY_FROM:
       out << " ver " << op.op.copy_from.src_version;
+      break;
+    case CEPH_OSD_OP_SETALLOCHINT:
+      out << " object_size " << op.op.alloc_hint.expected_object_size
+          << " write_size " << op.op.alloc_hint.expected_write_size;
       break;
     default:
       out << " " << op.op.extent.offset << "~" << op.op.extent.length;

@@ -105,19 +105,28 @@ public:
     crush->choose_local_fallback_tries = 5;
     crush->choose_total_tries = 19;
     crush->chooseleaf_descend_once = 0;
+    crush->chooseleaf_vary_r = 0;
   }
   void set_tunables_bobtail() {
     crush->choose_local_tries = 0;
     crush->choose_local_fallback_tries = 0;
     crush->choose_total_tries = 50;
     crush->chooseleaf_descend_once = 1;
+    crush->chooseleaf_vary_r = 0;
+  }
+  void set_tunables_firefly() {
+    crush->choose_local_tries = 0;
+    crush->choose_local_fallback_tries = 0;
+    crush->choose_total_tries = 50;
+    crush->chooseleaf_descend_once = 1;
+    crush->chooseleaf_vary_r = 1;
   }
 
   void set_tunables_legacy() {
     set_tunables_argonaut();
   }
   void set_tunables_optimal() {
-    set_tunables_bobtail();
+    set_tunables_firefly();
   }
   void set_tunables_default() {
     set_tunables_bobtail();
@@ -151,23 +160,40 @@ public:
     crush->chooseleaf_descend_once = !!n;
   }
 
+  int get_chooseleaf_vary_r() const {
+    return crush->chooseleaf_vary_r;
+  }
+  void set_chooseleaf_vary_r(int n) {
+    crush->chooseleaf_vary_r = n;
+  }
+
   bool has_argonaut_tunables() const {
     return
       crush->choose_local_tries == 2 &&
       crush->choose_local_fallback_tries == 5 &&
       crush->choose_total_tries == 19 &&
-      crush->chooseleaf_descend_once == 0;
+      crush->chooseleaf_descend_once == 0 &&
+      crush->chooseleaf_vary_r == 0;
   }
   bool has_bobtail_tunables() const {
     return
       crush->choose_local_tries == 0 &&
       crush->choose_local_fallback_tries == 0 &&
       crush->choose_total_tries == 50 &&
-      crush->chooseleaf_descend_once == 1;
+      crush->chooseleaf_descend_once == 1 &&
+      crush->chooseleaf_vary_r == 0;
+  }
+  bool has_firefly_tunables() const {
+    return
+      crush->choose_local_tries == 0 &&
+      crush->choose_local_fallback_tries == 0 &&
+      crush->choose_total_tries == 50 &&
+      crush->chooseleaf_descend_once == 1 &&
+      crush->chooseleaf_vary_r == 1;
   }
 
   bool has_optimal_tunables() const {
-    return has_bobtail_tunables();
+    return has_firefly_tunables();
   }
   bool has_legacy_tunables() const {
     return has_argonaut_tunables();
@@ -183,7 +209,12 @@ public:
     return
       crush->chooseleaf_descend_once != 0;
   }
+  bool has_nondefault_tunables3() const {
+    return
+      crush->chooseleaf_vary_r != 0;
+  }
   bool has_v2_rules() const;
+  bool has_v3_rules() const;
 
 
   // bucket types
@@ -630,6 +661,9 @@ public:
   int set_rule_step_set_chooseleaf_tries(unsigned ruleno, unsigned step, int val) {
     return set_rule_step(ruleno, step, CRUSH_RULE_SET_CHOOSELEAF_TRIES, val, 0);
   }
+  int set_rule_step_set_chooseleaf_vary_r(unsigned ruleno, unsigned step, int val) {
+    return set_rule_step(ruleno, step, CRUSH_RULE_SET_CHOOSELEAF_VARY_R, val, 0);
+  }
   int set_rule_step_choose_firstn(unsigned ruleno, unsigned step, int val, int type) {
     return set_rule_step(ruleno, step, CRUSH_RULE_CHOOSE_FIRSTN, val, type);
   }
@@ -789,6 +823,8 @@ public:
   /* modifiers */
   int add_bucket(int bucketno, int alg, int hash, int type, int size,
 		 int *items, int *weights, int *idout) {
+    if (type == 0)
+      return -EINVAL;
     crush_bucket *b = crush_make_bucket(alg, hash, type, size, items, weights);
     assert(b);
     return crush_add_bucket(crush, bucketno, b, idout);
@@ -860,6 +896,7 @@ public:
   void decode_crush_bucket(crush_bucket** bptr, bufferlist::iterator &blp);
   void dump(Formatter *f) const;
   void dump_rules(Formatter *f) const;
+  void dump_rule(int ruleset, Formatter *f) const;
   void dump_tunables(Formatter *f) const;
   void list_rules(Formatter *f) const;
   void dump_tree(const vector<__u32>& w, ostream *out, Formatter *f) const;
@@ -869,7 +906,7 @@ public:
 
   static bool is_valid_crush_name(const string& s);
   static bool is_valid_crush_loc(CephContext *cct,
-				 const map<string,string> loc);
+				 const map<string,string>& loc);
 };
 WRITE_CLASS_ENCODER(CrushWrapper)
 

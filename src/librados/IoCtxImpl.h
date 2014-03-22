@@ -140,8 +140,8 @@ struct librados::IoCtxImpl {
   int getxattrs(const object_t& oid, map<string, bufferlist>& attrset);
   int rmxattr(const object_t& oid, const char *name);
 
-  int operate(const object_t& oid, ::ObjectOperation *o, time_t *pmtime);
-  int operate_read(const object_t& oid, ::ObjectOperation *o, bufferlist *pbl);
+  int operate(const object_t& oid, ::ObjectOperation *o, time_t *pmtime, int flags=0);
+  int operate_read(const object_t& oid, ::ObjectOperation *o, bufferlist *pbl, int flags=0);
   int aio_operate(const object_t& oid, ::ObjectOperation *o,
 		  AioCompletionImpl *c, const SnapContext& snap_context,
 		  int flags);
@@ -201,6 +201,10 @@ struct librados::IoCtxImpl {
   int _notify_ack(
     const object_t& oid, uint64_t notify_id, uint64_t ver,
     uint64_t cookie);
+
+  int set_alloc_hint(const object_t& oid,
+                     uint64_t expected_object_size,
+                     uint64_t expected_write_size);
 
   version_t last_version();
   void set_assert_version(uint64_t ver);

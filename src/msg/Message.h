@@ -107,6 +107,11 @@
 #define MSG_OSD_PG_PULL        106
 #define MSG_OSD_PG_PUSH_REPLY  107
 
+#define MSG_OSD_EC_WRITE       108
+#define MSG_OSD_EC_WRITE_REPLY 109
+#define MSG_OSD_EC_READ        110
+#define MSG_OSD_EC_READ_REPLY  111
+
 // *** MDS ***
 
 #define MSG_MDS_BEACON             100  // to monitor
@@ -398,10 +403,13 @@ public:
     payload.clear();
     middle.clear();
   }
+
+  virtual void clear_buffers() {}
   void clear_data() {
     if (byte_throttler)
       byte_throttler->put(data.length());
     data.clear();
+    clear_buffers(); // let subclass drop buffers as well
   }
 
   bool empty_payload() { return payload.length() == 0; }

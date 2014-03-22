@@ -363,8 +363,13 @@ COMMAND("osd lspools " \
 COMMAND("osd blacklist ls", "show blacklisted clients", "osd", "r", "cli,rest")
 COMMAND("osd crush rule list", "list crush rules", "osd", "r", "cli,rest")
 COMMAND("osd crush rule ls", "list crush rules", "osd", "r", "cli,rest")
-COMMAND("osd crush rule dump", "dump crush rules", "osd", "r", "cli,rest")
-COMMAND("osd crush dump", "dump crush map", "osd", "r", "cli,rest")
+COMMAND("osd crush rule dump " \
+	"name=name,type=CephString,goodchars=[A-Za-z0-9-_.],req=false", \
+	"dump crush rule <name> (default all)", \
+	"osd", "r", "cli,rest")
+COMMAND("osd crush dump", \
+	"dump crush map", \
+	"osd", "r", "cli,rest")
 COMMAND("osd setcrushmap", "set crush map from input file", \
 	"osd", "rw", "cli,rest")
 COMMAND("osd crush set", "set crush map from input file", \
@@ -423,7 +428,7 @@ COMMAND("osd crush reweight " \
 	"change <name>'s weight to <weight> in crush map", \
 	"osd", "rw", "cli,rest")
 COMMAND("osd crush tunables " \
-	"name=profile,type=CephChoices,strings=legacy|argonaut|bobtail|optimal|default", \
+	"name=profile,type=CephChoices,strings=legacy|argonaut|bobtail|firefly|optimal|default", \
 	"set crush tunables values to <profile>", "osd", "rw", "cli,rest")
 COMMAND("osd crush show-tunables", \
 	"show current crush tunables", "osd", "r", "cli,rest")
@@ -434,6 +439,11 @@ COMMAND("osd crush rule create-simple " \
 	"name=mode,type=CephChoices,strings=firstn|indep,req=false",
 	"create crush rule <name> to start from <root>, replicate across buckets of type <type>, using a choose mode of <firstn|indep> (default firstn; indep best for erasure pools)", \
 	"osd", "rw", "cli,rest")
+COMMAND("osd crush rule create-erasure " \
+	"name=name,type=CephString,goodchars=[A-Za-z0-9-_.] " \
+	"name=properties,type=CephString,n=N,req=false,goodchars=[A-Za-z0-9-_.=]", \
+	"create crush rule <name> suitable for erasure coded pool created with <properties>", \
+	"osd", "rw", "cli,rest")
 COMMAND("osd crush rule rm " \
 	"name=name,type=CephString,goodchars=[A-Za-z0-9-_.] ",	\
 	"remove crush rule <name>", "osd", "rw", "cli,rest")
@@ -443,10 +453,10 @@ COMMAND("osd setmaxosd " \
 COMMAND("osd pause", "pause osd", "osd", "rw", "cli,rest")
 COMMAND("osd unpause", "unpause osd", "osd", "rw", "cli,rest")
 COMMAND("osd set " \
-	"name=key,type=CephChoices,strings=pause|noup|nodown|noout|noin|nobackfill|norecover|noscrub|nodeep-scrub", \
+	"name=key,type=CephChoices,strings=pause|noup|nodown|noout|noin|nobackfill|norecover|noscrub|nodeep-scrub|notieragent", \
 	"set <key>", "osd", "rw", "cli,rest")
 COMMAND("osd unset " \
-	"name=key,type=CephChoices,strings=pause|noup|nodown|noout|noin|nobackfill|norecover|noscrub|nodeep-scrub", \
+	"name=key,type=CephChoices,strings=pause|noup|nodown|noout|noin|nobackfill|norecover|noscrub|nodeep-scrub|notieragent", \
 	"unset <key>", "osd", "rw", "cli,rest")
 COMMAND("osd cluster_snap", "take cluster snapshot (disabled)", \
 	"osd", "r", "")
@@ -466,6 +476,11 @@ COMMAND("osd reweight " \
 	"name=id,type=CephInt,range=0 " \
 	"type=CephFloat,name=weight,range=0.0|1.0", \
 	"reweight osd to 0.0 < <weight> < 1.0", "osd", "rw", "cli,rest")
+COMMAND("osd primary-affinity " \
+	"name=id,type=CephOsdName " \
+	"type=CephFloat,name=weight,range=0.0|1.0", \
+	"adjust osd primary-affinity from 0.0 <= <weight> <= 1.0", \
+	"osd", "rw", "cli,rest")
 COMMAND("osd lost " \
 	"name=id,type=CephInt,range=0 " \
 	"name=sure,type=CephChoices,strings=--yes-i-really-mean-it,req=false", \
@@ -511,7 +526,7 @@ COMMAND("osd pool get " \
 	"get pool parameter <var>", "osd", "r", "cli,rest")
 COMMAND("osd pool set " \
 	"name=pool,type=CephPoolname " \
-	"name=var,type=CephChoices,strings=size|min_size|crash_replay_interval|pg_num|pgp_num|crush_ruleset|hashpspool|hit_set_type|hit_set_period|hit_set_count|hit_set_fpp|debug_fake_ec_pool " \
+	"name=var,type=CephChoices,strings=size|min_size|crash_replay_interval|pg_num|pgp_num|crush_ruleset|hashpspool|hit_set_type|hit_set_period|hit_set_count|hit_set_fpp|debug_fake_ec_pool||target_max_bytes|target_max_objects|cache_target_dirty_ratio|cache_target_full_ratio|cache_min_flush_age|cache_min_evict_age " \
 	"name=val,type=CephString", \
 	"set pool parameter <var> to <val>", "osd", "rw", "cli,rest")
 // 'val' is a CephString because it can include a unit.  Perhaps
@@ -537,7 +552,8 @@ COMMAND("osd thrash " \
 // tiering
 COMMAND("osd tier add " \
 	"name=pool,type=CephPoolname " \
-	"name=tierpool,type=CephPoolname",
+	"name=tierpool,type=CephPoolname " \
+	"name=force_nonempty,type=CephChoices,strings=--force-nonempty,req=false",
 	"add the tier <tierpool> to base pool <pool>", "osd", "rw", "cli,rest")
 COMMAND("osd tier remove " \
 	"name=pool,type=CephPoolname " \
@@ -554,6 +570,13 @@ COMMAND("osd tier set-overlay " \
 COMMAND("osd tier remove-overlay " \
 	"name=pool,type=CephPoolname ", \
 	"remove the overlay pool for base pool <pool>", "osd", "rw", "cli,rest")
+
+COMMAND("osd tier add-cache " \
+	"name=pool,type=CephPoolname " \
+	"name=tierpool,type=CephPoolname " \
+	"name=size,type=CephInt,range=0", \
+	"add a cache <tierpool> of size <size> to existing pool <pool>", \
+	"osd", "rw", "cli,rest")
 
 /*
  * mon/ConfigKeyService.cc
