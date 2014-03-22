@@ -117,7 +117,8 @@ MDS::MDS(const std::string &n, Messenger *m, MonClient *mc) :
   mdsmap = new MDSMap;
   osdmap = new OSDMap;
 
-  objecter = new Objecter(m->cct, messenger, monc, osdmap, mds_lock, timer);
+  objecter = new Objecter(m->cct, messenger, monc, osdmap, mds_lock, timer,
+			  0, 0);
   objecter->unset_honor_osdmap_full();
 
   filer = new Filer(objecter);
@@ -606,6 +607,7 @@ void MDS::tick()
   
   if (is_active()) {
     balancer->tick();
+    mdcache->find_stale_fragment_freeze();
     mdcache->migrator->find_stale_export_freeze();
     if (snapserver)
       snapserver->check_osd_map(false);
@@ -1037,28 +1039,31 @@ void MDS::handle_mds_map(MMDSMap *m)
     if (g_conf->mds_dump_cache_after_rejoin &&
 	oldmap->is_rejoining() && !mdsmap->is_rejoining()) 
       mdcache->dump_cache();      // for DEBUG only
-  
-    // ACTIVE|CLIENTREPLAY|REJOIN => we can discover from them.
-    set<int> olddis, dis;
-    oldmap->get_mds_set(olddis, MDSMap::STATE_ACTIVE);
-    oldmap->get_mds_set(olddis, MDSMap::STATE_CLIENTREPLAY);
-    oldmap->get_mds_set(olddis, MDSMap::STATE_REJOIN);
-    mdsmap->get_mds_set(dis, MDSMap::STATE_ACTIVE);
-    mdsmap->get_mds_set(dis, MDSMap::STATE_CLIENTREPLAY);
-    mdsmap->get_mds_set(dis, MDSMap::STATE_REJOIN);
-    for (set<int>::iterator p = dis.begin(); p != dis.end(); ++p) 
-      if (*p != whoami &&            // not me
-	  olddis.count(*p) == 0) {  // newly so?
-	mdcache->kick_discovers(*p);
-	mdcache->kick_open_ino_peers(*p);
-      }
+
+    if (oldstate >= MDSMap::STATE_REJOIN) {
+      // ACTIVE|CLIENTREPLAY|REJOIN => we can discover from them.
+      set<int> olddis, dis;
+      oldmap->get_mds_set(olddis, MDSMap::STATE_ACTIVE);
+      oldmap->get_mds_set(olddis, MDSMap::STATE_CLIENTREPLAY);
+      oldmap->get_mds_set(olddis, MDSMap::STATE_REJOIN);
+      mdsmap->get_mds_set(dis, MDSMap::STATE_ACTIVE);
+      mdsmap->get_mds_set(dis, MDSMap::STATE_CLIENTREPLAY);
+      mdsmap->get_mds_set(dis, MDSMap::STATE_REJOIN);
+      for (set<int>::iterator p = dis.begin(); p != dis.end(); ++p)
+	if (*p != whoami &&            // not me
+	    olddis.count(*p) == 0) {  // newly so?
+	  mdcache->kick_discovers(*p);
+	  mdcache->kick_open_ino_peers(*p);
+	}
+    }
   }
 
   if (oldmap->is_degraded() && !mdsmap->is_degraded() && state >= MDSMap::STATE_ACTIVE)
     dout(1) << "cluster recovered." << dendl;
 
   // did someone go active?
-  if (is_clientreplay() || is_active() || is_stopping()) {
+  if (oldstate >= MDSMap::STATE_CLIENTREPLAY &&
+      (is_clientreplay() || is_active() || is_stopping())) {
     set<int> oldactive, active;
     oldmap->get_mds_set(oldactive, MDSMap::STATE_ACTIVE);
     oldmap->get_mds_set(oldactive, MDSMap::STATE_CLIENTREPLAY);
@@ -2001,6 +2006,7 @@ bool MDS::_dispatch(Message *m)
   // hack: thrash fragments
   for (int i=0; i<g_conf->mds_thrash_fragments; i++) {
     if (!is_active()) break;
+    if (mdcache->get_num_fragmenting_dirs() > 5) break;
     dout(7) << "mds thrashing fragments pass " << (i+1) << "/" << g_conf->mds_thrash_fragments << dendl;
     
     // pick a random dir inode
@@ -2012,9 +2018,10 @@ bool MDS::_dispatch(Message *m)
     CDir *dir = ls.front();
     if (!dir->get_parent_dir()) continue;    // must be linked.
     if (!dir->is_auth()) continue;           // must be auth.
-    if (dir->get_frag() == frag_t() || (rand() % 3 == 0)) {
+    frag_t fg = dir->get_frag();
+    if (fg == frag_t() || (rand() % (1 << fg.bits()) == 0))
       mdcache->split_dir(dir, 1);
-    } else
+    else
       balancer->queue_merge(dir);
   }
 

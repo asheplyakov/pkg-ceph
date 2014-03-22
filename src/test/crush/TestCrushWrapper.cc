@@ -27,6 +27,7 @@
 #include "global/global_init.h"
 #include "global/global_context.h"
 #include "include/Context.h"
+#include "osd/osd_types.h"
 
 #include "crush/CrushWrapper.h"
 
@@ -62,11 +63,13 @@ TEST(CrushWrapper, get_immediate_parent) {
   EXPECT_EQ(0, ret);
   EXPECT_EQ("root", loc.first);
   EXPECT_EQ("default", loc.second);
+
+  delete c;
 }
 
 TEST(CrushWrapper, move_bucket) {
   CrushWrapper *c = new CrushWrapper;
-  
+
   const int ROOT_TYPE = 2;
   c->set_type_name(ROOT_TYPE, "root");
   const int HOST_TYPE = 1;
@@ -120,6 +123,8 @@ TEST(CrushWrapper, move_bucket) {
     EXPECT_EQ("root", loc.first);
     EXPECT_EQ("root1", loc.second);
   }
+
+  delete c;
 }
 
 TEST(CrushWrapper, check_item_loc) {
@@ -185,6 +190,8 @@ TEST(CrushWrapper, check_item_loc) {
     EXPECT_TRUE(c->check_item_loc(g_ceph_context, item, loc, &weight));
     EXPECT_EQ(expected_weight, weight);
   }
+
+  delete c;
 }
 
 TEST(CrushWrapper, update_item) {
@@ -279,6 +286,8 @@ TEST(CrushWrapper, update_item) {
   EXPECT_EQ(modified_weight, c->get_item_weightf(item));
   EXPECT_FALSE(c->check_item_loc(g_ceph_context, item, loc, &weight));
   EXPECT_TRUE(c->check_item_loc(g_ceph_context, item, other_loc, &weight));
+
+  delete c;
 }
 
 TEST(CrushWrapper, insert_item) {
@@ -393,8 +402,9 @@ TEST(CrushWrapper, insert_item) {
   {
     // create an OSD bucket
     int osdno;
-    c->add_bucket(0, CRUSH_BUCKET_STRAW, CRUSH_HASH_RJENKINS1,
-		  OSD_TYPE, 0, NULL, NULL, &osdno);
+    int r = c->add_bucket(0, CRUSH_BUCKET_STRAW, CRUSH_HASH_RJENKINS1,
+			  10, 0, NULL, NULL, &osdno);
+    ASSERT_EQ(0, r);
     c->set_item_name(osdno, "myosd");
     map<string,string> loc;
     loc["root"] = "default";
@@ -463,6 +473,143 @@ TEST(CrushWrapper, is_valid_crush_loc) {
   }
 }
 
+TEST(CrushWrapper, dump_rules) {
+  CrushWrapper *c = new CrushWrapper;
+
+  const int ROOT_TYPE = 1;
+  c->set_type_name(ROOT_TYPE, "root");
+  const int OSD_TYPE = 0;
+  c->set_type_name(OSD_TYPE, "osd");
+
+  string failure_domain_type("osd");
+  string root_name("default");
+  int rootno;
+  c->add_bucket(0, CRUSH_BUCKET_STRAW, CRUSH_HASH_RJENKINS1,
+		ROOT_TYPE, 0, NULL, NULL, &rootno);
+  c->set_item_name(rootno, root_name);
+
+  int item = 0;
+
+  pair <string,string> loc;
+  int ret;
+  loc = c->get_immediate_parent(item, &ret);
+  EXPECT_EQ(-ENOENT, ret);
+
+  {
+    map<string,string> loc;
+    loc["root"] = root_name;
+
+    EXPECT_EQ(0, c->insert_item(g_ceph_context, item, 1.0,
+				"osd.0", loc));
+  }
+
+  // no ruleset by default
+  {
+    Formatter *f = new_formatter("json-pretty");
+    c->dump_rules(f);
+    stringstream ss;
+    f->flush(ss);
+    delete f;
+    EXPECT_EQ("", ss.str());
+  }
+
+  string name("NAME");
+  int ruleset = c->add_simple_ruleset(name, root_name, failure_domain_type,
+				      "firstn", pg_pool_t::TYPE_ERASURE);
+  EXPECT_EQ(0, ruleset);
+
+  {
+    Formatter *f = new_formatter("xml");
+    c->dump_rules(f);
+    stringstream ss;
+    f->flush(ss);
+    delete f;
+    EXPECT_EQ((unsigned)0, ss.str().find("<rule><rule_id>0</rule_id><rule_name>NAME</rule_name>"));
+  }
+
+  {
+    Formatter *f = new_formatter("xml");
+    c->dump_rule(ruleset, f);
+    stringstream ss;
+    f->flush(ss);
+    delete f;
+    EXPECT_EQ((unsigned)0, ss.str().find("<rule><rule_id>0</rule_id><rule_name>NAME</rule_name>"));
+    EXPECT_NE(string::npos,
+	      ss.str().find("<item_name>default</item_name></step>"));
+  }
+
+  delete c;
+}
+
+TEST(CrushWrapper, distance) {
+  CrushWrapper c;
+  c.create();
+  c.set_type_name(1, "host");
+  c.set_type_name(2, "rack");
+  c.set_type_name(3, "root");
+  int bno;
+  int r = c.add_bucket(0, CRUSH_BUCKET_STRAW,
+		       CRUSH_HASH_DEFAULT, 3, 0, NULL,
+		       NULL, &bno);
+  ASSERT_EQ(0, r);
+  ASSERT_EQ(-1, bno);
+  c.set_item_name(bno, "default");
+
+  c.set_max_devices(10);
+
+  //JSONFormatter jf(true);
+
+  map<string,string> loc;
+  loc["host"] = "a1";
+  loc["rack"] = "a";
+  loc["root"] = "default";
+  c.insert_item(g_ceph_context, 0, 1, "osd.0", loc);
+
+  loc.clear();
+  loc["host"] = "a2";
+  loc["rack"] = "a";
+  loc["root"] = "default";
+  c.insert_item(g_ceph_context, 1, 1, "osd.1", loc);
+
+  loc.clear();
+  loc["host"] = "b1";
+  loc["rack"] = "b";
+  loc["root"] = "default";
+  c.insert_item(g_ceph_context, 2, 1, "osd.2", loc);
+
+  loc.clear();
+  loc["host"] = "b2";
+  loc["rack"] = "b";
+  loc["root"] = "default";
+  c.insert_item(g_ceph_context, 3, 1, "osd.3", loc);
+
+  vector<pair<string,string> > ol;
+  c.get_full_location_ordered(3, ol);
+  ASSERT_EQ(3u, ol.size());
+  ASSERT_EQ(make_pair(string("host"),string("b2")), ol[0]);
+  ASSERT_EQ(make_pair(string("rack"),string("b")), ol[1]);
+  ASSERT_EQ(make_pair(string("root"),string("default")), ol[2]);
+
+  //c.dump(&jf);
+  //jf.flush(cout);
+
+  multimap<string,string> p;
+  p.insert(make_pair("host","b2"));
+  p.insert(make_pair("rack","b"));
+  p.insert(make_pair("root","default"));
+  ASSERT_EQ(3, c.get_common_ancestor_distance(g_ceph_context, 0, p));
+  ASSERT_EQ(3, c.get_common_ancestor_distance(g_ceph_context, 1, p));
+  ASSERT_EQ(2, c.get_common_ancestor_distance(g_ceph_context, 2, p));
+  ASSERT_EQ(1, c.get_common_ancestor_distance(g_ceph_context, 3, p));
+  ASSERT_EQ(-ENOENT, c.get_common_ancestor_distance(g_ceph_context, 123, p));
+
+  // make sure a "multipath" location will reflect a minimal
+  // distance for both paths
+  p.insert(make_pair("host","b1"));
+  ASSERT_EQ(1, c.get_common_ancestor_distance(g_ceph_context, 2, p));
+  ASSERT_EQ(1, c.get_common_ancestor_distance(g_ceph_context, 3, p));
+}
+
 int main(int argc, char **argv) {
   vector<const char*> args;
   argv_to_vec(argc, (const char **)argv, args);
@@ -477,9 +624,10 @@ int main(int argc, char **argv) {
 
 /*
  * Local Variables:
- * compile-command: "cd ../.. ; make unittest_crush_wrapper && 
+ * compile-command: "cd ../.. ; make -j4 unittest_crush_wrapper && 
  *    valgrind \
  *    --max-stackframe=20000000 --tool=memcheck \
- *    ./unittest_crush_wrapper --log-to-stderr=true --debug-crush=20 # --gtest_filter=CrushWrapper.insert_item"
+ *    ./unittest_crush_wrapper --log-to-stderr=true --debug-crush=20 \
+ *        # --gtest_filter=CrushWrapper.insert_item"
  * End:
  */

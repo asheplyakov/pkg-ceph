@@ -516,10 +516,10 @@ public:
   epoch_t get_epoch();
   int get_leader() { return leader; }
   const set<int>& get_quorum() { return quorum; }
-  set<string> get_quorum_names() {
-    set<string> q;
+  list<string> get_quorum_names() {
+    list<string> q;
     for (set<int>::iterator p = quorum.begin(); p != quorum.end(); ++p)
-      q.insert(monmap->get_name(*p));
+      q.push_back(monmap->get_name(*p));
     return q;
   }
   uint64_t get_quorum_features() const {
@@ -616,10 +616,11 @@ public:
                                            MonCommand *cmds, int cmds_size);
   bool _allowed_command(MonSession *s, string &module, string &prefix,
                         const map<string,cmd_vartype>& cmdmap,
-                        const map<string,string> param_str_map,
+                        const map<string,string>& param_str_map,
                         const MonCommand *this_cmd);
   void _mon_status(Formatter *f, ostream& ss);
   void _quorum_status(Formatter *f, ostream& ss);
+  void _osdmonitor_prepare_command(cmdmap_t& cmdmap, ostream& ss);
   void _add_bootstrap_peer_hint(string cmd, cmdmap_t& cmdmap, ostream& ss);
   void handle_command(class MMonCommand *m);
   void handle_route(MRoute *m);

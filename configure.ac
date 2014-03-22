@@ -8,7 +8,7 @@ AC_PREREQ(2.59)
 # VERSION define is not used by the code.  It gets a version string
 # from 'git describe'; see src/ceph_ver.[ch]
 
-AC_INIT([ceph], [0.77], [ceph-devel@vger.kernel.org])
+AC_INIT([ceph], [0.78], [ceph-devel@vger.kernel.org])
 
 # Create release string.  Used with VERSION for RPMs.
 RPM_RELEASE=0
@@ -529,6 +529,31 @@ AS_IF([test "$with_libaio" = "yes"],
 	    [AC_DEFINE([HAVE_LIBAIO], [1], [Defined if you don't have atomic_ops])])
 AM_CONDITIONAL(WITH_LIBAIO, [ test "$with_libaio" = "yes" ])
 
+# use libxfs?
+AC_ARG_WITH([libxfs],
+  [AS_HELP_STRING([--without-libxfs], [disable libxfs use by FileStore])],
+  [],
+  [with_libxfs=yes])
+AS_IF([test "x$with_libxfs" != "xno"], [
+  # xfs/xfs.h presence and XFS_XFLAG_EXTSIZE define
+  AC_CHECK_HEADER([xfs/xfs.h], [], AC_MSG_ERROR(
+    [xfs/xfs.h not found (--without-libxfs to disable)]))
+  AC_MSG_CHECKING([for XFS_XFLAG_EXTSIZE in xfs/xfs.h])
+  AC_EGREP_CPP([yes_have_xfs_xflag_extsize], [
+    #include <xfs/xfs.h>
+    #ifdef XFS_XFLAG_EXTSIZE
+    yes_have_xfs_xflag_extsize
+    #endif
+  ], [
+    AC_MSG_RESULT([yes])
+    AC_DEFINE([HAVE_LIBXFS], [1], [Define to 1 if you have libxfs])
+  ], [
+    AC_MSG_RESULT([no])
+    AC_MSG_ERROR([XFS_XFLAG_EXTSIZE not found (--without-libxfs to disable)])
+  ])
+])
+AM_CONDITIONAL(WITH_LIBXFS, [test "x$with_libxfs" != "xno"])
+
 # use libzfs
 AC_ARG_WITH([libzfs],
 	    [AS_HELP_STRING([--with-libzfs], [build ZFS support])],
@@ -596,6 +621,7 @@ AC_CHECK_MEMBER([struct fiemap_extent.fe_logical],
 
 AC_CHECK_HEADERS([ \
 	arpa/inet.h \
+	arpa/nameser_compat.h \
 	linux/version.h \
 	netdb.h \
 	netinet/in.h \
@@ -639,16 +665,22 @@ AC_CHECK_FUNC([splice],
 	[AC_DEFINE([CEPH_HAVE_SPLICE], [], [splice(2) is supported])],
 	[])
 
+# F_SETPIPE_SZ in fcntl.h
+AC_MSG_CHECKING([for F_SETPIPE_SZ in fcntl.h])
+AC_EGREP_CPP([yes_have_f_setpipe_sz], [
+  #define _GNU_SOURCE
+  #include <fcntl.h>
+  #ifdef F_SETPIPE_SZ
+  yes_have_f_setpipe_sz
+  #endif
+], [
+  AC_MSG_RESULT([yes])
+  AC_DEFINE([CEPH_HAVE_SETPIPE_SZ], [], [F_SETPIPE_SZ is supported])
+], [
+  AC_MSG_RESULT([no])
+  AC_MSG_NOTICE([F_SETPIPE_SZ not found, zero-copy may be less efficent])
+])
 
-AC_CHECK_HEADERS([arpa/nameser_compat.h])
-
-AC_COMPILE_IFELSE([AC_LANG_SOURCE([[#include <fcntl.h>
-F_SETPIPE_SZ]])],
-	[AC_DEFINE([CEPH_HAVE_SETPIPE_SZ], [], [F_SETPIPE_SZ is supported])],
-	[AC_MSG_NOTICE(["F_SETPIPE_SZ not found, zero-copy may be less efficent"])])
-
-
-AC_CHECK_HEADERS([arpa/nameser_compat.h])
 AC_CHECK_FUNCS([posix_fallocate])
 AC_CHECK_HEADERS([sys/prctl.h])
 AC_CHECK_FUNCS([prctl])

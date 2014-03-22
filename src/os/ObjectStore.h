@@ -41,6 +41,34 @@ namespace ceph {
   class Formatter;
 }
 
+enum {
+  l_os_first = 84000,
+  l_os_jq_max_ops,
+  l_os_jq_ops,
+  l_os_j_ops,
+  l_os_jq_max_bytes,
+  l_os_jq_bytes,
+  l_os_j_bytes,
+  l_os_j_lat,
+  l_os_j_wr,
+  l_os_j_wr_bytes,
+  l_os_j_full,
+  l_os_committing,
+  l_os_commit,
+  l_os_commit_len,
+  l_os_commit_lat,
+  l_os_oq_max_ops,
+  l_os_oq_ops,
+  l_os_ops,
+  l_os_oq_max_bytes,
+  l_os_oq_bytes,
+  l_os_bytes,
+  l_os_apply_lat,
+  l_os_queue_lat,
+  l_os_last,
+};
+
+
 /*
  * low-level interface to the local OSD file system
  */
@@ -150,6 +178,8 @@ public:
 				    doesn't create the destination */
       OP_OMAP_RMKEYRANGE = 37,  // cid, oid, firstkey, lastkey
       OP_COLL_MOVE_RENAME = 38,   // oldcid, oldoid, newcid, newoid
+
+      OP_SETALLOCHINT = 39,  // cid, oid, object_size, write_size
     };
 
   private:
@@ -468,7 +498,7 @@ public:
       ::encode(attrset, tbl);
       ops++;
     }
-    void setattrs(coll_t cid, const hobject_t& oid, map<string,bufferlist>& attrset) {
+    void setattrs(coll_t cid, const ghobject_t& oid, map<string,bufferlist>& attrset) {
       __u32 op = OP_SETATTRS;
       ::encode(op, tbl);
       ::encode(cid, tbl);
@@ -684,6 +714,21 @@ public:
       ::encode(bits, tbl);
       ::encode(rem, tbl);
       ::encode(destination, tbl);
+      ++ops;
+    }
+
+    void set_alloc_hint(
+      coll_t cid,
+      const ghobject_t &oid,
+      uint64_t expected_object_size,
+      uint64_t expected_write_size
+    ) {
+      __u32 op = OP_SETALLOCHINT;
+      ::encode(op, tbl);
+      ::encode(cid, tbl);
+      ::encode(oid, tbl);
+      ::encode(expected_object_size, tbl);
+      ::encode(expected_write_size, tbl);
       ++ops;
     }
 
@@ -944,6 +989,14 @@ public:
     int r = getattr(cid, oid, name, bp);
     if (bp.length())
       value.push_back(bp);
+    return r;
+  }
+  int getattr(
+    coll_t cid, const ghobject_t& oid,
+    const string name, bufferlist& value) {
+    bufferptr bp;
+    int r = getattr(cid, oid, name.c_str(), bp);
+    value.push_back(bp);
     return r;
   }
   virtual int getattrs(coll_t cid, const ghobject_t& oid, map<string,bufferptr>& aset, bool user_only = false) = 0;

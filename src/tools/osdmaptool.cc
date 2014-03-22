@@ -34,6 +34,10 @@ void usage()
   cout << " usage: [--print] [--createsimple <numosd> [--clobber] [--pg_bits <bitsperosd>]] <mapfilename>" << std::endl;
   cout << "   --export-crush <file>   write osdmap's crush map to <file>" << std::endl;
   cout << "   --import-crush <file>   replace osdmap's crush map with <file>" << std::endl;
+  cout << "   --test-map-pgs [--pool <poolid>] map all pgs" << std::endl;
+  cout << "   --mark-up-in            mark osds up and in (but do not persist)" << std::endl;
+  cout << "   --clear-temp            clear pg_temp and primary_temp" << std::endl;
+  cout << "   --test-random           do random placements" << std::endl;
   cout << "   --test-map-pg <pgid>    map a pgid to osds" << std::endl;
   cout << "   --test-map-object <objectname> [--pool <poolid>] map an object to osds"
        << std::endl;
@@ -67,7 +71,11 @@ int main(int argc, const char **argv)
   bool test_crush = false;
   int range_first = -1;
   int range_last = -1;
-  int pool = 0;
+  int pool = -1;
+  bool mark_up_in = false;
+  bool clear_temp = false;
+  bool test_map_pgs = false;
+  bool test_random = false;
 
   std::string val;
   std::ostringstream err;
@@ -90,6 +98,14 @@ int main(int argc, const char **argv)
       createsimple = true;
     } else if (ceph_argparse_flag(args, i, "--create-from-conf", (char*)NULL)) {
       create_from_conf = true;
+    } else if (ceph_argparse_flag(args, i, "--mark-up-in", (char*)NULL)) {
+      mark_up_in = true;
+    } else if (ceph_argparse_flag(args, i, "--clear-temp", (char*)NULL)) {
+      clear_temp = true;
+    } else if (ceph_argparse_flag(args, i, "--test-map-pgs", (char*)NULL)) {
+      test_map_pgs = true;
+    } else if (ceph_argparse_flag(args, i, "--test-random", (char*)NULL)) {
+      test_random = true;
     } else if (ceph_argparse_flag(args, i, "--clobber", (char*)NULL)) {
       clobber = true;
     } else if (ceph_argparse_withint(args, i, &pg_bits, &err, "--pg_bits", (char*)NULL)) {
@@ -115,6 +131,10 @@ int main(int argc, const char **argv)
     } else if (ceph_argparse_withint(args, i, &range_first, &err, "--range_first", (char*)NULL)) {
     } else if (ceph_argparse_withint(args, i, &range_last, &err, "--range_last", (char*)NULL)) {
     } else if (ceph_argparse_withint(args, i, &pool, &err, "--pool", (char*)NULL)) {
+      if (!err.str().empty()) {
+        cerr << err.str() << std::endl;
+        exit(EXIT_FAILURE);
+      }
     } else {
       ++i;
     }
@@ -197,6 +217,20 @@ int main(int argc, const char **argv)
     modified = true;
   }
 
+  if (mark_up_in) {
+    cout << "marking all OSDs up and in" << std::endl;
+    int n = osdmap.get_max_osd();
+    for (int i=0; i<n; i++) {
+      osdmap.set_state(i, osdmap.get_state(i) | CEPH_OSD_UP);
+      osdmap.set_weight(i, CEPH_OSD_IN);
+      osdmap.crush->adjust_item_weightf(g_ceph_context, i, 1.0);
+    }
+  }
+  if (clear_temp) {
+    cout << "clearing pg/primary temp" << std::endl;
+    osdmap.clear_temp();
+  }
+
   if (!import_crush.empty()) {
     bufferlist cbl;
     std::string error;
@@ -241,6 +275,10 @@ int main(int argc, const char **argv)
 
   if (!test_map_object.empty()) {
     object_t oid(test_map_object);
+    if (pool == -1) {
+      cout << me << ": assuming pool 0 (use --pool to override)" << std::endl;
+      pool = 0;
+    }
     if (!osdmap.have_pg_pool(pool)) {
       cerr << "There is no pool " << pool << std::endl;
       exit(1);
@@ -275,6 +313,111 @@ int main(int argc, const char **argv)
          << ") acting (" << acting << ", p" << acting_primary << ")"
          << std::endl;
   }
+  if (test_map_pgs) {
+    if (pool != -1 && !osdmap.have_pg_pool(pool)) {
+      cerr << "There is no pool " << pool << std::endl;
+      exit(1);
+    }
+    int n = osdmap.get_max_osd();
+    vector<int> count(n, 0);
+    vector<int> first_count(n, 0);
+    vector<int> primary_count(n, 0);
+    vector<int> size(30, 0);
+    if (test_random)
+      srand(getpid());
+    const map<int64_t,pg_pool_t>& pools = osdmap.get_pools();
+    for (map<int64_t,pg_pool_t>::const_iterator p = pools.begin();
+	 p != pools.end(); ++p) {
+      if (pool != -1 && p->first != pool)
+	continue;
+      cout << "pool " << p->first
+	   << " pg_num " << p->second.get_pg_num() << std::endl;
+      for (unsigned i = 0; i < p->second.get_pg_num(); ++i) {
+	pg_t pgid = pg_t(i, p->first);
+
+	vector<int> osds;
+	int primary;
+	if (test_random) {
+	  osds.resize(p->second.size);
+	  for (unsigned i=0; i<osds.size(); ++i) {
+	    osds[i] = rand() % osdmap.get_max_osd();
+	  }
+	  primary = osds[0];
+	} else {
+	  osdmap.pg_to_acting_osds(pgid, &osds, &primary);
+	}
+	size[osds.size()]++;
+
+	for (unsigned i=0; i<osds.size(); i++) {
+	  //cout << " rep " << i << " on " << osds[i] << std::endl;
+	  count[osds[i]]++;
+	}
+	if (osds.size())
+	  first_count[osds[0]]++;
+	if (primary >= 0)
+	  primary_count[primary]++;
+      }
+    }
+
+    uint64_t total = 0;
+    int in = 0;
+    int min_osd = -1;
+    int max_osd = -1;
+    cout << "#osd\tcount\tfirst\tprimary\tc wt\twt\n";
+    for (int i=0; i<n; i++) {
+      if (!osdmap.is_in(i))
+	continue;
+      if (osdmap.crush->get_item_weight(i) <= 0)
+	continue;
+      in++;
+      cout << "osd." << i
+	   << "\t" << count[i]
+	   << "\t" << first_count[i]
+	   << "\t" << primary_count[i]
+	   << "\t" << osdmap.crush->get_item_weightf(i)
+	   << "\t" << osdmap.get_weightf(i)
+	   << std::endl;
+      total += count[i];
+      if (count[i] &&
+	  (min_osd < 0 ||
+	   count[i] < count[min_osd]))
+	min_osd = i;
+      if (count[i] &&
+	  (max_osd < 0 ||
+	   count[i] > count[max_osd]))
+	max_osd = i;
+
+    }
+    uint64_t avg = total / in;
+    double dev = 0;
+    for (int i=0; i<n; i++) {
+      if (!osdmap.is_in(i))
+	continue;
+      if (osdmap.crush->get_item_weight(i) <= 0)
+	continue;
+      dev += (avg - count[i]) * (avg - count[i]);
+    }
+    dev /= in;
+    dev = sqrt(dev);
+
+    //double edev = sqrt(pgavg) * (double)avg / pgavg;
+    double edev = sqrt((double)total / (double)in * (1.0 - (1.0 / (double)in)));
+    cout << " in " << in << std::endl;
+    cout << " avg " << avg
+	 << " stddev " << dev
+	 << " (" << (dev/avg) << "x)"
+	 << " (expected " << edev << " " << (edev/avg) << "x))"
+	 << std::endl;
+
+    if (min_osd >= 0)
+      cout << " min osd." << min_osd << " " << count[min_osd] << std::endl;
+    if (max_osd >= 0)
+      cout << " max osd." << max_osd << " " << count[max_osd] << std::endl;
+
+    for (int i=0; i<4; i++) {
+      cout << "size " << i << "\t" << size[i] << std::endl;
+    }
+  }
   if (test_crush) {
     int pass = 0;
     while (1) {
@@ -308,7 +451,8 @@ int main(int argc, const char **argv)
 
   if (!print && !print_json && !tree && !modified && 
       export_crush.empty() && import_crush.empty() && 
-      test_map_pg.empty() && test_map_object.empty()) {
+      test_map_pg.empty() && test_map_object.empty() &&
+      !test_map_pgs) {
     cerr << me << ": no action specified?" << std::endl;
     usage();
   }

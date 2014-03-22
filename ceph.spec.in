@@ -22,6 +22,7 @@ Requires:	libcephfs1 = %{version}-%{release}
 Requires:	python
 Requires:	python-argparse
 Requires:	python-ceph
+Requires:	python-requests
 Requires:       xfsprogs
 Requires:	cryptsetup
 Requires:	parted
@@ -46,6 +47,7 @@ BuildRequires:  libxml2-devel
 BuildRequires:  libuuid-devel
 BuildRequires:  libblkid-devel >= 2.17
 BuildRequires:  leveldb-devel > 1.2
+BuildRequires:  xfsprogs-devel
 BuildRequires:  yasm
 %if 0%{?rhel_version} || 0%{?centos_version} || 0%{?fedora}
 BuildRequires:  snappy-devel
@@ -196,7 +198,6 @@ Requires:	librados2 = %{version}-%{release}
 Requires:	librbd1 = %{version}-%{release}
 Requires:	libcephfs1 = %{version}-%{release}
 Requires:	python-flask
-Requires:	python-requests
 %if 0%{defined suse_version}
 %py_requires
 %endif
@@ -394,6 +395,7 @@ fi
 %{_bindir}/ceph-authtool
 %{_bindir}/ceph-syn
 %{_bindir}/ceph-post-file
+%{_bindir}/ceph-brag
 %{_bindir}/ceph-crush-location
 %{_bindir}/ceph-run
 %{_bindir}/ceph-mon
@@ -416,7 +418,8 @@ fi
 %{_sbindir}/rcceph
 /sbin/mkcephfs
 /sbin/mount.ceph
-%{_libdir}/ceph
+%dir %{_libdir}/ceph
+%{_libdir}/ceph/ceph_common.sh
 %dir %{_libdir}/rados-classes
 %{_libdir}/rados-classes/libcls_rbd.so*
 %{_libdir}/rados-classes/libcls_hello.so*
@@ -616,6 +619,7 @@ fi
 %{_bindir}/ceph_dupstore
 %{_bindir}/ceph_kvstorebench
 %{_bindir}/ceph_multi_stress_watch
+%{_bindir}/ceph_erasure_code
 %{_bindir}/ceph_erasure_code_benchmark
 %{_bindir}/ceph_omapbench
 %{_bindir}/ceph_psim
@@ -647,10 +651,10 @@ fi
 %{_bindir}/ceph_test_cls_version
 %{_bindir}/ceph_test_cors
 %{_bindir}/ceph_test_filejournal
-%{_bindir}/ceph_test_filestore
+%{_bindir}/ceph_test_objectstore
 %{_bindir}/ceph_test_filestore_idempotent
 %{_bindir}/ceph_test_filestore_idempotent_sequence
-%{_bindir}/ceph_test_filestore_workloadgen
+%{_bindir}/ceph_test_objectstore_workloadgen
 %{_bindir}/ceph_test_get_blkdev_size
 %{_bindir}/ceph_test_ioctls
 %{_bindir}/ceph_test_keyvaluedb_atomicity
@@ -664,6 +668,8 @@ fi
 %{_bindir}/ceph_test_objectcacher_stress
 %{_bindir}/ceph_test_rados_api_aio
 %{_bindir}/ceph_test_rados_api_cls
+%{_bindir}/ceph_test_rados_api_c_read_operations
+%{_bindir}/ceph_test_rados_api_c_write_operations
 %{_bindir}/ceph_test_rados_api_cmd
 %{_bindir}/ceph_test_rados_api_io
 %{_bindir}/ceph_test_rados_api_list

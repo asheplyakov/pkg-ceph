@@ -113,6 +113,9 @@
 /* Define if you have tcmalloc */
 #undef HAVE_LIBTCMALLOC
 
+/* Define to 1 if you have libxfs */
+#undef HAVE_LIBXFS
+
 /* Defined if you have libzfs enabled */
 #undef HAVE_LIBZFS
 

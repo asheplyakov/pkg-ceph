@@ -277,6 +277,8 @@ void Monitor::do_admin_command(string command, cmdmap_t& cmdmap, string format,
     sync_force(f.get(), ss);
   } else if (command.find("add_bootstrap_peer_hint") == 0) {
     _add_bootstrap_peer_hint(command, cmdmap, ss);
+  } else if (command.find("osdmonitor_prepare_command") == 0) {
+    _osdmonitor_prepare_command(cmdmap, ss);
   } else if (command == "quorum enter") {
     elector.start_participating();
     start_election();
@@ -518,6 +520,11 @@ int Monitor::preinit()
   r = admin_socket->register_command("mon_status", "mon_status", admin_hook,
 				     "show current monitor status");
   assert(r == 0);
+  if (g_conf->mon_advanced_debug_mode) {
+    r = admin_socket->register_command("osdmonitor_prepare_command", "osdmonitor_prepare_command", admin_hook,
+				       "call OSDMonitor::prepare_command");
+    assert(r == 0);
+  }
   r = admin_socket->register_command("quorum_status", "quorum_status",
 				     admin_hook, "show current quorum status");
   assert(r == 0);
@@ -746,10 +753,34 @@ void Monitor::bootstrap()
   }
 }
 
+void Monitor::_osdmonitor_prepare_command(cmdmap_t& cmdmap, ostream& ss)
+{
+  if (!is_leader()) {
+    ss << "mon must be a leader";
+    return;
+  }
+
+  string cmd;
+  cmd_getval(g_ceph_context, cmdmap, "prepare", cmd);
+  cmdmap["prefix"] = cmdmap["prepare"];
+  
+  OSDMonitor *monitor = osdmon();
+  MMonCommand *m = static_cast<MMonCommand *>((new MMonCommand())->get());
+  if (monitor->prepare_command_impl(m, cmdmap))
+    ss << "true";
+  else
+    ss << "false";
+  m->put();
+}
+
 void Monitor::_add_bootstrap_peer_hint(string cmd, cmdmap_t& cmdmap, ostream& ss)
 {
   string addrstr;
-  cmd_getval(g_ceph_context, cmdmap, "addr", addrstr);
+  if (!cmd_getval(g_ceph_context, cmdmap, "addr", addrstr)) {
+    ss << "unable to parse address string value '"
+         << cmd_vartype_stringify(cmdmap["addr"]) << "'";
+    return;
+  }
   dout(10) << "_add_bootstrap_peer_hint '" << cmd << "' '"
            << addrstr << "'" << dendl;
 
@@ -1388,15 +1419,15 @@ void Monitor::handle_probe_reply(MMonProbe *m)
   }
 
   // new initial peer?
-  if (monmap->contains(m->name)) {
-    if (monmap->get_addr(m->name).is_blank_ip()) {
-      dout(1) << " learned initial mon " << m->name << " addr " << m->get_source_addr() << dendl;
-      monmap->set_addr(m->name, m->get_source_addr());
-      m->put();
+  if (monmap->get_epoch() == 0 &&
+      monmap->contains(m->name) &&
+      monmap->get_addr(m->name).is_blank_ip()) {
+    dout(1) << " learned initial mon " << m->name << " addr " << m->get_source_addr() << dendl;
+    monmap->set_addr(m->name, m->get_source_addr());
+    m->put();
 
-      bootstrap();
-      return;
-    }
+    bootstrap();
+    return;
   }
 
   // end discover phase
@@ -1560,12 +1591,22 @@ void Monitor::win_election(epoch_t epoch, set<int>& active, uint64_t features,
     classic_mons = *classic_monitors;
 
   paxos->leader_init();
-  for (vector<PaxosService*>::iterator p = paxos_service.begin(); p != paxos_service.end(); ++p)
-    (*p)->election_finished();
+  // NOTE: tell monmap monitor first.  This is important for the
+  // bootstrap case to ensure that the very first paxos proposal
+  // codifies the monmap.  Otherwise any manner of chaos can ensue
+  // when monitors are call elections or participating in a paxos
+  // round without agreeing on who the participants are.
+  monmon()->election_finished();
+  for (vector<PaxosService*>::iterator p = paxos_service.begin();
+       p != paxos_service.end(); ++p) {
+    if (*p != monmon())
+      (*p)->election_finished();
+  }
   health_monitor->start(epoch);
 
   finish_election();
-  if (monmap->size() > 1)
+  if (monmap->size() > 1 &&
+      monmap->get_epoch() > 0)
     timecheck_start();
 }
 
@@ -1681,9 +1722,9 @@ void Monitor::_quorum_status(Formatter *f, ostream& ss)
     f->dump_int("mon", *p);
   f->close_section(); // quorum
 
-  set<string> quorum_names = get_quorum_names();
+  list<string> quorum_names = get_quorum_names();
   f->open_array_section("quorum_names");
-  for (set<string>::iterator p = quorum_names.begin(); p != quorum_names.end(); ++p)
+  for (list<string>::iterator p = quorum_names.begin(); p != quorum_names.end(); ++p)
     f->dump_string("mon", *p);
   f->close_section(); // quorum_names
 
@@ -1939,7 +1980,7 @@ void Monitor::get_status(stringstream &ss, Formatter *f)
     ss << "    cluster " << monmap->get_fsid() << "\n";
     ss << "     health " << health << "\n";
     ss << "     monmap " << *monmap << ", election epoch " << get_epoch()
-      << ", quorum " << get_quorum() << " " << get_quorum_names() << "\n";
+       << ", quorum " << get_quorum() << " " << get_quorum_names() << "\n";
     if (mdsmon()->mdsmap.get_epoch() > 1)
       ss << "     mdsmap " << mdsmon()->mdsmap << "\n";
     osdmon()->osdmap.print_summary(NULL, ss);
@@ -1985,7 +2026,7 @@ const MonCommand *Monitor::_get_moncommand(const string &cmd_prefix,
 
 bool Monitor::_allowed_command(MonSession *s, string &module, string &prefix,
                                const map<string,cmd_vartype>& cmdmap,
-                               const map<string,string> param_str_map,
+                               const map<string,string>& param_str_map,
                                const MonCommand *this_cmd) {
 
   bool cmd_r = (this_cmd->req_perms.find('r') != string::npos);
@@ -2382,6 +2423,9 @@ void Monitor::handle_command(MMonCommand *m)
       start_election();
       rs = "started responding to quorum, initiated new election";
       r = 0;
+    } else {
+      rs = "needs a valid 'quorum' command";
+      r = -EINVAL;
     }
   }
 
@@ -2526,7 +2570,14 @@ void Monitor::try_send_message(Message *m, const entity_inst_t& to)
 
 void Monitor::send_reply(PaxosServiceMessage *req, Message *reply)
 {
-  MonSession *session = static_cast<MonSession*>(req->get_connection()->get_priv());
+  ConnectionRef connection = req->get_connection();
+  if (!connection) {
+    dout(2) << "send_reply no connection, dropping reply " << *reply
+	    << " to " << req << " " << *req << dendl;
+    reply->put();
+    return;
+  }
+  MonSession *session = static_cast<MonSession*>(connection->get_priv());
   if (!session) {
     dout(2) << "send_reply no session, dropping reply " << *reply
 	    << " to " << req << " " << *req << dendl;
