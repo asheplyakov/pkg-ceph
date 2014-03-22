@@ -1,6 +1,7 @@
 ceph (0.78-1) UNRELEASED; urgency=medium
 
   * New upstream release:
+    - d/control: Add xfslib-dev to BD's.
     - d/*: Sync relevant packaging changes from upstream.
     - d/p/*: Drop upstreamed patches.
     - d/p/modules.patch: Mark libcls_user.so and libec_jerasure.so as modules.
