@@ -40,16 +40,10 @@ override_dh_auto_configure:
 
 override_dh_auto_build:
 	dh_auto_build
-	cp src/init-ceph debian/ceph.init
-	cp src/init-radosgw debian/radosgw.init
-	cp src/init-rbdmap debian/ceph.rbdmap.init
 	cp src/upstart/rbdmap.conf debian/ceph.rbdmap.upstart
-	cp src/logrotate.conf debian/ceph.logrotate
-	cp src/rgw/logrotate.conf debian/radosgw.logrotate
 
 override_dh_auto_clean:
 	dh_auto_clean
-	rm -f debian/ceph.init debian/radosgw.init debian/ceph.rbdmap.init debian/ceph.rbdmap.upstart
 	rm -f debian/ceph.logrotate debian/radosgw.logrotate
 	rm -f debian/*.upstart
 
