@@ -33,7 +33,7 @@ endif
 extraopts += --with-system-libs3
 
 %:
-	dh $@ --with javahelper --with python2 --with autoreconf --parallel
+	dh $@ --with javahelper,python2,autoreconf --parallel
 
 override_dh_auto_configure:
 	dh_auto_configure -- $(extraopts)
