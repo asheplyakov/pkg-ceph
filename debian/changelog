@@ -1,4 +1,4 @@
-ceph (0.78-1) UNRELEASED; urgency=medium
+ceph (0.78-1) experimental; urgency=medium
 
   * New upstream release:
     - d/control: Add xfslib-dev to BD's.
