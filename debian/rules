@@ -4,6 +4,9 @@
 
 export DESTDIR=$(CURDIR)/debian/tmp
 
+# minimise needless linking
+export DEB_LDFLAGS_MAINT_APPEND= -Wl,--as-needed
+
 # Enable hardening
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 include /usr/share/dpkg/buildflags.mk
@@ -38,6 +41,11 @@ extraopts += --with-system-libs3
 
 %:
 	dh $@ --with javahelper,python2,autoreconf --parallel
+
+# use --as-needed only if supported by dh-autoreconf (to simplify backporting)
+DH_AS_NEEDED=$(shell dpkg --compare-versions $$(dpkg --status dh-autoreconf | grep Version | cut -d' ' -f2) ge 6 && echo --as-needed)
+override_dh_autoreconf:
+	dh_autoreconf $(DH_AS_NEEDED)
 
 override_dh_auto_configure:
 	dh_auto_configure -- $(extraopts)
