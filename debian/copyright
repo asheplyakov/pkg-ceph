@@ -4,15 +4,47 @@ Upstream-Contact: Sage Weil <sage@newdream.net>
 Source: http://ceph.com/
 
 Files: *
-Copyright: 2004-2013 by Sage Weil <sage@newdream.net>
+Copyright: 2004-2013 Sage Weil <sage@newdream.net>
+           2013-2014 Inktank <info@inktank.com>
+                     Inktank, Inc
+                     Inktank Storage, Inc.
+           2013-2014 Cloudwatt <libre.licensing@cloudwatt.com>
+           2011-2012 New Dream Network
+           2011      Stanislav Sedov <stas@FreeBSD.org>
+           2013      UnitedStack <haomai@unitedstack.com
 License: LGPL-2.1
 
+Files: src/erasure-code/jerasure/vectorop.h
+       src/erasure-code/jerasure/ErasureCode*
+       src/erasure-code/ErasureCode*
+       src/include/str_map.h
+       src/test/common/test_str_map.cc
+       src/test/erasure-code/*
+       src/test/rgw/test_rgw_manifest.cc
+Copyright: 2014 CERN/Switzerland
+           2013 Cloudwatt <libre.licensing@cloudwatt.com>
+           2013 eNovance SAS <licensing@enovance.com>
+License: LGPL-2.1+
+
 Files: src/mount/canonicalize.c
-Copyright: 1993 Rick Sladkey <jrs@world.std.com>
+       src/test/common/test_config.cc
+       src/test/crush/TestCrushWrapper.cc
+       src/test/common/Throttle.cc
+       src/test/filestore/chain_xattr.cc
+       src/test/mon/mon-test-helpers.sh
+       src/test/objectstore/chain_xattr.cc
+       src/test/osd/osd-test-helpers.sh
+       src/ceph-disk
+       src/stop.sh
+Copyright: 1993      Rick Sladkey <jrs@world.std.com>
+           2013      Inktank <info@inktank.com>
+           2013-2014 Cloudwatt <libre.licensing@cloudwatt.com>
 License: LGPL-2+
 
 Files: src/os/btrfs_ioctl.h
+       src/test/mon/PGMap.cc
 Copyright: 2007 Oracle.  All rights reserved.
+           2014 Inktank <info@inktank.com>
 License: GPL-2
 
 Files: src/include/ceph_hash.cc
@@ -26,7 +58,7 @@ License: public-domain
 
 Files: src/common/bloom_filter.hpp
 Copyright: 2000 Arash Partow
-License: Boost Software License, Version 1.0
+License: Boost-Software-License-1.0
  Permission is hereby granted, free of charge, to any person or organization
  obtaining a copy of the software and accompanying documentation covered by
  this license (the "Software") to use, reproduce, display, distribute,
@@ -79,7 +111,7 @@ License: GPLWithACException
 
 Files: src/common/crc32c_intel*
 Copyright: 2012-2013 Intel Corporation All Rights Reserved.
-License:
+License: BSD-3-clause
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions
  are met:
@@ -112,7 +144,7 @@ License:
 Files: src/common/sctp_crc32.c
 Copyright: 2001-2007, by Cisco Systems, Inc. All rights reserved,
            2004-2006 Intel Corporation - All Rights Reserved
-License:
+License: BSD-3-clause
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are met:
  .
@@ -139,35 +171,13 @@ License:
  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  THE POSSIBILITY OF SUCH DAMAGE.
 
-Files: src/json_spirit/*
-Copyright: John W. Wilkinson 2007 - 2011
-License: MIT
- Permission is hereby granted, free of charge, to any person obtaining
- a copy of this software and associated documentation files (the
- "Software"), to deal in the Software without restriction, including
- without limitation the rights to use, copy, modify, merge, publish,
- distribute, sublicense, and/or sell copies of the Software, and to
- permit persons to whom the Software is furnished to do so, subject to
- the following conditions:
- .
- The above copyright notice and this permission notice shall be
- included in all copies or substantial portions of the Software.
- .
- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
- NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
- LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
- OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
- WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-Files: src/test/common/Throttle.cc src/test/filestore/chain_xattr.cc
-Copyright: 2013 Cloudwatt <libre.licensing@cloudwatt.com>
-License: LGPL-2+
-
-Files: src/osd/ErasureCodePluginJerasure/*
+Files: src/erasure-code/jerasure/cauchy.*
+       src/erasure-code/jerasure/galois.*
+       src/erasure-code/jerasure/jerasure.*
+       src/erasure-code/jerasure/liberation.*
+       src/erasure-code/jerasure/reed_sol.*
 Copyright: 2011, James S. Plank <plank@cs.utk.edu>
-License:
+License: BSD-3-clause
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions
  are met:
@@ -197,10 +207,48 @@ License:
  WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  POSSIBILITY OF SUCH DAMAGE.
 
+Files: src/gtest/*
+Copyright: 2008, Google Inc.
+License: BSD-3-clause
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions are
+ met:
+ .
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above
+      copyright notice, this list of conditions and the following disclaimer
+      in the documentation and/or other materials provided with the
+      distribution.
+    * Neither the name of Google Inc. nor the names of its
+      contributors may be used to endorse or promote products derived from
+      this software without specific prior written permission.
+ .
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+Files: src/civetweb/*
+Copyright: 2004-2013 Sergey Lyubka
+License: Expat
+
+Files: src/json_spirit/*
+Copyright: 2007-2011, John W. Wilkinson
+License: Expat
+
 Files: debian/*
 Copyright: 2004- Sage Weil <sage@newdream.net>,
            2010- Canonical, Ltd.,
            2011- Laszlo Boszormenyi (GCS) <gcs@debian.org>
+           2013-2014 James Page <james.page@ubuntu.com>
 License: LGPL-2.1
 
 License: GPL-2
@@ -238,6 +286,24 @@ License: LGPL-2.1
  On Debian systems, the complete text of the GNU Lesser General
  Public License can be found in `/usr/share/common-licenses/LGPL-2.1'.
 
+License: LGPL-2.1+
+ This library is free software; you can redistribute it and/or
+ modify it under the terms of the GNU Lesser General Public
+ License as published by the Free Software Foundation; either
+ version 2.1 of the License, or (at your option) any later version.
+ .
+ This library is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ Lesser General Public License for more details.
+ .
+ You should have received a copy of the GNU Lesser General Public
+ License along with this library; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ .
+ On Debian systems, the complete text of the GNU Lesser General
+ Public License can be found in `/usr/share/common-licenses/LGPL-2.1'.
+
 License: LGPL-2+
  This library is free software; you can redistribute it and/or
  modify it under the terms of the GNU Lesser General Public
@@ -254,3 +320,26 @@ License: LGPL-2+
  .
  On Debian systems, the complete text of the GNU Lesser General
  Public License 2 can be found in `/usr/share/common-licenses/LGPL-2'.
+
+License: Expat
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+Comment:
+ This license also known as "MIT" however FSF consider "MIT" labelling
+ ambiguous and copyright-format specification recommend to label such license
+ as "Expat".
