@@ -8,6 +8,7 @@ ceph (0.78-2) experimental; urgency=low
     + new "init.patch" for init.d scripts lintianisation.
   * Use symlinks to simplify installation of init.d and logrotate scripts.
   * Added retrospective changelog entry to mention new B-D "libblkid-dev".
+  * Added "README.Debian" file with some hopefully useful notes.
   * rules:
     + "dh --with" optimised.
     + set JAVAC to prevent FTBFS due to incorrect use of 'gcj', when detected.

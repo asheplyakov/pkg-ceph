@@ -1,0 +1,22 @@
+## CephFS is not production quality yet.
+
+----
+
+## See online installation and setup documentation at
+
+    http://ceph.com/docs/master/install/manual-deployment/
+
+----
+
+> How to mount CephFS using fuse client from "/etc/fstab"?
+
+Add (and modify) the following sample to "/etc/fstab":
+
+    mount.fuse.ceph#conf=/etc/ceph/ceph.conf,id=admin    /mnt/ceph     fuse     _netdev,noatime,allow_other     0    0
+
+This is equivalent of running
+
+    ceph-fuse /mnt/ceph --id=admin -o noatime,allow_other
+
+as root.
+
