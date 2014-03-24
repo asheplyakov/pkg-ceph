@@ -41,7 +41,7 @@ Build-Depends: debhelper (>= 9~),
                xfslibs-dev,
                yasm
 Build-Conflicts: libcrypto++-dev
-Standards-Version: 3.9.4
+Standards-Version: 3.9.5
 X-Python-Version: >= 2.6
 XS-Testsuite: autopkgtest
 
