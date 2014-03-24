@@ -1,0 +1,60 @@
+Last-Update: 2014-03-24
+Forwarded: not-needed
+Author: Dmitry Smirnov <onlyjob@member.fsf.org>
+Description: init.d script(s) corrections
+ * init.d-script-does-not-source-init-functions
+ * init.d-script-does-not-implement-required-option
+ * init.d-script-missing-lsb-description
+
+--- a/src/init-ceph.in
++++ b/src/init-ceph.in
+@@ -11,8 +11,10 @@
+ # Short-Description: Start Ceph distributed file system daemons at boot time
+ # Description:       Enable Ceph distributed file system services.
+ ### END INIT INFO
+ 
++. /lib/lsb/init-functions
++
+ # if we start up as ./mkcephfs, assume everything else is in the
+ # current directory too.
+ if [ `dirname $0` = "." ] && [ $PWD != "/etc/init.d" ]; then
+     BINDIR=.
+--- a/src/init-rbdmap
++++ b/src/init-rbdmap
+@@ -92,8 +92,13 @@
+   stop)
+ 	do_unmap
+ 	;;
+ 
++  restart|force-reload)
++	$0 stop
++	$0 start
++	;;
++
+   reload)
+ 	do_map
+ 	;;
+ 
+@@ -101,9 +106,9 @@
+ 	rbd showmapped
+ 	;;
+ 
+   *)
+-	log_success_msg "Usage: rbdmap {start|stop|reload|status}"
++	log_success_msg "Usage: rbdmap {start|stop|restart|force-reload|reload|status}"
+ 	exit 1
+ 	;;
+ esac
+ 
+--- a/src/init-radosgw
++++ b/src/init-radosgw
+@@ -5,8 +5,9 @@
+ # Required-Stop:     $remote_fs $named $network $time
+ # Default-Start:     2 3 4 5
+ # Default-Stop:      0 1 6
+ # Short-Description: radosgw RESTful rados gateway
++# Description: radosgw RESTful rados gateway
+ ### END INIT INFO
+ 
+ PATH=/sbin:/bin:/usr/bin
+ 
