@@ -44,12 +44,12 @@ override_dh_auto_configure:
 
 override_dh_auto_build:
 	dh_auto_build
-	cp src/upstart/rbdmap.conf debian/ceph.rbdmap.upstart
+	cp -v src/upstart/rbdmap.conf debian/ceph.rbdmap.upstart
 
 override_dh_auto_clean:
 	dh_auto_clean
-	rm -f debian/ceph.logrotate debian/radosgw.logrotate
-	rm -f debian/*.upstart
+	rm -fv debian/ceph.logrotate debian/radosgw.logrotate
+	rm -fv debian/*.upstart
 
 override_dh_auto_install:
 	dh_auto_install
@@ -60,18 +60,18 @@ override_dh_installinit:
 	# Install upstart configurations using dh_installinit
 	for conf in `ls -1 src/upstart/ceph*.conf | grep -v mds`; do \
         name=`basename $$conf | cut -d . -f 1`; \
-        cp $$conf debian/ceph.$$name.upstart; \
+        cp -v $$conf debian/ceph.$$name.upstart; \
         dh_installinit -pceph --no-start --name=$$name; \
     done
 	for conf in `ls -1 src/upstart/ceph-mds*.conf`; do \
         name=`basename $$conf | cut -d . -f 1`; \
-        cp $$conf debian/ceph-mds.$$name.upstart; \
+        cp -v $$conf debian/ceph-mds.$$name.upstart; \
         dh_installinit -pceph-mds --no-start --name=$$name; \
     done
 	for conf in `ls -1 src/upstart/radosgw*.conf`; do \
         name=`basename $$conf | cut -d . -f 1`; \
         [ $$name = "radosgw" ] && name="radosgw-instance";\
-        cp $$conf debian/radosgw.$$name.upstart; \
+        cp -v $$conf debian/radosgw.$$name.upstart; \
         dh_installinit -pradosgw --no-start --name=$$name; \
     done
 
