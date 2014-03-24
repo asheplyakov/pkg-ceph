@@ -1,7 +1,29 @@
+ceph (0.78-2) experimental; urgency=low
+
+  * Standards to 3.9.5.
+  * debian/copyright: reviewed and updated.
+  * ceph-test: added lintian-override for "binary-without-manpage".
+  * Patchworks:
+    + refreshed/renamed/reordered "virtualenv-never-download.patch".
+    + new "init.patch" for init.d scripts lintianisation.
+  * Use symlinks to simplify installation of init.d and logrotate scripts.
+  * Added retrospective changelog entry to mention new B-D "libblkid-dev".
+  * rules:
+    + "dh --with" optimised.
+    + set JAVAC to prevent FTBFS due to incorrect use of 'gcj', when detected.
+    + verbose mode for 'cp' and 'rm' commands.
+    + build with "--as-needed" to minimise needless linking.
+  * control:
+    + lintian/duplicate-short-description + consistent capitalisation.
+    + removed needless versioned dependencies from Build-Depends.
+    + added myself to Uploaders.
+
+ -- Dmitry Smirnov <onlyjob@debian.org>  Tue, 25 Mar 2014 07:17:40 +1100
+
 ceph (0.78-1) experimental; urgency=medium
 
   * New upstream release:
-    - d/control: Add xfslib-dev to BD's.
+    - d/control: Add "xfslib-dev" and "libblkid-dev" to BD's.
     - d/*: Sync relevant packaging changes from upstream.
     - d/p/*: Drop upstreamed patches.
     - d/p/modules.patch: Mark libcls_user.so and libec_jerasure.so as modules.
