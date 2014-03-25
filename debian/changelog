@@ -11,6 +11,7 @@ ceph (0.78-2) experimental; urgency=low
     + new "gcj.patch" with partial fix to FTBFS with gcj-jdk.
   * Use symlinks to simplify installation of init.d and logrotate scripts.
   * Added retrospective changelog entry to mention new B-D "libblkid-dev".
+  * Added "debian/clean file".
   * Added "README.Debian" file with some hopefully useful notes.
   * Added "mount.fuse.ceph.8" man page.
   * rules:
