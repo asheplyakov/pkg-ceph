@@ -9,6 +9,7 @@ ceph (0.78-2) experimental; urgency=low
   * Use symlinks to simplify installation of init.d and logrotate scripts.
   * Added retrospective changelog entry to mention new B-D "libblkid-dev".
   * Added "README.Debian" file with some hopefully useful notes.
+  * Added "mount.fuse.ceph.8" man page.
   * rules:
     + "dh --with" optimised.
     + set JAVAC to prevent FTBFS due to incorrect use of 'gcj', when detected.
