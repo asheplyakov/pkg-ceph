@@ -1,4 +1,5 @@
 fix-defaultweight.patch
+gcj.patch
 init.patch
 logrotate.patch
 modules.patch

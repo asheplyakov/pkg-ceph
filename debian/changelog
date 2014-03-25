@@ -8,6 +8,7 @@ ceph (0.78-2) experimental; urgency=low
     + new "init.patch" for init.d scripts lintianisation.
     + new "logrotate.patch" to avoid rotating empty logs.
     + new "fix-defaultweight.patch" to fix weight calculation on OSD start.
+    + new "gcj.patch" with partial fix to FTBFS with gcj-jdk.
   * Use symlinks to simplify installation of init.d and logrotate scripts.
   * Added retrospective changelog entry to mention new B-D "libblkid-dev".
   * Added "README.Debian" file with some hopefully useful notes.
