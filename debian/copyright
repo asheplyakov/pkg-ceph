@@ -245,10 +245,11 @@ Copyright: 2007-2011, John W. Wilkinson
 License: Expat
 
 Files: debian/*
-Copyright: 2004- Sage Weil <sage@newdream.net>,
-           2010- Canonical, Ltd.,
-           2011- Laszlo Boszormenyi (GCS) <gcs@debian.org>
+Copyright: 2010      Sage Weil <sage@newdream.net>
+           2010      Canonical, Ltd.
+           2011-2013 Laszlo Boszormenyi (GCS) <gcs@debian.org>
            2013-2014 James Page <james.page@ubuntu.com>
+           2014      Dmitry Smirnov <onlyjob@debian.org>
 License: LGPL-2.1
 
 License: GPL-2
