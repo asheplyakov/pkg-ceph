@@ -1,4 +1,5 @@
 fix-defaultweight.patch
 init.patch
+logrotate.patch
 modules.patch
 virtualenv-never-download.patch

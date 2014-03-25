@@ -6,6 +6,7 @@ ceph (0.78-2) experimental; urgency=low
   * Patchworks:
     + refreshed/renamed/reordered "virtualenv-never-download.patch".
     + new "init.patch" for init.d scripts lintianisation.
+    + new "logrotate.patch" to avoid rotating empty logs.
     + new "fix-defaultweight.patch" to fix weight calculation on OSD start.
   * Use symlinks to simplify installation of init.d and logrotate scripts.
   * Added retrospective changelog entry to mention new B-D "libblkid-dev".

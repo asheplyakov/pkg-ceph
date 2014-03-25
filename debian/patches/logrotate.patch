@@ -1,0 +1,15 @@
+Last-Update: 2014-03-25
+Forwarded: no
+Author: Dmitry Smirnov <onlyjob@member.fsf.org>
+Description: logrotate improvement
+ * do not rotate empty logs
+
+--- a/src/logrotate.conf
++++ b/src/logrotate.conf
+@@ -24,5 +24,6 @@
+             done
+         fi
+     endscript
+     missingok
++    notifempty
+ }
