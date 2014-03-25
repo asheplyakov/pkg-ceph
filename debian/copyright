@@ -5,13 +5,18 @@ Source: http://ceph.com/
 
 Files: *
 Copyright: 2004-2013 Sage Weil <sage@newdream.net>
-           2013-2014 Inktank <info@inktank.com>
+           2004-2014 Inktank <info@inktank.com>
                      Inktank, Inc
                      Inktank Storage, Inc.
            2013-2014 Cloudwatt <libre.licensing@cloudwatt.com>
-           2011-2012 New Dream Network
+           2004-2011 Dreamhost
+           2013      eNovance SAS <licensing@enovance.com>
+           2012      Florian Haas, hastexo
+           2010      Greg Farnum <gregf@hq.newdream.net>
+           2004-2012 New Dream Network
            2011      Stanislav Sedov <stas@FreeBSD.org>
-           2013      UnitedStack <haomai@unitedstack.com
+           2013      UnitedStack <haomai@unitedstack.com>
+           2011      Wido den Hollander <wido@widodh.nl>
 License: LGPL-2.1
 
 Files: src/erasure-code/jerasure/vectorop.h
@@ -243,6 +248,44 @@ License: Expat
 Files: src/json_spirit/*
 Copyright: 2007-2011, John W. Wilkinson
 License: Expat
+
+Files: src/java/native/ScopedLocalRef.h
+       src/java/native/JniConstants.*
+Copyright: 2010 The Android Open Source Project
+License: Apache-2.0
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+ .
+      http://www.apache.org/licenses/LICENSE-2.0
+ .
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ .
+ The complete text of the Apache License, Version 2.0
+ can be found in "/usr/share/common-licenses/Apache-2.0".
+
+Files: src/libs3/*
+Copyright: 2008 Bryan Ischo <bryan@ischo.com>
+License: GPL-3/OpenSSL
+ libs3 is free software: you can redistribute it and/or modify it under the
+ terms of the GNU General Public License as published by the Free Software
+ Foundation, version 3 of the License.
+ .
+ In addition, as a special exception, the copyright holders give
+ permission to link the code of this library and its programs with the
+ OpenSSL library, and distribute linked combinations including the two.
+ .
+ libs3 is distributed in the hope that it will be useful, but WITHOUT ANY
+ WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+ FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+ details.
+ .
+ The complete text of the GNU General Public License version 3
+ can be found in "/usr/share/common-licenses/GPL-3' file.
 
 Files: debian/*
 Copyright: 2010      Sage Weil <sage@newdream.net>
