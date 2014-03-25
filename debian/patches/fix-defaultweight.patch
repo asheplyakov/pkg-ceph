@@ -1,5 +1,5 @@
 Last-Update: 2014-03-25
-Forwarded: no
+Forwarded: https://github.com/ceph/ceph/pull/1530
 Author: Dmitry Smirnov <onlyjob@member.fsf.org>
 Description: fix bug in 'defaultweight' calculation on OSD start.
  awk: cmd. line:1: { d=$2/1073741824 ; r = sprintf(\"%.2f\", d); print r }
