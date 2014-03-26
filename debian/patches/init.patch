@@ -1,5 +1,6 @@
 Last-Update: 2014-03-24
-Forwarded: not-needed
+Forwarded: https://github.com/ceph/ceph/pull/1531
+Applied-Upstream: https://github.com/ceph/ceph/commit/012bb5fb5bbc76e5a2c5037dc0c6558f0b1b0a45
 Author: Dmitry Smirnov <onlyjob@member.fsf.org>
 Description: init.d script(s) corrections
  * init.d-script-does-not-source-init-functions
