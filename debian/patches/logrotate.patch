@@ -1,5 +1,5 @@
 Last-Update: 2014-03-25
-Forwarded: no
+Forwarded: https://github.com/ceph/ceph/pull/1541
 Author: Dmitry Smirnov <onlyjob@member.fsf.org>
 Description: logrotate improvement
  * do not rotate empty logs
