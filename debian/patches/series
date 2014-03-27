@@ -1,3 +1,4 @@
+#defaults-leveldb-osd.patch
 fix-defaultweight.patch
 gcj.patch
 init.patch
