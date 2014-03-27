@@ -16,7 +16,7 @@
 
 ## Upgrade procedure (0.72.2 to 0.78):
 
- * Upgrade.
+ * Upgrade packages.
  * Restart all OSDs.
  * Run `ceph osd crush tunables default`.
  * Restart MONs.
@@ -42,6 +42,7 @@
  See also:
 
     http://ceph.com/docs/master/install/upgrading-ceph/
+    http://ceph.com/docs/master/release-notes/
 
 -------- -------- --------
 
