@@ -1,3 +1,4 @@
+ceph-conf-no-log.patch
 #defaults-leveldb-osd.patch
 fix-defaultweight.patch
 gcj.patch
