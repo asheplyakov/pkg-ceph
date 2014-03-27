@@ -1,13 +1,21 @@
-Last-Update: 2014-03-25
+Last-Update: 2014-03-28
 Forwarded: https://github.com/ceph/ceph/pull/1541
 Author: Dmitry Smirnov <onlyjob@member.fsf.org>
-Description: logrotate improvement
- * do not rotate empty logs
+Description: logrotate improvement -- do not rotate empty logs
 
 --- a/src/logrotate.conf
 +++ b/src/logrotate.conf
 @@ -24,5 +24,6 @@
              done
+         fi
+     endscript
+     missingok
++    notifempty
+ }
+--- a/src/rgw/logrotate.conf
++++ b/src/rgw/logrotate.conf
+@@ -21,5 +21,6 @@
+           done
          fi
      endscript
      missingok
