@@ -1,5 +1,6 @@
 Last-Update: 2014-03-29
 Forwarded: https://github.com/ceph/ceph/pull/1562
+Applied-Upstream: https://github.com/ceph/ceph/commit/44afc2332e3ff6e64d8aa8fb0d160aeb60dbcc85
 Author: Dmitry Smirnov <onlyjob@member.fsf.org>
 Description: fix OSD startup issue
  On machines with MON and OSDs (on boot) OSDs started shortly after MON startup
