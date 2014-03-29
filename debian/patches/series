@@ -2,6 +2,7 @@ ceph-conf-no-log.patch
 #defaults-leveldb-osd.patch
 fix-defaultweight.patch
 gcj.patch
+init-osd.patch
 init.patch
 logrotate.patch
 modules.patch
