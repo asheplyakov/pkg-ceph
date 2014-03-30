@@ -49,7 +49,7 @@ XS-Testsuite: autopkgtest
 Package: ceph
 Architecture: linux-any
 Depends: binutils,
-         ceph-common,
+         ceph-common (= ${binary:Version}),
          cryptsetup-bin | cryptsetup,
          gdisk,
          hdparm | sdparm,
