@@ -1,0 +1,29 @@
+Last-Update: 2014-04-02
+Forwarded: https://github.com/ceph/ceph/pull/1587
+Author: Dmitry Smirnov <onlyjob@member.fsf.org>
+Description: correcting rbdmap LSB header / init order:
+ * Require "$remote_fs" since it guarantees /usr availability
+   (rbd executable is in /usr/bin/rbd)
+ * Speed-up init.d rbd mapping on machines acting as MON/OSD
+   by starting rbdmap after /init.d/ceph (when possible) and
+   shutting down rbd before ceph.
+ * Map rbd devices before starting X (helpful when /home is mounted from rbd).
+
+--- a/src/init-rbdmap
++++ b/src/init-rbdmap
+@@ -6,10 +6,13 @@
+ # description: Ceph RBD Mapping
+ 
+ ### BEGIN INIT INFO
+ # Provides:          rbdmap
+-# Required-Start:    $network
+-# Required-Stop:     $network
++# Required-Start:    $network $remote_fs
++# Required-Stop:     $network $remote_fs
++# Should-Start:      ceph
++# Should-Stop:       ceph
++# X-Start-Before:    $x-display-manager
+ # Default-Start:     2 3 4 5
+ # Default-Stop:      0 1 6
+ # Short-Description: Ceph RBD Mapping
+ # Description:       Ceph RBD Mapping

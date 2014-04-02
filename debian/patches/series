@@ -4,6 +4,7 @@ fix-defaultweight.patch
 gcj.patch
 init-osd.patch
 init.patch
+init-lsb.patch
 logrotate.patch
 modules.patch
 virtualenv-never-download.patch
