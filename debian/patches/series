@@ -1,3 +1,4 @@
+7980.patch
 ceph-conf-no-log.patch
 #defaults-leveldb-osd.patch
 fix-defaultweight.patch

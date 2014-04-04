@@ -1,0 +1,33 @@
+Last-Update: 2014-04-04
+Forwarded: not-needed
+Origin: upstream, https://github.com/ceph/ceph/commit/fb72330fb3514be690dc60598242036aa560e023
+Bug-Ceph: http://tracker.ceph.com/issues/7980
+Author: Yan, Zheng <zheng.z.yan@intel.com>
+Description: fix MDS crash (segmentation fault) on client wake-up from suspend.
+
+    mds: reset connection priv after connection's session is removed
+    
+    Signed-off-by: Yan, Zheng <zheng.z.yan@intel.com>
+
+--- a/src/mds/MDS.cc
++++ b/src/mds/MDS.cc
+@@ -2096,8 +2096,9 @@
+     if (session) {
+       if (session->is_closed()) {
+ 	dout(3) << "ms_handle_reset closing connection for session " << session->info.inst << dendl;
+ 	messenger->mark_down(con);
++	con->set_priv(NULL);
+ 	sessionmap.remove_session(session);
+       }
+       session->put();
+     } else {
+@@ -2124,8 +2125,9 @@
+     if (session) {
+       if (session->is_closed()) {
+ 	dout(3) << "ms_handle_remote_reset closing connection for session " << session->info.inst << dendl;
+ 	messenger->mark_down(con);
++	con->set_priv(NULL);
+ 	sessionmap.remove_session(session);
+       }
+       session->put();
+     }
