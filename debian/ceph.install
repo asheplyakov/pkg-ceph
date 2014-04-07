@@ -1,3 +1,4 @@
+debian/etc/pm/sleep.d/*    /etc/pm/sleep.d/
 ../../src/rbdmap etc/ceph
 ../../udev/60-ceph-partuuid-workaround.rules lib/udev/rules.d
 ../../udev/95-ceph-osd.rules lib/udev/rules.d

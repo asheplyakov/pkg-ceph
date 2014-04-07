@@ -1,0 +1,12 @@
+#!/bin/sh
+
+##/etc/pm/sleep.d/25-ceph
+
+case $1 in
+suspend|hibernate)
+    service ceph stop
+;;
+resume|thaw)
+    service ceph start
+;;
+esac
