@@ -2115,8 +2115,6 @@ void OSD::load_pgs()
 
     service.init_splits_between(pg->info.pgid, pg->get_osdmap(), osdmap);
 
-    pg->reg_next_scrub();
-
     // generate state for PG's current mapping
     int primary, up_primary;
     vector<int> acting, up;
@@ -2129,6 +2127,8 @@ void OSD::load_pgs()
       primary);
     int role = OSDMap::calc_pg_role(whoami, pg->acting);
     pg->set_role(role);
+
+    pg->reg_next_scrub();
 
     PG::RecoveryCtx rctx(0, 0, 0, 0, 0, 0);
     pg->handle_loaded(&rctx);
@@ -3012,9 +3012,9 @@ void OSD::handle_osd_ping(MOSDPing *m)
     break;
 
   case MOSDPing::YOU_DIED:
-    dout(10) << "handle_osd_ping " << m->get_source_inst() << " says i am down in " << m->map_epoch
-	     << dendl;
-    osdmap_subscribe(m->map_epoch, false);
+    dout(10) << "handle_osd_ping " << m->get_source_inst()
+	     << " says i am down in " << m->map_epoch << dendl;
+    osdmap_subscribe(curmap->get_epoch()+1, false);
     break;
   }
 
@@ -4175,7 +4175,7 @@ COMMAND("reset_pg_recovery_stats", "reset pg recovery statistics",
 	"osd", "rw", "cli,rest")
 };
 
-void OSD::do_command(Connection *con, tid_t tid, vector<string>& cmd, bufferlist& data)
+void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, bufferlist& data)
 {
   int r = 0;
   stringstream ss, ds;
@@ -7590,6 +7590,16 @@ void OSD::OpWQ::_process(PGRef pg, ThreadPool::TPHandle &handle)
     if (!(pg_for_processing[&*pg].size()))
       pg_for_processing.erase(&*pg);
   }
+
+  lgeneric_subdout(osd->cct, osd, 30) << "dequeue status: ";
+  Formatter *f = new_formatter("json");
+  f->open_object_section("q");
+  dump(f);
+  f->close_section();
+  f->flush(*_dout);
+  delete f;
+  *_dout << dendl;
+
   osd->dequeue_op(pg, op, handle);
   pg->unlock();
 }

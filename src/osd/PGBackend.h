@@ -3,7 +3,10 @@
 /*
  * Ceph - scalable distributed file system
  *
- * Copyright (C) 2013 Inktank Storage, Inc.
+ * Copyright (C) 2013,2014 Inktank Storage, Inc.
+ * Copyright (C) 2013,2014 Cloudwatt <libre.licensing@cloudwatt.com>
+ *
+ * Author: Loic Dachary <loic@dachary.org>
  *
  * This is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -157,6 +160,7 @@
      virtual bool pgb_is_primary() const = 0;
      virtual OSDMapRef pgb_get_osdmap() const = 0;
      virtual const pg_info_t &get_info() const = 0;
+     virtual const pg_pool_t &get_pool() const = 0;
 
      virtual ObjectContextRef get_obc(
        const hobject_t &hoid,
@@ -210,7 +214,7 @@
 
      virtual PerfCounters *get_logger() = 0;
 
-     virtual tid_t get_tid() = 0;
+     virtual ceph_tid_t get_tid() = 0;
 
      virtual LogClientTemp clog_error() = 0;
 
@@ -489,9 +493,9 @@
      const eversion_t &trim_to,           ///< [in] trim log to here
      vector<pg_log_entry_t> &log_entries, ///< [in] log entries for t
      Context *on_local_applied_sync,      ///< [in] called when applied locally
-     Context *on_all_applied,               ///< [in] called when all acked
+     Context *on_all_applied,             ///< [in] called when all acked
      Context *on_all_commit,              ///< [in] called when all commit
-     tid_t tid,                           ///< [in] tid
+     ceph_tid_t tid,                      ///< [in] tid
      osd_reqid_t reqid,                   ///< [in] reqid
      OpRequestRef op                      ///< [in] op
      ) = 0;
@@ -597,6 +601,7 @@
 
    static PGBackend *build_pg_backend(
      const pg_pool_t &pool,
+     const OSDMapRef curmap,
      Listener *l,
      coll_t coll,
      coll_t temp_coll,

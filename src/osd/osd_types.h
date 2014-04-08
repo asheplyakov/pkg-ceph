@@ -4,6 +4,9 @@
  * Ceph - scalable distributed file system
  *
  * Copyright (C) 2004-2006 Sage Weil <sage@newdream.net>
+ * Copyright (C) 2013,2014 Cloudwatt <libre.licensing@cloudwatt.com>
+ *
+ * Author: Loic Dachary <loic@dachary.org>
  *
  * This is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -875,7 +878,8 @@ private:
 
 
 public:
-  map<string,string> properties;  ///< interpreted according to the pool type
+  map<string,string> properties;  ///< OBSOLETE
+  string erasure_code_profile; ///< name of the erasure code profile in OSDMap
   epoch_t last_change;      ///< most recent epoch changed, exclusing snapshot changes
   snapid_t snap_seq;        ///< seq for per-pool snapshot
   epoch_t snap_epoch;       ///< osdmap epoch of last snap
@@ -2445,7 +2449,7 @@ struct watch_info_t {
   entity_addr_t addr;
 
   watch_info_t() : cookie(0), timeout_seconds(0) { }
-  watch_info_t(uint64_t c, uint32_t t, entity_addr_t a) : cookie(c), timeout_seconds(t), addr(a) {}
+  watch_info_t(uint64_t c, uint32_t t, const entity_addr_t& a) : cookie(c), timeout_seconds(t), addr(a) {}
 
   void encode(bufferlist& bl) const;
   void decode(bufferlist::iterator& bl);
@@ -3085,7 +3089,7 @@ struct watch_item_t {
 
   watch_item_t() : cookie(0), timeout_seconds(0) { }
   watch_item_t(entity_name_t name, uint64_t cookie, uint32_t timeout,
-     entity_addr_t addr)
+     const entity_addr_t& addr)
     : name(name), cookie(cookie), timeout_seconds(timeout),
     addr(addr) { }
 

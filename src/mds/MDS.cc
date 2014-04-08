@@ -136,6 +136,8 @@ MDS::MDS(const std::string &n, Messenger *m, MonClient *mc) :
   server = new Server(this);
   locker = new Locker(this, mdcache);
 
+  dispatch_depth = 0;
+
   // clients
   last_client_mdsmap_bcast = 0;
   
@@ -494,7 +496,11 @@ int MDS::init(int wanted_state)
     uint64_t osd_features = objecter->osdmap->get_up_osd_features();
     if (osd_features & CEPH_FEATURE_OSD_TMAP2OMAP)
       break;
-    derr << "*** one or more OSDs do not support TMAP2OMAP; upgrade OSDs before starting MDS (or downgrade MDS) ***" << dendl;
+    if (objecter->osdmap->get_num_up_osds() > 0) {
+        derr << "*** one or more OSDs do not support TMAP2OMAP; upgrade OSDs before starting MDS (or downgrade MDS) ***" << dendl;
+    } else {
+        derr << "*** no OSDs are up as of epoch " << objecter->osdmap->get_epoch() << ", waiting" << dendl;
+    }
     sleep(10);
   }
 
@@ -1187,7 +1193,7 @@ void MDS::boot_create()
 
   // write empty sessionmap
   sessionmap.save(fin.new_sub());
-  
+
   // initialize tables
   if (mdsmap->get_tableserver() == whoami) {
     dout(10) << "boot_create creating fresh anchortable" << dendl;
@@ -1200,6 +1206,8 @@ void MDS::boot_create()
     snapserver->save(fin.new_sub());
     snapserver->handle_mds_recovery(whoami);
   }
+
+  assert(g_conf->mds_kill_create_at != 1);
 
   // ok now journal it
   mdlog->journal_segment_subtree_map();
@@ -1711,7 +1719,9 @@ bool MDS::ms_dispatch(Message *m)
     m->put();
     ret = true;
   } else {
+    inc_dispatch_depth();
     ret = _dispatch(m);
+    dec_dispatch_depth();
   }
   mds_lock.Unlock();
   return ret;
@@ -1913,6 +1923,9 @@ bool MDS::_dispatch(Message *m)
     }
   }
 
+  if (dispatch_depth > 1)
+    return true;
+
   // finish any triggered contexts
   while (!finished_queue.empty()) {
     dout(7) << "mds has " << finished_queue.size() << " queued contexts" << dendl;
@@ -2097,6 +2110,7 @@ bool MDS::ms_handle_reset(Connection *con)
       if (session->is_closed()) {
 	dout(3) << "ms_handle_reset closing connection for session " << session->info.inst << dendl;
 	messenger->mark_down(con);
+	con->set_priv(NULL);
 	sessionmap.remove_session(session);
       }
       session->put();
@@ -2125,6 +2139,7 @@ void MDS::ms_handle_remote_reset(Connection *con)
       if (session->is_closed()) {
 	dout(3) << "ms_handle_remote_reset closing connection for session " << session->info.inst << dendl;
 	messenger->mark_down(con);
+	con->set_priv(NULL);
 	sessionmap.remove_session(session);
       }
       session->put();

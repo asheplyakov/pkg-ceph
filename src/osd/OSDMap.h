@@ -4,6 +4,9 @@
  * Ceph - scalable distributed file system
  *
  * Copyright (C) 2004-2006 Sage Weil <sage@newdream.net>
+ * Copyright (C) 2013,2014 Cloudwatt <libre.licensing@cloudwatt.com>
+ *
+ * Author: Loic Dachary <loic@dachary.org>
  *
  * This is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -129,6 +132,8 @@ public:
     map<int64_t,pg_pool_t> new_pools;
     map<int64_t,string> new_pool_names;
     set<int64_t> old_pools;
+    map<string,map<string,string> > new_erasure_code_profiles;
+    vector<string> old_erasure_code_profiles;
     map<int32_t,entity_addr_t> new_up_client;
     map<int32_t,entity_addr_t> new_up_cluster;
     map<int32_t,uint8_t> new_state;             // XORed onto previous state.
@@ -179,6 +184,15 @@ public:
 	new_pools[pool] = *orig;
       return &new_pools[pool];
     }
+    bool has_erasure_code_profile(const string &name) const {
+      map<string,map<string,string> >::const_iterator i =
+	new_erasure_code_profiles.find(name);
+      return i != new_erasure_code_profiles.end();
+    }
+    void set_erasure_code_profile(const string &name,
+				  const map<string,string> &profile) {
+      new_erasure_code_profiles[name] = profile;
+    }
 
     /// propage update pools' snap metadata to any of their tiers
     int propagate_snaps_to_tiers(CephContext *cct, const OSDMap &base);
@@ -213,6 +227,7 @@ private:
 
   map<int64_t,pg_pool_t> pools;
   map<int64_t,string> pool_name;
+  map<string,map<string,string> > erasure_code_profiles;
   map<string,int64_t> name_pool;
 
   ceph::shared_ptr< vector<uuid_d> > osd_uuid;
@@ -360,6 +375,31 @@ public:
     return (float)get_primary_affinity(o) / (float)CEPH_OSD_MAX_PRIMARY_AFFINITY;
   }
 
+  bool has_erasure_code_profile(const string &name) const {
+    map<string,map<string,string> >::const_iterator i =
+      erasure_code_profiles.find(name);
+    return i != erasure_code_profiles.end();
+  }
+  void set_erasure_code_profile(const string &name,
+				const map<string,string> &profile) {
+    erasure_code_profiles[name] = profile;
+  }
+  const map<string,string> &get_erasure_code_profile(const string &name) const {
+    map<string,map<string,string> >::const_iterator i =
+      erasure_code_profiles.find(name);
+    static map<string,string> empty;
+    if (i == erasure_code_profiles.end())
+      return empty;
+    else
+      return i->second;
+  }
+  map<string,string> &get_erasure_code_profile(const string &name) {
+    return erasure_code_profiles[name];
+  }
+  const map<string,map<string,string> > &get_erasure_code_profiles() const {
+    return erasure_code_profiles;
+  }
+
   bool exists(int osd) const {
     //assert(osd >= 0);
     return osd >= 0 && osd < max_osd && (osd_state[osd] & CEPH_OSD_EXISTS);
@@ -370,7 +410,7 @@ public:
   }
 
   bool is_down(int osd) const {
-    return !exists(osd) || !is_up(osd);
+    return !is_up(osd);
   }
 
   bool is_out(int osd) const {
@@ -378,7 +418,7 @@ public:
   }
 
   bool is_in(int osd) const {
-    return exists(osd) && !is_out(osd);
+    return !is_out(osd);
   }
 
   /**
@@ -778,6 +818,8 @@ public:
 
   string get_flag_string() const;
   static string get_flag_string(unsigned flags);
+  static void dump_erasure_code_profiles(const map<string,map<string,string> > &profiles,
+					 Formatter *f);
   void dump_json(ostream& out) const;
   void dump(Formatter *f) const;
   static void generate_test_instances(list<OSDMap*>& o);

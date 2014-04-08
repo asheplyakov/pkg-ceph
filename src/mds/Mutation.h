@@ -246,7 +246,7 @@ struct MDRequest : public Mutation {
       src_reanchor_atid(0), dst_reanchor_atid(0), inode_import_v(0),
       rename_inode(0), is_freeze_authpin(false), is_ambiguous_auth(false),
       is_remote_frozen_authpin(false), is_inode_exporter(false),
-      flock_was_waiting(false), stid(0), slave_commit(0) { }
+      flock_was_waiting(false), stid(0), slave_commit(0), export_dir(NULL)  { }
   } *_more;
 
 
@@ -312,7 +312,7 @@ struct MDRequest : public Mutation {
   bool slave_did_prepare();
   bool did_ino_allocation();
   bool freeze_auth_pin(CInode *inode);
-  void unfreeze_auth_pin();
+  void unfreeze_auth_pin(bool clear_inode=false);
   void set_remote_frozen_auth_pin(CInode *inode);
   bool can_auth_pin(MDSCacheObject *object);
   void drop_local_auth_pins();
@@ -328,7 +328,7 @@ struct MDSlaveUpdate {
   bufferlist rollback;
   elist<MDSlaveUpdate*>::item item;
   Context *waiter;
-  set<CDir*> olddirs;
+  set<CInode*> olddirs;
   set<CInode*> unlinked;
   MDSlaveUpdate(int oo, bufferlist &rbl, elist<MDSlaveUpdate*> &list) :
     origop(oo),

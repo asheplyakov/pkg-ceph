@@ -137,6 +137,9 @@
 /* Define to 1 if you have the <netinet/in.h> header file. */
 #undef HAVE_NETINET_IN_H
 
+/* Support (PCLMUL) Carry-Free Muliplication */
+#undef HAVE_PCLMUL
+
 /* Define to 1 if you have the `pipe2' function. */
 #undef HAVE_PIPE2
 
@@ -160,6 +163,24 @@
 
 /* Define if you have pthread_spin_init */
 #undef HAVE_PTHREAD_SPINLOCK
+
+/* Support SSE (Streaming SIMD Extensions) instructions */
+#undef HAVE_SSE
+
+/* Support SSE2 (Streaming SIMD Extensions 2) instructions */
+#undef HAVE_SSE2
+
+/* Support SSE3 (Streaming SIMD Extensions 3) instructions */
+#undef HAVE_SSE3
+
+/* Support SSE4.1 (Streaming SIMD Extensions 4.1) instructions */
+#undef HAVE_SSE4_1
+
+/* Support SSE4.2 (Streaming SIMD Extensions 4.2) instructions */
+#undef HAVE_SSE4_2
+
+/* Support SSSE3 (Supplemental Streaming SIMD Extensions 3) instructions */
+#undef HAVE_SSSE3
 
 /* define if the compiler supports static_cast<> */
 #undef HAVE_STATIC_CAST
