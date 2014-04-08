@@ -3,8 +3,8 @@ Author: Bastian Blank <waldi@debian.org>
 Origin: vendor
 Forwarded: no
 ---
---- ceph-0.67.2.orig/src/test/run-cli-tests
-+++ ceph-0.67.2/src/test/run-cli-tests
+--- a/src/test/run-cli-tests
++++ b/src/test/run-cli-tests
 @@ -30,7 +30,7 @@ if [ ! -e "$CRAM_BIN" ]; then
      # patched cram to support that. See upstream ticket at
      # https://bitbucket.org/brodie/cram/issue/9/allow-read-only-directories-for-t
