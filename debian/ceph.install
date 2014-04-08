@@ -13,7 +13,7 @@ usr/bin/crushtool
 usr/bin/monmaptool
 usr/bin/osdmaptool
 usr/lib/*/ceph/ceph_common.sh
-usr/lib/*/ceph/erasure-code/libec_jerasure_*.so
+usr/lib/*/ceph/erasure-code/libec_jerasure*.so
 usr/lib/*/rados-classes/*.so
 usr/sbin/ceph-create-keys
 usr/sbin/ceph-disk
