@@ -1,3 +1,17 @@
+ceph (0.79-1) experimental; urgency=low
+
+  * New upstream release [April 2014].
+  * Tighten dependency on ceph-common.
+  * Install pm-suspend handler to stop/start ceph services on suspend/resume.
+  * New (inactive) patch to bump OSD's leveldb defaults.
+  * Patches dropped (applied-upstream):
+    - init.patch
+    - logrotate.patch
+    - fix-defaultweight.patch
+  * Refreshed "modules.patch".
+
+ -- Dmitry Smirnov <onlyjob@debian.org>  Tue, 08 Apr 2014 16:52:04 +1000
+
 ceph (0.78-2) experimental; urgency=low
 
   * Standards to 3.9.5.

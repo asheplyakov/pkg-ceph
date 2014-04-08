@@ -13,6 +13,7 @@ Copyright: 2004-2013 Sage Weil <sage@newdream.net>
            2013      eNovance SAS <licensing@enovance.com>
            2012      Florian Haas, hastexo
            2010      Greg Farnum <gregf@hq.newdream.net>
+           2014      John Spray <john.spray@inktank.com
            2004-2012 New Dream Network
            2011      Stanislav Sedov <stas@FreeBSD.org>
            2013      UnitedStack <haomai@unitedstack.com>
@@ -176,12 +177,54 @@ License: BSD-3-clause
  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  THE POSSIBILITY OF SUCH DAMAGE.
 
+Files: src/ceph/ceph-0.79/src/erasure-code/jerasure/gf-complete/*
+Copyright: 2013 James S. Plank
+                Ethan L. Miller
+                Kevin M. Greenan
+                Benjamin A. Arnold
+                John A. Burnum
+                Adam W. Disney
+                Allen C. McBride
+License: BSD-3-clause
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions
+ are met:
+ .
+ - Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+ .
+ - Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in
+   the documentation and/or other materials provided with the
+   distribution.
+ .
+ - Neither the name of the University of Tennessee nor the names of its
+   contributors may be used to endorse or promote products derived
+   from this software without specific prior written permission.
+ .
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+ INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS
+ OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
+ AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY
+ WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ POSSIBILITY OF SUCH DAMAGE.
+Comment:
+ https://bitbucket.org/jimplank/gf-complete
+
 Files: src/erasure-code/jerasure/cauchy.*
        src/erasure-code/jerasure/galois.*
        src/erasure-code/jerasure/jerasure.*
        src/erasure-code/jerasure/liberation.*
        src/erasure-code/jerasure/reed_sol.*
-Copyright: 2011, James S. Plank <plank@cs.utk.edu>
+       src/erasure-code/jerasure/jerasure/*
+Copyright: 2011-2013 James S. Plank <plank@cs.utk.edu>
+           2013      Kevin Greenan
 License: BSD-3-clause
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions

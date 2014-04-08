@@ -1,11 +1,4 @@
-7980.patch
-ceph-conf-no-log.patch
 #defaults-leveldb-osd.patch
-fix-defaultweight.patch
 gcj.patch
-init-osd.patch
-init.patch
-init-lsb.patch
-logrotate.patch
 modules.patch
 virtualenv-never-download.patch
