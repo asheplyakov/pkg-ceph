@@ -177,6 +177,7 @@ struct Connection : private RefCountedObject {
   RefCountedObject *priv;
   int peer_type;
   entity_addr_t peer_addr;
+  utime_t last_keepalive_ack;
 private:
   uint64_t features;
 public:
@@ -184,7 +185,7 @@ public:
   bool failed;              /// true if we are a lossy connection that has failed.
 
   int rx_buffers_version;
-  map<tid_t,pair<bufferlist,int> > rx_buffers;
+  map<ceph_tid_t,pair<bufferlist,int> > rx_buffers;
 
   friend class boost::intrusive_ptr<Connection>;
 
@@ -284,14 +285,18 @@ public:
   void set_features(uint64_t f) { features = f; }
   void set_feature(uint64_t f) { features |= f; }
 
-  void post_rx_buffer(tid_t tid, bufferlist& bl) {
+  void post_rx_buffer(ceph_tid_t tid, bufferlist& bl) {
     Mutex::Locker l(lock);
     ++rx_buffers_version;
     rx_buffers[tid] = pair<bufferlist,int>(bl, rx_buffers_version);
   }
-  void revoke_rx_buffer(tid_t tid) {
+  void revoke_rx_buffer(ceph_tid_t tid) {
     Mutex::Locker l(lock);
     rx_buffers.erase(tid);
+  }
+
+  utime_t get_last_keepalive_ack() const {
+    return last_keepalive_ack;
   }
 };
 typedef boost::intrusive_ptr<Connection> ConnectionRef;

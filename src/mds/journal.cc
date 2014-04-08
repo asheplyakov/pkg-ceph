@@ -157,7 +157,7 @@ void LogSegment::try_to_expire(MDS *mds, C_GatherBuilder &gather_bld)
       CInode *in = *p;
       assert(in->last == CEPH_NOSNAP);
       ++p;
-      if (in->is_auth() && in->is_any_caps()) {
+      if (in->is_auth() && !in->is_ambiguous_auth() && in->is_any_caps()) {
 	if (in->is_any_caps_wanted()) {
 	  dout(20) << "try_to_expire requeueing open file " << *in << dendl;
 	  if (!le) {
@@ -533,6 +533,18 @@ void EMetaBlob::fullbit::update_inode(MDS *mds, CInode *in)
 	       << dirfragtree << " on " << *in << dendl;
       in->dirfragtree = dirfragtree;
       in->force_dirfrags();
+      if (in->has_dirfrags() && in->authority() == CDIR_AUTH_UNDEF) {
+	list<CDir*> ls;
+	in->get_nested_dirfrags(ls);
+	for (list<CDir*>::iterator p = ls.begin(); p != ls.end(); ++p) {
+	  CDir *dir = *p;
+	  if (dir->get_num_any() == 0 &&
+	      mds->mdcache->can_trim_non_auth_dirfrag(dir)) {
+	    dout(10) << " closing empty non-auth dirfrag " << *dir << dendl;
+	    in->close_dirfrag(dir->get_frag());
+	  }
+	}
+      }
     }
 
     /*
@@ -603,6 +615,14 @@ void EMetaBlob::remotebit::dump(Formatter *f) const
     type_string = "symlink"; break;
   case S_IFDIR:
     type_string = "directory"; break;
+  case S_IFIFO:
+    type_string = "fifo"; break;
+  case S_IFCHR:
+    type_string = "chr"; break;
+  case S_IFBLK:
+    type_string = "blk"; break;
+  case S_IFSOCK:
+    type_string = "sock"; break;
   default:
     assert (0 == "unknown d_type!");
   }
@@ -1001,8 +1021,6 @@ void EMetaBlob::replay(MDS *mds, LogSegment *logseg, MDSlaveUpdate *slaveup)
 
     if (lump.is_dirty()) {
       dir->_mark_dirty(logseg);
-      dir->get_inode()->filelock.mark_dirty();
-      dir->get_inode()->nestlock.mark_dirty();
 
       if (!(dir->fnode.rstat == dir->fnode.accounted_rstat)) {
 	dout(10) << "EMetaBlob.replay      dirty nestinfo on " << *dir << dendl;
@@ -1202,7 +1220,7 @@ void EMetaBlob::replay(MDS *mds, LogSegment *logseg, MDSlaveUpdate *slaveup)
 	  assert(dir);
 	  // preserve subtree bound until slave commit
 	  if (dir->get_dir_auth() == CDIR_AUTH_UNDEF)
-	    slaveup->olddirs.insert(dir);
+	    slaveup->olddirs.insert(dir->inode);
 	}
       }
 
@@ -1212,7 +1230,7 @@ void EMetaBlob::replay(MDS *mds, LogSegment *logseg, MDSlaveUpdate *slaveup)
       CDir *root = mds->mdcache->get_subtree_root(olddir);
       if (root->get_dir_auth() == CDIR_AUTH_UNDEF) {
 	if (slaveup) // preserve the old dir until slave commit
-	  slaveup->olddirs.insert(olddir);
+	  slaveup->olddirs.insert(olddir->inode);
 	else
 	  mds->mdcache->try_trim_non_auth_subtree(root);
       }

@@ -52,10 +52,10 @@ am__aclocal_m4_deps = $(top_srcdir)/m4/ac_check_classpath.m4 \
 	$(top_srcdir)/m4/ax_c_var_func.m4 \
 	$(top_srcdir)/m4/ax_check_compile_flag.m4 \
 	$(top_srcdir)/m4/ax_cxx_static_cast.m4 \
-	$(top_srcdir)/m4/libtool.m4 $(top_srcdir)/m4/ltoptions.m4 \
-	$(top_srcdir)/m4/ltsugar.m4 $(top_srcdir)/m4/ltversion.m4 \
-	$(top_srcdir)/m4/lt~obsolete.m4 $(top_srcdir)/m4/pkg.m4 \
-	$(top_srcdir)/configure.ac
+	$(top_srcdir)/m4/ax_intel.m4 $(top_srcdir)/m4/libtool.m4 \
+	$(top_srcdir)/m4/ltoptions.m4 $(top_srcdir)/m4/ltsugar.m4 \
+	$(top_srcdir)/m4/ltversion.m4 $(top_srcdir)/m4/lt~obsolete.m4 \
+	$(top_srcdir)/m4/pkg.m4 $(top_srcdir)/configure.ac
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 mkinstalldirs = $(install_sh) -d
@@ -147,6 +147,14 @@ INSTALL_DATA = @INSTALL_DATA@
 INSTALL_PROGRAM = @INSTALL_PROGRAM@
 INSTALL_SCRIPT = @INSTALL_SCRIPT@
 INSTALL_STRIP_PROGRAM = @INSTALL_STRIP_PROGRAM@
+INTEL_FLAGS = @INTEL_FLAGS@
+INTEL_PCLMUL_FLAGS = @INTEL_PCLMUL_FLAGS@
+INTEL_SSE2_FLAGS = @INTEL_SSE2_FLAGS@
+INTEL_SSE3_FLAGS = @INTEL_SSE3_FLAGS@
+INTEL_SSE4_1_FLAGS = @INTEL_SSE4_1_FLAGS@
+INTEL_SSE4_2_FLAGS = @INTEL_SSE4_2_FLAGS@
+INTEL_SSE_FLAGS = @INTEL_SSE_FLAGS@
+INTEL_SSSE3_FLAGS = @INTEL_SSSE3_FLAGS@
 JAR = @JAR@
 JAVAC = @JAVAC@
 JAVAH = @JAVAH@

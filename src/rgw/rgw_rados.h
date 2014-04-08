@@ -470,7 +470,8 @@ public:
     RGWObjManifestRule rule;
 
   public:
-    generator() : last_ofs(0), cur_part_ofs(0), cur_part_id(0), cur_stripe(0), cur_stripe_size(0) {}
+    generator() : manifest(NULL), last_ofs(0), cur_part_ofs(0), cur_part_id(0), 
+		  cur_stripe(0), cur_stripe_size(0) {}
     int create_begin(CephContext *cct, RGWObjManifest *manifest, rgw_bucket& bucket, rgw_obj& head);
 
     int create_next(uint64_t ofs);
@@ -702,6 +703,7 @@ struct RGWRadosCtx {
   void *user_ctx;
 
   RGWRadosCtx(RGWRados *_store) : store(_store), intent_cb(NULL), user_ctx(NULL) { }
+  RGWRadosCtx(RGWRados *_store, void *_user_ctx) : store(_store), intent_cb(NULL), user_ctx(_user_ctx) { }
 
   RGWObjState *get_state(rgw_obj& obj);
   void set_atomic(rgw_obj& obj);
@@ -737,19 +739,30 @@ struct RGWRegion;
 struct RGWZonePlacementInfo {
   string index_pool;
   string data_pool;
+  string data_extra_pool; /* if not set we should use data_pool */
 
   void encode(bufferlist& bl) const {
-    ENCODE_START(3, 1, bl);
+    ENCODE_START(4, 1, bl);
     ::encode(index_pool, bl);
     ::encode(data_pool, bl);
+    ::encode(data_extra_pool, bl);
     ENCODE_FINISH(bl);
   }
 
   void decode(bufferlist::iterator& bl) {
-    DECODE_START(1, bl);
+    DECODE_START(4, bl);
     ::decode(index_pool, bl);
     ::decode(data_pool, bl);
+    if (struct_v >= 4) {
+      ::decode(data_extra_pool, bl);
+    }
     DECODE_FINISH(bl);
+  }
+  const string& get_data_extra_pool() {
+    if (data_extra_pool.empty()) {
+      return data_pool;
+    }
+    return data_extra_pool;
   }
   void dump(Formatter *f) const;
   void decode_json(JSONObj *obj);
@@ -931,7 +944,7 @@ struct RGWRegion {
   CephContext *cct;
   RGWRados *store;
 
-  RGWRegion() : is_master(false) {}
+  RGWRegion() : is_master(false), cct(NULL), store(NULL) {}
 
   void encode(bufferlist& bl) const {
     ENCODE_START(1, 1, bl);
@@ -1144,6 +1157,12 @@ public:
 class RGWGetDirHeader_CB;
 class RGWGetUserHeader_CB;
 
+struct rgw_rados_ref {
+  string oid;
+  string key;
+  librados::IoCtx ioctx;
+};
+
 
 class RGWRados
 {
@@ -1158,6 +1177,7 @@ class RGWRados
   int open_bucket_pool_ctx(const string& bucket_name, const string& pool, librados::IoCtx&  io_ctx);
   int open_bucket_index_ctx(rgw_bucket& bucket, librados::IoCtx&  index_ctx);
   int open_bucket_data_ctx(rgw_bucket& bucket, librados::IoCtx&  io_ctx);
+  int open_bucket_data_extra_ctx(rgw_bucket& bucket, librados::IoCtx&  io_ctx);
   int open_bucket_index(rgw_bucket& bucket, librados::IoCtx&  index_ctx, string& bucket_oid);
 
   struct GetObjState {
@@ -1191,7 +1211,12 @@ class RGWRados
   bool watch_initialized;
 
   Mutex bucket_id_lock;
+
+  int get_obj_ioctx(const rgw_obj& obj, librados::IoCtx *ioctx);
+  int get_obj_ref(const rgw_obj& obj, rgw_rados_ref *ref, rgw_bucket *bucket, bool ref_system_obj = false);
   uint64_t max_bucket_id;
+
+  uint64_t max_chunk_size;
 
   int get_obj_state(RGWRadosCtx *rctx, rgw_obj& obj, RGWObjState **state, RGWObjVersionTracker *objv_tracker);
   int append_atomic_test(RGWRadosCtx *rctx, rgw_obj& obj,
@@ -1257,6 +1282,7 @@ public:
                num_watchers(0), watchers(NULL), watch_handles(NULL),
                watch_initialized(false),
                bucket_id_lock("rados_bucket_id"), max_bucket_id(0),
+               max_chunk_size(0),
                cct(NULL), rados(NULL),
                pools_initialized(false),
                quota_handler(NULL),
@@ -1292,6 +1318,10 @@ public:
       rados->shutdown();
       delete rados;
     }
+  }
+
+  uint64_t get_max_chunk_size() {
+    return max_chunk_size;
   }
 
   int list_raw_objects(rgw_bucket& pool, const string& prefix_filter, int max,

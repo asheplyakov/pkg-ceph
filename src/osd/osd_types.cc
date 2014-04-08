@@ -4,6 +4,9 @@
  * Ceph - scalable distributed file system
  *
  * Copyright (C) 2011 New Dream Network
+ * Copyright (C) 2013,2014 Cloudwatt <libre.licensing@cloudwatt.com>
+ *
+ * Author: Loic Dachary <loic@dachary.org>
  *
  * This is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -433,6 +436,7 @@ unsigned pg_t::get_split_bits(unsigned pg_num) const {
 
   // Find unique p such that pg_num \in [2^(p-1), 2^p)
   unsigned p = pg_pool_t::calc_bits_of(pg_num);
+  assert(p); // silence coverity #751330 
 
   if ((m_seed % (1<<(p-1))) < (pg_num % (1<<(p-1))))
     return p;
@@ -781,14 +785,7 @@ void pg_pool_t::dump(Formatter *f) const
 		   cache_target_full_ratio_micro);
   f->dump_unsigned("cache_min_flush_age", cache_min_flush_age);
   f->dump_unsigned("cache_min_evict_age", cache_min_evict_age);
-  f->open_object_section("properties");
-  for (map<string,string>::const_iterator i = properties.begin();
-       i != properties.end();
-       ++i) {
-    string name = i->first;
-    f->dump_string(name.c_str(), i->second);
-  }
-  f->close_section();
+  f->dump_string("erasure_code_profile", erasure_code_profile);
   f->open_object_section("hit_set_params");
   hit_set_params.dump(f);
   f->close_section(); // hit_set_params
@@ -1046,7 +1043,7 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
   }
 
   __u8 encode_compat = 5;
-  ENCODE_START(13, encode_compat, bl);
+  ENCODE_START(14, encode_compat, bl);
   ::encode(type, bl);
   ::encode(size, bl);
   ::encode(crush_ruleset, bl);
@@ -1074,8 +1071,6 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
   ::encode(read_tier, bl);
   ::encode(write_tier, bl);
   ::encode(properties, bl);
-  if (hit_set_params.get_type() != HitSet::TYPE_NONE)
-    encode_compat = MAX(encode_compat, 11); // need to be able to understand all the data!
   ::encode(hit_set_params, bl);
   ::encode(hit_set_period, bl);
   ::encode(hit_set_count, bl);
@@ -1086,12 +1081,13 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
   ::encode(cache_target_full_ratio_micro, bl);
   ::encode(cache_min_flush_age, bl);
   ::encode(cache_min_evict_age, bl);
-  ENCODE_FINISH_NEW_COMPAT(bl, encode_compat);
+  ::encode(erasure_code_profile, bl);
+  ENCODE_FINISH(bl);
 }
 
 void pg_pool_t::decode(bufferlist::iterator& bl)
 {
-  DECODE_START_LEGACY_COMPAT_LEN(13, 5, 5, bl);
+  DECODE_START_LEGACY_COMPAT_LEN(14, 5, 5, bl);
   ::decode(type, bl);
   ::decode(size, bl);
   ::decode(crush_ruleset, bl);
@@ -1185,6 +1181,9 @@ void pg_pool_t::decode(bufferlist::iterator& bl)
     cache_min_flush_age = 0;
     cache_min_evict_age = 0;
   }
+  if (struct_v >= 14) {
+    ::decode(erasure_code_profile, bl);
+  }
 
   DECODE_FINISH(bl);
   calc_pg_masks();
@@ -1227,8 +1226,6 @@ void pg_pool_t::generate_test_instances(list<pg_pool_t*>& o)
   a.cache_mode = CACHEMODE_WRITEBACK;
   a.read_tier = 1;
   a.write_tier = 1;
-  a.properties["p-1"] = "v-1";
-  a.properties["empty"] = string();
   a.hit_set_params = HitSet::Params(new BloomHitSet::Params);
   a.hit_set_period = 3600;
   a.hit_set_count = 8;
@@ -1239,6 +1236,7 @@ void pg_pool_t::generate_test_instances(list<pg_pool_t*>& o)
   a.cache_target_full_ratio_micro = 987222;
   a.cache_min_flush_age = 231;
   a.cache_min_evict_age = 2321;
+  a.erasure_code_profile = "profile in osdmap";
   o.push_back(new pg_pool_t(a));
 }
 
@@ -4279,6 +4277,7 @@ ostream& operator<<(ostream& out, const OSDOp& op)
     case CEPH_OSD_OP_COPY_GET:
     case CEPH_OSD_OP_COPY_GET_CLASSIC:
       out << " max " << op.op.copy_get.max;
+      break;
     case CEPH_OSD_OP_COPY_FROM:
       out << " ver " << op.op.copy_from.src_version;
       break;
