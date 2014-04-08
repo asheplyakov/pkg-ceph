@@ -219,13 +219,18 @@ void MDLog::submit_entry(LogEvent *le, Context *c)
   uint64_t last_seg = get_last_segment_offset();
   uint64_t period = journaler->get_layout_period();
   // start a new segment if there are none or if we reach end of last segment
-  if (journaler->get_write_pos()/period != last_seg/period) {
+  if (le->get_type() == EVENT_SUBTREEMAP ||
+      (le->get_type() == EVENT_IMPORTFINISH && mds->is_resolve())) {
+    // avoid infinite loop when ESubtreeMap is very large.
+    // don not insert ESubtreeMap among EImportFinish events that finish
+    // disambiguate imports. Because the ESubtreeMap reflects the subtree
+    // state when all EImportFinish events are replayed.
+  } else if (journaler->get_write_pos()/period != last_seg/period) {
     dout(10) << "submit_entry also starting new segment: last = " << last_seg
 	     << ", cur pos = " << journaler->get_write_pos() << dendl;
     start_new_segment();
   } else if (g_conf->mds_debug_subtrees &&
-	     le->get_type() != EVENT_SUBTREEMAP_TEST &&
-	     le->get_type() != EVENT_SUBTREEMAP) {
+	     le->get_type() != EVENT_SUBTREEMAP_TEST) {
     // debug: journal this every time to catch subtree replay bugs.
     // use a different event id so it doesn't get interpreted as a
     // LogSegment boundary on replay.

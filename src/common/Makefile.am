@@ -71,11 +71,6 @@ libcommon_la_SOURCES = \
 	common/bloom_filter.cc \
 	common/linux_version.c
 
-if LINUX
-libcommon_la_SOURCES += \
-	common/secret.c
-endif
-
 # these should go out of libcommon
 libcommon_la_SOURCES += \
 	mon/MonCap.cc \
@@ -112,9 +107,9 @@ noinst_HEADERS += \
 
 # important; libmsg before libauth!
 LIBCOMMON_DEPS += \
+	$(LIBERASURE_CODE) \
 	$(LIBMSG) $(LIBAUTH) \
-	$(LIBCRUSH) $(LIBJSON_SPIRIT) $(LIBLOG) $(LIBARCH) \
-	$(KEYUTILS_LIB)
+	$(LIBCRUSH) $(LIBJSON_SPIRIT) $(LIBLOG) $(LIBARCH)
 
 if LINUX
 LIBCOMMON_DEPS += -lrt

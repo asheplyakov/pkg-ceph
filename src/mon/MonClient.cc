@@ -628,6 +628,11 @@ void MonClient::_reopen_session(int rank, string name)
   state = MC_STATE_NEGOTIATING;
   hunting = true;
 
+  // send an initial keepalive to ensure our timestamp is valid by the
+  // time we are in an OPENED state (by sequencing this before
+  // authentication).
+  messenger->send_keepalive(cur_con.get());
+
   MAuth *m = new MAuth;
   m->protocol = 0;
   m->monmap_epoch = monmap.get_epoch();
@@ -696,9 +701,20 @@ void MonClient::tick()
       _renew_subs();
 
     messenger->send_keepalive(cur_con.get());
-   
+
     if (state == MC_STATE_HAVE_SESSION) {
       send_log();
+
+      if (cct->_conf->mon_client_ping_timeout > 0 &&
+	  cur_con->has_feature(CEPH_FEATURE_MSGR_KEEPALIVE2)) {
+	utime_t lk = cur_con->get_last_keepalive_ack();
+	utime_t interval = ceph_clock_now(cct) - lk;
+	if (interval > cct->_conf->mon_client_ping_timeout) {
+	  ldout(cct, 1) << "no keepalive since " << lk << " (" << interval
+			<< " seconds), reconnecting" << dendl;
+	  _reopen_session();
+	}
+      }
     }
   }
 
@@ -914,7 +930,7 @@ int MonClient::_cancel_mon_command(uint64_t tid, int r)
 {
   assert(monc_lock.is_locked());
 
-  map<tid_t, MonCommand*>::iterator it = mon_commands.find(tid);
+  map<ceph_tid_t, MonCommand*>::iterator it = mon_commands.find(tid);
   if (it == mon_commands.end()) {
     ldout(cct, 10) << __func__ << " tid " << tid << " dne" << dendl;
     return -ENOENT;
@@ -1018,7 +1034,7 @@ void MonClient::get_version(string map, version_t *newest, version_t *oldest, Co
 void MonClient::handle_get_version_reply(MMonGetVersionReply* m)
 {
   assert(monc_lock.is_locked());
-  map<tid_t, version_req_d*>::iterator iter = version_requests.find(m->handle);
+  map<ceph_tid_t, version_req_d*>::iterator iter = version_requests.find(m->handle);
   if (iter == version_requests.end()) {
     ldout(cct, 0) << __func__ << " version request with handle " << m->handle
 		  << " not found" << dendl;

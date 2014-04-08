@@ -141,6 +141,15 @@ void PGPool::update(OSDMapRef map)
   } else {
     newly_removed_snaps.clear();
   }
+  lgeneric_subdout(g_ceph_context, osd, 20)
+    << "PGPool::update cached_removed_snaps "
+    << cached_removed_snaps
+    << " newly_removed_snaps "
+    << newly_removed_snaps
+    << " snapc " << snapc
+    << (pi->get_snap_epoch() == map->get_epoch() ?
+	" (updated)":" (no change)")
+    << dendl;
 }
 
 PG::PG(OSDService *o, OSDMapRef curmap,
@@ -625,7 +634,6 @@ void PG::generate_past_intervals()
 
   OSDMapRef last_map, cur_map;
   int primary = -1;
-  int old_primary = -1;
   vector<int> acting, up, old_acting, old_up;
 
   cur_map = osd->get_map(cur_epoch);
@@ -636,10 +644,10 @@ void PG::generate_past_intervals()
 	   << end_epoch << dendl;
   ++cur_epoch;
   for (; cur_epoch <= end_epoch; ++cur_epoch) {
+    int old_primary = primary;
     last_map.swap(cur_map);
     old_up.swap(up);
     old_acting.swap(acting);
-    old_primary = primary;
 
     cur_map = osd->get_map(cur_epoch);
     cur_map->pg_to_up_acting_osds(
@@ -1164,12 +1172,13 @@ bool PG::choose_acting(pg_shard_t &auth_log_shard_id)
       dout(10) << "choose_acting no suitable info found (incomplete backfills?),"
 	       << " reverting to up" << dendl;
       want_acting = up;
-      return true;
+      vector<int> empty;
+      osd->queue_want_pg_temp(info.pgid.pgid, empty);
     } else {
       dout(10) << "choose_acting failed" << dendl;
       assert(want_acting.empty());
-      return false;
     }
+    return false;
   }
 
   if ((up.size() &&
@@ -1437,6 +1446,8 @@ void PG::activate(ObjectStore::Transaction& t,
   
   // initialize snap_trimq
   if (is_primary()) {
+    dout(20) << "activate - purged_snaps " << info.purged_snaps
+	     << " cached_removed_snaps " << pool.cached_removed_snaps << dendl;
     snap_trimq = pool.cached_removed_snaps;
     snap_trimq.subtract(info.purged_snaps);
     dout(10) << "activate - snap_trimq " << snap_trimq << dendl;
@@ -2986,12 +2997,14 @@ void PG::reg_next_scrub()
   } else {
     scrubber.scrub_reg_stamp = info.history.last_scrub_stamp;
   }
-  osd->reg_last_pg_scrub(info.pgid, scrubber.scrub_reg_stamp);
+  if (is_primary())
+    osd->reg_last_pg_scrub(info.pgid, scrubber.scrub_reg_stamp);
 }
 
 void PG::unreg_next_scrub()
 {
-  osd->unreg_last_pg_scrub(info.pgid, scrubber.scrub_reg_stamp);
+  if (is_primary())
+    osd->unreg_last_pg_scrub(info.pgid, scrubber.scrub_reg_stamp);
 }
 
 void PG::sub_op_scrub_map(OpRequestRef op)
@@ -4609,6 +4622,8 @@ void PG::start_peering_interval(
   vector<int> oldacting, oldup;
   int oldrole = get_role();
 
+  unreg_next_scrub();
+
   pg_shard_t old_acting_primary = get_primary();
   pg_shard_t old_up_primary = up_primary;
   bool was_old_primary = is_primary();
@@ -4640,10 +4655,12 @@ void PG::start_peering_interval(
     state_clear(PG_STATE_REMAPPED);
 
   int role = osdmap->calc_pg_role(osd->whoami, acting, acting.size());
-  if (role == pg_whoami.shard)
+  if (pool.info.is_replicated() || role == pg_whoami.shard)
     set_role(role);
   else
     set_role(-1);
+
+  reg_next_scrub();
 
   // did acting, up, primary|acker change?
   if (!lastmap) {
@@ -5697,6 +5714,29 @@ PG::RecoveryState::WaitRemoteBackfillReserved::react(const RemoteReservationReje
 {
   PG *pg = context< RecoveryMachine >().pg;
   pg->osd->local_reserver.cancel_reservation(pg->info.pgid);
+
+  // Send REJECT to all previously acquired reservations
+  set<pg_shard_t>::const_iterator it, begin, end, next;
+  begin = context< Active >().sorted_backfill_set.begin();
+  end = context< Active >().sorted_backfill_set.end();
+  assert(begin != end);
+  for (next = it = begin, ++next ; next != backfill_osd_it; ++it, ++next) {
+    //The primary never backfills itself
+    assert(*it != pg->pg_whoami);
+    ConnectionRef con = pg->osd->get_con_osd_cluster(
+      it->osd, pg->get_osdmap()->get_epoch());
+    if (con) {
+      if (con->has_feature(CEPH_FEATURE_BACKFILL_RESERVATION)) {
+        pg->osd->send_message_osd_cluster(
+          new MBackfillReserve(
+	  MBackfillReserve::REJECT,
+	  spg_t(pg->info.pgid.pgid, it->shard),
+	  pg->get_osdmap()->get_epoch()),
+	con.get());
+      }
+    }
+  }
+
   pg->state_clear(PG_STATE_BACKFILL_WAIT);
   pg->state_set(PG_STATE_BACKFILL_TOOFULL);
 
@@ -5810,9 +5850,13 @@ boost::statechart::result
 PG::RecoveryState::RepNotRecovering::react(const RequestBackfillPrio &evt)
 {
   PG *pg = context< RecoveryMachine >().pg;
-
   double ratio, max_ratio;
-  if (pg->osd->too_full_for_backfill(&ratio, &max_ratio) &&
+
+  if (g_conf->osd_debug_reject_backfill_probability > 0 &&
+      (rand()%1000 < (g_conf->osd_debug_reject_backfill_probability*1000.0))) {
+    dout(10) << "backfill reservation rejected: failure injection" << dendl;
+    post_event(RemoteReservationRejected());
+  } else if (pg->osd->too_full_for_backfill(&ratio, &max_ratio) &&
       !pg->cct->_conf->osd_debug_skip_full_check_in_backfill_reservation) {
     dout(10) << "backfill reservation rejected: full ratio is "
 	     << ratio << ", which is greater than max allowed ratio "

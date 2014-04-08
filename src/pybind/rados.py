@@ -429,13 +429,13 @@ Rados object in state %s." % (self.state))
 
         :returns: dict - contains the following keys:
 
-            *``kb`` (int) - total space 
+            - ``kb`` (int) - total space 
 
-            *``kb_used`` (int) - space used
+            - ``kb_used`` (int) - space used
 
-            *``kb_avail`` (int) - free space available
+            - ``kb_avail`` (int) - free space available
 
-            *``num_objects`` (int) - number of objects
+            - ``num_objects`` (int) - number of objects
 
         """
         stats = rados_cluster_stat_t()
@@ -1100,6 +1100,30 @@ class Ioctx(object):
             raise make_ex(ret, "error reading %s" % object_name)
         return completion
 
+    def aio_remove(self, object_name, oncomplete=None, onsafe=None):
+        """
+        Asychronously remove an object
+
+        :param object_name: name of the object to remove
+        :type object_name: str
+        :param oncomplete: what to do when the remove is safe and complete in memory
+            on all replicas
+        :type oncomplete: completion
+        :param onsafe:  what to do when the remove is safe and complete on storage
+            on all replicas
+        :type onsafe: completion
+
+        :raises: :class:`Error`
+        :returns: completion object
+        """
+        completion = self.__get_completion(oncomplete, onsafe)
+        ret = run_in_thread(self.librados.rados_aio_remove,
+                            (self.io, c_char_p(object_name),
+                            completion.rados_comp))
+        if ret < 0:
+            raise make_ex(ret, "error removing %s" % object_name)
+        return completion
+
     def require_ioctx_open(self):
         """
         Checks if the rados.Ioctx object state is 'open'
@@ -1238,7 +1262,7 @@ written." % (self.name, ret, length))
 
     def read(self, key, length=8192, offset=0):
         """
-        Write data to an object synchronously
+        Read data from an object synchronously
 
         :param key: name of the object
         :type key: str
@@ -1268,30 +1292,30 @@ written." % (self.name, ret, length))
 
         :returns: dict - contains the following keys:
 
-            *``num_bytes`` (int) - size of pool in bytes
+            - ``num_bytes`` (int) - size of pool in bytes
 
-            *``num_kb`` (int) - size of pool in kbytes
+            - ``num_kb`` (int) - size of pool in kbytes
 
-            *``num_objects`` (int) - number of objects in the pool
+            - ``num_objects`` (int) - number of objects in the pool
 
-            *``num_object_clones`` (int) - number of object clones
+            - ``num_object_clones`` (int) - number of object clones
 
-            *``num_object_copies`` (int) - number of object copies
+            - ``num_object_copies`` (int) - number of object copies
 
-            *``num_objects_missing_on_primary`` (int) - number of objets
+            - ``num_objects_missing_on_primary`` (int) - number of objets
                 missing on primary
 
-            *``num_objects_unfound`` (int) - number of unfound objects
+            - ``num_objects_unfound`` (int) - number of unfound objects
 
-            *``num_objects_degraded`` (int) - number of degraded objects
+            - ``num_objects_degraded`` (int) - number of degraded objects
 
-            *``num_rd`` (int) - bytes read
+            - ``num_rd`` (int) - bytes read
 
-            *``num_rd_kb`` (int) - kbytes read
+            - ``num_rd_kb`` (int) - kbytes read
 
-            *``num_wr`` (int) - bytes written
+            - ``num_wr`` (int) - bytes written
 
-            *``num_wr_kb`` (int) - kbytes written
+            - ``num_wr_kb`` (int) - kbytes written
         """
         self.require_ioctx_open()
         stats = rados_pool_stat_t()

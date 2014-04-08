@@ -1298,7 +1298,7 @@ bool Locker::wrlock_start(SimpleLock *lock, MDRequest *mut, bool nowait)
   CInode *in = static_cast<CInode *>(lock->get_parent());
   client_t client = mut->get_client();
   bool want_scatter = !nowait && lock->get_parent()->is_auth() &&
-		      (in->has_subtree_root_dirfrag() ||
+		      (in->has_subtree_or_exporting_dirfrag() ||
 		       static_cast<ScatterLock*>(lock)->get_scatter_wanted());
 
   while (1) {
@@ -1799,8 +1799,10 @@ bool Locker::issue_caps(CInode *in, Capability *only_cap)
     // add in any xlocker-only caps (for locks this client is the xlocker for)
     allowed |= xlocker_allowed & in->get_xlocker_mask(it->first);
 
+    Session *session = mds->get_session(it->first);
     if (in->inode.inline_version != CEPH_INLINE_NONE &&
-        !mds->get_session(it->first)->connection->has_feature(CEPH_FEATURE_MDS_INLINE_DATA))
+	!(session && session->connection &&
+	  session->connection->has_feature(CEPH_FEATURE_MDS_INLINE_DATA)))
       allowed &= ~(CEPH_CAP_FILE_RD | CEPH_CAP_FILE_WR);
 
     int pending = cap->pending();
@@ -3920,7 +3922,7 @@ void Locker::scatter_eval(ScatterLock *lock, bool *need_issue)
   }
 
   CInode *in = static_cast<CInode*>(lock->get_parent());
-  if (!in->has_subtree_root_dirfrag() || in->is_base()) {
+  if (!in->has_subtree_or_exporting_dirfrag() || in->is_base()) {
     // i _should_ be sync.
     if (!lock->is_wrlocked() &&
 	lock->get_state() != LOCK_SYNC) {
@@ -4284,7 +4286,7 @@ void Locker::file_eval(ScatterLock *lock, bool *need_issue)
 	   !lock->is_rdlocked() &&
 	   //!lock->is_waiter_for(SimpleLock::WAIT_WR) &&
 	   ((wanted & (CEPH_CAP_GWR|CEPH_CAP_GBUFFER)) ||
-	    (in->inode.is_dir() && !in->has_subtree_root_dirfrag())) &&
+	    (in->inode.is_dir() && !in->has_subtree_or_exporting_dirfrag())) &&
 	   in->get_target_loner() >= 0) {
     dout(7) << "file_eval stable, bump to loner " << *lock
 	    << " on " << *lock->get_parent() << dendl;
@@ -4308,7 +4310,7 @@ void Locker::file_eval(ScatterLock *lock, bool *need_issue)
 	   !lock->is_waiter_for(SimpleLock::WAIT_WR) &&
 	   !(wanted & (CEPH_CAP_GWR|CEPH_CAP_GBUFFER)) &&
 	   !((lock->get_state() == LOCK_MIX) &&
-	     in->is_dir() && in->has_subtree_root_dirfrag())  // if we are a delegation point, stay where we are
+	     in->is_dir() && in->has_subtree_or_exporting_dirfrag())  // if we are a delegation point, stay where we are
 	   //((wanted & CEPH_CAP_RD) || 
 	   //in->is_replicated() || 
 	   //lock->get_num_client_lease() || 

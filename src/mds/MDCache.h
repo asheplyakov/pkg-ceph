@@ -131,7 +131,7 @@ public:
 
   // -- discover --
   struct discover_info_t {
-    tid_t tid;
+    ceph_tid_t tid;
     int mds;
     inodeno_t ino;
     frag_t frag;
@@ -144,12 +144,12 @@ public:
     discover_info_t() : tid(0), mds(-1), snap(CEPH_NOSNAP), want_base_dir(false), want_xlocked(false) {}
   };
 
-  map<tid_t, discover_info_t> discovers;
-  tid_t discover_last_tid;
+  map<ceph_tid_t, discover_info_t> discovers;
+  ceph_tid_t discover_last_tid;
 
   void _send_discover(discover_info_t& dis);
   discover_info_t& _create_discover(int mds) {
-    tid_t t = ++discover_last_tid;
+    ceph_tid_t t = ++discover_last_tid;
     discover_info_t& d = discovers[t];
     d.tid = t;
     d.mds = mds;
@@ -317,7 +317,7 @@ protected:
   map<int, map<dirfrag_t, vector<dirfrag_t> > > other_ambiguous_imports;  
 
   map<int, map<metareqid_t, MDSlaveUpdate*> > uncommitted_slave_updates;  // slave: for replay.
-  map<CDir*, int> uncommitted_slave_rename_olddir;  // slave: preserve the non-auth dir until seeing commit.
+  map<CInode*, int> uncommitted_slave_rename_olddir;  // slave: preserve the non-auth dir until seeing commit.
   map<CInode*, int> uncommitted_slave_unlink;  // slave: preserve the unlinked inode until seeing commit.
 
   // track master requests whose slaves haven't acknowledged commit
@@ -581,6 +581,10 @@ public:
   void trim_non_auth();      // trim out trimmable non-auth items
   bool trim_non_auth_subtree(CDir *directory);
   void try_trim_non_auth_subtree(CDir *dir);
+  bool can_trim_non_auth_dirfrag(CDir *dir) {
+    return my_ambiguous_imports.count((dir)->dirfrag()) == 0 &&
+	   uncommitted_slave_rename_olddir.count(dir->inode) == 0;
+  }
 
   void trim_client_leases();
   void check_memory_usage();
@@ -616,6 +620,13 @@ public:
     if (!in)
       return NULL;
     return in->get_dirfrag(df.frag);
+  }
+  CDir* get_dirfrag(inodeno_t ino, const string& dn) {
+    CInode *in = get_inode(ino);
+    if (!in)
+      return NULL;
+    frag_t fg = in->pick_dirfrag(dn);
+    return in->get_dirfrag(fg);
   }
   CDir* get_force_dirfrag(dirfrag_t df) {
     CInode *diri = get_inode(df.ino);
@@ -802,7 +813,7 @@ protected:
     open_ino_info_t() : checking(-1), auth_hint(-1),
       check_peers(true), fetch_backtrace(true), discover(false) {}
   };
-  tid_t open_ino_last_tid;
+  ceph_tid_t open_ino_last_tid;
   map<inodeno_t,open_ino_info_t> opening_inodes;
 
   void _open_ino_backtrace_fetched(inodeno_t ino, bufferlist& bl, int err);
@@ -830,7 +841,7 @@ public:
   // -- find_ino_peer --
   struct find_ino_peer_info_t {
     inodeno_t ino;
-    tid_t tid;
+    ceph_tid_t tid;
     Context *fin;
     int hint;
     int checking;
@@ -839,8 +850,8 @@ public:
     find_ino_peer_info_t() : tid(0), fin(NULL), hint(-1), checking(-1) {}
   };
 
-  map<tid_t, find_ino_peer_info_t> find_ino_peer;
-  tid_t find_ino_peer_last_tid;
+  map<ceph_tid_t, find_ino_peer_info_t> find_ino_peer;
+  ceph_tid_t find_ino_peer_last_tid;
 
   void find_ino_peers(inodeno_t ino, Context *c, int hint=-1);
   void _do_find_ino_peer(find_ino_peer_info_t& fip);
@@ -946,12 +957,11 @@ private:
   struct ufragment {
     int bits;
     bool committed;
-    bool complete;
     LogSegment *ls;
     list<Context*> waiters;
     list<frag_t> old_frags;
     bufferlist rollback;
-    ufragment() : bits(0), committed(false), complete(false), ls(NULL) {}
+    ufragment() : bits(0), committed(false), ls(NULL) {}
   };
   map<dirfrag_t, ufragment> uncommitted_fragments;
 
@@ -961,11 +971,11 @@ private:
     list<CDir*> resultfrags;
     MDRequest *mdr;
     // for deadlock detection
-    bool dirs_frozen;
+    bool has_frozen;
     utime_t last_cum_auth_pins_change;
     int last_cum_auth_pins;
     int num_remote_waiters;	// number of remote authpin waiters
-    fragment_info_t() : last_cum_auth_pins(0), num_remote_waiters(0) {}
+    fragment_info_t() : has_frozen(false), last_cum_auth_pins(0), num_remote_waiters(0) {}
   };
   map<dirfrag_t,fragment_info_t> fragments;
 
@@ -1016,6 +1026,7 @@ public:
 
   void find_stale_fragment_freeze();
   void fragment_freeze_inc_num_waiters(CDir *dir);
+  bool fragment_are_all_frozen(CDir *dir);
   int get_num_fragmenting_dirs() { return fragments.size(); }
 
   // -- updates --

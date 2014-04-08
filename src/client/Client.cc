@@ -598,6 +598,15 @@ void Client::update_inode_file_bits(Inode *in,
   }
 }
 
+void Client::_fragmap_remove_non_leaves(Inode *in)
+{
+  for (map<frag_t,int>::iterator p = in->fragmap.begin(); p != in->fragmap.end(); )
+    if (!in->dirfragtree.is_leaf(p->first))
+      in->fragmap.erase(p++);
+    else
+      ++p;
+}
+
 Inode * Client::add_update_inode(InodeStat *st, utime_t from,
 				 MetaSession *session)
 {
@@ -672,8 +681,6 @@ Inode * Client::add_update_inode(InodeStat *st, utime_t from,
     }
 
     in->layout = st->layout;
-    in->ctime = st->ctime;
-    in->max_size = st->max_size;  // right?
 
     update_inode_file_bits(in, st->truncate_seq, st->truncate_size, st->size,
 			   st->time_warp_seq, st->ctime, st->mtime, st->atime,
@@ -685,11 +692,16 @@ Inode * Client::add_update_inode(InodeStat *st, utime_t from,
   }
 
   // move me if/when version reflects fragtree changes.
-  in->dirfragtree = st->dirfragtree;
+  if (in->dirfragtree != st->dirfragtree) {
+    in->dirfragtree = st->dirfragtree;
+    _fragmap_remove_non_leaves(in);
+  }
 
-  if (in->snapid == CEPH_NOSNAP)
+  if (in->snapid == CEPH_NOSNAP) {
     add_update_cap(in, session, st->cap.cap_id, st->cap.caps, st->cap.seq, st->cap.mseq, inodeno_t(st->cap.realm), st->cap.flags);
-  else
+    if (in->auth_cap && in->auth_cap->session == session)
+      in->max_size = st->max_size;
+  } else
     in->snap_caps |= st->cap.caps;
 
   // setting I_COMPLETE needs to happen after adding the cap
@@ -793,7 +805,10 @@ void Client::update_dir_dist(Inode *in, DirStat *dst)
   } else {
     in->fragmap.erase(dst->frag);
   }
-  assert(in->dirfragtree.is_leaf(dst->frag));
+  if (!in->dirfragtree.is_leaf(dst->frag)) {
+    in->dirfragtree.force_to_leaf(cct, dst->frag);
+    _fragmap_remove_non_leaves(in);
+  }
 
   // replicated
   in->dir_replicated = !dst->dist.empty();  // FIXME that's just one frag!
@@ -880,8 +895,7 @@ void Client::insert_readdir_results(MetaRequest *request, MetaSession *session, 
       // remove any skipped names
       while (pd != dir->dentry_map.end() && pd->first < dname) {
 	if (pd->first < dname &&
-	    diri->dirfragtree[ceph_str_hash_linux(pd->first.c_str(),
-						  pd->first.length())] == fg) {  // do not remove items in earlier frags
+	    fg.contains(diri->hash_dentry_name(pd->first))) {  // do not remove items in earlier frags
 	  ldout(cct, 15) << "insert_trace  unlink '" << pd->first << "'" << dendl;
 	  Dentry *dn = pd->second;
 	  ++pd;
@@ -930,8 +944,7 @@ void Client::insert_readdir_results(MetaRequest *request, MetaSession *session, 
     // remove trailing names
     if (end) {
       while (pd != dir->dentry_map.end()) {
-	if (diri->dirfragtree[ceph_str_hash_linux(pd->first.c_str(),
-						  pd->first.length())] == fg) {
+	if (fg.contains(diri->hash_dentry_name(pd->first))) {
 	  ldout(cct, 15) << "insert_trace  unlink '" << pd->first << "'" << dendl;
 	  Dentry *dn = pd->second;
 	  ++pd;
@@ -1084,9 +1097,7 @@ int Client::choose_target_mds(MetaRequest *req)
   if (in) {
     ldout(cct, 20) << "choose_target_mds starting with req->inode " << *in << dendl;
     if (req->path.depth()) {
-      hash = ceph_str_hash(in->dir_layout.dl_dir_hash,
-			   req->path[0].data(),
-			   req->path[0].length());
+      hash = in->hash_dentry_name(req->path[0]);
       ldout(cct, 20) << "choose_target_mds inode dir hash is " << (int)in->dir_layout.dl_dir_hash
 	       << " on " << req->path[0]
 	       << " => " << hash << dendl;
@@ -1098,9 +1109,7 @@ int Client::choose_target_mds(MetaRequest *req)
       ldout(cct, 20) << "choose_target_mds starting with req->dentry inode " << *in << dendl;
     } else {
       in = de->dir->parent_inode;
-      hash = ceph_str_hash(in->dir_layout.dl_dir_hash,
-			   de->name.data(),
-			   de->name.length());
+      hash = in->hash_dentry_name(de->name);
       ldout(cct, 20) << "choose_target_mds dentry dir hash is " << (int)in->dir_layout.dl_dir_hash
 	       << " on " << de->name
 	       << " => " << hash << dendl;
@@ -1193,7 +1202,7 @@ void Client::dump_mds_sessions(Formatter *f)
 }
 void Client::dump_mds_requests(Formatter *f)
 {
-  for (map<tid_t, MetaRequest*>::iterator p = mds_requests.begin();
+  for (map<ceph_tid_t, MetaRequest*>::iterator p = mds_requests.begin();
        p != mds_requests.end();
        ++p) {
     f->open_object_section("request");
@@ -1306,7 +1315,7 @@ int Client::make_request(MetaRequest *request,
   int r = 0;
 
   // assign a unique tid
-  tid_t tid = ++last_tid;
+  ceph_tid_t tid = ++last_tid;
   request->set_tid(tid);
   // make note
   mds_requests[tid] = request->get();
@@ -1717,7 +1726,7 @@ void Client::handle_client_request_forward(MClientRequestForward *fwd)
     fwd->put();
     return;
   }
-  tid_t tid = fwd->get_tid();
+  ceph_tid_t tid = fwd->get_tid();
 
   if (mds_requests.count(tid) == 0) {
     ldout(cct, 10) << "handle_client_request_forward no pending request on tid " << tid << dendl;
@@ -1756,7 +1765,7 @@ void Client::handle_client_reply(MClientReply *reply)
     return;
   }
 
-  tid_t tid = reply->get_tid();
+  ceph_tid_t tid = reply->get_tid();
   bool is_safe = reply->is_safe();
 
   if (mds_requests.count(tid) == 0) {
@@ -2001,6 +2010,7 @@ void Client::send_reconnect(MetaSession *session)
 
       in->caps[mds]->seq = 0;  // reset seq.
       in->caps[mds]->issue_seq = 0;  // reset seq.
+      in->caps[mds]->mseq = 0;  // reset seq.
       m->add_cap(p->first.ino, 
 		 in->caps[mds]->cap_id,
 		 path.get_ino(), path.get_path(),   // ino
@@ -2013,18 +2023,6 @@ void Client::send_reconnect(MetaSession *session)
 	m->add_snaprealm(in->snaprealm->ino, in->snaprealm->seq, in->snaprealm->parent);
 	did_snaprealm.insert(in->snaprealm->ino);
       }	
-    }
-    if (in->exporting_mds == mds) {
-      ldout(cct, 10) << " clearing exporting_caps on " << p->first << dendl;
-      in->exporting_mds = -1;
-      in->exporting_issued = 0;
-      in->exporting_mseq = 0;
-      if (!in->is_any_caps()) {
-	ldout(cct, 10) << "  removing last cap, closing snaprealm" << dendl;
-	in->snaprealm_item.remove_myself();
-	put_snap_realm(in->snaprealm);
-	in->snaprealm = 0;
-      }
     }
   }
   
@@ -2045,7 +2043,7 @@ void Client::send_reconnect(MetaSession *session)
 void Client::kick_requests(MetaSession *session)
 {
   ldout(cct, 10) << "kick_requests for mds." << session->mds_num << dendl;
-  for (map<tid_t, MetaRequest*>::iterator p = mds_requests.begin();
+  for (map<ceph_tid_t, MetaRequest*>::iterator p = mds_requests.begin();
        p != mds_requests.end();
        ++p) {
     if (p->second->mds == session->mds_num) {
@@ -2065,7 +2063,7 @@ void Client::resend_unsafe_requests(MetaSession *session)
 void Client::kick_requests_closed(MetaSession *session)
 {
   ldout(cct, 10) << "kick_requests_closed for mds." << session->mds_num << dendl;
-  for (map<tid_t, MetaRequest*>::iterator p = mds_requests.begin();
+  for (map<ceph_tid_t, MetaRequest*>::iterator p = mds_requests.begin();
        p != mds_requests.end();
        ++p) {
     if (p->second->mds == session->mds_num) {
@@ -2437,6 +2435,7 @@ void Client::check_caps(Inode *in, bool is_delayed)
 {
   unsigned wanted = in->caps_wanted();
   unsigned used = in->caps_used();
+  unsigned cap_used;
 
   int retain = wanted | CEPH_CAP_PIN;
   if (!unmounting) {
@@ -2477,6 +2476,10 @@ void Client::check_caps(Inode *in, bool is_delayed)
     MetaSession *session = mds_sessions[mds];
     assert(session);
 
+    cap_used = used;
+    if (in->auth_cap && cap != in->auth_cap)
+      cap_used &= ~in->auth_cap->issued;
+
     int revoking = cap->implemented & ~cap->issued;
     
     ldout(cct, 10) << " cap mds." << mds
@@ -2500,12 +2503,16 @@ void Client::check_caps(Inode *in, bool is_delayed)
     }
 
     /* completed revocation? */
-    if (revoking && (revoking & used) == 0) {
+    if (revoking && (revoking & cap_used) == 0) {
       ldout(cct, 10) << "completed revocation of " << ccap_string(cap->implemented & ~cap->issued) << dendl;
       goto ack;
     }
 
-    if (!revoking && unmounting && (used == 0))
+    /* want more caps from mds? */
+    if (wanted & ~(cap->wanted | cap->issued))
+      goto ack;
+
+    if (!revoking && unmounting && (cap_used == 0))
       goto ack;
 
     if (wanted == cap->wanted &&         // mds knows what we want.
@@ -2525,7 +2532,7 @@ void Client::check_caps(Inode *in, bool is_delayed)
     else
       flushing = 0;
 
-    send_cap(in, session, cap, used, wanted, retain, flushing);
+    send_cap(in, session, cap, cap_used, wanted, retain, flushing);
   }
 }
 
@@ -2891,6 +2898,24 @@ void Client::add_update_cap(Inode *in, MetaSession *mds_session, uint64_t cap_id
   int mds = mds_session->mds_num;
   if (in->caps.count(mds)) {
     cap = in->caps[mds];
+
+    /*
+     * auth mds of the inode changed. we received the cap export
+     * message, but still haven't received the cap import message.
+     * handle_cap_export() updated the new auth MDS' cap.
+     *
+     * "ceph_seq_cmp(seq, cap->seq) <= 0" means we are processing
+     * a message that was send before the cap import message. So
+     * don't remove caps.
+     */
+    if (ceph_seq_cmp(seq, cap->seq) <= 0) {
+      assert(cap == in->auth_cap);
+      assert(cap->cap_id == cap_id);
+      seq = cap->seq;
+      mseq = cap->mseq;
+      issued |= cap->issued;
+      flags |= CEPH_CAP_FLAG_AUTH;
+    }
   } else {
     mds_session->num_caps++;
     if (!in->is_any_caps()) {
@@ -2898,12 +2923,6 @@ void Client::add_update_cap(Inode *in, MetaSession *mds_session, uint64_t cap_id
       in->snaprealm = get_snap_realm(realm);
       in->snaprealm->inodes_with_caps.push_back(&in->snaprealm_item);
       ldout(cct, 15) << "add_update_cap first one, opened snaprealm " << in->snaprealm << dendl;
-    }
-    if (in->exporting_mds == mds) {
-      ldout(cct, 10) << "add_update_cap clearing exporting_caps on " << mds << dendl;
-      in->exporting_mds = -1;
-      in->exporting_issued = 0;
-      in->exporting_mseq = 0;
     }
     in->caps[mds] = cap = new Cap;
     mds_session->caps.push_back(&cap->cap_item);
@@ -2917,10 +2936,11 @@ void Client::add_update_cap(Inode *in, MetaSession *mds_session, uint64_t cap_id
 
   if (flags & CEPH_CAP_FLAG_AUTH) {
     if (in->auth_cap != cap &&
-        (!in->auth_cap || in->auth_cap->mseq < mseq)) {
+        (!in->auth_cap || ceph_seq_cmp(in->auth_cap->mseq, mseq) < 0)) {
       if (in->auth_cap && in->flushing_cap_item.is_on_list()) {
-	ldout(cct, 10) << "add_update_cap changing auth cap: removing myself from flush_caps list" << dendl;
-	in->flushing_cap_item.remove_myself();
+	ldout(cct, 10) << "add_update_cap changing auth cap: "
+		       << "add myself to new auth MDS' flushing caps list" << dendl;
+	mds_session->flushing_caps.push_back(&in->flushing_cap_item);
       }
       in->auth_cap = cap;
     }
@@ -2938,11 +2958,23 @@ void Client::add_update_cap(Inode *in, MetaSession *mds_session, uint64_t cap_id
 	   << " on " << *in
 	   << dendl;
 
+  if ((issued & ~old_caps) && in->auth_cap == cap) {
+    // non-auth MDS is revoking the newly grant caps ?
+    for (map<int,Cap*>::iterator it = in->caps.begin(); it != in->caps.end(); ++it) {
+      if (it->second == cap)
+	continue;
+      if (it->second->implemented & ~it->second->issued & issued) {
+	check_caps(in, true);
+	break;
+      }
+    }
+  }
+
   if (issued & ~old_caps)
     signal_cond_list(in->waitfor_caps);
 }
 
-void Client::remove_cap(Cap *cap)
+void Client::remove_cap(Cap *cap, bool queue_release)
 {
   Inode *in = cap->inode;
   MetaSession *session = cap->session;
@@ -2950,14 +2982,16 @@ void Client::remove_cap(Cap *cap)
 
   ldout(cct, 10) << "remove_cap mds." << mds << " on " << *in << dendl;
   
-  if (!session->release)
-    session->release = new MClientCapRelease;
-  ceph_mds_cap_item i;
-  i.ino = in->ino;
-  i.cap_id = cap->cap_id;
-  i.seq = cap->issue_seq;
-  i.migrate_seq = cap->mseq;
-  session->release->caps.push_back(i);
+  if (queue_release) {
+    if (!session->release)
+      session->release = new MClientCapRelease;
+    ceph_mds_cap_item i;
+    i.ino = in->ino;
+    i.cap_id = cap->cap_id;
+    i.seq = cap->issue_seq;
+    i.migrate_seq = cap->mseq;
+    session->release->caps.push_back(i);
+  }
 
   if (in->auth_cap == cap) {
     if (in->flushing_cap_item.is_on_list()) {
@@ -2987,14 +3021,14 @@ void Client::remove_cap(Cap *cap)
 void Client::remove_all_caps(Inode *in)
 {
   while (!in->caps.empty())
-    remove_cap(in->caps.begin()->second);
+    remove_cap(in->caps.begin()->second, true);
 }
 
 void Client::remove_session_caps(MetaSession *mds) 
 {
   while (mds->caps.size()) {
     Cap *cap = *mds->caps.begin();
-    remove_cap(cap);
+    remove_cap(cap, false);
   }
 }
 
@@ -3010,15 +3044,14 @@ void Client::trim_caps(MetaSession *s, int max)
     s->s_cap_iterator = cap;
     Inode *in = cap->inode;
     if (in->caps.size() > 1 && cap != in->auth_cap) {
+      int mine = cap->issued | cap->implemented;
+      int oissued = in->auth_cap ? in->auth_cap->issued : 0;
       // disposable non-auth cap
-      if (in->caps_used() || in->caps_dirty()) {
-	ldout(cct, 20) << " keeping cap on " << *in << " used " << ccap_string(in->caps_used())
-		       << " dirty " << ccap_string(in->caps_dirty()) << dendl;
-	continue;
+      if (!(in->caps_used() & ~oissued & mine)) {
+	ldout(cct, 20) << " removing unused, unneeded non-auth cap on " << *in << dendl;
+	remove_cap(cap, true);
+	trimmed++;
       }
-      ldout(cct, 20) << " removing unused, unneeded non-auth cap on " << *in << dendl;
-      remove_cap(cap);
-      trimmed++;
     } else {
       ldout(cct, 20) << " trying to trim dentries for " << *in << dendl;
       bool all = true;
@@ -3444,9 +3477,12 @@ void Client::handle_caps(MClientCaps *m)
   }
 
   switch (m->get_op()) {
-  case CEPH_CAP_OP_IMPORT: return handle_cap_import(session, in, m);
-  case CEPH_CAP_OP_EXPORT: return handle_cap_export(session, in, m);
-  case CEPH_CAP_OP_FLUSHSNAP_ACK: return handle_cap_flushsnap_ack(session, in, m);
+  case CEPH_CAP_OP_EXPORT:
+    return handle_cap_export(session, in, m);
+  case CEPH_CAP_OP_FLUSHSNAP_ACK:
+    return handle_cap_flushsnap_ack(session, in, m);
+  case CEPH_CAP_OP_IMPORT:
+    handle_cap_import(session, in, m);
   }
 
   if (in->caps.count(mds) == 0) {
@@ -3459,6 +3495,7 @@ void Client::handle_caps(MClientCaps *m)
 
   switch (m->get_op()) {
   case CEPH_CAP_OP_TRUNC: return handle_cap_trunc(session, in, m);
+  case CEPH_CAP_OP_IMPORT:
   case CEPH_CAP_OP_REVOKE:
   case CEPH_CAP_OP_GRANT: return handle_cap_grant(session, in, cap, m);
   case CEPH_CAP_OP_FLUSH_ACK: return handle_cap_flush_ack(session, in, cap, m);
@@ -3471,11 +3508,20 @@ void Client::handle_cap_import(MetaSession *session, Inode *in, MClientCaps *m)
 {
   int mds = session->mds_num;
 
+  ldout(cct, 5) << "handle_cap_import ino " << m->get_ino() << " mseq " << m->get_mseq()
+		<< " IMPORT from mds." << mds << dendl;
+
   // add/update it
   update_snap_trace(m->snapbl);
   add_update_cap(in, session, m->get_cap_id(),
 		 m->get_caps(), m->get_seq(), m->get_mseq(), m->get_realm(),
 		 CEPH_CAP_FLAG_AUTH);
+
+  if (m->peer.cap_id && in->caps.count(m->peer.mds)) {
+    Cap *cap = in->caps[m->peer.mds];
+    if (cap && cap->cap_id == m->peer.cap_id)
+      remove_cap(cap, (m->peer.flags & CEPH_CAP_FLAG_RELEASE));
+  }
   
   if (in->auth_cap && in->auth_cap->session->mds_num == mds) {
     // reflush any/all caps (if we are now the auth_cap)
@@ -3484,65 +3530,44 @@ void Client::handle_cap_import(MetaSession *session, Inode *in, MClientCaps *m)
     if (in->flushing_caps)
       flush_caps(in, session);
   }
-
-  if (m->get_mseq() > in->exporting_mseq) {
-    ldout(cct, 5) << "handle_cap_import ino " << m->get_ino() << " mseq " << m->get_mseq()
-	    << " IMPORT from mds." << mds
-	    << ", clearing exporting_issued " << ccap_string(in->exporting_issued) 
-	    << " mseq " << in->exporting_mseq << dendl;
-    in->exporting_issued = 0;
-    in->exporting_mseq = 0;
-    in->exporting_mds = -1;
-  } else {
-    ldout(cct, 5) << "handle_cap_import ino " << m->get_ino() << " mseq " << m->get_mseq()
-	    << " IMPORT from mds." << mds 
-	    << ", keeping exporting_issued " << ccap_string(in->exporting_issued) 
-	    << " mseq " << in->exporting_mseq << " by mds." << in->exporting_mds << dendl;
-  }
-  m->put();
 }
 
 void Client::handle_cap_export(MetaSession *session, Inode *in, MClientCaps *m)
 {
   int mds = session->mds_num;
-  Cap *cap = NULL;
 
-  // note?
-  bool found_higher_mseq = false;
-  for (map<int,Cap*>::iterator p = in->caps.begin();
-       p != in->caps.end();
-       ++p) {
-    if (p->first == mds)
-      cap = p->second;
-    if (p->second->mseq > m->get_mseq()) {
-      found_higher_mseq = true;
-      ldout(cct, 5) << "handle_cap_export ino " << m->get_ino() << " mseq " << m->get_mseq() 
-	      << " EXPORT from mds." << mds
-	      << ", but mds." << p->first << " has higher mseq " << p->second->mseq << dendl;
+  ldout(cct, 5) << "handle_cap_export ino " << m->get_ino() << " mseq " << m->get_mseq()
+		<< " EXPORT from mds." << mds << dendl;
+
+  if (in->caps.count(mds)) {
+    Cap *cap = in->caps[mds];
+
+    if (m->peer.cap_id) {
+      MetaSession *tsession = _get_or_open_mds_session(m->peer.mds);
+      if (in->caps.count(m->peer.mds)) {
+	Cap *tcap = in->caps[m->peer.mds];
+	if (tcap->cap_id != m->peer.cap_id ||
+	    ceph_seq_cmp(tcap->seq, m->peer.seq) < 0) {
+	  tcap->cap_id = m->peer.cap_id;
+	  tcap->seq = m->peer.seq - 1;
+	  tcap->issue_seq = tcap->seq;
+	  tcap->mseq = m->peer.mseq;
+	  tcap->issued |= cap->issued;
+	  tcap->implemented |= cap->issued;
+	  if (cap == in->auth_cap)
+	    in->auth_cap = tcap;
+	  if (in->auth_cap == tcap && in->flushing_cap_item.is_on_list())
+	    tsession->flushing_caps.push_back(&in->flushing_cap_item);
+	}
+      } else {
+	add_update_cap(in, tsession, m->peer.cap_id, cap->issued,
+		       m->peer.seq - 1, m->peer.mseq, (uint64_t)-1,
+		       cap == in->auth_cap ? CEPH_CAP_FLAG_AUTH : 0);
+      }
     }
+
+    remove_cap(cap, false);
   }
-
-  if (cap) {
-    if (!found_higher_mseq) {
-      ldout(cct, 5) << "handle_cap_export ino " << m->get_ino() << " mseq " << m->get_mseq() 
-	      << " EXPORT from mds." << mds
-	      << ", setting exporting_issued " << ccap_string(cap->issued) << dendl;
-      in->exporting_issued = cap->issued;
-      in->exporting_mseq = m->get_mseq();
-      in->exporting_mds = mds;
-    } else 
-      ldout(cct, 5) << "handle_cap_export ino " << m->get_ino() << " mseq " << m->get_mseq() 
-	      << " EXPORT from mds." << mds
-	      << ", just removing old cap" << dendl;
-
-    remove_cap(cap);
-  }
-  // else we already released it
-
-  // open export targets, so we'll get the matching IMPORT, even if we
-  // have seen a newer import (or have released the cap entirely), as there
-  // may be an intervening revocation that will otherwise get blocked up.
-  connect_mds_targets(mds);
 
   m->put();
 }
@@ -3676,6 +3701,7 @@ void Client::handle_cap_grant(MetaSession *session, Inode *in, Cap *cap, MClient
 {
   int mds = session->mds_num;
   int used = in->caps_used();
+  int wanted = in->caps_wanted();
 
   const int old_caps = cap->issued;
   const int new_caps = m->get_caps();
@@ -3726,6 +3752,10 @@ void Client::handle_cap_grant(MetaSession *session, Inode *in, Cap *cap, MClient
     }
   }
 
+  bool check = false;
+  if (m->get_op() == CEPH_CAP_OP_IMPORT && m->get_wanted() != wanted)
+    check = true;
+
   check_cap_issue(in, cap, issued);
 
   // update caps
@@ -3742,7 +3772,7 @@ void Client::handle_cap_grant(MetaSession *session, Inode *in, Cap *cap, MClient
       // waitin' for flush
     } else {
       cap->wanted = 0; // don't let check_caps skip sending a response to MDS
-      check_caps(in, true);
+      check = true;
     }
 
   } else if (old_caps == new_caps) {
@@ -3751,7 +3781,22 @@ void Client::handle_cap_grant(MetaSession *session, Inode *in, Cap *cap, MClient
     ldout(cct, 10) << "  grant, new caps are " << ccap_string(new_caps & ~old_caps) << dendl;
     cap->issued = new_caps;
     cap->implemented |= new_caps;
+
+    if (cap == in->auth_cap) {
+      // non-auth MDS is revoking the newly grant caps ?
+      for (map<int,Cap*>::iterator it = in->caps.begin(); it != in->caps.end(); ++it) {
+	if (it->second == cap)
+	  continue;
+	if (it->second->implemented & ~it->second->issued & new_caps) {
+	  check = true;
+	  break;
+	}
+      }
+    }
   }
+
+  if (check)
+    check_caps(in, true);
 
   // wake up waiters
   if (new_caps)
@@ -4120,30 +4165,34 @@ int Client::_lookup(Inode *dir, const string& dname, Inode **target)
 	     << " seq " << dn->lease_seq
 	     << dendl;
 
-    // is dn lease valid?
-    utime_t now = ceph_clock_now(cct);
-    if (dn->lease_mds >= 0 &&
-	dn->lease_ttl > now &&
-	mds_sessions.count(dn->lease_mds)) {
-      MetaSession *s = mds_sessions[dn->lease_mds];
-      if (s->cap_ttl > now &&
-	  s->cap_gen == dn->lease_gen) {
+    if (!dn->inode || dn->inode->is_any_caps()) {
+      // is dn lease valid?
+      utime_t now = ceph_clock_now(cct);
+      if (dn->lease_mds >= 0 &&
+	  dn->lease_ttl > now &&
+	  mds_sessions.count(dn->lease_mds)) {
+	MetaSession *s = mds_sessions[dn->lease_mds];
+	if (s->cap_ttl > now &&
+	    s->cap_gen == dn->lease_gen) {
+	  *target = dn->inode;
+	  // touch this mds's dir cap too, even though we don't _explicitly_ use it here, to
+	  // make trim_caps() behave.
+	  dir->try_touch_cap(dn->lease_mds);
+	  touch_dn(dn);
+	  goto done;
+	}
+	ldout(cct, 20) << " bad lease, cap_ttl " << s->cap_ttl << ", cap_gen " << s->cap_gen
+		       << " vs lease_gen " << dn->lease_gen << dendl;
+      }
+      // dir lease?
+      if (dir->caps_issued_mask(CEPH_CAP_FILE_SHARED) &&
+	  dn->cap_shared_gen == dir->shared_gen) {
 	*target = dn->inode;
-	// touch this mds's dir cap too, even though we don't _explicitly_ use it here, to
-	// make trim_caps() behave.
-	dir->try_touch_cap(dn->lease_mds);
 	touch_dn(dn);
 	goto done;
       }
-      ldout(cct, 20) << " bad lease, cap_ttl " << s->cap_ttl << ", cap_gen " << s->cap_gen
-	       << " vs lease_gen " << dn->lease_gen << dendl;
-    }
-    // dir lease?
-    if (dir->caps_issued_mask(CEPH_CAP_FILE_SHARED) &&
-	dn->cap_shared_gen == dir->shared_gen) {
-      *target = dn->inode;
-      touch_dn(dn);
-      goto done;
+    } else {
+      ldout(cct, 20) << " no cap on " << dn->inode->vino() << dendl;
     }
   } else {
     // can we conclude ENOENT locally?
@@ -5618,7 +5667,15 @@ int Client::lookup_hash(inodeno_t ino, inodeno_t dirino, const char *name)
   return r;
 }
 
-int Client::lookup_ino(inodeno_t ino)
+
+/**
+ * Load inode into local cache.
+ *
+ * If inode pointer is non-NULL, and take a reference on
+ * the resulting Inode object in one operation, so that caller
+ * can safely assume inode will still be there after return.
+ */
+int Client::lookup_ino(inodeno_t ino, Inode **inode)
 {
   Mutex::Locker lock(client_lock);
   ldout(cct, 3) << "lookup_ino enter(" << ino << ") = " << dendl;
@@ -5628,9 +5685,76 @@ int Client::lookup_ino(inodeno_t ino)
   req->set_filepath(path);
 
   int r = make_request(req, -1, -1, NULL, NULL, rand() % mdsmap->get_num_in_mds());
+  if (r == 0 && inode != NULL) {
+    vinodeno_t vino(ino, CEPH_NOSNAP);
+    unordered_map<vinodeno_t,Inode*>::iterator p = inode_map.find(vino);
+    assert(p != inode_map.end());
+    *inode = p->second;
+    _ll_get(*inode);
+  }
   ldout(cct, 3) << "lookup_ino exit(" << ino << ") = " << r << dendl;
   return r;
 }
+
+
+
+/**
+ * Find the parent inode of `ino` and insert it into
+ * our cache.  Conditionally also set `parent` to a referenced
+ * Inode* if caller provides non-NULL value.
+ */
+int Client::lookup_parent(Inode *ino, Inode **parent)
+{
+  Mutex::Locker lock(client_lock);
+  ldout(cct, 3) << "lookup_parent enter(" << ino->ino << ") = " << dendl;
+
+  if (!ino->dn_set.empty()) {
+    ldout(cct, 3) << "lookup_parent dentry already present" << dendl;
+    return 0;
+  }
+
+  MetaRequest *req = new MetaRequest(CEPH_MDS_OP_LOOKUPPARENT);
+  filepath path(ino->ino);
+  req->set_filepath(path);
+  req->set_inode(ino);
+
+  int r = make_request(req, -1, -1, NULL, NULL, rand() % mdsmap->get_num_in_mds());
+  // Give caller a reference to the parent ino if they provided a pointer.
+  if (parent != NULL) {
+    if (r == 0) {
+      *parent = req->target;
+      _ll_get(*parent);
+      ldout(cct, 3) << "lookup_parent found parent " << (*parent)->ino << dendl;
+    } else {
+      *parent = NULL;
+    }
+  }
+  ldout(cct, 3) << "lookup_parent exit(" << ino->ino << ") = " << r << dendl;
+  return r;
+}
+
+
+/**
+ * Populate the parent dentry for `ino`, provided it is
+ * a child of `parent`.
+ */
+int Client::lookup_name(Inode *ino, Inode *parent)
+{
+  assert(parent->is_dir());
+
+  Mutex::Locker lock(client_lock);
+  ldout(cct, 3) << "lookup_name enter(" << ino->ino << ") = " << dendl;
+
+  MetaRequest *req = new MetaRequest(CEPH_MDS_OP_LOOKUPNAME);
+  req->set_filepath2(filepath(parent->ino));
+  req->set_filepath(filepath(ino->ino));
+  req->set_inode(ino);
+
+  int r = make_request(req, -1, -1, NULL, NULL, rand() % mdsmap->get_num_in_mds());
+  ldout(cct, 3) << "lookup_name exit(" << ino->ino << ") = " << r << dendl;
+  return r;
+}
+
 
 Fh *Client::_create_fh(Inode *in, int flags, int cmode)
 {
@@ -6066,8 +6190,17 @@ int Client::_read_async(Fh *f, uint64_t off, uint64_t len, bufferlist *bl)
       if (objectcacher->file_is_cached(&in->oset, &in->layout, in->snapid, off, min))
 	ldout(cct, 20) << "readahead already have min" << dendl;
       else {
-	objectcacher->file_read(&in->oset, &in->layout, in->snapid, off, l, NULL, 0, 0);
-	ldout(cct, 20) << "readahead initiated" << dendl;
+	Context *onfinish = new C_Readahead(this, in);
+	int r = objectcacher->file_read(&in->oset, &in->layout, in->snapid,
+					off, l,
+					NULL, 0, onfinish);
+	if (r == 0) {
+	  ldout(cct, 20) << "readahead initiated, c " << onfinish << dendl;
+	  in->get();
+	} else {
+	  ldout(cct, 20) << "readahead was no-op, already cached" << dendl;
+	  delete onfinish;
+	}
       }
     }
   }
@@ -6464,7 +6597,7 @@ int Client::_fsync(Fh *f, bool syncdataonly)
   int r = 0;
 
   Inode *in = f->inode;
-  tid_t wait_on_flush = 0;
+  ceph_tid_t wait_on_flush = 0;
   bool flushed_metadata = false;
   Mutex lock("Client::_fsync::lock");
   Cond cond;
@@ -7193,17 +7326,10 @@ int Client::_listxattr(Inode *in, char *name, size_t size, int uid, int gid)
 {
   int r = _getattr(in, CEPH_STAT_CAP_XATTR, uid, gid);
   if (r == 0) {
-    const char file_vxattrs[] = "ceph.file.layout";
-    const char dir_vxattrs[] = "ceph.dir.layout";
     for (map<string,bufferptr>::iterator p = in->xattrs.begin();
 	 p != in->xattrs.end();
 	 ++p)
       r += p->first.length() + 1;
-
-    if (in->is_file())
-      r += sizeof(file_vxattrs);
-    else if (in->is_dir() && in->has_dir_layout())
-      r += sizeof(dir_vxattrs);
 
     if (size != 0) {
       if (size >= (unsigned)r) {
@@ -7214,13 +7340,6 @@ int Client::_listxattr(Inode *in, char *name, size_t size, int uid, int gid)
 	  name += p->first.length();
 	  *name = '\0';
 	  name++;
-	}
-	if (in->is_file()) {
-	  memcpy(name, file_vxattrs, sizeof(file_vxattrs));
-	  name += sizeof(file_vxattrs);
-	} else if (in->is_dir() && in->has_dir_layout()) {
-	  memcpy(name, dir_vxattrs, sizeof(dir_vxattrs));
-	  name += sizeof(dir_vxattrs);
 	}
       } else
 	r = -ERANGE;
