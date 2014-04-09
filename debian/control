@@ -63,6 +63,7 @@ Pre-Depends: ${misc:Pre-Depends}
 Conflicts: gceph, librgw-dev, librgw1, librgw1-dbg, obsync
 Replaces: gceph, librgw-dev, librgw1, librgw1-dbg, obsync
 Recommends: libcephfs1, librados2, librbd1
+Suggests: logrotate
 Description: distributed storage and file system
  Ceph is a distributed storage system designed to provide excellent
  performance, reliability, and scalability.
@@ -359,6 +360,7 @@ Description: Ceph distributed file system client library (development files)
 Package: radosgw
 Architecture: linux-any
 Depends: ceph-common (= ${binary:Version}), ${misc:Depends}, ${shlibs:Depends}
+Suggests: logrotate
 Description: REST gateway for RADOS distributed object store
  RADOS is a distributed object store used by the Ceph distributed
  storage system.  This package provides a REST gateway to the
