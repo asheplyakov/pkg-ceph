@@ -1,10 +1,10 @@
-ceph (0.79-0ubuntu1) UNRELEASED; urgency=medium
+ceph (0.79-0ubuntu1) trusty; urgency=medium
 
   * New upstream release (LP: #1278466):
-    - d/p/modules.patch: Refresh.
+    - d/p/modules.patch: Refreshed.
     - d/ceph.install: Install all jerasure modules.
 
- -- James Page <james.page@ubuntu.com>  Tue, 08 Apr 2014 09:05:52 +0100
+ -- James Page <james.page@ubuntu.com>  Wed, 09 Apr 2014 11:14:03 +0100
 
 ceph (0.78-0ubuntu1) trusty; urgency=medium
 
