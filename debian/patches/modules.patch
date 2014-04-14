@@ -1,6 +1,11 @@
-Description: Mark modules as actually being modules
-Author: James Page <james.page@ubuntu.com>
+Last-Update: 2014-04-14
 Forwarded: no
+Author: James Page <james.page@ubuntu.com>
+Description: Mark modules as actually being modules
+ Ceph was/is building internal plugins/modules as versioned libraries;
+ this makes no sense as they are not exposed to anything other than
+ ceph so ABI compat is irrelevant - this patch makes them build without
+ the so.2.0.0 extensions and is a little cleaner.
 
 --- a/src/cls/Makefile.am
 +++ b/src/cls/Makefile.am
