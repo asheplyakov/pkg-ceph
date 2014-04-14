@@ -95,7 +95,7 @@ override_dh_strip:
 override_dh_makeshlibs:
 	# exclude jni libraries in libcephfs-jni to avoid pointless ldconfig
 	# calls in maintainer scripts
-	dh_makeshlibs -X/usr/lib/jni
+	dh_makeshlibs -V -X/usr/lib/jni
 
 override_dh_auto_test:
 	# Skip tests as they rely on virtualenv
