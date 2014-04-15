@@ -1,9 +1,15 @@
-ceph (0.72.2-3) UNRELEASED; urgency=medium
+ceph (0.72.2-3) unstable; urgency=medium
 
+  * Team upload.
+
+  [ James Page ]
   * d/ceph-test.install: Install test binaries to /usr/lib/ceph/bin; they
     really don't need to be installed on the default path.
 
- -- James Page <james.page@ubuntu.com>  Thu, 13 Mar 2014 14:12:47 +0000
+  [ Dmitry Smirnov ]
+  * Tightened shlibs with "dh_makeshlibs -V" (Closes: #679686).
+
+ -- Dmitry Smirnov <onlyjob@debian.org>  Mon, 14 Apr 2014 17:28:20 +1000
 
 ceph (0.72.2-2) unstable; urgency=medium
 
