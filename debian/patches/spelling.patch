@@ -1,0 +1,131 @@
+Last-Update: 2014-04-18
+Forwarded: yes
+Author: Dmitry Smirnov <onlyjob@member.fsf.org>
+Description: spelling corrections
+
+--- a/man/crushtool.8
++++ b/man/crushtool.8
+@@ -124,9 +124,9 @@
+ .sp
+ The test mode will use the input crush map ( as specified with \fB\-i
+ map\fP ) and perform a dry run of CRUSH mapping or random placement (
+ if \fB\-\-simulate\fP is set ). On completion, two kinds of reports can be
+-created. The \fB\-\-show\-...\fP options output human readable informations
++created. The \fB\-\-show\-...\fP options output human readable information
+ on stderr. The \fB\-\-output\-csv\fP option creates CSV files that are
+ documented by the \fB\-\-help\-output\fP option.
+ .INDENT 0.0
+ .TP
+--- a/src/crush/CrushCompiler.cc
++++ b/src/crush/CrushCompiler.cc
+@@ -373,9 +373,9 @@
+   }
+ 
+   /*
+ 
+-    current crop of tunables are all now "safe".  reenable this when we
++    current crop of tunables are all now "safe".  re-enable this when we
+     add new ones that are ... new.
+ 
+   if (!unsafe_tunables) {
+     err << "tunables are NOT FULLY IMPLEMENTED; enable with --enable-unsafe-tunables to enable this feature" << std::endl;
+--- a/src/mon/Paxos.h
++++ b/src/mon/Paxos.h
+@@ -657,9 +657,9 @@
+    * This function starts the Recovery Phase, which can be directly mapped
+    * onto the original Paxos' Prepare phase. Basically, we'll generate a
+    * Proposal Number, taking @p oldpn into consideration, and we will send
+    * it to a quorum, along with our first and last committed versions. By
+-   * sending these informations in a message to the quorum, we expect to
++   * sending these information in a message to the quorum, we expect to
+    * obtain acceptances from a majority, allowing us to commit, or be
+    * informed of a higher Proposal Number known by one or more of the Peons
+    * in the quorum.
+    *
+@@ -675,9 +675,9 @@
+    * Handle the reception of a collect message from the Leader and reply
+    * accordingly.
+    *
+    * Once a Peon receives a collect message from the Leader it will reply
+-   * with its first and last committed versions, as well as informations so
++   * with its first and last committed versions, as well as information so
+    * the Leader may know if his Proposal Number was, or was not, accepted by
+    * the Peon. The Peon will accept the Leader's Proposal Number iif it is
+    * higher than the Peon's currently accepted Proposal Number. The Peon may
+    * also inform the Leader of accepted but uncommitted values.
+--- a/src/osd/OSD.cc
++++ b/src/osd/OSD.cc
+@@ -6451,9 +6451,9 @@
+ 					 it->second);
+       cluster_messenger->send_message(m, con.get());
+     } else {
+       dout(7) << "do_notify osd " << it->first
+-	      << " sending seperate messages" << dendl;
++	      << " sending separate messages" << dendl;
+       for (vector<pair<pg_notify_t, pg_interval_map_t> >::iterator i =
+ 	     it->second.begin();
+ 	   i != it->second.end();
+ 	   ++i) {
+@@ -6490,9 +6490,9 @@
+       MOSDPGQuery *m = new MOSDPGQuery(curmap->get_epoch(), pit->second);
+       cluster_messenger->send_message(m, con.get());
+     } else {
+       dout(7) << "do_queries querying osd." << who
+-	      << " sending seperate messages "
++	      << " sending saperate messages "
+ 	      << " on " << pit->second.size() << " PGs" << dendl;
+       for (map<spg_t, pg_query_t>::iterator i = pit->second.begin();
+ 	   i != pit->second.end();
+ 	   ++i) {
+--- a/src/osd/PG.cc
++++ b/src/osd/PG.cc
+@@ -6884,9 +6884,9 @@
+     dout(10) << "GetLog: discarding log from "
+ 	     << "non-auth_log_shard osd." << logevt.from << dendl;
+     return discard_event();
+   }
+-  dout(10) << "GetLog: recieved master log from osd" 
++  dout(10) << "GetLog: received master log from osd"
+ 	   << logevt.from << dendl;
+   msg = logevt.msg;
+   post_event(GotLog());
+   return discard_event();
+--- a/src/pybind/rados.py
++++ b/src/pybind/rados.py
+@@ -382,9 +382,9 @@
+       """
+       Ping a monitor to assess liveness
+ 
+       May be used as a simply way to assess liveness, or to obtain
+-      informations about the monitor in a simple way even in the
++      information about the monitor in a simple way even in the
+       absence of quorum.
+ 
+       :param mon_id: the ID portion of the monitor's name (i.e., mon.<ID>)
+       :type mon_id: str
+--- a/src/rgw/rgw_admin.cc
++++ b/src/rgw/rgw_admin.cc
+@@ -44,9 +44,9 @@
+   cerr << "  user modify                modify user\n";
+   cerr << "  user info                  get user info\n";
+   cerr << "  user rm                    remove user\n";
+   cerr << "  user suspend               suspend a user\n";
+-  cerr << "  user enable                reenable user after suspension\n";
++  cerr << "  user enable                re-enable user after suspension\n";
+   cerr << "  user check                 check user info\n";
+   cerr << "  user stats                 show user stats as accounted by quota subsystem\n";
+   cerr << "  caps add                   add user capabilities\n";
+   cerr << "  caps rm                    remove user capabilities\n";
+--- a/src/test/cli/radosgw-admin/help.t
++++ b/src/test/cli/radosgw-admin/help.t
+@@ -5,9 +5,9 @@
+     user modify                modify user
+     user info                  get user info
+     user rm                    remove user
+     user suspend               suspend a user
+-    user enable                reenable user after suspension
++    user enable                re-enable user after suspension
+     user check                 check user info
+     user stats                 show user stats as accounted by quota subsystem
+     caps add                   add user capabilities
+     caps rm                    remove user capabilities
