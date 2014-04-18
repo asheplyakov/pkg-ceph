@@ -62,3 +62,9 @@
 
  as root.
 
+### Caveats
+
+ To avoid known issue with kernel FS client it is recommended to use
+ 'readdir_max_entries' mount option, for example:
+
+    mount -t ceph 1.2.3.4:/ /mnt/ceph -o readdir_max_entries=64
