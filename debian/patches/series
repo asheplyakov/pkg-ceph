@@ -1,4 +1,6 @@
-#defaults-leveldb-osd.patch
+5469.patch
+8008.patch
+_1606.patch
 gcj.patch
 modules.patch
 virtualenv-never-download.patch

@@ -1,0 +1,193 @@
+Last-Update: 2014-04-18
+Forwarded: not-needed
+Origin: upstream, https://github.com/ceph/ceph/pull/1606
+From: "Yan, Zheng" <zheng.z.yan@intel.com>
+Description: client: try shrinking kernel inode cache when trimming session caps
+ 
+ Notify kernel to invalidate top level directory entries. As a side
+ effect, the kernel inode cache get shrinked.
+
+--- a/src/client/Client.cc
++++ b/src/client/Client.cc
+@@ -2202,10 +2202,14 @@
+ 
+   if (in) {    // link to inode
+     dn->inode = in;
+     in->get();
+-    if (in->dir)
+-      dn->get();  // dir -> dn pin
++    if (in->is_dir()) {
++      if (in->dir)
++	dn->get(); // dir -> dn pin
++      if (in->ll_ref)
++	dn->get(); // ll_ref -> dn pin
++    }
+ 
+     assert(in->dn_set.count(dn) == 0);
+ 
+     // only one parent for directories!
+@@ -2230,10 +2234,14 @@
+ 		 << " inode " << dn->inode << dendl;
+ 
+   // unlink from inode
+   if (in) {
+-    if (in->dir)
+-      dn->put();        // dir -> dn pin
++    if (in->is_dir()) {
++      if (in->dir)
++	dn->put(); // dir -> dn pin
++      if (in->ll_ref)
++	dn->put(); // ll_ref -> dn pin
++    }
+     dn->inode = 0;
+     assert(in->dn_set.count(dn));
+     in->dn_set.erase(dn);
+     ldout(cct, 20) << "unlink  inode " << in << " parents now " << in->dn_set << dendl; 
+@@ -3073,8 +3081,19 @@
+       delete cap;
+     }
+   }
+   s->s_cap_iterator = NULL;
++
++  // notify kernel to invalidate top level directory entries. As a side effect,
++  // unused inodes underneath these entries get pruned.
++  if (dentry_invalidate_cb && s->caps.size() > max) {
++    for (ceph::unordered_map<string, Dentry*>::iterator p = root->dir->dentries.begin();
++	 p != root->dir->dentries.end();
++	 ++p) {
++      if (p->second->inode)
++	_schedule_invalidate_dentry_callback(p->second, false);
++    }
++  }
+ }
+ 
+ void Client::mark_caps_dirty(Inode *in, int caps)
+ {
+@@ -3663,11 +3682,16 @@
+   vinodeno_t dirino;
+   vinodeno_t ino;
+   string name;
+ public:
+-  C_Client_DentryInvalidate(Client *c, Dentry *dn) :
+-			    client(c), dirino(dn->dir->parent_inode->vino()),
+-			    ino(dn->inode->vino()), name(dn->name) { }
++  C_Client_DentryInvalidate(Client *c, Dentry *dn, bool del) :
++    client(c), name(dn->name) {
++      dirino = dn->dir->parent_inode->vino();
++      if (del)
++	ino = dn->inode->vino();
++      else
++	ino.ino = inodeno_t();
++  }
+   void finish(int r) {
+     client->_async_dentry_invalidate(dirino, ino, name);
+   }
+ };
+@@ -3678,12 +3702,12 @@
+ 		 << " in dir " << dirino << dendl;
+   dentry_invalidate_cb(dentry_invalidate_cb_handle, dirino, ino, name);
+ }
+ 
+-void Client::_schedule_invalidate_dentry_callback(Dentry *dn)
++void Client::_schedule_invalidate_dentry_callback(Dentry *dn, bool del)
+ {
+   if (dentry_invalidate_cb && dn->inode->ll_ref > 0)
+-    async_dentry_invalidator.queue(new C_Client_DentryInvalidate(this, dn));
++    async_dentry_invalidator.queue(new C_Client_DentryInvalidate(this, dn, del));
+ }
+ 
+ void Client::_invalidate_inode_parents(Inode *in)
+ {
+@@ -3691,9 +3715,9 @@
+   while (q != in->dn_set.end()) {
+     Dentry *dn = *q++;
+     // FIXME: we play lots of unlink/link tricks when handling MDS replies,
+     //        so in->dn_set doesn't always reflect the state of kernel's dcache.
+-    _schedule_invalidate_dentry_callback(dn);
++    _schedule_invalidate_dentry_callback(dn, true);
+     unlink(dn, false);
+   }
+ }
+ 
+@@ -3723,9 +3747,9 @@
+     in->uid = m->head.uid;
+     in->gid = m->head.gid;
+   }
+   bool deleted_inode = false;
+-  if ((issued & CEPH_CAP_LINK_EXCL) == 0) {
++  if ((issued & CEPH_CAP_LINK_EXCL) == 0 && in->nlink != (int32_t)m->head.nlink) {
+     in->nlink = m->head.nlink;
+     if (in->nlink == 0 &&
+ 	(new_caps & (CEPH_CAP_LINK_SHARED | CEPH_CAP_LINK_EXCL)))
+       deleted_inode = true;
+@@ -7014,10 +7038,15 @@
+ 
+ 
+ void Client::_ll_get(Inode *in)
+ {
+-  if (in->ll_ref == 0)
++  if (in->ll_ref == 0) {
+     in->get();
++    if (in->is_dir() && !in->dn_set.empty()) {
++      assert(in->dn_set.size() == 1); // dirs can't be hard-linked
++      in->get_first_parent()->get(); // pin dentry
++    }
++  }
+   in->ll_get();
+   ldout(cct, 20) << "_ll_get " << in << " " << in->ino << " -> " << in->ll_ref << dendl;
+ }
+ 
+@@ -7025,8 +7054,12 @@
+ {
+   in->ll_put(num);
+   ldout(cct, 20) << "_ll_put " << in << " " << in->ino << " " << num << " -> " << in->ll_ref << dendl;
+   if (in->ll_ref == 0) {
++    if (in->is_dir() && !in->dn_set.empty()) {
++      assert(in->dn_set.size() == 1); // dirs can't be hard-linked
++      in->get_first_parent()->put(); // unpin dentry
++    }
+     put_inode(in);
+     return 0;
+   } else {
+     return in->ll_ref;
+@@ -7064,10 +7097,10 @@
+   if (in->ll_ref < count) {
+     ldout(cct, 1) << "WARNING: ll_forget on " << ino << " " << count
+ 		  << ", which only has ll_ref=" << in->ll_ref << dendl;
+     _ll_put(in, in->ll_ref);
+-      last = true;
+-    } else {
++    last = true;
++  } else {
+     if (_ll_put(in, count) == 0)
+       last = true;
+   }
+ 
+--- a/src/client/Client.h
++++ b/src/client/Client.h
+@@ -478,9 +478,9 @@
+   void queue_cap_snap(Inode *in, snapid_t seq=0);
+   void finish_cap_snap(Inode *in, CapSnap *capsnap, int used);
+   void _flushed_cap_snap(Inode *in, snapid_t seq);
+ 
+-  void _schedule_invalidate_dentry_callback(Dentry *dn);
++  void _schedule_invalidate_dentry_callback(Dentry *dn, bool del);
+   void _async_dentry_invalidate(vinodeno_t dirino, vinodeno_t ino, string& name);
+   void _invalidate_inode_parents(Inode *in);
+ 
+   void _schedule_invalidate_callback(Inode *in, int64_t off, int64_t len, bool keep_caps);
+--- a/src/client/fuse_ll.cc
++++ b/src/client/fuse_ll.cc
+@@ -679,9 +679,11 @@
+ {
+   CephFuse::Handle *cfuse = (CephFuse::Handle *)handle;
+   fuse_ino_t fdirino = cfuse->make_fake_ino(dirino.ino, dirino.snapid);
+ #if FUSE_VERSION >= FUSE_MAKE_VERSION(2, 9)
+-  fuse_ino_t fino = cfuse->make_fake_ino(ino.ino, ino.snapid);
++  fuse_ino_t fino = 0;
++  if (ino.ino != inodeno_t())
++    fino = cfuse->make_fake_ino(ino.ino, ino.snapid);
+   fuse_lowlevel_notify_delete(cfuse->ch, fdirino, fino, name.c_str(), name.length());
+ #elif FUSE_VERSION >= FUSE_MAKE_VERSION(2, 8)
+   fuse_lowlevel_notify_inval_entry(cfuse->ch, fdirino, name.c_str(), name.length());
+ #endif

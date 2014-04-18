@@ -1,0 +1,41 @@
+Last-Update: 2014-04-17
+Forwarded: not-needed
+Origin: upstream, http://tracker.ceph.com/projects/ceph/repository/revisions/6ff645f592cd82f888b3646e10438aea781370a2
+Bug-Ceph: http://tracker.ceph.com/issues/8008
+Description:
+    osd/PG: fix repair_object when missing on primary
+    
+    If the object is missing on the primary, we need to fully populate the
+    missing_loc.needs_recovery_map.  This broke with the recent refactoring of
+    recovery for EC, somewhere around 84e2f39c557c79e9ca7c3c3f0eb0bfa4860bf899.
+    
+    Fixes: #8008
+    Signed-off-by: Sage Weil <sage@inktank.com>
+
+--- a/src/osd/PG.cc
++++ b/src/osd/PG.cc
+@@ -3444,8 +3444,9 @@
+     // We should only be scrubbing if the PG is clean.
+     assert(waiting_for_unreadable_object.empty());
+ 
+     pg_log.missing_add(soid, oi.version, eversion_t());
++    missing_loc.add_missing(soid, oi.version, eversion_t());
+     missing_loc.add_location(soid, ok_peer);
+ 
+     pg_log.set_last_requested(0);
+   }
+--- a/src/osd/PG.h
++++ b/src/osd/PG.h
+@@ -378,8 +378,12 @@
+ 	  assert(i->second.need == j->second.need);
+ 	}
+       }
+     }
++
++    void add_missing(const hobject_t &hoid, eversion_t need, eversion_t have) {
++      needs_recovery_map[hoid] = pg_missing_t::item(need, have);
++    }
+     void revise_need(const hobject_t &hoid, eversion_t need) {
+       assert(needs_recovery(hoid));
+       needs_recovery_map[hoid].need = need;
+     }
