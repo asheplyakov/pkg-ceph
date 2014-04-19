@@ -2,14 +2,11 @@
 # -*- makefile -*-
 #export DH_VERBOSE=1
 
-export DESTDIR=$(CURDIR)/debian/tmp
-
 # minimise needless linking
 export DEB_LDFLAGS_MAINT_APPEND= -Wl,--as-needed
 
 # Enable hardening
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
-include /usr/share/dpkg/buildflags.mk
 
 export DEB_HOST_ARCH      ?= $(shell dpkg-architecture -qDEB_HOST_ARCH)
 
@@ -59,7 +56,7 @@ override_dh_auto_clean:
 	rm -fv debian/*.upstart
 
 override_dh_auto_install:
-	dh_auto_install
+	dh_auto_install --destdir=$(CURDIR)/debian/tmp
 
 override_dh_installinit:
 	dh_installinit --no-start
