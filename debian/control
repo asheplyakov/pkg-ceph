@@ -411,7 +411,7 @@ Package: ceph-test-dbg
 Architecture: linux-any
 Section: debug
 Priority: extra
-Depends: ceph-common, curl, xml2, ${misc:Depends}, ${shlibs:Depends}
+Depends: ceph-test (= ${binary:Version}), ${misc:Depends}
 Description: debugging symbols for ceph-test
  Ceph is a distributed storage system designed to provide excellent
  performance, reliability, and scalability.
