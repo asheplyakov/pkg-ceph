@@ -55,7 +55,7 @@ Description: spelling corrections
     * also inform the Leader of accepted but uncommitted values.
 --- a/src/osd/OSD.cc
 +++ b/src/osd/OSD.cc
-@@ -6451,9 +6451,9 @@
+@@ -6464,9 +6464,9 @@
  					 it->second);
        cluster_messenger->send_message(m, con.get());
      } else {
@@ -66,7 +66,7 @@ Description: spelling corrections
  	     it->second.begin();
  	   i != it->second.end();
  	   ++i) {
-@@ -6490,9 +6490,9 @@
+@@ -6503,9 +6503,9 @@
        MOSDPGQuery *m = new MOSDPGQuery(curmap->get_epoch(), pit->second);
        cluster_messenger->send_message(m, con.get());
      } else {

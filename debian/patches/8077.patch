@@ -1,0 +1,72 @@
+From 78df66f52084bd5ba354bb41edce98e032e4811b Mon Sep 17 00:00:00 2001
+From: Sage Weil <sage@inktank.com>
+Date: Fri, 11 Apr 2014 13:14:58 -0700
+Subject: [PATCH] osd/ReplicatedPG: skip missing hit_sets when loading into
+ memory
+
+We weren't handling hit_sets that were missing.
+
+Two changes here:
+
+1- Load the hit_sets oldest to newest.  That means that if we stop partway
+   through loading, and then add another to the end of the list, and then
+   try again to load some more, we will still catch them all.
+2- If the object is missing, stop.  We'll try again the next time
+   agent_work() is called.
+
+Fixes: #8077
+Signed-off-by: Sage Weil <sage@inktank.com>
+---
+ src/osd/ReplicatedPG.cc | 29 +++++++++++++++++------------
+ 1 file changed, 17 insertions(+), 12 deletions(-)
+
+--- a/src/osd/ReplicatedPG.cc
++++ b/src/osd/ReplicatedPG.cc
+@@ -10742,11 +10742,10 @@
+   }
+ 
+   if (agent_state->hit_set_map.size() < info.hit_set.history.size()) {
+     dout(10) << __func__ << dendl;
+-    for (list<pg_hit_set_info_t>::reverse_iterator p =
+-	   info.hit_set.history.rbegin();
+-	 p != info.hit_set.history.rend(); ++p) {
++    for (list<pg_hit_set_info_t>::iterator p = info.hit_set.history.begin();
++	 p != info.hit_set.history.end(); ++p) {
+       if (agent_state->hit_set_map.count(p->begin.sec()) == 0) {
+ 	dout(10) << __func__ << " loading " << p->begin << "-"
+ 		 << p->end << dendl;
+ 	if (!pool.info.is_replicated()) {
+@@ -10757,18 +10756,24 @@
+ 
+ 	// check if it's still in flight
+ 	if (hit_set_flushing.count(p->begin)) {
+ 	  agent_state->add_hit_set(p->begin.sec(), hit_set_flushing[p->begin]);
+-	} else {
+-	  bufferlist bl;
+-	  hobject_t oid = get_hit_set_archive_object(p->begin, p->end);
+-	  int r = osd->store->read(coll, oid, 0, 0, bl);
+-	  assert(r >= 0);
+-	  HitSetRef hs(new HitSet);
+-	  bufferlist::iterator pbl = bl.begin();
+-	  ::decode(*hs, pbl);
+-	  agent_state->add_hit_set(p->begin.sec(), hs);
++	  continue;
+ 	}
++
++	hobject_t oid = get_hit_set_archive_object(p->begin, p->end);
++	if (is_unreadable_object(oid)) {
++	  dout(10) << __func__ << " unreadable " << oid << ", waiting" << dendl;
++	  break;
++	}
++
++	bufferlist bl;
++	int r = osd->store->read(coll, oid, 0, 0, bl);
++	assert(r >= 0);
++	HitSetRef hs(new HitSet);
++	bufferlist::iterator pbl = bl.begin();
++	::decode(*hs, pbl);
++	agent_state->add_hit_set(p->begin.sec(), hs);
+       }
+     }
+   }
+ }

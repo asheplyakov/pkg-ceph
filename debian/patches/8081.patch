@@ -1,0 +1,27 @@
+From 809d0fab38d092dfa857e4237e5799c849de940e Mon Sep 17 00:00:00 2001
+From: Sage Weil <sage@inktank.com>
+Date: Fri, 11 Apr 2014 17:46:44 -0700
+Subject: [PATCH] osd/ReplicatedPG: handle missing hit_set on HITSET_GET rados
+ op
+
+Fixes: #8081
+Signed-off-by: Sage Weil <sage@inktank.com>
+---
+ src/osd/ReplicatedPG.cc | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+--- a/src/osd/ReplicatedPG.cc
++++ b/src/osd/ReplicatedPG.cc
+@@ -963,8 +963,12 @@
+ 	    // FIXME: EC not supported yet
+ 	    result = -EOPNOTSUPP;
+ 	    break;
+ 	  }
++	  if (is_unreadable_object(oid)) {
++	    wait_for_unreadable_object(oid, op);
++	    return;
++	  }
+ 	  result = osd->store->read(coll, oid, 0, 0, osd_op.outdata);
+ 	}
+       }
+       break;

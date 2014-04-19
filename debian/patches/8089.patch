@@ -1,0 +1,94 @@
+From 8905e3e2285c211e695d3d2747e6feda8ea5e55c Mon Sep 17 00:00:00 2001
+From: Sage Weil <sage@inktank.com>
+Date: Sun, 13 Apr 2014 21:31:35 -0700
+Subject: [PATCH] osd/ReplicatedPG: handle dup ops earlier in do_op
+
+Current the dup op checks happen in execute_ctx, long after we handle
+cache ops or get the obc and (potentially) return ENOENT.  That means that
+object deletions and cache ops both aren't properly idempotent.
+
+This is easy to fix by moving the check earlier in do_op.
+
+Fixes: #8089
+Signed-off-by: Sage Weil <sage@inktank.com>
+---
+ src/osd/ReplicatedPG.cc | 57 +++++++++++++++++++++++++------------------------
+ 1 file changed, 29 insertions(+), 28 deletions(-)
+
+--- a/src/osd/ReplicatedPG.cc
++++ b/src/osd/ReplicatedPG.cc
+@@ -1236,8 +1236,37 @@
+     osd->reply_op_error(op, -EINVAL);
+     return;
+   }
+ 
++  // dup/replay?
++  if (op->may_write() || op->may_cache()) {
++    const pg_log_entry_t *entry = pg_log.get_log().get_request(m->get_reqid());
++    if (entry) {
++      const eversion_t& oldv = entry->version;
++      dout(3) << __func__ << " dup " << m->get_reqid()
++	      << " was " << oldv << dendl;
++      if (already_complete(oldv)) {
++	osd->reply_op_error(op, 0, oldv, entry->user_version);
++      } else {
++	if (m->wants_ack()) {
++	  if (already_ack(oldv)) {
++	    MOSDOpReply *reply = new MOSDOpReply(m, 0, get_osdmap()->get_epoch(), 0, false);
++	    reply->add_flags(CEPH_OSD_FLAG_ACK);
++	    reply->set_reply_versions(oldv, entry->user_version);
++	    osd->send_message_osd_client(reply, m->get_connection());
++	  } else {
++	    dout(10) << " waiting for " << oldv << " to ack" << dendl;
++	    waiting_for_ack[oldv].push_back(op);
++	  }
++	}
++	dout(10) << " waiting for " << oldv << " to commit" << dendl;
++	waiting_for_ondisk[oldv].push_back(op);  // always queue ondisk waiters, so that we can requeue if needed
++	op->mark_delayed("waiting for ondisk");
++      }
++      return;
++    }
++  }
++
+   ObjectContextRef obc;
+   bool can_create = op->may_write() || op->may_cache();
+   hobject_t missing_oid;
+   hobject_t oid(m->get_oid(),
+@@ -1648,36 +1677,8 @@
+   delete ctx->op_t;
+   ctx->op_t = pgbackend->get_transaction();
+ 
+   if (op->may_write() || op->may_cache()) {
+-    // dup/replay?
+-    const pg_log_entry_t *entry = pg_log.get_log().get_request(ctx->reqid);
+-    if (entry) {
+-      const eversion_t& oldv = entry->version;
+-      dout(3) << "do_op dup " << ctx->reqid << " was " << oldv << dendl;
+-      if (already_complete(oldv)) {
+-	reply_ctx(ctx, 0, oldv, entry->user_version);
+-      } else {
+-	close_op_ctx(ctx, -EBUSY);
+-
+-	if (m->wants_ack()) {
+-	  if (already_ack(oldv)) {
+-	    MOSDOpReply *reply = new MOSDOpReply(m, 0, get_osdmap()->get_epoch(), 0, false);
+-	    reply->add_flags(CEPH_OSD_FLAG_ACK);
+-	    reply->set_reply_versions(oldv, entry->user_version);
+-	    osd->send_message_osd_client(reply, m->get_connection());
+-	  } else {
+-	    dout(10) << " waiting for " << oldv << " to ack" << dendl;
+-	    waiting_for_ack[oldv].push_back(op);
+-	  }
+-	}
+-	dout(10) << " waiting for " << oldv << " to commit" << dendl;
+-	waiting_for_ondisk[oldv].push_back(op);  // always queue ondisk waiters, so that we can requeue if needed
+-	op->mark_delayed("waiting for ondisk");
+-      }
+-      return;
+-    }
+-
+     op->mark_started();
+ 
+     // snap
+     if (pool.info.is_pool_snaps_mode()) {

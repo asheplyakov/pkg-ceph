@@ -1,0 +1,37 @@
+From 7e697b1bc2ffac086b6a24f97aba755401cd8c37 Mon Sep 17 00:00:00 2001
+From: Samuel Just <sam.just@inktank.com>
+Date: Tue, 15 Apr 2014 14:17:33 -0700
+Subject: [PATCH] ReplicatedPG::recover_replicas: do not recover clones while
+ snap obj is missing
+
+Otherwise, we cannot safely read the snapset for the clone.
+
+Fixes: #8091
+Signed-off-by: Samuel Just <sam.just@inktank.com>
+---
+ src/osd/ReplicatedPG.cc | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+--- a/src/osd/ReplicatedPG.cc
++++ b/src/osd/ReplicatedPG.cc
+@@ -9647,8 +9647,20 @@
+ 	dout(10) << __func__ << ": " << soid << " still unfound" << dendl;
+ 	continue;
+       }
+ 
++      if (soid.is_snap() && pg_log.get_missing().is_missing(soid.get_head())) {
++	dout(10) << __func__ << ": " << soid.get_head()
++		 << " still missing on primary" << dendl;
++	continue;
++      }
++
++      if (soid.is_snap() && pg_log.get_missing().is_missing(soid.get_snapdir())) {
++	dout(10) << __func__ << ": " << soid.get_snapdir()
++		 << " still missing on primary" << dendl;
++	continue;
++      }
++
+       if (pg_log.get_missing().is_missing(soid)) {
+ 	dout(10) << __func__ << ": " << soid << " still missing on primary" << dendl;
+ 	continue;
+       }

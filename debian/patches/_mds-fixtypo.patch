@@ -1,0 +1,23 @@
+From 4ccc845c0a5593a1809e53c13fc9bb0c7cfc46ae Mon Sep 17 00:00:00 2001
+From: "Yan, Zheng" <zheng.z.yan@intel.com>
+Date: Sat, 12 Apr 2014 14:10:55 +0800
+Subject: [PATCH] mds: fix typo in Server::do_rename_rollback()
+
+Signed-off-by: Yan, Zheng <zheng.z.yan@intel.com>
+---
+ src/mds/Server.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+--- a/src/mds/Server.cc
++++ b/src/mds/Server.cc
+@@ -7123,9 +7123,9 @@
+   }
+   
+   if (target && target->is_dir()) {
+     assert(destdn);
+-    mdcache->project_subtree_rename(in, straydir, destdir);
++    mdcache->project_subtree_rename(target, straydir, destdir);
+   }
+ 
+   if (in && in->is_dir()) {
+     assert(srcdn);

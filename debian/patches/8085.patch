@@ -1,0 +1,57 @@
+From a72bcddfc81254793689612d5615ae572d8f51f7 Mon Sep 17 00:00:00 2001
+From: Sage Weil <sage@inktank.com>
+Date: Sat, 12 Apr 2014 22:23:26 -0700
+Subject: [PATCH] osd/ReplicatedPG: handle misdirected do_command
+
+We can get a query on a pg we still have but are no longer primary for.  If
+that happens, do not reply.  The client will resend to the correct OSD
+assuming it has the map.  Send them the latest incremental so that we know
+they know there is something new.  We don't know the exact epoch they have,
+unfortunately, because MCommand doesn't include it, but a newer inc is
+enough to make them request the right incrementals from a mon.  Eventually
+they will figure it out and Objecter will resend the request to the
+correct target.
+
+It is possible we should include epoch in the MCommand message so that we
+can do this mapping "correctly" (as in, the same way MOSDOp does).  That
+makes MCommand less general, though... a PG-specific command message might
+be the most precise thing.  Another day...
+
+Fixes: #8085
+Signed-off-by: Sage Weil <sage@inktank.com>
+---
+ src/osd/OSD.cc | 21 +++++++++++++++++----
+ 1 file changed, 17 insertions(+), 4 deletions(-)
+
+--- a/src/osd/OSD.cc
++++ b/src/osd/OSD.cc
+@@ -4275,12 +4275,25 @@
+       if (osdmap->get_primary_shard(pgid, &pcand) &&
+ 	  _have_pg(pcand)) {
+ 	PG *pg = _lookup_lock_pg(pcand);
+ 	assert(pg);
+-	// simulate pg <pgid> cmd= for pg->do-command
+-	if (prefix != "pg")
+-	  cmd_putval(cct, cmdmap, "cmd", prefix);
+-	r = pg->do_command(cmdmap, ss, data, odata);
++	if (pg->is_primary()) {
++	  // simulate pg <pgid> cmd= for pg->do-command
++	  if (prefix != "pg")
++	    cmd_putval(cct, cmdmap, "cmd", prefix);
++	  r = pg->do_command(cmdmap, ss, data, odata);
++	} else {
++	  ss << "not primary for pgid " << pgid;
++
++	  // send them the latest diff to ensure they realize the mapping
++	  // has changed.
++	  send_incremental_map(osdmap->get_epoch() - 1, con);
++
++	  // do not reply; they will get newer maps and realize they
++	  // need to resend.
++	  pg->unlock();
++	  return;
++	}
+ 	pg->unlock();
+       } else {
+ 	ss << "i don't have pgid " << pgid;
+ 	r = -ENOENT;

@@ -1,0 +1,45 @@
+From 502cc6140667ada0bae3886885c99e3aaca7f5ed Mon Sep 17 00:00:00 2001
+From: Samuel Just <sam.just@inktank.com>
+Date: Mon, 14 Apr 2014 11:07:58 -0700
+Subject: [PATCH] ReplicatedPG::agent_work: skip hitset objects before getting
+ object context
+
+Otherwise, we might read the attr on a hitset object we are in the
+process of deleting.
+
+Fixes: #8086
+Signed-off-by: Samuel Just <sam.just@inktank.com>
+---
+ src/osd/ReplicatedPG.cc | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+--- a/src/osd/ReplicatedPG.cc
++++ b/src/osd/ReplicatedPG.cc
+@@ -10670,8 +10670,13 @@
+   int started = 0;
+   for (vector<hobject_t>::iterator p = ls.begin();
+        p != ls.end();
+        ++p) {
++    if (p->nspace == cct->_conf->osd_hit_set_namespace) {
++      dout(20) << __func__ << " skip (hit set) " << *p << dendl;
++      osd->logger->inc(l_osd_agent_skip);
++      continue;
++    }
+     if (is_degraded_object(*p)) {
+       dout(20) << __func__ << " skip (degraded) " << *p << dendl;
+       osd->logger->inc(l_osd_agent_skip);
+       continue;
+@@ -10692,13 +10697,8 @@
+       dout(20) << __func__ << " skip (scrubbing) " << obc->obs.oi << dendl;
+       osd->logger->inc(l_osd_agent_skip);
+       continue;
+     }
+-    if (obc->obs.oi.soid.nspace == cct->_conf->osd_hit_set_namespace) {
+-      dout(20) << __func__ << " skip (hit set) " << obc->obs.oi << dendl;
+-      osd->logger->inc(l_osd_agent_skip);
+-      continue;
+-    }
+     if (obc->is_blocked()) {
+       dout(20) << __func__ << " skip (blocked) " << obc->obs.oi << dendl;
+       osd->logger->inc(l_osd_agent_skip);
+       continue;
