@@ -1,7 +1,4 @@
 debian/etc/pm/sleep.d/*    /etc/pm/sleep.d/
-../../src/rbdmap etc/ceph
-../../udev/60-ceph-partuuid-workaround.rules lib/udev/rules.d
-../../udev/95-ceph-osd.rules lib/udev/rules.d
 etc/bash_completion.d/ceph
 sbin/mkcephfs
 usr/bin/ceph-clsinfo
@@ -31,3 +28,7 @@ usr/share/man/man8/crushtool.8
 usr/share/man/man8/mkcephfs.8
 usr/share/man/man8/monmaptool.8
 usr/share/man/man8/osdmaptool.8
+## install from source tree
+src/rbdmap                               /etc/ceph
+udev/60-ceph-partuuid-workaround.rules   /lib/udev/rules.d
+udev/95-ceph-osd.rules                   /lib/udev/rules.d
