@@ -35,12 +35,12 @@ librados.so.2 librados2 #MINVER#
  check_utf8_cstr@Base 0.72.2
  code_environment_to_str@Base 0.72.2
  config_optionsp@Base 0.72.2
- crc32_iscsi_00@Base 0.72.2
- crc32_iscsi_00_slver@Base 0.72.2
- crc32_iscsi_00_slver_00020014@Base 0.72.2
- crc32_iscsi_zero_00@Base 0.72.2
- crc32_iscsi_zero_00_slver@Base 0.72.2
- crc32_iscsi_zero_00_slver_00020014@Base 0.72.2
+ (arch=amd64)crc32_iscsi_00@Base 0.72.2
+ (arch=amd64)crc32_iscsi_00_slver@Base 0.72.2
+ (arch=amd64)crc32_iscsi_00_slver_00020014@Base 0.72.2
+ (arch=amd64)crc32_iscsi_zero_00@Base 0.72.2
+ (arch=amd64)crc32_iscsi_zero_00_slver@Base 0.72.2
+ (arch=amd64)crc32_iscsi_zero_00_slver_00020014@Base 0.72.2
  crc32_table_iscsi_base@Base 0.72.2
  crush_add_bucket@Base 0.72.2
  crush_add_list_bucket_item@Base 0.72.2
