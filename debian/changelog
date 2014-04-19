@@ -1,3 +1,11 @@
+ceph (0.79-3) experimental; urgency=low
+
+  * New "arch.patch" to detect build architecture using dpkg-architecture.
+  * Mark amd64-only symbols as such.
+  * Minor rules cleanup.
+
+ -- Dmitry Smirnov <onlyjob@debian.org>  Sat, 19 Apr 2014 15:56:37 +1000
+
 ceph (0.79-2) experimental; urgency=low
 
   [ James Page ]
