@@ -1,3 +1,12 @@
+ceph (0.80~rc1-1) experimental; urgency=low
+
+  * New upstream pre-release.
+  * Minor re-factoring of udev rules installation.
+  * ceph-common: added ceph-crush-location.1 man page.
+  * ceph-test-dbg: fixed Depends.
+
+ -- Dmitry Smirnov <onlyjob@debian.org>  Thu, 24 Apr 2014 02:52:12 +1000
+
 ceph (0.79-3) experimental; urgency=low
 
   * New "arch.patch" to detect build architecture using dpkg-architecture.

@@ -169,6 +169,7 @@ librados.so.2 librados2 #MINVER#
  rados_ioctx_pool_stat@Base 0.72.2
  rados_ioctx_selfmanaged_snap_create@Base 0.72.2
  rados_ioctx_selfmanaged_snap_remove@Base 0.72.2
+ rados_ioctx_snap_rollback@Base 0.80~rc1
  rados_ioctx_selfmanaged_snap_rollback@Base 0.72.2
  rados_ioctx_selfmanaged_snap_set_write_ctx@Base 0.72.2
  rados_ioctx_set_namespace@Base 0.72.2

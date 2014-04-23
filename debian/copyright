@@ -286,6 +286,7 @@ License: BSD-3-clause
 
 Files: src/civetweb/*
 Copyright: 2004-2013 Sergey Lyubka
+           2013-2014 the Civetweb developers
 License: Expat
 
 Files: src/json_spirit/*
