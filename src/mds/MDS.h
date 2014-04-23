@@ -35,7 +35,7 @@
 #include "SessionMap.h"
 
 
-#define CEPH_MDS_PROTOCOL    22 /* cluster internal */
+#define CEPH_MDS_PROTOCOL    23 /* cluster internal */
 
 
 enum {
@@ -389,7 +389,7 @@ class MDS : public Dispatcher {
   void rejoin_joint_start();
   void rejoin_start();
   void rejoin_done();
-  void recovery_done();
+  void recovery_done(int oldstate);
   void clientreplay_start();
   void clientreplay_done();
   void active_start();

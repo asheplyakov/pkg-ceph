@@ -455,6 +455,7 @@ protected:
   void kick_flushing_caps(MetaSession *session);
   void kick_maxsize_requests(MetaSession *session);
   int get_caps(Inode *in, int need, int want, int *have, loff_t endoff);
+  int get_caps_used(Inode *in);
 
   void maybe_update_snaprealm(SnapRealm *realm, snapid_t snap_created, snapid_t snap_highwater, 
 			      vector<snapid_t>& snaps);
@@ -479,13 +480,13 @@ protected:
   void finish_cap_snap(Inode *in, CapSnap *capsnap, int used);
   void _flushed_cap_snap(Inode *in, snapid_t seq);
 
-  void _schedule_invalidate_dentry_callback(Dentry *dn);
+  void _schedule_invalidate_dentry_callback(Dentry *dn, bool del);
   void _async_dentry_invalidate(vinodeno_t dirino, vinodeno_t ino, string& name);
   void _invalidate_inode_parents(Inode *in);
 
   void _schedule_invalidate_callback(Inode *in, int64_t off, int64_t len, bool keep_caps);
-  void _invalidate_inode_cache(Inode *in, bool keep_caps);
-  void _invalidate_inode_cache(Inode *in, int64_t off, int64_t len, bool keep_caps);
+  void _invalidate_inode_cache(Inode *in);
+  void _invalidate_inode_cache(Inode *in, int64_t off, int64_t len);
   void _async_invalidate(Inode *in, int64_t off, int64_t len, bool keep_caps);
   void _release(Inode *in);
   
@@ -565,11 +566,11 @@ private:
 	inode(i) { }
     void finish(int r) {
       lsubdout(client->cct, client, 20) << "C_Readahead on " << inode << dendl;
-      client->put_inode(inode, 1);
+      client->put_cap_ref(inode, CEPH_CAP_FILE_RD | CEPH_CAP_FILE_CACHE);
     }
   };
 
-  int _read_sync(Fh *f, uint64_t off, uint64_t len, bufferlist *bl);
+  int _read_sync(Fh *f, uint64_t off, uint64_t len, bufferlist *bl, bool *checkeof);
   int _read_async(Fh *f, uint64_t off, uint64_t len, bufferlist *bl);
 
   // internal interface

@@ -163,31 +163,31 @@ COMMAND("auth print_key name=entity,type=CephString", "display requested key", \
 	"auth", "rx", "cli,rest")
 COMMAND("auth list", "list authentication state", "auth", "rx", "cli,rest")
 COMMAND("auth import", "auth import: read keyring file from -i <file>", \
-	"auth", "rw", "cli,rest")
+	"auth", "rwx", "cli,rest")
 COMMAND("auth add " \
 	"name=entity,type=CephString " \
 	"name=caps,type=CephString,n=N,req=false", \
 	"add auth info for <entity> from input file, or random key if no input given, and/or any caps specified in the command",
-	"auth", "rw", "cli,rest")
+	"auth", "rwx", "cli,rest")
 COMMAND("auth get-or-create-key " \
 	"name=entity,type=CephString " \
 	"name=caps,type=CephString,n=N,req=false", \
 	"get, or add, key for <name> from system/caps pairs specified in the command.  If key already exists, any given caps must match the existing caps for that key.", \
-	"auth", "rw", "cli,rest")
+	"auth", "rwx", "cli,rest")
 COMMAND("auth get-or-create " \
 	"name=entity,type=CephString " \
 	"name=caps,type=CephString,n=N,req=false", \
 	"add auth info for <entity> from input file, or random key if no input given, and/or any caps specified in the command", \
-	"auth", "rw", "cli,rest")
+	"auth", "rwx", "cli,rest")
 COMMAND("auth caps " \
 	"name=entity,type=CephString " \
 	"name=caps,type=CephString,n=N", \
 	"update caps for <name> from caps specified in the command", \
-	"auth", "rw", "cli,rest")
+	"auth", "rwx", "cli,rest")
 COMMAND("auth del " \
 	"name=entity,type=CephString", \
 	"delete all caps for <name>", \
-	"auth", "rw", "cli,rest")
+	"auth", "rwx", "cli,rest")
 
 /*
  * Monitor commands (Monitor.cc)
@@ -557,7 +557,8 @@ COMMAND("osd pool get " \
 COMMAND("osd pool set " \
 	"name=pool,type=CephPoolname " \
 	"name=var,type=CephChoices,strings=size|min_size|crash_replay_interval|pg_num|pgp_num|crush_ruleset|hashpspool|hit_set_type|hit_set_period|hit_set_count|hit_set_fpp|debug_fake_ec_pool|target_max_bytes|target_max_objects|cache_target_dirty_ratio|cache_target_full_ratio|cache_min_flush_age|cache_min_evict_age " \
-	"name=val,type=CephString", \
+	"name=val,type=CephString " \
+	"name=force,type=CephChoices,strings=--yes-i-really-mean-it,req=false", \
 	"set pool parameter <var> to <val>", "osd", "rw", "cli,rest")
 // 'val' is a CephString because it can include a unit.  Perhaps
 // there should be a Python type for validation/conversion of strings

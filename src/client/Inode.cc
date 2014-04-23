@@ -14,7 +14,7 @@ ostream& operator<<(ostream &out, Inode &in)
       << " cap_refs=" << in.cap_refs
       << " open=" << in.open_by_mode
       << " mode=" << oct << in.mode << dec
-      << " size=" << in.size
+      << " size=" << in.size << "/" << in.max_size
       << " mtime=" << in.mtime
       << " caps=" << ccap_string(in.caps_issued());
   if (!in.caps.empty()) {
@@ -111,12 +111,12 @@ void Inode::get_cap_ref(int cap)
   }
 }
 
-bool Inode::put_cap_ref(int cap)
+int Inode::put_cap_ref(int cap)
 {
   // if cap is always a single bit (which it seems to be)
   // all this logic is equivalent to:
   // if (--cap_refs[c]) return false; else return true;
-  bool last = false;
+  int last = 0;
   int n = 0;
   while (cap) {
     if (cap & 1) {
@@ -126,7 +126,7 @@ bool Inode::put_cap_ref(int cap)
 	assert(cap_refs[c] > 0);
       }
       if (--cap_refs[c] == 0)
-        last = true;
+        last |= c;
       //cout << "inode " << *this << " put " << cap_string(c) << " " << (cap_refs[c]+1) << " -> " << cap_refs[c] << std::endl;
     }
     cap >>= 1;

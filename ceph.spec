@@ -9,13 +9,13 @@
 # common
 #################################################################################
 Name:		ceph
-Version:	0.79
-Release:	0%{?dist}
+Version:        0.80
+Release:        rc1%{?dist}
 Summary:	User space components of the Ceph file system
 License:	GPL-2.0
 Group:		System Environment/Base
 URL:		http://ceph.com/
-Source0:	http://ceph.com/download/%{name}-%{version}.tar.bz2
+Source0:        http://ceph.com/download/%{name}-%{version}-rc1.tar.bz2
 Requires:	librbd1 = %{version}-%{release}
 Requires:	librados2 = %{version}-%{release}
 Requires:	libcephfs1 = %{version}-%{release}
@@ -28,6 +28,7 @@ Requires:	cryptsetup
 Requires:	parted
 Requires:	util-linux
 Requires:	hdparm
+Requires:       redhat-lsb-core
 Requires(post):	binutils
 BuildRoot:      %{_tmppath}/%{name}-%{version}-build
 BuildRequires:	make
@@ -87,8 +88,10 @@ BuildRequires:  gperftools-devel
 %endif
 
 %description
-Ceph is a distributed network file system designed to provide excellent
-performance, reliability, and scalability.
+Ceph is a massively scalable, open-source, distributed
+storage system that runs on commodity hardware and delivers object,
+block and file system storage.
+
 
 #################################################################################
 # packages
@@ -256,7 +259,7 @@ This package contains the Java libraries for the Ceph File System.
 # common
 #################################################################################
 %prep
-%setup -q
+%setup -q -n %{name}-%{version}-rc1
 
 %build
 # Find jni.h

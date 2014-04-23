@@ -1238,6 +1238,8 @@ void CInode::encode_lock_state(int type, bufferlist& bl)
       if (!is_dir()) {
 	::encode(inode.layout, bl);
 	::encode(inode.size, bl);
+	::encode(inode.truncate_seq, bl);
+	::encode(inode.truncate_size, bl);
 	::encode(inode.client_ranges, bl);
 	::encode(inode.inline_data, bl);
 	::encode(inode.inline_version, bl);
@@ -1439,6 +1441,8 @@ void CInode::decode_lock_state(int type, bufferlist& bl)
       if (!is_dir()) {
 	::decode(inode.layout, p);
 	::decode(inode.size, p);
+	::decode(inode.truncate_seq, p);
+	::decode(inode.truncate_size, p);
 	::decode(inode.client_ranges, p);
 	::decode(inode.inline_data, p);
 	::decode(inode.inline_version, p);
@@ -1678,9 +1682,9 @@ void CInode::start_scatter(ScatterLock *lock)
 struct C_Inode_FragUpdate : public Context {
   CInode *in;
   CDir *dir;
-  Mutation *mut;
+  MutationRef mut;
 
-  C_Inode_FragUpdate(CInode *i, CDir *d, Mutation *m) : in(i), dir(d), mut(m) {}
+  C_Inode_FragUpdate(CInode *i, CDir *d, MutationRef& m) : in(i), dir(d), mut(m) {}
   void finish(int r) {
     in->_finish_frag_update(dir, mut);
   }    
@@ -1701,7 +1705,7 @@ void CInode::finish_scatter_update(ScatterLock *lock, CDir *dir,
       dout(10) << "finish_scatter_update " << fg << " journaling accounted scatterstat update v" << inode_version << dendl;
 
       MDLog *mdlog = mdcache->mds->mdlog;
-      Mutation *mut = new Mutation;
+      MutationRef mut(new MutationImpl);
       mut->ls = mdlog->get_current_segment();
 
       inode_t *pi = get_projected_inode();
@@ -1742,12 +1746,11 @@ void CInode::finish_scatter_update(ScatterLock *lock, CDir *dir,
   }
 }
 
-void CInode::_finish_frag_update(CDir *dir, Mutation *mut)
+void CInode::_finish_frag_update(CDir *dir, MutationRef& mut)
 {
   dout(10) << "_finish_frag_update on " << *dir << dendl;
   mut->apply();
   mut->cleanup();
-  delete mut;
 }
 
 
@@ -1952,7 +1955,7 @@ void CInode::finish_scatter_gather_update(int type)
   }
 }
 
-void CInode::finish_scatter_gather_update_accounted(int type, Mutation *mut, EMetaBlob *metablob)
+void CInode::finish_scatter_gather_update_accounted(int type, MutationRef& mut, EMetaBlob *metablob)
 {
   dout(10) << "finish_scatter_gather_update_accounted " << type << " on " << *this << dendl;
   assert(is_auth());
@@ -2993,6 +2996,7 @@ int CInode::encode_inodestat(bufferlist& bl, Session *session,
       issue = cap->pending();
       cap->set_last_issue();
       cap->set_last_issue_stamp(ceph_clock_now(g_ceph_context));
+      cap->clear_new();
       e.cap.caps = issue;
       e.cap.wanted = cap->wanted();
       e.cap.cap_id = cap->get_cap_id();

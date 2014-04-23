@@ -2156,6 +2156,7 @@ struct pistate {
   vector<int> old_acting, old_up;
   epoch_t same_interval_since;
   int primary;
+  int up_primary;
 };
 
 void OSD::build_past_intervals_parallel()
@@ -2207,9 +2208,10 @@ void OSD::build_past_intervals_parallel()
 	continue;
 
       vector<int> acting, up;
+      int up_primary;
       int primary;
       cur_map->pg_to_up_acting_osds(
-	pg->info.pgid.pgid, &up, 0, &acting, &primary);
+	pg->info.pgid.pgid, &up, &up_primary, &acting, &primary);
 
       if (p.same_interval_since == 0) {
 	dout(10) << __func__ << " epoch " << cur_epoch << " pg " << pg->info.pgid
@@ -2219,6 +2221,7 @@ void OSD::build_past_intervals_parallel()
 	p.old_up = up;
 	p.old_acting = acting;
 	p.primary = primary;
+	p.up_primary = up_primary;
 	continue;
       }
       assert(last_map);
@@ -2228,6 +2231,8 @@ void OSD::build_past_intervals_parallel()
 	p.primary,
 	primary,
 	p.old_acting, acting,
+	p.up_primary,
+	up_primary,
 	p.old_up, up,
 	p.same_interval_since,
 	pg->info.history.last_epoch_clean,
@@ -3852,7 +3857,10 @@ void OSDService::send_message_osd_cluster(int peer, Message *m, epoch_t from_epo
     m->put();
     return;
   }
-  osd->cluster_messenger->send_message(m, next_osdmap->get_cluster_inst(peer));
+  const entity_inst_t& peer_inst = next_osdmap->get_cluster_inst(peer);
+  Connection *peer_con = osd->cluster_messenger->get_connection(peer_inst).get();
+  osd->_share_map_outgoing(peer, peer_con, next_osdmap);
+  osd->cluster_messenger->send_message(m, peer_inst);
 }
 
 ConnectionRef OSDService::get_con_osd_cluster(int peer, epoch_t from_epoch)
@@ -4276,10 +4284,23 @@ void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, buffe
 	  _have_pg(pcand)) {
 	PG *pg = _lookup_lock_pg(pcand);
 	assert(pg);
-	// simulate pg <pgid> cmd= for pg->do-command
-	if (prefix != "pg")
-	  cmd_putval(cct, cmdmap, "cmd", prefix);
-	r = pg->do_command(cmdmap, ss, data, odata);
+	if (pg->is_primary()) {
+	  // simulate pg <pgid> cmd= for pg->do-command
+	  if (prefix != "pg")
+	    cmd_putval(cct, cmdmap, "cmd", prefix);
+	  r = pg->do_command(cmdmap, ss, data, odata);
+	} else {
+	  ss << "not primary for pgid " << pgid;
+
+	  // send them the latest diff to ensure they realize the mapping
+	  // has changed.
+	  send_incremental_map(osdmap->get_epoch() - 1, con);
+
+	  // do not reply; they will get newer maps and realize they
+	  // need to resend.
+	  pg->unlock();
+	  return;
+	}
 	pg->unlock();
       } else {
 	ss << "i don't have pgid " << pgid;
@@ -5664,9 +5685,9 @@ void OSD::check_osdmap_features(ObjectStore *fs)
 	!fs->get_allow_sharded_objects()) {
     dout(0) << __func__ << " enabling on-disk ERASURE CODES compat feature" << dendl;
     superblock.compat_features.incompat.insert(CEPH_OSD_FEATURE_INCOMPAT_SHARDS);
-    ObjectStore::Transaction t;
-    write_superblock(t);
-    int err = store->apply_transaction(t);
+    ObjectStore::Transaction *t = new ObjectStore::Transaction;
+    write_superblock(*t);
+    int err = store->queue_transaction_and_cleanup(NULL, t);
     assert(err == 0);
     fs->set_allow_sharded_objects();
   }
@@ -6144,9 +6165,15 @@ void OSD::split_pgs(
   parent->update_snap_mapper_bits(
     parent->info.pgid.get_split_bits(pg_num)
     );
+
+  vector<object_stat_sum_t> updated_stats(childpgids.size() + 1);
+  parent->info.stats.stats.sum.split(updated_stats);
+
+  vector<object_stat_sum_t>::iterator stat_iter = updated_stats.begin();
   for (set<spg_t>::const_iterator i = childpgids.begin();
        i != childpgids.end();
-       ++i) {
+       ++i, ++stat_iter) {
+    assert(stat_iter != updated_stats.end());
     dout(10) << "Splitting " << *parent << " into " << *i << dendl;
     assert(service.splitting(*i));
     PG* child = _make_pg(nextmap, *i);
@@ -6167,10 +6194,13 @@ void OSD::split_pgs(
       i->pgid,
       child,
       split_bits);
+    child->info.stats.stats.sum = *stat_iter;
 
     child->write_if_dirty(*(rctx->transaction));
     child->unlock();
   }
+  assert(stat_iter != updated_stats.end());
+  parent->info.stats.stats.sum = *stat_iter;
   parent->write_if_dirty(*(rctx->transaction));
 }
   
@@ -6452,7 +6482,7 @@ void OSD::do_notifies(
       cluster_messenger->send_message(m, con.get());
     } else {
       dout(7) << "do_notify osd " << it->first
-	      << " sending seperate messages" << dendl;
+	      << " sending separate messages" << dendl;
       for (vector<pair<pg_notify_t, pg_interval_map_t> >::iterator i =
 	     it->second.begin();
 	   i != it->second.end();
@@ -6491,7 +6521,7 @@ void OSD::do_queries(map<int, map<spg_t,pg_query_t> >& query_map,
       cluster_messenger->send_message(m, con.get());
     } else {
       dout(7) << "do_queries querying osd." << who
-	      << " sending seperate messages "
+	      << " sending saperate messages "
 	      << " on " << pit->second.size() << " PGs" << dendl;
       for (map<spg_t, pg_query_t>::iterator i = pit->second.begin();
 	   i != pit->second.end();
@@ -7273,10 +7303,7 @@ void OSDService::handle_misdirected_op(PG *pg, OpRequestRef op)
   MOSDOp *m = static_cast<MOSDOp*>(op->get_req());
   assert(m->get_header().type == CEPH_MSG_OSD_OP);
 
-  if (m->get_map_epoch() < pg->info.history.same_primary_since) {
-    dout(7) << *pg << " changed after " << m->get_map_epoch() << ", dropping" << dendl;
-    return;
-  }
+  assert(m->get_map_epoch() >= pg->info.history.same_primary_since);
 
   if (pg->is_ec_pg()) {
     /**

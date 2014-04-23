@@ -2051,7 +2051,7 @@ TEST_F(LibRadosTierPP, HitSetWrite) {
   for (int i=0; i<1000; ++i) {
     bufferlist bl;
     bl.append("a");
-    ASSERT_EQ(1, ioctx.write(stringify(i), bl, 1, 0));
+    ASSERT_EQ(0, ioctx.write(stringify(i), bl, 1, 0));
   }
 
   // get HitSets
@@ -2133,7 +2133,7 @@ TEST_F(LibRadosTierPP, HitSetTrim) {
 
     bufferlist bl;
     bl.append("f");
-    ASSERT_EQ(1, ioctx.write("foo", bl, 1, 0));
+    ASSERT_EQ(0, ioctx.write("foo", bl, 1, 0));
 
     list<pair<time_t, time_t> > ls;
     AioCompletion *c = librados::Rados::aio_create_completion();
@@ -2490,15 +2490,20 @@ TEST_F(LibRadosTwoPoolsECPP, PromoteSnap) {
   // clones in the cache tier)
   // This test requires cache tier and base tier to have the same pg_num/pgp_num
   {
-    IoCtx cache_ioctx;
-    ASSERT_EQ(0, cluster.ioctx_create(cache_pool_name.c_str(), cache_ioctx));
-    ostringstream ss;
-    ss << "{\"prefix\": \"pg scrub\", \"pgid\": \""
-       << cache_ioctx.get_id() << "."
-       << ioctx.get_object_pg_hash_position("foo")
-       << "\"}";
-    ASSERT_EQ(0, cluster.mon_command(ss.str(), inbl, NULL, NULL));
-
+    for (int tries = 0; tries < 5; ++tries) {
+      IoCtx cache_ioctx;
+      ASSERT_EQ(0, cluster.ioctx_create(cache_pool_name.c_str(), cache_ioctx));
+      ostringstream ss;
+      ss << "{\"prefix\": \"pg scrub\", \"pgid\": \""
+	 << cache_ioctx.get_id() << "."
+	 << ioctx.get_object_pg_hash_position("foo")
+	 << "\"}";
+      int r = cluster.mon_command(ss.str(), inbl, NULL, NULL);
+      if (r == -EAGAIN)
+	continue;
+      ASSERT_EQ(0, r);
+      break;
+    }
     // give it a few seconds to go.  this is sloppy but is usually enough time
     cout << "waiting for scrub..." << std::endl;
     sleep(15);
@@ -4011,7 +4016,7 @@ TEST_F(LibRadosTierECPP, HitSetWrite) {
   for (int i=0; i<1000; ++i) {
     bufferlist bl;
     bl.append("a");
-    ASSERT_EQ(1, ioctx.write(stringify(i), bl, 1, 0));
+    ASSERT_EQ(0, ioctx.write(stringify(i), bl, 1, 0));
   }
 
   // get HitSets
@@ -4097,7 +4102,7 @@ TEST_F(LibRadosTierECPP, HitSetTrim) {
 
     bufferlist bl;
     bl.append(buf, bsize);
-    ASSERT_EQ(bsize, ioctx.append("foo", bl, bsize));
+    ASSERT_EQ(0, ioctx.append("foo", bl, bsize));
 
     list<pair<time_t, time_t> > ls;
     AioCompletion *c = librados::Rados::aio_create_completion();

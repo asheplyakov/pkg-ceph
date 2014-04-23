@@ -379,6 +379,10 @@ public:
 	}
       }
     }
+
+    void add_missing(const hobject_t &hoid, eversion_t need, eversion_t have) {
+      needs_recovery_map[hoid] = pg_missing_t::item(need, have);
+    }
     void revise_need(const hobject_t &hoid, eversion_t need) {
       assert(needs_recovery(hoid));
       needs_recovery_map[hoid].need = need;
@@ -678,7 +682,7 @@ protected:
   void clear_publish_stats();
 
 public:
-  void clear_primary_state(bool stay_primary);
+  void clear_primary_state();
 
  public:
   bool is_actingbackfill(pg_shard_t osd) const {
@@ -1999,7 +2003,7 @@ public:
     vector<pg_log_entry_t> &log_entries,
     ObjectStore::Transaction& t);
 
-  void filter_snapc(SnapContext& snapc);
+  void filter_snapc(vector<snapid_t> &snaps);
 
   void log_weirdness();
 
@@ -2106,10 +2110,6 @@ public:
 
   virtual int do_command(cmdmap_t cmdmap, ostream& ss,
 			 bufferlist& idata, bufferlist& odata) = 0;
-
-  virtual bool same_for_read_since(epoch_t e) = 0;
-  virtual bool same_for_modify_since(epoch_t e) = 0;
-  virtual bool same_for_rep_modify_since(epoch_t e) = 0;
 
   virtual void on_role_change() = 0;
   virtual void on_pool_change() = 0;

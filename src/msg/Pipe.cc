@@ -81,7 +81,6 @@ Pipe::Pipe(SimpleMessenger *r, int st, Connection *con)
     peer_type(-1),
     pipe_lock("SimpleMessenger::Pipe::pipe_lock"),
     state(st),
-    session_security(NULL),
     connection_state(NULL),
     reader_running(false), reader_needs_join(false),
     writer_running(false),
@@ -113,7 +112,6 @@ Pipe::~Pipe()
 {
   assert(out_q.empty());
   assert(sent.empty());
-  delete session_security;
   delete delay_thread;
 }
 
@@ -280,8 +278,7 @@ int Pipe::accept()
   len = sizeof(socket_addr.ss_addr());
   r = ::getpeername(sd, (sockaddr*)&socket_addr.ss_addr(), &len);
   if (r < 0) {
-    char buf[80];
-    ldout(msgr->cct,0) << "accept failed to getpeername " << errno << " " << strerror_r(errno, buf, sizeof(buf)) << dendl;
+    ldout(msgr->cct,0) << "accept failed to getpeername " << cpp_strerror(errno) << dendl;
     goto fail_unlocked;
   }
   ::encode(socket_addr, addrs);
@@ -419,8 +416,7 @@ int Pipe::accept()
       if (state != STATE_ACCEPTING)
 	goto shutting_down_msgr_unlocked;
       reply.tag = CEPH_MSGR_TAG_BADAUTHORIZER;
-      delete session_security;
-      session_security = NULL;
+      session_security.reset();
       goto reply;
     } 
 
@@ -658,9 +654,11 @@ int Pipe::accept()
   connection_state->set_features((uint64_t)reply.features & (uint64_t)connect.features);
   ldout(msgr->cct,10) << "accept features " << connection_state->get_features() << dendl;
 
-  delete session_security;
-  session_security = get_auth_session_handler(msgr->cct, connect.authorizer_protocol, session_key,
-					      connection_state->get_features());
+  session_security.reset(
+      get_auth_session_handler(msgr->cct,
+			       connect.authorizer_protocol,
+			       session_key,
+			       connection_state->get_features()));
 
   // notify
   msgr->dispatch_queue.queue_accept(connection_state.get());
@@ -818,12 +816,10 @@ int Pipe::connect()
   if (sd >= 0)
     ::close(sd);
 
-  char buf[80];
-
   // create socket?
   sd = ::socket(peer_addr.get_family(), SOCK_STREAM, 0);
   if (sd < 0) {
-    lderr(msgr->cct) << "connect couldn't created socket " << strerror_r(errno, buf, sizeof(buf)) << dendl;
+    lderr(msgr->cct) << "connect couldn't created socket " << cpp_strerror(errno) << dendl;
     goto fail;
   }
 
@@ -832,7 +828,7 @@ int Pipe::connect()
   rc = ::connect(sd, (sockaddr*)&peer_addr.addr, peer_addr.addr_size());
   if (rc < 0) {
     ldout(msgr->cct,2) << "connect error " << peer_addr
-	     << ", " << errno << ": " << strerror_r(errno, buf, sizeof(buf)) << dendl;
+	     << ", " << cpp_strerror(errno) << dendl;
     goto fail;
   }
 
@@ -841,7 +837,7 @@ int Pipe::connect()
   // verify banner
   // FIXME: this should be non-blocking, or in some other way verify the banner as we get it.
   if (tcp_read((char*)&banner, strlen(CEPH_BANNER)) < 0) {
-    ldout(msgr->cct,2) << "connect couldn't read banner, " << strerror_r(errno, buf, sizeof(buf)) << dendl;
+    ldout(msgr->cct,2) << "connect couldn't read banner, " << cpp_strerror(errno) << dendl;
     goto fail;
   }
   if (memcmp(banner, CEPH_BANNER, strlen(CEPH_BANNER))) {
@@ -856,7 +852,7 @@ int Pipe::connect()
   msg.msg_iovlen = 1;
   msglen = msgvec[0].iov_len;
   if (do_sendmsg(&msg, msglen)) {
-    ldout(msgr->cct,2) << "connect couldn't write my banner, " << strerror_r(errno, buf, sizeof(buf)) << dendl;
+    ldout(msgr->cct,2) << "connect couldn't write my banner, " << cpp_strerror(errno) << dendl;
     goto fail;
   }
 
@@ -866,7 +862,7 @@ int Pipe::connect()
     addrbl.push_back(p);
   }
   if (tcp_read(addrbl.c_str(), addrbl.length()) < 0) {
-    ldout(msgr->cct,2) << "connect couldn't read peer addrs, " << strerror_r(errno, buf, sizeof(buf)) << dendl;
+    ldout(msgr->cct,2) << "connect couldn't read peer addrs, " << cpp_strerror(errno) << dendl;
     goto fail;
   }
   {
@@ -903,7 +899,7 @@ int Pipe::connect()
   msg.msg_iovlen = 1;
   msglen = msgvec[0].iov_len;
   if (do_sendmsg(&msg, msglen)) {
-    ldout(msgr->cct,2) << "connect couldn't write my addr, " << strerror_r(errno, buf, sizeof(buf)) << dendl;
+    ldout(msgr->cct,2) << "connect couldn't write my addr, " << cpp_strerror(errno) << dendl;
     goto fail;
   }
   ldout(msgr->cct,10) << "connect sent my addr " << msgr->my_inst.addr << dendl;
@@ -944,14 +940,14 @@ int Pipe::connect()
     ldout(msgr->cct,10) << "connect sending gseq=" << gseq << " cseq=" << cseq
 	     << " proto=" << connect.protocol_version << dendl;
     if (do_sendmsg(&msg, msglen)) {
-      ldout(msgr->cct,2) << "connect couldn't write gseq, cseq, " << strerror_r(errno, buf, sizeof(buf)) << dendl;
+      ldout(msgr->cct,2) << "connect couldn't write gseq, cseq, " << cpp_strerror(errno) << dendl;
       goto fail;
     }
 
     ldout(msgr->cct,20) << "connect wrote (self +) cseq, waiting for reply" << dendl;
     ceph_msg_connect_reply reply;
     if (tcp_read((char*)&reply, sizeof(reply)) < 0) {
-      ldout(msgr->cct,2) << "connect read reply " << strerror_r(errno, buf, sizeof(buf)) << dendl;
+      ldout(msgr->cct,2) << "connect read reply " << cpp_strerror(errno) << dendl;
       goto fail;
     }
 
@@ -1099,13 +1095,15 @@ int Pipe::connect()
       // If we have an authorizer, get a new AuthSessionHandler to deal with ongoing security of the
       // connection.  PLR
 
-      delete session_security;
       if (authorizer != NULL) {
-        session_security = get_auth_session_handler(msgr->cct, authorizer->protocol, authorizer->session_key,
-						    connection_state->get_features());
+	session_security.reset(
+            get_auth_session_handler(msgr->cct,
+				     authorizer->protocol,
+				     authorizer->session_key,
+				     connection_state->get_features()));
       }  else {
         // We have no authorizer, so we shouldn't be applying security to messages in this pipe.  PLR
-	session_security = NULL;
+	session_security.reset();
       }
 
       msgr->dispatch_queue.queue_connect(connection_state.get());
@@ -1249,8 +1247,7 @@ void Pipe::fault(bool onread)
     return;
   }
   
-  char buf[80];
-  ldout(msgr->cct,2) << "fault " << errno << ": " << strerror_r(errno, buf, sizeof(buf)) << dendl;
+  ldout(msgr->cct,2) << "fault " << cpp_strerror(errno) << dendl;
 
   if (state == STATE_CLOSED ||
       state == STATE_CLOSING) {
@@ -1404,14 +1401,16 @@ void Pipe::reader()
       continue;
     }
 
+    // get a reference to the AuthSessionHandler while we have the pipe_lock
+    ceph::shared_ptr<AuthSessionHandler> auth_handler = session_security;
+
     pipe_lock.Unlock();
 
-    char buf[80];
     char tag = -1;
     ldout(msgr->cct,20) << "reader reading tag..." << dendl;
     if (tcp_read((char*)&tag, 1) < 0) {
       pipe_lock.Lock();
-      ldout(msgr->cct,2) << "reader couldn't read tag, " << strerror_r(errno, buf, sizeof(buf)) << dendl;
+      ldout(msgr->cct,2) << "reader couldn't read tag, " << cpp_strerror(errno) << dendl;
       fault(true);
       continue;
     }
@@ -1460,7 +1459,7 @@ void Pipe::reader()
       int rc = tcp_read((char*)&seq, sizeof(seq));
       pipe_lock.Lock();
       if (rc < 0) {
-	ldout(msgr->cct,2) << "reader couldn't read ack seq, " << strerror_r(errno, buf, sizeof(buf)) << dendl;
+	ldout(msgr->cct,2) << "reader couldn't read ack seq, " << cpp_strerror(errno) << dendl;
 	fault(true);
       } else if (state != STATE_CLOSED) {
         handle_ack(seq);
@@ -1471,7 +1470,7 @@ void Pipe::reader()
     else if (tag == CEPH_MSGR_TAG_MSG) {
       ldout(msgr->cct,20) << "reader got MSG" << dendl;
       Message *m = 0;
-      int r = read_message(&m);
+      int r = read_message(&m, auth_handler.get());
 
       pipe_lock.Lock();
       
@@ -1561,8 +1560,6 @@ void Pipe::reader()
  */
 void Pipe::writer()
 {
-  char buf[80];
-
   pipe_lock.Lock();
   while (state != STATE_CLOSED) {// && state != STATE_WAIT) {
     ldout(msgr->cct,10) << "writer: state = " << get_state_name()
@@ -1614,7 +1611,7 @@ void Pipe::writer()
 	pipe_lock.Lock();
 	if (rc < 0) {
 	  ldout(msgr->cct,2) << "writer couldn't write keepalive[2], "
-			     << strerror_r(errno, buf, sizeof(buf)) << dendl;
+			     << cpp_strerror(errno) << dendl;
 	  fault();
  	  continue;
 	}
@@ -1626,7 +1623,7 @@ void Pipe::writer()
 	int rc = write_keepalive2(CEPH_MSGR_TAG_KEEPALIVE2_ACK, t);
 	pipe_lock.Lock();
 	if (rc < 0) {
-	  ldout(msgr->cct,2) << "writer couldn't write keepalive_ack, " << strerror_r(errno, buf, sizeof(buf)) << dendl;
+	  ldout(msgr->cct,2) << "writer couldn't write keepalive_ack, " << cpp_strerror(errno) << dendl;
 	  fault();
 	  continue;
 	}
@@ -1640,7 +1637,7 @@ void Pipe::writer()
 	int rc = write_ack(send_seq);
 	pipe_lock.Lock();
 	if (rc < 0) {
-	  ldout(msgr->cct,2) << "writer couldn't write ack, " << strerror_r(errno, buf, sizeof(buf)) << dendl;
+	  ldout(msgr->cct,2) << "writer couldn't write ack, " << cpp_strerror(errno) << dendl;
 	  fault();
  	  continue;
 	}
@@ -1680,7 +1677,7 @@ void Pipe::writer()
 	// security set up.  Some session security options do not
 	// actually calculate and check the signature, but they should
 	// handle the calls to sign_message and check_signature.  PLR
-	if (session_security == NULL) {
+	if (session_security.get() == NULL) {
 	  ldout(msgr->cct, 20) << "writer no session security" << dendl;
 	} else {
 	  if (session_security->sign_message(m)) {
@@ -1704,7 +1701,7 @@ void Pipe::writer()
 	pipe_lock.Lock();
 	if (rc < 0) {
           ldout(msgr->cct,1) << "writer error sending " << m << ", "
-		  << errno << ": " << strerror_r(errno, buf, sizeof(buf)) << dendl;
+		  << cpp_strerror(errno) << dendl;
 	  fault();
         }
 	m->put();
@@ -1766,7 +1763,7 @@ static void alloc_aligned_buffer(bufferlist& data, unsigned len, unsigned off)
   }
 }
 
-int Pipe::read_message(Message **pm)
+int Pipe::read_message(Message **pm, AuthSessionHandler* auth_handler)
 {
   int ret = -1;
   // envelope
@@ -1954,10 +1951,10 @@ int Pipe::read_message(Message **pm)
   //  Check the signature if one should be present.  A zero return indicates success. PLR
   //
 
-  if (session_security == NULL) {
+  if (auth_handler == NULL) {
     ldout(msgr->cct, 10) << "No session security set" << dendl;
   } else {
-    if (session_security->check_message_signature(message)) {
+    if (auth_handler->check_message_signature(message)) {
       ldout(msgr->cct, 0) << "Signature check failed" << dendl;
       ret = -EINVAL;
       goto out_dethrottle;
@@ -2001,8 +1998,6 @@ int Pipe::read_message(Message **pm)
 
 int Pipe::do_sendmsg(struct msghdr *msg, int len, bool more)
 {
-  char buf[80];
-
   while (len > 0) {
     if (0) { // sanity
       int l = 0;
@@ -2015,7 +2010,7 @@ int Pipe::do_sendmsg(struct msghdr *msg, int len, bool more)
     if (r == 0) 
       ldout(msgr->cct,10) << "do_sendmsg hmm do_sendmsg got r==0!" << dendl;
     if (r < 0) { 
-      ldout(msgr->cct,1) << "do_sendmsg error " << strerror_r(errno, buf, sizeof(buf)) << dendl;
+      ldout(msgr->cct,1) << "do_sendmsg error " << cpp_strerror(errno) << dendl;
       return -1;
     }
     if (state == STATE_CLOSED) {
@@ -2299,7 +2294,7 @@ again:
       goto again;
     } else {
       ldout(msgr->cct, 10) << "tcp_read_nonblocking socket " << sd << " returned "
-		     << got << " errno " << errno << " " << cpp_strerror(errno) << dendl;
+		     << got << " " << cpp_strerror(errno) << dendl;
       return -1;
     }
   } else if (got == 0) {
@@ -2341,8 +2336,8 @@ int Pipe::tcp_write(const char *buf, int len)
   while (len > 0) {
     int did = ::send( sd, buf, len, MSG_NOSIGNAL );
     if (did < 0) {
-      //lgeneric_dout(cct, 1) << "tcp_write error did = " << did << "  errno " << errno << " " << strerror(errno) << dendl;
-      //lgeneric_derr(cct, 1) << "tcp_write error did = " << did << "  errno " << errno << " " << strerror(errno) << dendl;
+      //lgeneric_dout(cct, 1) << "tcp_write error did = " << did << " " << cpp_strerror(errno) << dendl;
+      //lgeneric_derr(cct, 1) << "tcp_write error did = " << did << " " << cpp_strerror(errno) << dendl;
       return did;
     }
     len -= did;

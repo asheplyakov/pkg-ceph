@@ -46,6 +46,7 @@ const char *ceph_osd_flag_name(unsigned flag)
   case CEPH_OSD_FLAG_SKIPRWLOCKS: return "skiprwlocks";
   case CEPH_OSD_FLAG_IGNORE_OVERLAY: return "ignore_overlay";
   case CEPH_OSD_FLAG_FLUSH: return "flush";
+  case CEPH_OSD_FLAG_MAP_SNAP_CLONE: return "map_snap_clone";
   default: return "???";
   }
 }
@@ -82,7 +83,11 @@ void pg_shard_t::decode(bufferlist::iterator &bl)
 
 ostream &operator<<(ostream &lhs, const pg_shard_t &rhs)
 {
-  return lhs << '(' << rhs.osd << ',' << (unsigned)(rhs.shard) << ')';
+  if (rhs.is_undefined())
+    return lhs << "?";
+  if (rhs.shard == ghobject_t::NO_SHARD)
+    return lhs << rhs.osd;
+  return lhs << rhs.osd << '(' << (unsigned)(rhs.shard) << ')';
 }
 
 // -- osd_reqid_t --
@@ -387,6 +392,15 @@ ostream& operator<<(ostream& out, const spg_t &pg)
   if (!pg.is_no_shard())
     out << "s" << (unsigned)pg.shard;
   return out;
+}
+
+pg_t pg_t::get_ancestor(unsigned old_pg_num) const
+{
+  int old_bits = pg_pool_t::calc_bits_of(old_pg_num);
+  int old_mask = (1 << old_bits) - 1;
+  pg_t ret = *this;
+  ret.m_seed = ceph_stable_mod(m_seed, old_pg_num, old_mask);
+  return ret;
 }
 
 bool pg_t::is_split(unsigned old_pg_num, unsigned new_pg_num, set<pg_t> *children) const
@@ -1306,11 +1320,13 @@ void object_stat_sum_t::dump(Formatter *f) const
   f->dump_int("num_objects_recovered", num_objects_recovered);
   f->dump_int("num_bytes_recovered", num_bytes_recovered);
   f->dump_int("num_keys_recovered", num_keys_recovered);
+  f->dump_int("num_objects_omap", num_objects_omap);
+  f->dump_int("num_objects_hit_set_archive", num_objects_hit_set_archive);
 }
 
 void object_stat_sum_t::encode(bufferlist& bl) const
 {
-  ENCODE_START(7, 3, bl);
+  ENCODE_START(9, 3, bl);
   ::encode(num_bytes, bl);
   ::encode(num_objects, bl);
   ::encode(num_object_clones, bl);
@@ -1330,12 +1346,14 @@ void object_stat_sum_t::encode(bufferlist& bl) const
   ::encode(num_deep_scrub_errors, bl);
   ::encode(num_objects_dirty, bl);
   ::encode(num_whiteouts, bl);
+  ::encode(num_objects_omap, bl);
+  ::encode(num_objects_hit_set_archive, bl);
   ENCODE_FINISH(bl);
 }
 
 void object_stat_sum_t::decode(bufferlist::iterator& bl)
 {
-  DECODE_START_LEGACY_COMPAT_LEN(7, 3, 3, bl);
+  DECODE_START_LEGACY_COMPAT_LEN(9, 3, 3, bl);
   ::decode(num_bytes, bl);
   if (struct_v < 3) {
     uint64_t num_kb;
@@ -1378,6 +1396,16 @@ void object_stat_sum_t::decode(bufferlist::iterator& bl)
   } else {
     num_objects_dirty = 0;
     num_whiteouts = 0;
+  }
+  if (struct_v >= 8) {
+    ::decode(num_objects_omap, bl);
+  } else {
+    num_objects_omap = 0;
+  }
+  if (struct_v >= 9) {
+    ::decode(num_objects_hit_set_archive, bl);
+  } else {
+    num_objects_hit_set_archive = 0;
   }
   DECODE_FINISH(bl);
 }
@@ -1428,6 +1456,8 @@ void object_stat_sum_t::add(const object_stat_sum_t& o)
   num_keys_recovered += o.num_keys_recovered;
   num_objects_dirty += o.num_objects_dirty;
   num_whiteouts += o.num_whiteouts;
+  num_objects_omap += o.num_objects_omap;
+  num_objects_hit_set_archive += o.num_objects_hit_set_archive;
 }
 
 void object_stat_sum_t::sub(const object_stat_sum_t& o)
@@ -1451,6 +1481,8 @@ void object_stat_sum_t::sub(const object_stat_sum_t& o)
   num_keys_recovered -= o.num_keys_recovered;
   num_objects_dirty -= o.num_objects_dirty;
   num_whiteouts -= o.num_whiteouts;
+  num_objects_omap -= o.num_objects_omap;
+  num_objects_hit_set_archive -= o.num_objects_hit_set_archive;
 }
 
 
@@ -1560,7 +1592,7 @@ void pg_stat_t::dump_brief(Formatter *f) const
 
 void pg_stat_t::encode(bufferlist &bl) const
 {
-  ENCODE_START(15, 8, bl);
+  ENCODE_START(17, 8, bl);
   ::encode(version, bl);
   ::encode(reported_seq, bl);
   ::encode(reported_epoch, bl);
@@ -1592,12 +1624,14 @@ void pg_stat_t::encode(bufferlist &bl) const
   ::encode(dirty_stats_invalid, bl);
   ::encode(up_primary, bl);
   ::encode(acting_primary, bl);
+  ::encode(omap_stats_invalid, bl);
+  ::encode(hitset_stats_invalid, bl);
   ENCODE_FINISH(bl);
 }
 
 void pg_stat_t::decode(bufferlist::iterator &bl)
 {
-  DECODE_START_LEGACY_COMPAT_LEN(15, 8, 8, bl);
+  DECODE_START_LEGACY_COMPAT_LEN(17, 8, 8, bl);
   ::decode(version, bl);
   ::decode(reported_seq, bl);
   ::decode(reported_epoch, bl);
@@ -1690,6 +1724,20 @@ void pg_stat_t::decode(bufferlist::iterator &bl)
   } else {
     up_primary = up.size() ? up[0] : -1;
     acting_primary = acting.size() ? acting[0] : -1;
+  }
+  if (struct_v >= 16) {
+    ::decode(omap_stats_invalid, bl);
+  } else {
+    // if we are decoding an old encoding of this object, then the
+    // encoder may not have supported num_objects_omap accounting.
+    omap_stats_invalid = true;
+  }
+  if (struct_v >= 17) {
+    ::decode(hitset_stats_invalid, bl);
+  } else {
+    // if we are decoding an old encoding of this object, then the
+    // encoder may not have supported num_objects_hit_set_archive accounting.
+    hitset_stats_invalid = true;
   }
   DECODE_FINISH(bl);
 }
@@ -2074,19 +2122,20 @@ ostream &operator<<(ostream &lhs, const pg_notify_t &notify)
 
 void pg_interval_t::encode(bufferlist& bl) const
 {
-  ENCODE_START(3, 2, bl);
+  ENCODE_START(4, 2, bl);
   ::encode(first, bl);
   ::encode(last, bl);
   ::encode(up, bl);
   ::encode(acting, bl);
   ::encode(maybe_went_rw, bl);
   ::encode(primary, bl);
+  ::encode(up_primary, bl);
   ENCODE_FINISH(bl);
 }
 
 void pg_interval_t::decode(bufferlist::iterator& bl)
 {
-  DECODE_START_LEGACY_COMPAT_LEN(3, 2, 2, bl);
+  DECODE_START_LEGACY_COMPAT_LEN(4, 2, 2, bl);
   ::decode(first, bl);
   ::decode(last, bl);
   ::decode(up, bl);
@@ -2097,6 +2146,12 @@ void pg_interval_t::decode(bufferlist::iterator& bl)
   } else {
     if (acting.size())
       primary = acting[0];
+  }
+  if (struct_v >= 4) {
+    ::decode(up_primary, bl);
+  } else {
+    if (up.size())
+      up_primary = up[0];
   }
   DECODE_FINISH(bl);
 }
@@ -2113,6 +2168,8 @@ void pg_interval_t::dump(Formatter *f) const
   f->open_array_section("acting");
   for (vector<int>::const_iterator p = acting.begin(); p != acting.end(); ++p)
     f->dump_int("osd", *p);
+  f->dump_int("primary", primary);
+  f->dump_int("up_primary", up_primary);
   f->close_section();
 }
 
@@ -2129,10 +2186,12 @@ void pg_interval_t::generate_test_instances(list<pg_interval_t*>& o)
 }
 
 bool pg_interval_t::check_new_interval(
-  int old_primary,
-  int new_primary,
+  int old_acting_primary,
+  int new_acting_primary,
   const vector<int> &old_acting,
   const vector<int> &new_acting,
+  int old_up_primary,
+  int new_up_primary,
   const vector<int> &old_up,
   const vector<int> &new_up,
   epoch_t same_interval_since,
@@ -2145,8 +2204,13 @@ bool pg_interval_t::check_new_interval(
   std::ostream *out)
 {
   // remember past interval
-  if (old_primary != new_primary ||
-      new_acting != old_acting || new_up != old_up ||
+  //  NOTE: a change in the up set primary triggers an interval
+  //  change, even though the interval members in the pg_interval_t
+  //  do not change.
+  if (old_acting_primary != new_acting_primary ||
+      new_acting != old_acting ||
+      old_up_primary != new_up_primary ||
+      new_up != old_up ||
       (!(lastmap->get_pools().count(pool_id))) ||
       (lastmap->get_pools().find(pool_id)->second.min_size !=
        osdmap->get_pools().find(pool_id)->second.min_size)  ||
@@ -2157,7 +2221,8 @@ bool pg_interval_t::check_new_interval(
     i.last = osdmap->get_epoch() - 1;
     i.acting = old_acting;
     i.up = old_up;
-    i.primary = old_primary;
+    i.primary = old_acting_primary;
+    i.up_primary = old_up_primary;
 
     if (!i.acting.empty() && i.primary != -1 &&
 	i.acting.size() >=
@@ -2215,7 +2280,9 @@ bool pg_interval_t::check_new_interval(
 
 ostream& operator<<(ostream& out, const pg_interval_t& i)
 {
-  out << "interval(" << i.first << "-" << i.last << " " << i.up << "/" << i.acting;
+  out << "interval(" << i.first << "-" << i.last
+      << " up " << i.up << "(" << i.up_primary << ")"
+      << " acting " << i.acting << "(" << i.primary << ")";
   if (i.maybe_went_rw)
     out << " maybe_went_rw";
   out << ")";
@@ -3446,6 +3513,21 @@ void SnapSet::from_snap_set(const librados::snap_set_t& ss)
   for (set<snapid_t>::reverse_iterator p = _snaps.rbegin();
        p != _snaps.rend(); ++p)
     snaps.push_back(*p);
+}
+
+uint64_t SnapSet::get_clone_bytes(snapid_t clone) const
+{
+  assert(clone_size.count(clone));
+  uint64_t size = clone_size.find(clone)->second;
+  assert(clone_overlap.count(clone));
+  const interval_set<uint64_t> &overlap = clone_overlap.find(clone)->second;
+  for (interval_set<uint64_t>::const_iterator i = overlap.begin();
+       i != overlap.end();
+       ++i) {
+    assert(size >= i.get_len());
+    size -= i.get_len();
+  }
+  return size;
 }
 
 // -- watch_info_t --
