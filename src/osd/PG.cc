@@ -545,7 +545,9 @@ bool PG::needs_recovery() const
   const pg_missing_t &missing = pg_log.get_missing();
 
   if (missing.num_missing()) {
-    dout(10) << __func__ << " primary has " << missing.num_missing() << dendl;
+    dout(10) << __func__ << " primary has " << missing.num_missing()
+      << " missing" << dendl;
+
     ret = true;
   }
 
@@ -558,12 +560,14 @@ bool PG::needs_recovery() const
     pg_shard_t peer = *a;
     map<pg_shard_t, pg_missing_t>::const_iterator pm = peer_missing.find(peer);
     if (pm == peer_missing.end()) {
-      dout(10) << __func__ << " osd." << peer << " don't have missing set" << dendl;
+      dout(10) << __func__ << " osd." << peer << " doesn't have missing set"
+        << dendl;
       ret = true;
       continue;
     }
     if (pm->second.num_missing()) {
-      dout(10) << __func__ << " osd." << peer << " has " << pm->second.num_missing() << " missing" << dendl;
+      dout(10) << __func__ << " osd." << peer << " has "
+        << pm->second.num_missing() << " missing" << dendl;
       ret = true;
     }
   }
@@ -634,24 +638,28 @@ void PG::generate_past_intervals()
 
   OSDMapRef last_map, cur_map;
   int primary = -1;
+  int up_primary = -1;
   vector<int> acting, up, old_acting, old_up;
 
   cur_map = osd->get_map(cur_epoch);
   cur_map->pg_to_up_acting_osds(
-    get_pgid().pgid, &up, 0, &acting, &primary);
+    get_pgid().pgid, &up, &up_primary, &acting, &primary);
   epoch_t same_interval_since = cur_epoch;
   dout(10) << __func__ << " over epochs " << cur_epoch << "-"
 	   << end_epoch << dendl;
   ++cur_epoch;
   for (; cur_epoch <= end_epoch; ++cur_epoch) {
     int old_primary = primary;
+    int old_up_primary = up_primary;
     last_map.swap(cur_map);
     old_up.swap(up);
     old_acting.swap(acting);
 
     cur_map = osd->get_map(cur_epoch);
-    cur_map->pg_to_up_acting_osds(
-      get_pgid().pgid, &up, 0, &acting, &primary);
+    pg_t pgid = get_pgid().pgid;
+    if (cur_map->get_pools().count(pgid.pool()))
+      pgid = pgid.get_ancestor(cur_map->get_pg_num(pgid.pool()));
+    cur_map->pg_to_up_acting_osds(pgid, &up, &up_primary, &acting, &primary);
 
     std::stringstream debug;
     bool new_interval = pg_interval_t::check_new_interval(
@@ -659,14 +667,16 @@ void PG::generate_past_intervals()
       primary,
       old_acting,
       acting,
+      old_up_primary,
+      up_primary,
       old_up,
       up,
       same_interval_since,
       info.history.last_epoch_clean,
       cur_map,
       last_map,
-      info.pgid.pool(),
-      info.pgid.pgid,
+      pgid.pool(),
+      pgid,
       &past_intervals,
       &debug);
     if (new_interval) {
@@ -802,7 +812,7 @@ void PG::build_prior(std::auto_ptr<PriorSet> &prior_set)
   set_probe_targets(prior_set->probe);
 }
 
-void PG::clear_primary_state(bool staying_primary)
+void PG::clear_primary_state()
 {
   dout(10) << "clear_primary_state" << dendl;
 
@@ -836,8 +846,7 @@ void PG::clear_primary_state(bool staying_primary)
   osd->recovery_wq.dequeue(this);
   osd->snap_trim_wq.dequeue(this);
 
-  if (!staying_primary)
-    agent_clear();
+  agent_clear();
 
   osd->remove_want_pg_temp(info.pgid.pgid);
 }
@@ -1533,6 +1542,7 @@ void PG::activate(ObjectStore::Transaction& t,
 	pi.last_complete = info.last_update;
 	pi.last_backfill = hobject_t();
 	pi.history = info.history;
+	pi.hit_set = info.hit_set;
 	pi.stats.stats.clear();
 
 	m = new MOSDPGLog(
@@ -1794,6 +1804,7 @@ void PG::all_activated_and_committed()
 
   // info.last_epoch_started is set during activate()
   info.history.last_epoch_started = info.last_epoch_started;
+  state_clear(PG_STATE_CREATING);
 
   share_pg_info();
   publish_stats_to_osd();
@@ -2856,18 +2867,18 @@ void PG::update_snap_map(
 /**
  * filter trimming|trimmed snaps out of snapcontext
  */
-void PG::filter_snapc(SnapContext& snapc)
+void PG::filter_snapc(vector<snapid_t> &snaps)
 {
   bool filtering = false;
   vector<snapid_t> newsnaps;
-  for (vector<snapid_t>::iterator p = snapc.snaps.begin();
-       p != snapc.snaps.end();
+  for (vector<snapid_t>::iterator p = snaps.begin();
+       p != snaps.end();
        ++p) {
     if (snap_trimq.contains(*p) || info.purged_snaps.contains(*p)) {
       if (!filtering) {
 	// start building a new vector with what we've seen so far
-	dout(10) << "filter_snapc filtering " << snapc << dendl;
-	newsnaps.insert(newsnaps.begin(), snapc.snaps.begin(), p);
+	dout(10) << "filter_snapc filtering " << snaps << dendl;
+	newsnaps.insert(newsnaps.begin(), snaps.begin(), p);
 	filtering = true;
       }
       dout(20) << "filter_snapc  removing trimq|purged snap " << *p << dendl;
@@ -2877,8 +2888,8 @@ void PG::filter_snapc(SnapContext& snapc)
     }
   }
   if (filtering) {
-    snapc.snaps.swap(newsnaps);
-    dout(10) << "filter_snapc  result " << snapc << dendl;
+    snaps.swap(newsnaps);
+    dout(10) << "filter_snapc  result " << snaps << dendl;
   }
 }
 
@@ -3445,6 +3456,7 @@ void PG::repair_object(
     assert(waiting_for_unreadable_object.empty());
 
     pg_log.missing_add(soid, oi.version, eversion_t());
+    missing_loc.add_missing(soid, oi.version, eversion_t());
     missing_loc.add_location(soid, ok_peer);
 
     pg_log.set_last_requested(0);
@@ -4662,6 +4674,12 @@ void PG::start_peering_interval(
 
   reg_next_scrub();
 
+  // set CREATING bit until we have peered for the first time.
+  if (is_primary() && info.history.last_epoch_started == 0)
+    state_set(PG_STATE_CREATING);
+  else
+    state_clear(PG_STATE_CREATING);
+
   // did acting, up, primary|acker change?
   if (!lastmap) {
     dout(10) << " no lastmap" << dendl;
@@ -4673,6 +4691,8 @@ void PG::start_peering_interval(
       old_acting_primary.osd,
       new_acting_primary,
       oldacting, newacting,
+      old_up_primary.osd,
+      new_up_primary,
       oldup, newup,
       info.history.same_interval_since,
       info.history.last_epoch_clean,
@@ -4725,7 +4745,7 @@ void PG::start_peering_interval(
 
   // reset primary state?
   if (was_old_primary || is_primary())
-    clear_primary_state(was_old_primary && is_primary());
+    clear_primary_state();
 
     
   // pg->on_*
@@ -4910,16 +4930,31 @@ bool PG::can_discard_op(OpRequestRef op)
   if (OSD::op_is_discardable(m)) {
     dout(20) << " discard " << *m << dendl;
     return true;
-  } else if ((op->may_write() || op->may_cache()) &&
-	     (!is_primary() ||
-	      !same_for_modify_since(m->get_map_epoch()))) {
-    osd->handle_misdirected_op(this, op);
+  }
+
+  if (m->get_map_epoch() < info.history.same_primary_since) {
+    dout(7) << " changed after " << m->get_map_epoch()
+	    << ", dropping " << *m << dendl;
     return true;
-  } else if (op->may_read() &&
-	     !same_for_read_since(m->get_map_epoch())) {
-    osd->handle_misdirected_op(this, op);
-    return true;
-  } else if (is_replay()) {
+  }
+
+  if ((m->get_flags() & (CEPH_OSD_FLAG_BALANCE_READS |
+			 CEPH_OSD_FLAG_LOCALIZE_READS)) &&
+      op->may_read() &&
+      !(op->may_write() || op->may_cache())) {
+    // balanced reads; any replica will do
+    if (!(is_primary() || is_replica())) {
+      osd->handle_misdirected_op(this, op);
+      return true;
+    }
+  } else {
+    // normal case; must be primary
+    if (!is_primary()) {
+      osd->handle_misdirected_op(this, op);
+      return true;
+    }
+  }
+  if (is_replay()) {
     if (m->get_version().version > 0) {
       dout(7) << " queueing replay at " << m->get_version()
 	      << " for " << *m << dendl;
@@ -6565,6 +6600,7 @@ boost::statechart::result PG::RecoveryState::Stray::react(const MInfoRec& infoev
     ObjectStore::Transaction* t = context<RecoveryMachine>().get_cur_transaction();
     pg->rewind_divergent_log(*t, infoevt.info.last_update);
     pg->info.stats = infoevt.info.stats;
+    pg->info.hit_set = infoevt.info.hit_set;
   }
   
   assert(infoevt.info.last_update == pg->info.last_update);
@@ -6884,7 +6920,7 @@ boost::statechart::result PG::RecoveryState::GetLog::react(const MLogRec& logevt
 	     << "non-auth_log_shard osd." << logevt.from << dendl;
     return discard_event();
   }
-  dout(10) << "GetLog: recieved master log from osd" 
+  dout(10) << "GetLog: received master log from osd"
 	   << logevt.from << dendl;
   msg = logevt.msg;
   post_event(GotLog());
