@@ -1,3 +1,6 @@
+# False-positives:
+spelling-error-in-binary * tEH the
+
 # Ceph upstart configurations don't have init.d equivalents
 ceph: init.d-script-not-marked-as-conffile etc/init.d/ceph-create-keys
 ceph: init.d-script-not-included-in-package etc/init.d/ceph-create-keys
