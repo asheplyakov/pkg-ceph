@@ -1,5 +1,6 @@
 Last-Update: 2014-05-07
 Forwarded: yes
+Author: Dmitry Smirnov <onlyjob@member.fsf.org>
 Description: sample.ceph.conf update:
 
  * corrected URLs.
