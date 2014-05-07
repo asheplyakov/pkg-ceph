@@ -1,3 +1,15 @@
+ceph (0.80-1) unstable; urgency=low
+
+  * New upstream release [May 2014].
+    + upload to unstable.
+  * Updated "README.Debian".
+  * Added backported patches:
+      [8113, 8175, 8282, 8291, bp0001, sample.ceph.conf].
+  * "gbp.conf": don't merge to experimental.
+  * lintian-overrides: spelling-error-in-binary * tEH the.
+
+ -- Dmitry Smirnov <onlyjob@debian.org>  Wed, 07 May 2014 16:43:07 +1000
+
 ceph (0.80~rc1-1) experimental; urgency=low
 
   * New upstream pre-release.

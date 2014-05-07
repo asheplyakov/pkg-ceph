@@ -1,6 +1,6 @@
 librados.so.2 librados2 #MINVER#
- (regex)"^ceph_ver__[0-9a-f]{40}@Base$" 0.79
- (regex|c++)"^_.*" 0.79
+ (regex)"^ceph_ver__[0-9a-f]{40}@Base$" 0.80
+ (regex|c++)"^_.*" 0.80
  CEPH_CONF_FILE_DEFAULT@Base 0.72.2
  ceph_arch_intel_pclmul@Base 0.79
  ceph_arch_intel_probe@Base 0.72.2
