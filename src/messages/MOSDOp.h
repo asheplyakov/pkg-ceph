@@ -74,7 +74,7 @@ public:
 		       header.tid);
   }
   int get_client_inc() { return client_inc; }
-  tid_t get_client_tid() { return header.tid; }
+  ceph_tid_t get_client_tid() { return header.tid; }
   
   object_t& get_oid() { return oid; }
 
@@ -337,6 +337,9 @@ struct ceph_osd_request_head {
     OSDOp::split_osd_op_vector_in_data(ops, data);
   }
 
+  void clear_buffers() {
+    ops.clear();
+  }
 
   const char *get_type_name() const { return "osd_op"; }
   void print(ostream& out) const {
@@ -363,18 +366,11 @@ struct ceph_osd_request_head {
     out << " " << pgid;
     if (is_retry_attempt())
       out << " RETRY=" << get_retry_attempt();
+    if (reassert_version != eversion_t())
+      out << " reassert_version=" << reassert_version;
     if (get_snap_seq())
       out << " snapc " << get_snap_seq() << "=" << snaps;
-    if (get_flags() & CEPH_OSD_FLAG_ORDERSNAP)
-      out << " ordersnap";
-    if (get_flags() & CEPH_OSD_FLAG_BALANCE_READS)
-      out << " balance_reads";
-    if (get_flags() & CEPH_OSD_FLAG_PARALLELEXEC)
-      out << " parallelexec";
-    if (get_flags() & CEPH_OSD_FLAG_LOCALIZE_READS)
-      out << " localize_reads";
-    if (get_flags() & CEPH_OSD_FLAG_RWORDERED)
-      out << " rwordered";
+    out << " " << ceph_osd_flag_string(get_flags());
     out << " e" << osdmap_epoch;
     out << ")";
   }

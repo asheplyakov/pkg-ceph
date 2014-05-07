@@ -35,7 +35,7 @@
 #include "SessionMap.h"
 
 
-#define CEPH_MDS_PROTOCOL    19 /* cluster internal */
+#define CEPH_MDS_PROTOCOL    23 /* cluster internal */
 
 
 enum {
@@ -204,7 +204,7 @@ class MDS : public Dispatcher {
 
   map<int,version_t> peer_mdsmap_epoch;
 
-  tid_t last_tid;    // for mds-initiated requests (e.g. stray rename)
+  ceph_tid_t last_tid;    // for mds-initiated requests (e.g. stray rename)
 
  public:
   void wait_for_active(Context *c) { 
@@ -251,7 +251,7 @@ class MDS : public Dispatcher {
 
   void request_state(int s);
 
-  tid_t issue_tid() { return ++last_tid; }
+  ceph_tid_t issue_tid() { return ++last_tid; }
     
 
   // -- waiters --
@@ -316,8 +316,12 @@ class MDS : public Dispatcher {
  public:
 
   int get_req_rate() { return req_rate; }
+  Session *get_session(client_t client) {
+    return sessionmap.get_session(entity_name_t::CLIENT(client.v));
+  }
 
  private:
+  int dispatch_depth;
   bool ms_dispatch(Message *m);
   bool ms_get_authorizer(int dest_type, AuthAuthorizer **authorizer, bool force_new);
   bool ms_verify_authorizer(Connection *con, int peer_type,
@@ -385,7 +389,7 @@ class MDS : public Dispatcher {
   void rejoin_joint_start();
   void rejoin_start();
   void rejoin_done();
-  void recovery_done();
+  void recovery_done(int oldstate);
   void clientreplay_start();
   void clientreplay_done();
   void active_start();
@@ -405,6 +409,9 @@ class MDS : public Dispatcher {
   void handle_mds_beacon(MMDSBeacon *m);
 
   void request_osdmap(Context *c);
+
+  void inc_dispatch_depth() { ++dispatch_depth; }
+  void dec_dispatch_depth() { --dispatch_depth; }
 
   // messages
   bool _dispatch(Message *m);
@@ -433,7 +440,9 @@ public:
     this->mds = mds;
   }
   virtual void finish(int r) {
+    mds->inc_dispatch_depth();
     mds->_dispatch(m);
+    mds->dec_dispatch_depth();
   }
 };
 

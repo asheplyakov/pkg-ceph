@@ -112,14 +112,15 @@ void complain_about_parse_errors(CephContext *cct,
 
 /* Please be sure that this can safely be called multiple times by the
  * same application. */
-void common_init_finish(CephContext *cct)
+void common_init_finish(CephContext *cct, int flags)
 {
   ceph::crypto::init(cct);
-  cct->start_service_thread();
+
+  if (!(flags & CINIT_FLAG_NO_DAEMON_ACTIONS))
+    cct->start_service_thread();
 
   if (cct->_conf->lockdep) {
     g_lockdep = true;
-    ldout(cct,0) << "lockdep is enabled" << dendl;
     lockdep_register_ceph_context(cct);
   }
 }

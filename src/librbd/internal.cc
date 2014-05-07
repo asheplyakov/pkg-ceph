@@ -28,7 +28,7 @@
 #undef dout_prefix
 #define dout_prefix *_dout << "librbd: "
 
-#define howmany(x, y)  (((x) + (y) - 1) / (y))
+#define rbd_howmany(x, y)  (((x) + (y) - 1) / (y))
 
 using std::map;
 using std::pair;
@@ -119,7 +119,7 @@ namespace librbd {
     ictx->snap_lock.put_read();
     ictx->md_lock.put_read();
     info.obj_size = 1ULL << obj_order;
-    info.num_objs = howmany(info.size, ictx->get_object_size());
+    info.num_objs = rbd_howmany(info.size, ictx->get_object_size());
     info.order = obj_order;
     memcpy(&info.block_name_prefix, ictx->object_prefix.c_str(),
 	   min((size_t)RBD_MAX_BLOCK_NAME_SIZE,
@@ -616,8 +616,11 @@ namespace librbd {
     if (r < 0)
       return r;
 
-    if (is_unprotected)
+    if (is_unprotected) {
+      lderr(ictx->cct) << "snap_unprotect: snapshot is already unprotected"
+		       << dendl;
       return -EINVAL;
+    }
 
     r = cls_client::set_protection_status(&ictx->md_ctx,
 					  ictx->header_oid,
@@ -1246,6 +1249,13 @@ reprotect_and_return_err:
     // since we don't know the image and snapshot name, set their ids and
     // reset the snap_name and snap_exists fields after we read the header
     ictx->parent = new ImageCtx("", parent_image_id, NULL, p_ioctx, true);
+
+    // set rados flags for reading the parent image
+    if (ictx->cct->_conf->rbd_balance_parent_reads)
+      ictx->parent->set_read_flag(librados::OPERATION_BALANCE_READS);
+    else if (ictx->cct->_conf->rbd_localize_parent_reads)
+      ictx->parent->set_read_flag(librados::OPERATION_LOCALIZE_READS);
+
     r = open_image(ictx->parent);
     if (r < 0) {
       lderr(ictx->cct) << "error opening parent image: " << cpp_strerror(r)
@@ -1343,15 +1353,31 @@ reprotect_and_return_err:
     if (r < 0) {
       ldout(cct, 2) << "error opening image: " << cpp_strerror(-r) << dendl;
     } else {
+      string header_oid = ictx->header_oid;
+      old_format = ictx->old_format;
+      unknown_format = false;
+      id = ictx->id;
+
       if (ictx->snaps.size()) {
 	lderr(cct) << "image has snapshots - not removing" << dendl;
 	close_image(ictx);
 	return -ENOTEMPTY;
       }
-      string header_oid = ictx->header_oid;
-      old_format = ictx->old_format;
-      unknown_format = false;
-      id = ictx->id;
+
+      std::list<obj_watch_t> watchers;
+      r = io_ctx.list_watchers(header_oid, &watchers);
+      if (r < 0) {
+        lderr(cct) << "error listing watchers" << dendl;
+        close_image(ictx);
+        return r;
+      }
+      if (watchers.size() > 1) {
+        lderr(cct) << "image has watchers - not removing" << dendl;
+        close_image(ictx);
+        return -EBUSY;
+      }
+      assert(watchers.size() == 1);
+
       ictx->md_lock.get_read();
       trim_image(ictx, 0, prog_ctx);
       ictx->md_lock.put_read();
@@ -1365,6 +1391,7 @@ reprotect_and_return_err:
 				   parent_info.spec, id);
       if (r < 0 && r != -ENOENT) {
 	lderr(cct) << "error removing child from children list" << dendl;
+        close_image(ictx);
 	return r;
       }
       close_image(ictx);
@@ -1928,6 +1955,13 @@ reprotect_and_return_err:
 	return;
       }
       assert(m_bl->length() == (size_t)r);
+
+      if (m_bl->is_zero()) {
+	delete m_bl;
+	m_throttle->end_op(r);
+	return;
+      }
+
       Context *ctx = new C_CopyWrite(m_throttle, m_bl);
       AioCompletion *comp = aio_create_completion_internal(ctx, rbd_ctx_cb);
       r = aio_write(m_dest, m_offset, m_bl->length(), m_bl->c_str(), comp);
@@ -2850,9 +2884,6 @@ reprotect_and_return_err:
     ldout(cct, 20) << "aio_write " << ictx << " off = " << off << " len = "
 		   << len << " buf = " << (void*)buf << dendl;
 
-    if (!len)
-      return 0;
-
     int r = ictx_check(ictx);
     if (r < 0)
       return r;
@@ -2878,14 +2909,16 @@ reprotect_and_return_err:
 
     // map
     vector<ObjectExtent> extents;
-    Striper::file_to_extents(ictx->cct, ictx->format_string, &ictx->layout, off, mylen, 0, extents);
+    if (len > 0) {
+      Striper::file_to_extents(ictx->cct, ictx->format_string,
+			       &ictx->layout, off, mylen, 0, extents);
+    }
 
     c->get();
     c->init_time(ictx, AIO_TYPE_WRITE);
     for (vector<ObjectExtent>::iterator p = extents.begin(); p != extents.end(); ++p) {
       ldout(cct, 20) << " oid " << p->oid << " " << p->offset << "~" << p->length
 		     << " from " << p->buffer_extents << dendl;
-
       // assemble extent
       bufferlist bl;
       for (vector<pair<uint64_t,uint64_t> >::iterator q = p->buffer_extents.begin();
@@ -2932,9 +2965,6 @@ reprotect_and_return_err:
     ldout(cct, 20) << "aio_discard " << ictx << " off = " << off << " len = "
 		   << len << dendl;
 
-    if (!len)
-      return 0;
-
     int r = ictx_check(ictx);
     if (r < 0)
       return r;
@@ -2958,7 +2988,10 @@ reprotect_and_return_err:
 
     // map
     vector<ObjectExtent> extents;
-    Striper::file_to_extents(ictx->cct, ictx->format_string, &ictx->layout, off, len, 0, extents);
+    if (len > 0) {
+      Striper::file_to_extents(ictx->cct, ictx->format_string,
+			       &ictx->layout, off, len, 0, extents);
+    }
 
     c->get();
     c->init_time(ictx, AIO_TYPE_DISCARD);
@@ -3052,6 +3085,8 @@ reprotect_and_return_err:
       r = clip_io(ictx, p->first, &len);
       if (r < 0)
 	return r;
+      if (len == 0)
+	continue;
 
       Striper::file_to_extents(ictx->cct, ictx->format_string, &ictx->layout,
 			       p->first, len, 0, object_extents, buffer_ofs);
@@ -3080,7 +3115,7 @@ reprotect_and_return_err:
 	c->add_request();
 
 	if (ictx->object_cacher) {
-	  C_CacheRead *cache_comp = new C_CacheRead(req_comp, req);
+	  C_CacheRead *cache_comp = new C_CacheRead(req);
 	  ictx->aio_read_from_cache(q->oid, &req->data(),
 				    q->length, q->offset,
 				    cache_comp);

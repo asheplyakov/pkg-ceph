@@ -4,6 +4,9 @@
  * Ceph - scalable distributed file system
  *
  * Copyright (C) 2004-2006 Sage Weil <sage@newdream.net>
+ * Copyright (C) 2014 Cloudwatt <libre.licensing@cloudwatt.com>
+ *
+ * Author: Loic Dachary <loic@dachary.org>
  *
  * This is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -26,6 +29,7 @@
 #include "common/ceph_argparse.h"
 #include "global/global_context.h"
 #include "global/global_init.h"
+#include "osd/OSDMap.h"
 #include "crush/CrushWrapper.h"
 #include "crush/CrushCompiler.h"
 #include "crush/CrushTester.h"
@@ -125,6 +129,8 @@ void usage()
   cout << "                         set choose total descent attempts\n";
   cout << "   --set-chooseleaf-descend-once <0|1>\n";
   cout << "                         set chooseleaf to (not) retry the recursive descent\n";
+  cout << "   --set-chooseleaf-vary-r <0|1>\n";
+  cout << "                         set chooseleaf to (not) vary r based on parent\n";
   cout << "   --output-name name\n";
   cout << "                         prepend the data file(s) generated during the\n";
   cout << "                         testing routine with name\n";
@@ -183,13 +189,17 @@ int main(int argc, const char **argv)
   int choose_local_fallback_tries = -1;
   int choose_total_tries = -1;
   int chooseleaf_descend_once = -1;
+  int chooseleaf_vary_r = -1;
 
   CrushWrapper crush;
 
-  CrushTester tester(crush, cerr, 1);
+  CrushTester tester(crush, cerr);
 
-  vector<const char *> empty_args;  // we use -c, don't confuse the generic arg parsing
-  global_init(NULL, empty_args, CEPH_ENTITY_TYPE_CLIENT, CODE_ENVIRONMENT_UTILITY,
+  // we use -c, don't confuse the generic arg parsing
+  // only parse arguments from CEPH_ARGS, if in the environment
+  vector<const char *> env_args;
+  env_to_vec(env_args);
+  global_init(NULL, env_args, CEPH_ENTITY_TYPE_CLIENT, CODE_ENVIRONMENT_UTILITY,
 	      CINIT_FLAG_NO_DEFAULT_CONFIG_FILE);
   common_init_finish(g_ceph_context);
 
@@ -249,6 +259,9 @@ int main(int argc, const char **argv)
       adjust = true;
     } else if (ceph_argparse_withint(args, i, &chooseleaf_descend_once, &err,
 				     "--set_chooseleaf_descend_once", (char*)NULL)) {
+      adjust = true;
+    } else if (ceph_argparse_withint(args, i, &chooseleaf_vary_r, &err,
+				     "--set_chooseleaf_vary_r", (char*)NULL)) {
       adjust = true;
     } else if (ceph_argparse_flag(args, i, "--reweight", (char*)NULL)) {
       reweight = true;
@@ -429,6 +442,7 @@ int main(int argc, const char **argv)
   }
   else {
     if ((args.size() % 3) != 0U) {
+      cerr << "remaining args: " << args << std::endl;
       cerr << "layers must be specified with 3-tuples of (name, buckettype, size)"
     	   << std::endl;
       exit(EXIT_FAILURE);
@@ -514,13 +528,13 @@ int main(int argc, const char **argv)
       lower_items.push_back(i);
       lower_weights.push_back(0x10000);
     }
+    crush.set_max_devices(num_osds);
 
     int type = 1;
-    int rootid = 0;
     for (vector<layer_t>::iterator p = layers.begin(); p != layers.end(); ++p, type++) {
       layer_t &l = *p;
 
-      dout(0) << "layer " << type
+      dout(2) << "layer " << type
 	      << "  " << l.name
 	      << "  bucket type " << l.buckettype
 	      << "  " << l.size 
@@ -544,8 +558,8 @@ int main(int argc, const char **argv)
       vector<int> cur_weights;
       unsigned lower_pos = 0;  // lower pos
 
-      dout(0) << "lower_items " << lower_items << dendl;
-      dout(0) << "lower_weights " << lower_weights << dendl;
+      dout(2) << "lower_items " << lower_items << dendl;
+      dout(2) << "lower_weights " << lower_weights << dendl;
 
       int i = 0;
       while (1) {
@@ -564,7 +578,7 @@ int main(int argc, const char **argv)
 	  weights[j] = lower_weights[lower_pos];
 	  weight += weights[j];
 	  lower_pos++;
-	  dout(0) << "  item " << items[j] << " weight " << weights[j] << dendl;
+	  dout(2) << "  item " << items[j] << " weight " << weights[j] << dendl;
 	}
 
 	crush_bucket *b = crush_make_bucket(buckettype, CRUSH_HASH_DEFAULT, type, j, items, weights);
@@ -572,9 +586,8 @@ int main(int argc, const char **argv)
 	int id;
 	int r = crush_add_bucket(crush.crush, 0, b, &id);
 	if (r < 0) {
-		dout(0) << "Couldn't add root bucket: " << strerror(-r) << dendl;
+	  dout(2) << "Couldn't add bucket: " << cpp_strerror(r) << dendl;
 	}
-	rootid = id;
 
 	char format[20];
 	format[sizeof(format)-1] = '\0';
@@ -586,7 +599,7 @@ int main(int argc, const char **argv)
 	snprintf(name, sizeof(name), format, i);
 	crush.set_item_name(id, name);
 
-	dout(0) << " in bucket " << id << " '" << name << "' size " << j << " weight " << weight << dendl;
+	dout(2) << " in bucket " << id << " '" << name << "' size " << j << " weight " << weight << dendl;
 
 	cur_items.push_back(id);
 	cur_weights.push_back(weight);
@@ -596,16 +609,31 @@ int main(int argc, const char **argv)
       lower_items.swap(cur_items);
       lower_weights.swap(cur_weights);
     }
+
+    {
+      ostringstream oss;
+      vector<__u32> weights(crush.get_max_devices(), 0x10000);
+      crush.dump_tree(weights, &oss, NULL);
+      dout(1) << "\n" << oss.str() << dendl;
+    }
+
+    string root = layers.back().size == 0 ? layers.back().name :
+      string(layers.back().name) + "0";
+
+    {
+      set<int> roots;
+      crush.find_roots(roots);
+      if (roots.size() > 1)
+	dout(1)	<< "The crush rulesets will use the root " << root << "\n"
+		<< "and ignore the others.\n"
+		<< "There are " << roots.size() << " roots, they can be\n"
+		<< "grouped into a single root by appending something like:\n"
+		<< "  root straw 0\n"
+		<< dendl;
+    }
     
-    // make a generic rules
-    int ruleset=1;
-    crush_rule *rule = crush_make_rule(3, ruleset, CEPH_PG_TYPE_REP, 2, 2);
-    assert(rule);
-    crush_rule_set_step(rule, 0, CRUSH_RULE_TAKE, rootid, 0);
-    crush_rule_set_step(rule, 1, CRUSH_RULE_CHOOSE_LEAF_FIRSTN, CRUSH_CHOOSE_N, 1);
-    crush_rule_set_step(rule, 2, CRUSH_RULE_EMIT, 0, 0);
-    int rno = crush_add_rule(crush.crush, rule, -1);
-    crush.set_rule_name(rno, "data");
+    if (OSDMap::build_simple_crush_rulesets(g_ceph_context, crush, root, &cerr))
+      exit(EXIT_FAILURE);
 
     modified = true;
   }
@@ -664,39 +692,24 @@ int main(int argc, const char **argv)
     modified = true;
   }
 
-  const char *scary_tunables_message =
-    "** tunables are DANGEROUS and NOT YET RECOMMENDED.  DO NOT USE without\n"
-    "** confirming with developers that your use-case is safe and correct.";
   if (choose_local_tries >= 0) {
-    if (!unsafe_tunables) {
-      cerr << scary_tunables_message << std::endl;
-      return -1;
-    }
     crush.set_choose_local_tries(choose_local_tries);
     modified = true;
   }
   if (choose_local_fallback_tries >= 0) {
-    if (!unsafe_tunables) {
-      cerr << scary_tunables_message << std::endl;
-      return -1;
-    }
     crush.set_choose_local_fallback_tries(choose_local_fallback_tries);
     modified = true;
   }
   if (choose_total_tries >= 0) {
-    if (!unsafe_tunables) {
-      cerr << scary_tunables_message << std::endl;
-      return -1;
-    }
     crush.set_choose_total_tries(choose_total_tries);
     modified = true;
   }
   if (chooseleaf_descend_once >= 0) {
-    if (!unsafe_tunables) {
-      cerr << scary_tunables_message << std::endl;
-      return -1;
-    }
     crush.set_chooseleaf_descend_once(chooseleaf_descend_once);
+    modified = true;
+  }
+  if (chooseleaf_vary_r >= 0) {
+    crush.set_chooseleaf_vary_r(chooseleaf_vary_r);
     modified = true;
   }
   if (modified) {
@@ -709,8 +722,7 @@ int main(int argc, const char **argv)
       crush.encode(bl);
       int r = bl.write_file(outfn.c_str());
       if (r < 0) {
-	char buf[80];
-	cerr << me << ": error writing '" << outfn << "': " << strerror_r(-r, buf, sizeof(buf)) << std::endl;
+	cerr << me << ": error writing '" << outfn << "': " << cpp_strerror(r) << std::endl;
 	exit(1);
       }
       if (verbose)
@@ -719,6 +731,10 @@ int main(int argc, const char **argv)
   }
 
   if (test) {
+    if (tester.get_output_utilization_all() ||
+	tester.get_output_utilization())
+      tester.set_output_statistics(true);
+
     int r = tester.test();
     if (r < 0)
       exit(1);
@@ -726,3 +742,8 @@ int main(int argc, const char **argv)
 
   return 0;
 }
+/*
+ * Local Variables:
+ * compile-command: "cd .. ; make crushtool && test/run-cli-tests"
+ * End:
+ */

@@ -12,11 +12,13 @@
 #define TYPE(t)
 #define TYPEWITHSTRAYDATA(t)
 #define TYPE_FEATUREFUL(t)
+#define TYPE_NOCOPY(t)
 #define MESSAGE(t)
 #include "types.h"
 #undef TYPE
 #undef TYPEWITHSTRAYDATA
 #undef TYPE_FEATUREFUL
+#undef TYPE_NOCOPY
 #undef MESSAGE
 
 void usage(ostream &out)
@@ -37,14 +39,23 @@ void usage(ostream &out)
   out << "  encode              encode in-memory object\n";
   out << "  dump_json           dump in-memory object as json (to stdout)\n";
   out << "\n";
+  out << "  copy                copy object (via operator=)\n";
+  out << "  copy_ctor           copy object (via copy ctor)\n";
+  out << "\n";
   out << "  count_tests         print number of generated test objects (to stdout)\n";
   out << "  select_test <n>     select generated test object as in-memory object\n";
 }
 struct Dencoder {
   virtual ~Dencoder() {}
-  virtual string decode(bufferlist bl) = 0;
+  virtual string decode(bufferlist bl, uint64_t seek) = 0;
   virtual void encode(bufferlist& out, uint64_t features) = 0;
   virtual void dump(ceph::Formatter *f) = 0;
+  virtual void copy() {
+    cerr << "copy operator= not supported" << std::endl;
+  }
+  virtual void copy_ctor() {
+    cerr << "copy ctor not supported" << std::endl;
+  }
   virtual void generate() = 0;
   virtual int num_generated() = 0;
   virtual string select_generated(unsigned n) = 0;
@@ -64,16 +75,20 @@ public:
     delete m_object;
   }
 
-  string decode(bufferlist bl) {
+  string decode(bufferlist bl, uint64_t seek) {
     bufferlist::iterator p = bl.begin();
+    p.seek(seek);
     try {
       m_object->decode(p);
     }
     catch (buffer::error& e) {
       return e.what();
     }
-    if (!stray_okay && !p.end())
-      return "stray data at end of buffer";
+    if (!stray_okay && !p.end()) {
+      ostringstream ss;
+      ss << "stray data at end of buffer, offset " << p.get_off();
+      return ss.str();
+    }
     return string();
   }
 
@@ -82,7 +97,6 @@ public:
   void dump(ceph::Formatter *f) {
     m_object->dump(f);
   }
-
   void generate() {
     T::generate_test_instances(m_list);
   }
@@ -103,12 +117,31 @@ public:
 };
 
 template<class T>
-class DencoderImplNoFeature : public DencoderBase<T> {
+class DencoderImplNoFeatureNoCopy : public DencoderBase<T> {
 public:
-  DencoderImplNoFeature(bool stray_ok) : DencoderBase<T>(stray_ok) {}
+  DencoderImplNoFeatureNoCopy(bool stray_ok)
+    : DencoderBase<T>(stray_ok) {}
   virtual void encode(bufferlist& out, uint64_t features) {
     out.clear();
     this->m_object->encode(out);
+  }
+};
+
+template<class T>
+class DencoderImplNoFeature : public DencoderImplNoFeatureNoCopy<T> {
+public:
+  DencoderImplNoFeature(bool stray_ok)
+    : DencoderImplNoFeatureNoCopy<T>(stray_ok) {}
+  void copy() {
+    T *n = new T;
+    *n = *this->m_object;
+    delete this->m_object;
+    this->m_object = n;
+  }
+  void copy_ctor() {
+    T *n = new T(*this->m_object);
+    delete this->m_object;
+    this->m_object = n;
   }
 };
 
@@ -136,8 +169,9 @@ public:
     m_object->put();
   }
 
-  string decode(bufferlist bl) {
+  string decode(bufferlist bl, uint64_t seek) {
     bufferlist::iterator p = bl.begin();
+    p.seek(seek);
     try {
       Message *n = decode_message(g_ceph_context, p);
       if (!n)
@@ -153,8 +187,11 @@ public:
     catch (buffer::error& e) {
       return e.what();
     }
-    if (!p.end())
-      return "stray data at end of buffer";
+    if (!p.end()) {
+      ostringstream ss;
+      ss << "stray data at end of buffer, offset " << p.get_off();
+      return ss.str();
+    }
     return string();
   }
 
@@ -166,7 +203,6 @@ public:
   void dump(ceph::Formatter *f) {
     m_object->dump(f);
   }
-
   void generate() {
     //T::generate_test_instances(m_list);
   }
@@ -203,13 +239,14 @@ int main(int argc, const char **argv)
 #define TYPE(t) dencoders[T_STRINGIFY(t)] = new DencoderImplNoFeature<t>(false);
 #define TYPEWITHSTRAYDATA(t) dencoders[T_STRINGIFY(t)] = new DencoderImplNoFeature<t>(true);
 #define TYPE_FEATUREFUL(t) dencoders[T_STRINGIFY(t)] = new DencoderImplFeatureful<t>(false);
+#define TYPE_NOCOPY(t) dencoders[T_STRINGIFY(t)] = new DencoderImplNoFeatureNoCopy<t>(false);
 #define MESSAGE(t) dencoders[T_STRINGIFY(t)] = new MessageDencoderImpl<t>;
 #include "types.h"
 #undef TYPE
 #undef TYPEWITHSTRAYDATA
 #undef TYPE_FEATUREFUL
 #undef T_STR
-#undef T_STRRINGIFY
+#undef T_STRINGIFY
 
   vector<const char*> args;
   argv_to_vec(argc, argv, args);
@@ -218,6 +255,7 @@ int main(int argc, const char **argv)
   Dencoder *den = NULL;
   uint64_t features = CEPH_FEATURES_SUPPORTED_DEFAULT;
   bufferlist encbl;
+  uint64_t skip = 0;
 
   if (args.empty()) {
     usage(cerr);
@@ -250,6 +288,13 @@ int main(int argc, const char **argv)
       }
       den = dencoders[cname];
       den->generate();
+    } else if (*i == string("skip")) {
+      ++i;
+      if (i == args.end()) {
+	usage(cerr);
+	exit(1);
+      }
+      skip = atoi(*i);
     } else if (*i == string("get_features")) {
       cout << CEPH_FEATURES_SUPPORTED_DEFAULT << std::endl;
       exit(0);
@@ -274,7 +319,21 @@ int main(int argc, const char **argv)
 	usage(cerr);
 	exit(1);
       }
-      err = den->decode(encbl);
+      err = den->decode(encbl, skip);
+    } else if (*i == string("copy_ctor")) {
+      if (!den) {
+	cerr << "must first select type with 'type <name>'" << std::endl;
+	usage(cerr);
+	exit(1);
+      }
+      den->copy_ctor();
+    } else if (*i == string("copy")) {
+      if (!den) {
+	cerr << "must first select type with 'type <name>'" << std::endl;
+	usage(cerr);
+	exit(1);
+      }
+      den->copy();
     } else if (*i == string("dump_json")) {
       if (!den) {
 	cerr << "must first select type with 'type <name>'" << std::endl;
@@ -294,7 +353,12 @@ int main(int argc, const char **argv)
 	usage(cerr);
 	exit(1);
       }
-      encbl.read_file(*i, &err);
+      int r = encbl.read_file(*i, &err);
+      if (r < 0) {
+        cerr << "error reading " << *i << ": " << err << std::endl;
+        exit(1);
+      }
+
     } else if (*i == string("export")) {
       ++i;
       if (i == args.end()) {

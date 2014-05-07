@@ -97,7 +97,7 @@ public:
 
   void add_waiter(uint64_t tag, Context *c);
 
-  static const int EXPORT_NONCE = 1;
+  static const unsigned EXPORT_NONCE = 1;
 
   bool is_lt(const MDSCacheObject *r) const {
     return *this < *static_cast<const CDentry*>(r);
@@ -242,11 +242,11 @@ public:
     return get_projected_linkage()->inode;
   }
 
-  bool use_projected(client_t client, Mutation *mut) {
+  bool use_projected(client_t client, const MutationRef& mut) const {
     return lock.can_read_projected(client) || 
       lock.get_xlock_by() == mut;
   }
-  linkage_t *get_linkage(client_t client, Mutation *mut) {
+  linkage_t *get_linkage(client_t client, const MutationRef& mut) {
     return use_projected(client, mut) ? get_projected_linkage() : get_linkage();
   }
 

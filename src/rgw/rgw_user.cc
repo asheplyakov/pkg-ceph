@@ -41,6 +41,46 @@ bool rgw_user_is_authenticated(RGWUserInfo& info)
   return (info.user_id != RGW_USER_ANON_ID);
 }
 
+int rgw_user_sync_all_stats(RGWRados *store, const string& user_id)
+{
+  CephContext *cct = store->ctx();
+  size_t max_entries = cct->_conf->rgw_list_buckets_max_chunk;
+  bool done;
+  string marker;
+  int ret;
+
+  do {
+    RGWUserBuckets user_buckets;
+    ret = rgw_read_user_buckets(store, user_id, user_buckets, marker, max_entries, false);
+    if (ret < 0) {
+      ldout(cct, 0) << "failed to read user buckets: ret=" << ret << dendl;
+      return ret;
+    }
+    map<string, RGWBucketEnt>& buckets = user_buckets.get_buckets();
+    for (map<string, RGWBucketEnt>::iterator i = buckets.begin();
+         i != buckets.end();
+         ++i) {
+      marker = i->first;
+
+      RGWBucketEnt& bucket_ent = i->second;
+      ret = rgw_bucket_sync_user_stats(store, user_id, bucket_ent.bucket);
+      if (ret < 0) {
+        ldout(cct, 0) << "ERROR: could not sync bucket stats: ret=" << ret << dendl;
+        return ret;
+      }
+    }
+    done = (buckets.size() < max_entries);
+  } while (!done);
+
+  ret = store->complete_sync_user_stats(user_id);
+  if (ret < 0) {
+    cerr << "ERROR: failed to complete syncing user stats: ret=" << ret << std::endl;
+    return ret;
+  }
+
+  return 0;
+}
+
 /**
  * Save the given user information to storage.
  * Returns: 0 on success, -ERR# on failure.
@@ -239,7 +279,7 @@ extern int rgw_get_user_info_by_access_key(RGWRados *store, string& access_key, 
 int rgw_remove_key_index(RGWRados *store, RGWAccessKey& access_key)
 {
   rgw_obj obj(store->zone.user_keys_pool, access_key.id);
-  int ret = store->delete_obj(NULL, obj);
+  int ret = store->delete_system_obj(NULL, obj);
   return ret;
 }
 
@@ -261,14 +301,14 @@ int rgw_remove_uid_index(RGWRados *store, string& uid)
 int rgw_remove_email_index(RGWRados *store, string& email)
 {
   rgw_obj obj(store->zone.user_email_pool, email);
-  int ret = store->delete_obj(NULL, obj);
+  int ret = store->delete_system_obj(NULL, obj);
   return ret;
 }
 
 int rgw_remove_swift_name_index(RGWRados *store, string& swift_name)
 {
   rgw_obj obj(store->zone.user_swift_pool, swift_name);
-  int ret = store->delete_obj(NULL, obj);
+  int ret = store->delete_system_obj(NULL, obj);
   return ret;
 }
 
@@ -330,7 +370,7 @@ int rgw_delete_user(RGWRados *store, RGWUserInfo& info, RGWObjVersionTracker& ob
 
   rgw_obj email_obj(store->zone.user_email_pool, info.user_email);
   ldout(store->ctx(), 10) << "removing email index: " << info.user_email << dendl;
-  ret = store->delete_obj(NULL, email_obj);
+  ret = store->delete_system_obj(NULL, email_obj);
   if (ret < 0 && ret != -ENOENT) {
     ldout(store->ctx(), 0) << "ERROR: could not remove " << info.user_id << ":" << email_obj << ", should be fixed (err=" << ret << ")" << dendl;
     return ret;
@@ -340,7 +380,7 @@ int rgw_delete_user(RGWRados *store, RGWUserInfo& info, RGWObjVersionTracker& ob
   rgw_get_buckets_obj(info.user_id, buckets_obj_id);
   rgw_obj uid_bucks(store->zone.user_uid_pool, buckets_obj_id);
   ldout(store->ctx(), 10) << "removing user buckets index" << dendl;
-  ret = store->delete_obj(NULL, uid_bucks);
+  ret = store->delete_system_obj(NULL, uid_bucks);
   if (ret < 0 && ret != -ENOENT) {
     ldout(store->ctx(), 0) << "ERROR: could not remove " << info.user_id << ":" << uid_bucks << ", should be fixed (err=" << ret << ")" << dendl;
     return ret;
@@ -700,8 +740,16 @@ int RGWAccessKeyPool::check_op(RGWUserAdminOpState& op_state,
   std::string access_key = op_state.get_access_key();
   std::string secret_key = op_state.get_secret_key();
 
+  int32_t key_type = op_state.get_key_type();
+
+  // if a key type wasn't specified set it to s3
+  if (key_type < 0)
+    key_type = KEY_TYPE_S3;
+
+  op_state.set_key_type(key_type);
+
   /* see if the access key or secret key was specified */
-  if (!op_state.will_gen_access() && access_key.empty()) {
+  if (key_type == KEY_TYPE_S3 && !op_state.will_gen_access() && access_key.empty()) {
     set_err_msg(err_msg, "empty access key");
     return -EINVAL;
   }
@@ -709,10 +757,6 @@ int RGWAccessKeyPool::check_op(RGWUserAdminOpState& op_state,
   // don't check for secret key because we may be doing a removal
 
   check_existing_key(op_state);
-
-  // if a key type wasn't specified set it to s3
-  if (op_state.get_key_type() < 0)
-    op_state.set_key_type(KEY_TYPE_S3);
 
   return 0;
 }
@@ -834,7 +878,7 @@ int RGWAccessKeyPool::generate_key(RGWUserAdminOpState& op_state, std::string *e
 // modify an existing key
 int RGWAccessKeyPool::modify_key(RGWUserAdminOpState& op_state, std::string *err_msg)
 {
-  std::string id = op_state.get_access_key();
+  std::string id;
   std::string key = op_state.get_secret_key();
   int key_type = op_state.get_key_type();
 
@@ -843,8 +887,23 @@ int RGWAccessKeyPool::modify_key(RGWUserAdminOpState& op_state, std::string *err
   pair<string, RGWAccessKey> key_pair;
   map<std::string, RGWAccessKey>::iterator kiter;
 
-  if (id.empty()) {
-    set_err_msg(err_msg, "no access key specified");
+  switch (key_type) {
+  case KEY_TYPE_S3:
+    id = op_state.get_access_key();
+    if (id.empty()) {
+      set_err_msg(err_msg, "no access key specified");
+      return -EINVAL;
+    }
+    break;
+  case KEY_TYPE_SWIFT:
+    id = op_state.build_default_swift_kid();
+    if (id.empty()) {
+      set_err_msg(err_msg, "no subuser specified");
+      return -EINVAL;
+    }
+    break;
+  default:
+    set_err_msg(err_msg, "invalid key type");
     return -EINVAL;
   }
 
@@ -856,14 +915,13 @@ int RGWAccessKeyPool::modify_key(RGWUserAdminOpState& op_state, std::string *err
   key_pair.first = id;
 
   if (key_type == KEY_TYPE_SWIFT) {
-    kiter = swift_keys->find(id);
-    modify_key = kiter->second;
+    modify_key.id = id;
+    modify_key.subuser = op_state.get_subuser();
   } else if (key_type == KEY_TYPE_S3) {
     kiter = access_keys->find(id);
-    modify_key = kiter->second;
-  } else {
-    set_err_msg(err_msg, "invalid key type");
-    return -EINVAL;
+    if (kiter != access_keys->end()) {
+      modify_key = kiter->second;
+    }
   }
 
   if (op_state.will_gen_secret()) {
@@ -921,8 +979,10 @@ int RGWAccessKeyPool::execute_add(RGWUserAdminOpState& op_state,
     break;
   }
 
-  if (ret < 0)
+  if (ret < 0) {
+    set_err_msg(err_msg, subprocess_msg);
     return ret;
+  }
 
   // store the updated info
   if (!defer_user_update)
@@ -1123,12 +1183,6 @@ int RGWSubUserPool::execute_add(RGWUserAdminOpState& op_state,
 
   subuser_pair.first = subuser_str;
 
-  // no duplicates
-  if (op_state.has_existing_subuser()) {
-    set_err_msg(err_msg, "subuser exists");
-    return -EEXIST;
-  }
-
   // assumes key should be created
   if (op_state.has_key_op()) {
     ret = user->keys.add(op_state, &subprocess_msg, true);
@@ -1172,6 +1226,10 @@ int RGWSubUserPool::add(RGWUserAdminOpState& op_state, std::string *err_msg, boo
   if (ret < 0) {
     set_err_msg(err_msg, "unable to parse request, " + subprocess_msg);
     return ret;
+  }
+
+  if (op_state.get_secret_key().empty()) {
+    op_state.set_gen_access();
   }
 
   ret = execute_add(op_state, &subprocess_msg, defer_user_update);
@@ -1685,6 +1743,17 @@ int RGWUser::execute_add(RGWUserAdminOpState& op_state, std::string *err_msg)
   if (op_state.has_bucket_quota())
     user_info.bucket_quota = op_state.get_bucket_quota();
 
+  if (op_state.temp_url_key_specified) {
+    map<int, string>::iterator iter;
+    for (iter = op_state.temp_url_keys.begin();
+         iter != op_state.temp_url_keys.end(); ++iter) {
+      user_info.temp_url_keys[iter->first] = iter->second;
+    }
+  }
+
+  if (op_state.has_user_quota())
+    user_info.user_quota = op_state.get_user_quota();
+
   // update the request
   op_state.set_user_info(user_info);
   op_state.set_populated();
@@ -1774,7 +1843,7 @@ int RGWUser::execute_remove(RGWUserAdminOpState& op_state, std::string *err_msg)
 
     std::map<std::string, RGWBucketEnt>::iterator it;
     for (it = m.begin(); it != m.end(); ++it) {
-      ret = rgw_remove_bucket(store, ((*it).second).bucket, true);
+      ret = rgw_remove_bucket(store, uid, ((*it).second).bucket, true);
       if (ret < 0) {
         set_err_msg(err_msg, "unable to delete user data");
         return ret;
@@ -1884,11 +1953,22 @@ int RGWUser::execute_modify(RGWUserAdminOpState& op_state, std::string *err_msg)
   if (op_state.system_specified)
     user_info.system = op_state.system;
 
+  if (op_state.temp_url_key_specified) {
+    map<int, string>::iterator iter;
+    for (iter = op_state.temp_url_keys.begin();
+         iter != op_state.temp_url_keys.end(); ++iter) {
+      user_info.temp_url_keys[iter->first] = iter->second;
+    }
+  }
+
   if (op_state.op_mask_specified)
     user_info.op_mask = op_state.get_op_mask();
 
   if (op_state.has_bucket_quota())
     user_info.bucket_quota = op_state.get_bucket_quota();
+
+  if (op_state.has_user_quota())
+    user_info.user_quota = op_state.get_user_quota();
 
   if (op_state.has_suspension_op()) {
     __u8 suspended = op_state.get_suspension_status();
@@ -2358,7 +2438,7 @@ public:
   }
 
   int list_keys_next(void *handle, int max, list<string>& keys, bool *truncated) {
-    list_keys_info *info = (list_keys_info *)handle;
+    list_keys_info *info = static_cast<list_keys_info *>(handle);
 
     string no_filter;
 
@@ -2387,7 +2467,7 @@ public:
   }
 
   void list_keys_complete(void *handle) {
-    list_keys_info *info = (list_keys_info *)handle;
+    list_keys_info *info = static_cast<list_keys_info *>(handle);
     delete info;
   }
 };

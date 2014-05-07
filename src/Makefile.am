@@ -8,11 +8,13 @@ DIST_SUBDIRS += gtest ocf libs3 java
 
 include arch/Makefile.am
 include auth/Makefile.am
+include brag/Makefile.am
 include crush/Makefile.am
 include mon/Makefile.am
 include mds/Makefile.am
 include os/Makefile.am
 include osd/Makefile.am
+include erasure-code/Makefile.am
 include osdc/Makefile.am
 include client/Makefile.am
 include global/Makefile.am
@@ -35,18 +37,15 @@ include tools/Makefile.am
 # core daemons
 
 ceph_mon_SOURCES = ceph_mon.cc
-ceph_mon_LDADD = $(LIBMON) $(LIBOS) $(CEPH_GLOBAL)
+ceph_mon_LDADD = $(LIBMON) $(LIBOS) $(CEPH_GLOBAL) $(LIBCOMMON)
 bin_PROGRAMS += ceph-mon
 
 ceph_osd_SOURCES = ceph_osd.cc
-ceph_osd_LDADD = $(LIBOSD) $(CEPH_GLOBAL)
-if LINUX
-ceph_osd_LDADD += -ldl
-endif # LINUX
+ceph_osd_LDADD = $(LIBOSD) $(CEPH_GLOBAL) $(LIBCOMMON)
 bin_PROGRAMS += ceph-osd
 
 ceph_mds_SOURCES = ceph_mds.cc
-ceph_mds_LDADD = $(LIBMDS) $(LIBOSDC) $(CEPH_GLOBAL)
+ceph_mds_LDADD = $(LIBMDS) $(LIBOSDC) $(CEPH_GLOBAL) $(LIBCOMMON)
 bin_PROGRAMS += ceph-mds
 
 
@@ -55,8 +54,8 @@ bin_PROGRAMS += ceph-mds
 
 # user tools
 
-mount_ceph_SOURCES = mount/mount.ceph.c
-mount_ceph_LDADD = $(LIBCOMMON)
+mount_ceph_SOURCES = mount/mount.ceph.c common/secret.c
+mount_ceph_LDADD = $(LIBCOMMON) $(KEYUTILS_LIB)
 if LINUX
 su_sbin_PROGRAMS += mount.ceph
 endif # LINUX
@@ -75,8 +74,8 @@ ceph_syn_SOURCES += client/SyntheticClient.cc # uses g_conf.. needs cleanup
 ceph_syn_LDADD = $(LIBCLIENT) $(CEPH_GLOBAL)
 bin_PROGRAMS += ceph-syn
 
-rbd_SOURCES = rbd.cc 
-rbd_LDADD = $(LIBRBD) $(LIBRADOS) $(CEPH_GLOBAL)
+rbd_SOURCES = rbd.cc common/secret.c
+rbd_LDADD = $(LIBRBD) $(LIBRADOS) $(CEPH_GLOBAL) -lblkid $(KEYUTILS_LIB)
 if LINUX
 bin_PROGRAMS += rbd
 endif #LINUX
@@ -128,7 +127,7 @@ editpaths = sed \
 	-e 's|@datadir[@]|$(pkgdatadir)|g' \
 	-e 's|@prefix[@]|$(prefix)|g' \
 	-e 's|@@GCOV_PREFIX_STRIP[@][@]|$(GCOV_PREFIX_STRIP)|g'
-shell_scripts = ceph-debugpack ceph-post-file
+shell_scripts = ceph-debugpack ceph-post-file ceph-crush-location
 $(shell_scripts): Makefile
 $(shell_scripts): %: %.in
 	rm -f $@ $@.tmp
@@ -173,6 +172,7 @@ EXTRA_DIST += \
 	$(srcdir)/upstart/radosgw.conf \
 	$(srcdir)/upstart/radosgw-all.conf \
 	$(srcdir)/upstart/radosgw-all-starter.conf \
+	$(srcdir)/upstart/rbdmap.conf \
 	ceph.in \
 	ceph-disk \
 	ceph-disk-prepare \
@@ -180,6 +180,7 @@ EXTRA_DIST += \
 	ceph-disk-udev \
 	ceph-create-keys \
 	ceph-rest-api \
+	ceph-crush-location \
 	mount.fuse.ceph \
 	rbdmap \
 	unittest_bufferlist.sh \
@@ -236,7 +237,8 @@ bin_SCRIPTS += \
 	ceph-clsinfo \
 	ceph-debugpack \
 	ceph-rbdnamer \
-	ceph-post-file
+	ceph-post-file \
+	ceph-crush-location
 
 BUILT_SOURCES += init-ceph
 su_sbin_SCRIPTS += mkcephfs
@@ -274,8 +276,19 @@ base: core-daemons admin-tools \
 FORCE:
 .git_version: FORCE
 	$(srcdir)/check_version $(srcdir)/.git_version
+
+# if NO_VERSION is set, only generate a new ceph_ver.h if there currently 
+# is none, and call "make_version -n" to fill it with a fixed string.
+# Otherwise, set it from the contents of .git_version.
+
 ceph_ver.h: .git_version
-	$(srcdir)/make_version $(srcdir)/.git_version ./ceph_ver.h
+	if [ -n "$$NO_VERSION" ] ; then \
+	    if [ ! -f ./ceph_ver.h ] ; then \
+	        $(srcdir)/make_version -n ./ceph_ver.h ; \
+	    fi; \
+        else \
+	    $(srcdir)/make_version $(srcdir)/.git_version ./ceph_ver.h ; \
+	fi
 
 ceph_ver.c: ./ceph_ver.h
 common/version.cc: ./ceph_ver.h
@@ -308,7 +321,9 @@ ceph: ceph.in ./ceph_ver.h Makefile
 # cleaning
 
 clean-local:
-	-rm *.so *.gcno *.gcda
+	rm -f *.so 
+	find . -name '*.gcno' -o -name '*.gcda' -o -name '*.lcov' | xargs rm -f
+	rm -f ceph java/java/com/ceph/crush/Bucket.class
 
 
 # pybind

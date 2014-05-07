@@ -24,8 +24,8 @@
 #include "CDentry.h"
 #include "CDir.h"
 
-#include <ext/hash_set>
-using __gnu_cxx::hash_set;
+#include "include/unordered_set.h"
+using ceph::unordered_set;
 
 class CDir;
 class CInode;
@@ -54,12 +54,12 @@ class LogSegment {
   
   set<CInode*> truncating_inodes;
 
-  map<int, hash_set<version_t> > pending_commit_tids;  // mdstable
+  map<int, ceph::unordered_set<version_t> > pending_commit_tids;  // mdstable
   set<metareqid_t> uncommitted_masters;
   set<dirfrag_t> uncommitted_fragments;
 
   // client request ids
-  map<int, tid_t> last_client_tids;
+  map<int, ceph_tid_t> last_client_tids;
 
   // table version
   version_t inotablev;
@@ -67,7 +67,7 @@ class LogSegment {
   map<int,version_t> tablev;
 
   // try to expire
-  void try_to_expire(MDS *mds, C_GatherBuilder &gather_bld);
+  void try_to_expire(MDS *mds, C_GatherBuilder &gather_bld, int op_prio);
 
   // cons
   LogSegment(loff_t off) :

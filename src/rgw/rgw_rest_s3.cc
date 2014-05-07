@@ -711,7 +711,8 @@ int RGWPostObj_ObjStore_S3::read_form_part_header(struct post_form_part *part,
 {
   bufferlist bl;
   bool reached_boundary;
-  int r = read_line(bl, RGW_MAX_CHUNK_SIZE, &reached_boundary, done);
+  uint64_t chunk_size = s->cct->_conf->rgw_max_chunk_size;
+  int r = read_line(bl, chunk_size, &reached_boundary, done);
   if (r < 0)
     return r;
 
@@ -720,7 +721,7 @@ int RGWPostObj_ObjStore_S3::read_form_part_header(struct post_form_part *part,
   }
 
   if (reached_boundary) { // skip the first boundary
-    r = read_line(bl, RGW_MAX_CHUNK_SIZE, &reached_boundary, done);
+    r = read_line(bl, chunk_size, &reached_boundary, done);
     if (r < 0)
       return r;
     if (*done)
@@ -752,7 +753,7 @@ int RGWPostObj_ObjStore_S3::read_form_part_header(struct post_form_part *part,
     if (reached_boundary)
       break;
 
-    r = read_line(bl, RGW_MAX_CHUNK_SIZE, &reached_boundary, done);
+    r = read_line(bl, chunk_size, &reached_boundary, done);
   }
 
   return 0;
@@ -877,7 +878,8 @@ int RGWPostObj_ObjStore_S3::get_params()
     }
 
     bool boundary;
-    r = read_data(part.data, RGW_MAX_CHUNK_SIZE, &boundary, &done);
+    uint64_t chunk_size = s->cct->_conf->rgw_max_chunk_size;
+    r = read_data(part.data, chunk_size, &boundary, &done);
     if (!boundary) {
       err_msg = "Couldn't find boundary";
       return -EINVAL;
@@ -946,8 +948,8 @@ int RGWPostObj_ObjStore_S3::get_policy()
       err_msg = "Missing access key";
       return -EINVAL;
     }
-    string signature_str;
-    if (!part_str("signature", &signature_str)) {
+    string received_signature_str;
+    if (!part_str("signature", &received_signature_str)) {
       ldout(s->cct, 0) << "No signature found!" << dendl;
       err_msg = "Missing signature";
       return -EINVAL;
@@ -964,22 +966,29 @@ int RGWPostObj_ObjStore_S3::get_policy()
 
     map<string, RGWAccessKey> access_keys  = user_info.access_keys;
 
-    map<string, RGWAccessKey>::const_iterator iter = access_keys.begin();
+    map<string, RGWAccessKey>::const_iterator iter = access_keys.find(s3_access_key);
+    // We know the key must exist, since the user was returned by
+    // rgw_get_user_info_by_access_key, but it doesn't hurt to check!
+    if (iter == access_keys.end()) {
+      ldout(s->cct, 0) << "Secret key lookup failed!" << dendl;
+      err_msg = "No secret key for matching access key";
+      return -EACCES;
+    }
     string s3_secret_key = (iter->second).key;
 
-    char calc_signature[CEPH_CRYPTO_HMACSHA1_DIGESTSIZE];
+    char expected_signature_char[CEPH_CRYPTO_HMACSHA1_DIGESTSIZE];
 
-    calc_hmac_sha1(s3_secret_key.c_str(), s3_secret_key.size(), encoded_policy.c_str(), encoded_policy.length(), calc_signature);
-    bufferlist encoded_hmac;
-    bufferlist raw_hmac;
-    raw_hmac.append(calc_signature, CEPH_CRYPTO_HMACSHA1_DIGESTSIZE);
-    raw_hmac.encode_base64(encoded_hmac);
-    encoded_hmac.append((char)0); /* null terminate */
+    calc_hmac_sha1(s3_secret_key.c_str(), s3_secret_key.size(), encoded_policy.c_str(), encoded_policy.length(), expected_signature_char);
+    bufferlist expected_signature_hmac_raw;
+    bufferlist expected_signature_hmac_encoded;
+    expected_signature_hmac_raw.append(expected_signature_char, CEPH_CRYPTO_HMACSHA1_DIGESTSIZE);
+    expected_signature_hmac_raw.encode_base64(expected_signature_hmac_encoded);
+    expected_signature_hmac_encoded.append((char)0); /* null terminate */
 
-    if (signature_str.compare(encoded_hmac.c_str()) != 0) {
+    if (received_signature_str.compare(expected_signature_hmac_encoded.c_str()) != 0) {
       ldout(s->cct, 0) << "Signature verification failed!" << dendl;
-      ldout(s->cct, 0) << "expected: " << signature_str.c_str() << dendl;
-      ldout(s->cct, 0) << "got: " << encoded_hmac.c_str() << dendl;
+      ldout(s->cct, 0) << "received: " << received_signature_str.c_str() << dendl;
+      ldout(s->cct, 0) << "expected: " << expected_signature_hmac_encoded.c_str() << dendl;
       err_msg = "Bad access key / signature";
       return -EACCES;
     }
@@ -1052,7 +1061,8 @@ int RGWPostObj_ObjStore_S3::complete_get_params()
     
     bufferlist part_data;
     bool boundary;
-    r = read_data(part.data, RGW_MAX_CHUNK_SIZE, &boundary, &done);
+    uint64_t chunk_size = s->cct->_conf->rgw_max_chunk_size;
+    r = read_data(part.data, chunk_size, &boundary, &done);
     if (!boundary) {
       return -EINVAL;
     }
@@ -1068,7 +1078,8 @@ int RGWPostObj_ObjStore_S3::get_data(bufferlist& bl)
   bool boundary;
   bool done;
 
-  int r = read_data(bl, RGW_MAX_CHUNK_SIZE, &boundary, &done);
+  uint64_t chunk_size = s->cct->_conf->rgw_max_chunk_size;
+  int r = read_data(bl, chunk_size, &boundary, &done);
   if (r < 0)
     return r;
 
@@ -1157,7 +1168,9 @@ done:
   s->err.message = err_msg;
   set_req_state_err(s, ret);
   dump_errno(s);
-  dump_content_length(s, s->formatter->get_len());
+  if (ret >= 0) {
+    dump_content_length(s, s->formatter->get_len());
+  }
   end_header(s, this);
   if (ret != STATUS_CREATED)
     return;
@@ -1376,7 +1389,7 @@ int RGWPutCORS_ObjStore_S3::get_params()
     goto done_err;
   }
 
-  if (!parser.parse(data, len, 1)) {
+  if (!data || !parser.parse(data, len, 1)) {
     r = -EINVAL;
     goto done_err;
   }
@@ -1515,11 +1528,13 @@ void RGWListMultipart_ObjStore_S3::send_response()
     dump_start(s);
     s->formatter->open_object_section_in_ns("ListMultipartUploadResult",
 		    "http://s3.amazonaws.com/doc/2006-03-01/");
-    map<uint32_t, RGWUploadPartInfo>::iterator iter, test_iter;
-    int i, cur_max = 0;
+    map<uint32_t, RGWUploadPartInfo>::iterator iter;
+    map<uint32_t, RGWUploadPartInfo>::reverse_iterator test_iter;
+    int cur_max = 0;
 
-    iter = parts.upper_bound(marker);
-    for (i = 0, test_iter = iter; test_iter != parts.end() && i < max_parts; ++test_iter, ++i) {
+    iter = parts.begin();
+    test_iter = parts.rbegin();
+    if (test_iter != parts.rend()) {
       cur_max = test_iter->first;
     }
     s->formatter->dump_string("Bucket", s->bucket_name_str);
@@ -1527,9 +1542,9 @@ void RGWListMultipart_ObjStore_S3::send_response()
     s->formatter->dump_string("UploadId", upload_id);
     s->formatter->dump_string("StorageClass", "STANDARD");
     s->formatter->dump_int("PartNumberMarker", marker);
-    s->formatter->dump_int("NextPartNumberMarker", cur_max + 1);
+    s->formatter->dump_int("NextPartNumberMarker", cur_max);
     s->formatter->dump_int("MaxParts", max_parts);
-    s->formatter->dump_string("IsTruncated", (test_iter == parts.end() ? "false" : "true"));
+    s->formatter->dump_string("IsTruncated", (truncated ? "true" : "false"));
 
     ACLOwner& owner = policy.get_owner();
     dump_owner(s, owner.get_id(), owner.get_display_name());

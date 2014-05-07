@@ -12,19 +12,33 @@
  *
  */
 #include <memory>
-#include <tr1/memory>
+#include "include/memory.h"
 #include <errno.h>
 #include <map>
 #include <list>
 #include <string>
 #include <sstream>
+
+#include "acconfig.h"
+
+#ifdef HAVE_SYS_VFS_H
 #include <sys/vfs.h>
+#endif
+
+#ifdef HAVE_SYS_MOUNT_H
+#include <sys/mount.h>
+#endif
+
+#ifdef HAVE_SYS_PARAM_H
+#include <sys/param.h>
+#endif
 
 #include "messages/MMonHealth.h"
 #include "include/types.h"
 #include "include/Context.h"
 #include "include/assert.h"
 #include "common/Formatter.h"
+#include "common/errno.h"
 
 #include "mon/Monitor.h"
 #include "mon/QuorumService.h"
@@ -205,7 +219,7 @@ void DataHealthService::service_tick()
   DataStats &ours = stats[mon->messenger->get_myinst()];
 
   if (ours.latest_avail_percent <= g_conf->mon_data_avail_crit) {
-    derr << "reached critical levels of available space on data store"
+    derr << "reached critical levels of available space on local monitor storage"
          << " -- shutdown!" << dendl;
     force_shutdown();
     return;
@@ -218,7 +232,7 @@ void DataHealthService::service_tick()
   if (ours.latest_avail_percent <= g_conf->mon_data_avail_warn) {
     if (ours.latest_avail_percent != last_warned_percent)
       mon->clog.warn()
-	<< "reached concerning levels of available space on data store"
+	<< "reached concerning levels of available space on local monitor storage"
 	<< " (" << ours.latest_avail_percent << "\% free)\n";
     last_warned_percent = ours.latest_avail_percent;
   } else {

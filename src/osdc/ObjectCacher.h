@@ -103,8 +103,8 @@ class ObjectCacher {
   public:
     Object *ob;
     bufferlist  bl;
-    tid_t last_write_tid;  // version of bh (if non-zero)
-    tid_t last_read_tid;   // tid of last read op (if any)
+    ceph_tid_t last_write_tid;  // version of bh (if non-zero)
+    ceph_tid_t last_read_tid;   // tid of last read op (if any)
     utime_t last_write;
     SnapContext snapc;
     int error; // holds return value for failed reads
@@ -181,12 +181,12 @@ class ObjectCacher {
   public:
     map<loff_t, BufferHead*>     data;
 
-    tid_t last_write_tid;  // version of bh (if non-zero)
-    tid_t last_commit_tid; // last update commited.
+    ceph_tid_t last_write_tid;  // version of bh (if non-zero)
+    ceph_tid_t last_commit_tid; // last update commited.
 
     int dirty_or_tx;
 
-    map< tid_t, list<Context*> > waitfor_commit;
+    map< ceph_tid_t, list<Context*> > waitfor_commit;
     xlist<C_ReadFinish*> reads;
 
   public:
@@ -332,16 +332,16 @@ class ObjectCacher {
   string name;
   Mutex& lock;
   
-  int64_t max_dirty, target_dirty, max_size, max_objects;
+  uint64_t max_dirty, target_dirty, max_size, max_objects;
   utime_t max_dirty_age;
   bool block_writes_upfront;
 
   flush_set_callback_t flush_set_callback;
   void *flush_set_callback_arg;
 
-  vector<hash_map<sobject_t, Object*> > objects; // indexed by pool_id
+  vector<ceph::unordered_map<sobject_t, Object*> > objects; // indexed by pool_id
 
-  tid_t last_read_tid;
+  ceph_tid_t last_read_tid;
 
   set<BufferHead*>    dirty_bh;
   LRU   bh_lru_dirty, bh_lru_rest;
@@ -434,7 +434,7 @@ class ObjectCacher {
   void bh_read(BufferHead *bh);
   void bh_write(BufferHead *bh);
 
-  void trim(loff_t max_bytes=-1, loff_t max_objects=-1);
+  void trim();
   void flush(loff_t amount=0);
 
   /**
@@ -459,12 +459,12 @@ class ObjectCacher {
 	     bool external_call);
 
  public:
-  void bh_read_finish(int64_t poolid, sobject_t oid, tid_t tid,
+  void bh_read_finish(int64_t poolid, sobject_t oid, ceph_tid_t tid,
 		      loff_t offset, uint64_t length,
 		      bufferlist &bl, int r,
 		      bool trust_enoent);
   void bh_write_commit(int64_t poolid, sobject_t oid, loff_t offset,
-		       uint64_t length, tid_t t, int r);
+		       uint64_t length, ceph_tid_t t, int r);
 
   class C_ReadFinish : public Context {
     ObjectCacher *oc;
@@ -474,11 +474,11 @@ class ObjectCacher {
     uint64_t length;
     xlist<C_ReadFinish*>::item set_item;
     bool trust_enoent;
-    tid_t tid;
+    ceph_tid_t tid;
 
   public:
     bufferlist bl;
-    C_ReadFinish(ObjectCacher *c, Object *ob, tid_t t, loff_t s, uint64_t l) :
+    C_ReadFinish(ObjectCacher *c, Object *ob, ceph_tid_t t, loff_t s, uint64_t l) :
       oc(c), poolid(ob->oloc.pool), oid(ob->get_soid()), start(s), length(l),
       set_item(this), trust_enoent(true),
       tid(t) {
@@ -505,7 +505,7 @@ class ObjectCacher {
     loff_t start;
     uint64_t length;
   public:
-    tid_t tid;
+    ceph_tid_t tid;
     C_WriteCommit(ObjectCacher *c, int64_t _poolid, sobject_t o, loff_t s, uint64_t l) :
       oc(c), poolid(_poolid), oid(o), start(s), length(l), tid(0) {}
     void finish(int r) {
@@ -591,6 +591,7 @@ private:
   bool _flush_set_finish(C_GatherBuilder *gather, Context *onfinish);
 
 public:
+  bool set_is_empty(ObjectSet *oset);
   bool set_is_cached(ObjectSet *oset);
   bool set_is_dirty_or_committing(ObjectSet *oset);
 
@@ -615,7 +616,7 @@ public:
 
 
   // cache sizes
-  void set_max_dirty(int64_t v) {
+  void set_max_dirty(uint64_t v) {
     max_dirty = v;
   }
   void set_target_dirty(int64_t v) {

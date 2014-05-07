@@ -11,11 +11,63 @@
  * Foundation.  See file COPYING.
  * 
  */
+#include <ctype.h>
 #include <sstream>
-#include <tr1/memory>
+#include "include/memory.h"
 #include "ObjectStore.h"
 #include "common/Formatter.h"
 #include "FileStore.h"
+#include "MemStore.h"
+#include "KeyValueStore.h"
+#include "common/safe_io.h"
+
+ObjectStore *ObjectStore::create(CephContext *cct,
+				 const string& type,
+				 const string& data,
+				 const string& journal)
+{
+  if (type == "filestore") {
+    return new FileStore(data, journal);
+  }
+  if (type == "memstore") {
+    return new MemStore(cct, data);
+  }
+  if (type == "keyvaluestore-dev") {
+    return new KeyValueStore(data);
+  }
+  return NULL;
+}
+
+int ObjectStore::write_meta(const std::string& key,
+			    const std::string& value)
+{
+  string v = value;
+  v += "\n";
+  int r = safe_write_file(path.c_str(), key.c_str(),
+			  v.c_str(), v.length());
+  if (r < 0)
+    return r;
+  return 0;
+}
+
+int ObjectStore::read_meta(const std::string& key,
+			   std::string *value)
+{
+  char buf[4096];
+  int r = safe_read_file(path.c_str(), key.c_str(),
+			 buf, sizeof(buf));
+  if (r <= 0)
+    return r;
+  // drop trailing newlines
+  while (r && isspace(buf[r-1])) {
+    --r;
+  }
+  *value = string(buf, r);
+  return 0;
+}
+
+
+
 
 ostream& operator<<(ostream& out, const ObjectStore::Sequencer& s)
 {
@@ -271,8 +323,8 @@ void ObjectStore::Transaction::dump(ceph::Formatter *f)
 
     case Transaction::OP_COLL_ADD:
       {
-	coll_t ocid = i.get_cid();
 	coll_t ncid = i.get_cid();
+	coll_t ocid = i.get_cid();
 	ghobject_t oid = i.get_oid();
 	f->dump_string("op_name", "collection_add");
 	f->dump_stream("src_collection") << ocid;
@@ -438,6 +490,34 @@ void ObjectStore::Transaction::dump(ceph::Formatter *f)
       }
       break;
 
+    case Transaction::OP_COLL_MOVE_RENAME:
+      {
+	coll_t old_cid(i.get_cid());
+	ghobject_t old_oid = i.get_oid();
+	coll_t new_cid(i.get_cid());
+	ghobject_t new_oid = i.get_oid();
+	f->dump_string("op_name", "op_coll_move_rename");
+	f->dump_stream("old_collection") << old_cid;
+	f->dump_stream("old_oid") << old_oid;
+	f->dump_stream("new_collection") << new_cid;
+	f->dump_stream("new_oid") << new_oid;
+      }
+      break;
+
+    case Transaction::OP_SETALLOCHINT:
+      {
+        coll_t cid = i.get_cid();
+        ghobject_t oid = i.get_oid();
+        uint64_t expected_object_size = i.get_length();
+        uint64_t expected_write_size = i.get_length();
+        f->dump_string("op_name", "op_setallochint");
+        f->dump_stream("collection") << cid;
+        f->dump_stream("oid") << oid;
+        f->dump_stream("expected_object_size") << expected_object_size;
+        f->dump_stream("expected_write_size") << expected_write_size;
+      }
+      break;
+
     default:
       f->dump_string("op_name", "unknown");
       f->dump_unsigned("op_code", op);
@@ -504,7 +584,7 @@ int ObjectStore::collection_list(coll_t c, vector<hobject_t>& o)
   int ret = collection_list(c, go);
   if (ret == 0) {
     o.reserve(go.size());
-    for (vector<ghobject_t>::iterator i = go.begin(); i != go.end() ; i++)
+    for (vector<ghobject_t>::iterator i = go.begin(); i != go.end() ; ++i)
       o.push_back(i->hobj);
   }
   return ret;
@@ -520,7 +600,7 @@ int ObjectStore::collection_list_partial(coll_t c, hobject_t start,
   if (ret == 0) {
     *next = gnext.hobj;
     ls->reserve(go.size());
-    for (vector<ghobject_t>::iterator i = go.begin(); i != go.end() ; i++)
+    for (vector<ghobject_t>::iterator i = go.begin(); i != go.end() ; ++i)
       ls->push_back(i->hobj);
   }
   return ret;
@@ -534,7 +614,7 @@ int ObjectStore::collection_list_range(coll_t c, hobject_t start, hobject_t end,
   int ret = collection_list_range(c, gstart, gend, seq, &go);
   if (ret == 0) {
     ls->reserve(go.size());
-    for (vector<ghobject_t>::iterator i = go.begin(); i != go.end() ; i++)
+    for (vector<ghobject_t>::iterator i = go.begin(); i != go.end() ; ++i)
       ls->push_back(i->hobj);
   }
   return ret;

@@ -22,6 +22,7 @@
 #include <limits.h>
 
 #include "common/safe_io.h"
+#include "include/compat.h"
 
 ssize_t safe_read(int fd, void *buf, size_t count)
 {
@@ -117,6 +118,40 @@ ssize_t safe_pwrite(int fd, const void *buf, size_t count, off_t offset)
 	return 0;
 }
 
+#ifdef CEPH_HAVE_SPLICE
+ssize_t safe_splice(int fd_in, loff_t *off_in, int fd_out, loff_t *off_out,
+		    size_t len, unsigned int flags)
+{
+  size_t cnt = 0;
+
+  while (cnt < len) {
+    ssize_t r = splice(fd_in, off_in, fd_out, off_out, len - cnt, flags);
+    if (r <= 0) {
+      if (r == 0) {
+	// EOF
+	return cnt;
+      }
+      if (errno == EINTR)
+	continue;
+      return -errno;
+    }
+    cnt += r;
+  }
+  return cnt;
+}
+
+ssize_t safe_splice_exact(int fd_in, loff_t *off_in, int fd_out,
+			  loff_t *off_out, size_t len, unsigned int flags)
+{
+  ssize_t ret = safe_splice(fd_in, off_in, fd_out, off_out, len, flags);
+  if (ret < 0)
+    return ret;
+  if ((size_t)ret != len)
+    return -EDOM;
+  return 0;
+}
+#endif
+
 int safe_write_file(const char *base, const char *file,
 		    const char *val, size_t vallen)
 {
@@ -140,13 +175,13 @@ int safe_write_file(const char *base, const char *file,
   }
   ret = safe_write(fd, val, vallen);
   if (ret) {
-    TEMP_FAILURE_RETRY(close(fd));
+    VOID_TEMP_FAILURE_RETRY(close(fd));
     return ret;
   }
 
   ret = fsync(fd);
   if (ret < 0) ret = -errno;
-  TEMP_FAILURE_RETRY(close(fd));
+  VOID_TEMP_FAILURE_RETRY(close(fd));
   if (ret < 0) {
     unlink(tmp);
     return ret;
@@ -165,7 +200,7 @@ int safe_write_file(const char *base, const char *file,
   }
   ret = fsync(fd);
   if (ret < 0) ret = -errno;
-  TEMP_FAILURE_RETRY(close(fd));
+  VOID_TEMP_FAILURE_RETRY(close(fd));
 
   return ret;
 }
@@ -183,11 +218,11 @@ int safe_read_file(const char *base, const char *file,
   }
   len = safe_read(fd, val, vallen - 1);
   if (len < 0) {
-    TEMP_FAILURE_RETRY(close(fd));
+    VOID_TEMP_FAILURE_RETRY(close(fd));
     return len;
   }
   // close sometimes returns errors, but only after write()
-  TEMP_FAILURE_RETRY(close(fd));
+  VOID_TEMP_FAILURE_RETRY(close(fd));
 
   val[len] = 0;
   return len;

@@ -14,6 +14,7 @@
 #include <cctype>
 
 #include <typeinfo>
+#include "common/errno.h"
 
 // -------------
 
@@ -188,6 +189,8 @@ int CrushCompiler::decompile(ostream &out)
     out << "tunable choose_total_tries " << crush.get_choose_total_tries() << "\n";
   if (crush.get_chooseleaf_descend_once() != 0)
     out << "tunable chooseleaf_descend_once " << crush.get_chooseleaf_descend_once() << "\n";
+  if (crush.get_chooseleaf_vary_r() != 0)
+    out << "tunable chooseleaf_vary_r " << crush.get_chooseleaf_vary_r() << "\n";
 
   out << "\n# devices\n";
   for (int i=0; i<crush.get_max_devices(); i++) {
@@ -227,11 +230,11 @@ int CrushCompiler::decompile(ostream &out)
     out << "\truleset " << crush.get_rule_mask_ruleset(i) << "\n";
 
     switch (crush.get_rule_mask_type(i)) {
-    case CEPH_PG_TYPE_REP:
+    case CEPH_PG_TYPE_REPLICATED:
       out << "\ttype replicated\n";
       break;
-    case CEPH_PG_TYPE_RAID4:
-      out << "\ttype raid4\n";
+    case CEPH_PG_TYPE_ERASURE:
+      out << "\ttype erasure\n";
       break;
     default:
       out << "\ttype " << crush.get_rule_mask_type(i) << "\n";
@@ -253,6 +256,26 @@ int CrushCompiler::decompile(ostream &out)
       case CRUSH_RULE_EMIT:
 	out << "\tstep emit\n";
 	break;
+      case CRUSH_RULE_SET_CHOOSE_TRIES:
+	out << "\tstep set_choose_tries " << crush.get_rule_arg1(i, j)
+	    << "\n";
+	break;
+      case CRUSH_RULE_SET_CHOOSE_LOCAL_TRIES:
+	out << "\tstep set_choose_local_tries " << crush.get_rule_arg1(i, j)
+	    << "\n";
+	break;
+      case CRUSH_RULE_SET_CHOOSE_LOCAL_FALLBACK_TRIES:
+	out << "\tstep set_choose_local_fallback_tries " << crush.get_rule_arg1(i, j)
+	    << "\n";
+	break;
+      case CRUSH_RULE_SET_CHOOSELEAF_TRIES:
+	out << "\tstep set_chooseleaf_tries " << crush.get_rule_arg1(i, j)
+	    << "\n";
+	break;
+      case CRUSH_RULE_SET_CHOOSELEAF_VARY_R:
+	out << "\tstep set_chooseleaf_vary_r " << crush.get_rule_arg1(i, j)
+	    << "\n";
+	break;
       case CRUSH_RULE_CHOOSE_FIRSTN:
 	out << "\tstep choose firstn "
 	    << crush.get_rule_arg1(i, j) 
@@ -267,14 +290,14 @@ int CrushCompiler::decompile(ostream &out)
 	print_type_name(out, crush.get_rule_arg2(i, j), crush);
 	out << "\n";
 	break;
-      case CRUSH_RULE_CHOOSE_LEAF_FIRSTN:
+      case CRUSH_RULE_CHOOSELEAF_FIRSTN:
 	out << "\tstep chooseleaf firstn "
 	    << crush.get_rule_arg1(i, j) 
 	    << " type ";
 	print_type_name(out, crush.get_rule_arg2(i, j), crush);
 	out << "\n";
 	break;
-      case CRUSH_RULE_CHOOSE_LEAF_INDEP:
+      case CRUSH_RULE_CHOOSELEAF_INDEP:
 	out << "\tstep chooseleaf indep "
 	    << crush.get_rule_arg1(i, j) 
 	    << " type ";
@@ -343,15 +366,23 @@ int CrushCompiler::parse_tunable(iter_t const& i)
     crush.set_choose_total_tries(val);
   else if (name == "chooseleaf_descend_once")
     crush.set_chooseleaf_descend_once(val);
+  else if (name == "chooseleaf_vary_r")
+    crush.set_chooseleaf_vary_r(val);
   else {
     err << "tunable " << name << " not recognized" << std::endl;
     return -1;
   }
 
+  /*
+
+    current crop of tunables are all now "safe".  re-enable this when we
+    add new ones that are ... new.
+
   if (!unsafe_tunables) {
     err << "tunables are NOT FULLY IMPLEMENTED; enable with --enable-unsafe-tunables to enable this feature" << std::endl;
     return -1;
   }
+  */
 
   if (verbose) err << "tunable " << name << " " << val << std::endl;
   return 0;
@@ -533,7 +564,7 @@ int CrushCompiler::parse_bucket(iter_t const& i)
     if (r == -EEXIST)
       err << "Duplicate bucket id " << id << std::endl;
     else
-      err << "add_bucket failed " << strerror(-r) << std::endl;
+      err << "add_bucket failed " << cpp_strerror(r) << std::endl;
     return r;
   }
   r = crush.set_item_name(id, name.c_str());
@@ -561,9 +592,9 @@ int CrushCompiler::parse_rule(iter_t const& i)
   string tname = string_node(i->children[start+2]);
   int type;
   if (tname == "replicated")
-    type = CEPH_PG_TYPE_REP;
-  else if (tname == "raid4") 
-    type = CEPH_PG_TYPE_RAID4;
+    type = CEPH_PG_TYPE_REPLICATED;
+  else if (tname == "erasure")
+    type = CEPH_PG_TYPE_ERASURE;
   else 
     assert(0);    
 
@@ -592,6 +623,41 @@ int CrushCompiler::parse_rule(iter_t const& i)
 	  return -1;
 	}
 	crush.set_rule_step_take(ruleno, step++, item_id[item]);
+      }
+      break;
+
+    case crush_grammar::_step_set_choose_tries:
+      {
+	int val = int_node(s->children[1]);
+	crush.set_rule_step_set_choose_tries(ruleno, step++, val);
+      }
+      break;
+
+    case crush_grammar::_step_set_choose_local_tries:
+      {
+	int val = int_node(s->children[1]);
+	crush.set_rule_step_set_choose_local_tries(ruleno, step++, val);
+      }
+      break;
+
+    case crush_grammar::_step_set_choose_local_fallback_tries:
+      {
+	int val = int_node(s->children[1]);
+	crush.set_rule_step_set_choose_local_fallback_tries(ruleno, step++, val);
+      }
+      break;
+
+    case crush_grammar::_step_set_chooseleaf_tries:
+      {
+	int val = int_node(s->children[1]);
+	crush.set_rule_step_set_chooseleaf_tries(ruleno, step++, val);
+      }
+      break;
+
+    case crush_grammar::_step_set_chooseleaf_vary_r:
+      {
+	int val = int_node(s->children[1]);
+	crush.set_rule_step_set_chooseleaf_vary_r(ruleno, step++, val);
       }
       break;
 
@@ -727,6 +793,10 @@ int CrushCompiler::compile(istream& in, const char *infn)
 {
   if (!infn)
     infn = "<input>";
+
+  // always start with legacy tunables, so that the compiled result of
+  // a given crush file is fixed for all time.
+  crush.set_tunables_legacy();
 
   string big;
   string str;

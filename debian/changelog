@@ -1,3 +1,96 @@
+ceph (0.80~rc1-1) experimental; urgency=low
+
+  * New upstream pre-release.
+  * Minor re-factoring of udev rules installation.
+  * ceph-common: added ceph-crush-location.1 man page.
+  * ceph-test-dbg: fixed Depends.
+
+ -- Dmitry Smirnov <onlyjob@debian.org>  Thu, 24 Apr 2014 02:52:12 +1000
+
+ceph (0.79-3) experimental; urgency=low
+
+  * New "arch.patch" to detect build architecture using dpkg-architecture.
+  * Mark amd64-only symbols as such.
+  * Minor rules cleanup.
+
+ -- Dmitry Smirnov <onlyjob@debian.org>  Sat, 19 Apr 2014 15:56:37 +1000
+
+ceph (0.79-2) experimental; urgency=low
+
+  [ James Page ]
+  * d/p/modules.patch,d/ceph.install: Mark all jerasure plugins as modules
+    and ensure they are all installed.
+
+  [ Dmitry Smirnov ]
+  * Patchworks:
+    - removed unused "defaults-leveldb-osd.patch".
+    + improved description of "modules.patch". Thanks, James Page.
+    + added new backported patches [#5469, #8008, _1606, spelling].
+  * Added .symbols and "dh_makeshlibs -V" shlibs tightening (Closes: #744382).
+  * README.Debian: added note regarding kernel client mount option.
+  * copyright: added license for man files.
+  * control: "Suggests: logrotate".
+
+ -- Dmitry Smirnov <onlyjob@debian.org>  Fri, 18 Apr 2014 18:27:01 +1000
+
+ceph (0.79-1) experimental; urgency=low
+
+  * New upstream release [April 2014].
+  * Tighten dependency on ceph-common.
+  * Install pm-suspend handler to stop/start ceph services on suspend/resume.
+  * New (inactive) patch to bump OSD's leveldb defaults.
+  * Patches dropped (applied-upstream):
+    - init.patch
+    - logrotate.patch
+    - fix-defaultweight.patch
+  * Refreshed "modules.patch".
+
+ -- Dmitry Smirnov <onlyjob@debian.org>  Tue, 08 Apr 2014 16:52:04 +1000
+
+ceph (0.78-2) experimental; urgency=low
+
+  * Standards to 3.9.5.
+  * debian/copyright: reviewed and updated.
+  * ceph-test: added lintian-override for "binary-without-manpage".
+  * Patchworks:
+    + refreshed/renamed/reordered "virtualenv-never-download.patch".
+    + new "init.patch" for init.d scripts lintianisation.
+    + new "logrotate.patch" to avoid rotating empty logs.
+    + new "fix-defaultweight.patch" to fix weight calculation on OSD start.
+    + new "gcj.patch" with partial fix to FTBFS with gcj-jdk.
+  * Use symlinks to simplify installation of init.d and logrotate scripts.
+  * Added retrospective changelog entry to mention new B-D "libblkid-dev".
+  * Added "debian/clean file".
+  * Added "README.Debian" file with some hopefully useful notes.
+  * Added "mount.fuse.ceph.8" man page.
+  * rules:
+    + "dh --with" optimised.
+    + set JAVAC to prevent FTBFS due to incorrect use of 'gcj', when detected.
+    + verbose mode for 'cp' and 'rm' commands.
+    + build with "--as-needed" to minimise needless linking.
+  * control:
+    + lintian/duplicate-short-description + consistent capitalisation.
+    + removed needless versioned dependencies from Build-Depends.
+    + added myself to Uploaders.
+
+ -- Dmitry Smirnov <onlyjob@debian.org>  Tue, 25 Mar 2014 07:17:40 +1100
+
+ceph (0.78-1) experimental; urgency=medium
+
+  * New upstream release:
+    - d/control: Add "xfslib-dev" and "libblkid-dev" to BD's.
+    - d/*: Sync relevant packaging changes from upstream.
+    - d/p/*: Drop upstreamed patches.
+    - d/p/modules.patch: Mark libcls_user.so and libec_jerasure.so as modules.
+    - d/ceph.install: Only install libec_jerasure.so.
+  * d/ceph-test.install: Install test binaries to /usr/lib/ceph/bin; they
+    really don't need to be installed on the default path.
+  * d/{ceph|radosgw|ceph-mds}.lintian-overrides: Add overrides for intentional
+    difference in naming and structure between upstart configurations and
+    init.d scripts.
+
+ -- James Page <james.page@ubuntu.com>  Sat, 22 Mar 2014 18:27:40 +0000
+
 ceph (0.72.2-3) unstable; urgency=medium
 
   * Team upload.

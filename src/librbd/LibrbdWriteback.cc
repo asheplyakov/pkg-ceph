@@ -103,7 +103,7 @@ namespace librbd {
     op.read(off, len, pbl, NULL);
     int flags = m_ictx->get_read_flags(snapid);
     int r = m_ictx->data_ctx.aio_operate(oid.name, rados_completion, &op,
-					 snapid, flags, NULL);
+					 flags, NULL);
     rados_completion->release();
     assert(r >= 0);
   }
@@ -131,7 +131,7 @@ namespace librbd {
     return may;
   }
 
-  tid_t LibrbdWriteback::write(const object_t& oid,
+  ceph_tid_t LibrbdWriteback::write(const object_t& oid,
 			       const object_locator_t& oloc,
 			       uint64_t off, uint64_t len,
 			       const SnapContext& snapc,

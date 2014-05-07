@@ -18,10 +18,11 @@
 #include "include/types.h"
 #include "lockdep.h"
 
-#include <ext/hash_map>
+#include "include/unordered_map.h"
+#include "include/hash_namespace.h"
 
 #if defined(__FreeBSD__) && defined(__LP64__)	// On FreeBSD pthread_t is a pointer.
-namespace __gnu_cxx {
+CEPH_HASH_NAMESPACE_START
   template<>
     struct hash<pthread_t>
     {
@@ -29,7 +30,7 @@ namespace __gnu_cxx {
       operator()(pthread_t __x) const
       { return (uintptr_t)__x; }
     };
-}
+CEPH_HASH_NAMESPACE_END
 #endif
 
 /******* Constants **********/
@@ -50,17 +51,20 @@ struct lockdep_stopper_t {
 static pthread_mutex_t lockdep_mutex = PTHREAD_MUTEX_INITIALIZER;
 static CephContext *g_lockdep_ceph_ctx = NULL;
 static lockdep_stopper_t lockdep_stopper;
-static hash_map<const char *, int> lock_ids;
+static ceph::unordered_map<const char *, int> lock_ids;
 static map<int, const char *> lock_names;
 static int last_id = 0;
-static hash_map<pthread_t, map<int,BackTrace*> > held;
+static ceph::unordered_map<pthread_t, map<int,BackTrace*> > held;
 static BackTrace *follows[MAX_LOCKS][MAX_LOCKS];       // follows[a][b] means b taken after a
 
 /******* Functions **********/
 void lockdep_register_ceph_context(CephContext *cct)
 {
   pthread_mutex_lock(&lockdep_mutex);
-  g_lockdep_ceph_ctx = cct;
+  if (g_lockdep_ceph_ctx == NULL) {
+    g_lockdep_ceph_ctx = cct;
+    lockdep_dout(0) << "lockdep start" << dendl;
+  }
   pthread_mutex_unlock(&lockdep_mutex);
 }
 
@@ -68,9 +72,19 @@ void lockdep_unregister_ceph_context(CephContext *cct)
 {
   pthread_mutex_lock(&lockdep_mutex);
   if (cct == g_lockdep_ceph_ctx) {
+    lockdep_dout(0) << "lockdep stop" << dendl;
     // this cct is going away; shut it down!
     g_lockdep = false;
     g_lockdep_ceph_ctx = NULL;
+
+    // blow away all of our state, too, in case it starts up again.
+    held.clear();
+    for (unsigned i = 0; i < MAX_LOCKS; ++i)
+      for (unsigned j = 0; j < MAX_LOCKS; ++j)
+	follows[i][j] = NULL;
+    lock_names.clear();
+    lock_ids.clear();
+    last_id = 0;
   }
   pthread_mutex_unlock(&lockdep_mutex);
 }
@@ -79,7 +93,7 @@ int lockdep_dump_locks()
 {
   pthread_mutex_lock(&lockdep_mutex);
 
-  for (hash_map<pthread_t, map<int,BackTrace*> >::iterator p = held.begin();
+  for (ceph::unordered_map<pthread_t, map<int,BackTrace*> >::iterator p = held.begin();
        p != held.end();
        ++p) {
     lockdep_dout(0) << "--- thread " << p->first << " ---" << dendl;
@@ -103,13 +117,12 @@ int lockdep_register(const char *name)
   int id;
 
   pthread_mutex_lock(&lockdep_mutex);
-
   if (last_id == 0)
     for (int i=0; i<MAX_LOCKS; i++)
       for (int j=0; j<MAX_LOCKS; j++)
 	follows[i][j] = NULL;
 
-  hash_map<const char *, int>::iterator p = lock_ids.find(name);
+  ceph::unordered_map<const char *, int>::iterator p = lock_ids.find(name);
   if (p == lock_ids.end()) {
     assert(last_id < MAX_LOCKS);
     id = last_id++;

@@ -21,9 +21,8 @@
 #include <list>
 #include <map>
 using namespace std;
-#include <ext/hash_map>
-#include <ext/hash_set>
-using namespace __gnu_cxx;
+#include "include/unordered_map.h"
+#include "include/unordered_set.h"
 
 #include "common/Mutex.h"
 #include "include/atomic.h"
@@ -38,6 +37,7 @@ using namespace __gnu_cxx;
 
 #include "Pipe.h"
 #include "Accepter.h"
+#include "include/Spinlock.h"
 
 /*
  * This class handles transmission and reception of messages. Generally
@@ -308,7 +308,7 @@ private:
   /// counter for the global seq our connection protocol uses
   __u32 global_seq;
   /// lock to protect the global_seq
-  pthread_spinlock_t global_seq_lock;
+  ceph_spinlock_t global_seq_lock;
 
   /**
    * hash map of addresses to Pipes
@@ -316,7 +316,7 @@ private:
    * NOTE: a Pipe* with state CLOSED may still be in the map but is considered
    * invalid and can be replaced by anyone holding the msgr lock
    */
-  hash_map<entity_addr_t, Pipe*> rank_pipe;
+  ceph::unordered_map<entity_addr_t, Pipe*> rank_pipe;
   /**
    * list of pipes are in teh process of accepting
    *
@@ -350,7 +350,7 @@ private:
   friend class Pipe;
 
   Pipe *_lookup_pipe(const entity_addr_t& k) {
-    hash_map<entity_addr_t, Pipe*>::iterator p = rank_pipe.find(k);
+    ceph::unordered_map<entity_addr_t, Pipe*>::iterator p = rank_pipe.find(k);
     if (p == rank_pipe.end())
       return NULL;
     // see lock cribbing in Pipe::fault()
@@ -388,11 +388,11 @@ public:
    * @return a global sequence ID that nobody else has seen.
    */
   __u32 get_global_seq(__u32 old=0) {
-    pthread_spin_lock(&global_seq_lock);
+    ceph_spin_lock(&global_seq_lock);
     if (old > global_seq)
       global_seq = old;
     __u32 ret = ++global_seq;
-    pthread_spin_unlock(&global_seq_lock);
+    ceph_spin_unlock(&global_seq_lock);
     return ret;
   }
   /**

@@ -204,7 +204,7 @@ ostream& operator<<(ostream& out, const client_writeable_range_t& r)
  */
 void inode_t::encode(bufferlist &bl) const
 {
-  ENCODE_START(8, 6, bl);
+  ENCODE_START(10, 6, bl);
 
   ::encode(ino, bl);
   ::encode(rdev, bl);
@@ -239,13 +239,15 @@ void inode_t::encode(bufferlist &bl) const
   ::encode(backtrace_version, bl);
   ::encode(old_pools, bl);
   ::encode(max_size_ever, bl);
+  ::encode(inline_version, bl);
+  ::encode(inline_data, bl);
 
   ENCODE_FINISH(bl);
 }
 
 void inode_t::decode(bufferlist::iterator &p)
 {
-  DECODE_START_LEGACY_COMPAT_LEN(7, 6, 6, p);
+  DECODE_START_LEGACY_COMPAT_LEN(10, 6, 6, p);
 
   ::decode(ino, p);
   ::decode(rdev, p);
@@ -297,6 +299,14 @@ void inode_t::decode(bufferlist::iterator &p)
     ::decode(old_pools, p);
   if (struct_v >= 8)
     ::decode(max_size_ever, p);
+  if (struct_v >= 9) {
+    ::decode(inline_version, p);
+    ::decode(inline_data, p);
+  } else {
+    inline_version = CEPH_INLINE_NONE;
+  }
+  if (struct_v < 10)
+    backtrace_version = 0; // force update backtrace
 
   DECODE_FINISH(p);
 }
@@ -545,7 +555,7 @@ void session_info_t::decode(bufferlist::iterator& p)
   DECODE_START_LEGACY_COMPAT_LEN(3, 2, 2, p);
   ::decode(inst, p);
   if (struct_v <= 2) {
-    set<tid_t> s;
+    set<ceph_tid_t> s;
     ::decode(s, p);
     while (!s.empty()) {
       completed_requests[*s.begin()] = inodeno_t();
@@ -566,7 +576,7 @@ void session_info_t::dump(Formatter *f) const
   f->dump_stream("inst") << inst;
 
   f->open_array_section("completed_requests");
-  for (map<tid_t,inodeno_t>::const_iterator p = completed_requests.begin();
+  for (map<ceph_tid_t,inodeno_t>::const_iterator p = completed_requests.begin();
        p != completed_requests.end();
        ++p) {
     f->open_object_section("request");

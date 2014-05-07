@@ -1,6 +1,4 @@
-../../src/rbdmap etc/ceph
-../../udev/60-ceph-partuuid-workaround.rules lib/udev/rules.d
-../../udev/95-ceph-osd.rules lib/udev/rules.d
+debian/etc/pm/sleep.d/*    /etc/pm/sleep.d/
 etc/bash_completion.d/ceph
 sbin/mkcephfs
 usr/bin/ceph-clsinfo
@@ -13,6 +11,7 @@ usr/bin/crushtool
 usr/bin/monmaptool
 usr/bin/osdmaptool
 usr/lib/*/ceph/ceph_common.sh
+usr/lib/*/ceph/erasure-code/libec_jerasure*.so
 usr/lib/*/rados-classes/*.so
 usr/sbin/ceph-create-keys
 usr/sbin/ceph-disk
@@ -29,3 +28,7 @@ usr/share/man/man8/crushtool.8
 usr/share/man/man8/mkcephfs.8
 usr/share/man/man8/monmaptool.8
 usr/share/man/man8/osdmaptool.8
+## install from source tree
+src/rbdmap                               /etc/ceph
+udev/60-ceph-partuuid-workaround.rules   /lib/udev/rules.d
+udev/95-ceph-osd.rules                   /lib/udev/rules.d

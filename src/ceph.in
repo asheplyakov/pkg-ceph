@@ -44,7 +44,7 @@ if MYDIR.endswith('src') and \
         print >> sys.stderr, DEVMODEMSG
         os.execvp('python', ['python'] + sys.argv)
     sys.path.insert(0, os.path.join(MYDIR, 'pybind'))
-    if MYDIR not in os.environ['PATH']:
+    if os.environ.has_key('PATH') and MYDIR not in os.environ['PATH']:
         os.environ['PATH'] += ':' + MYDIR
 
 import argparse
@@ -705,8 +705,15 @@ def main():
     # Repulsive hack to handle tell: lop off 'tell' and target
     # and validate the rest of the command.  'target' is already
     # determined in our callers, so it's ok to remove it here.
+    is_tell = False
     if len(childargs) and childargs[0] == 'tell':
         childargs = childargs[2:]
+        is_tell = True
+
+    if is_tell and not len(childargs):
+        print >> sys.stderr, \
+                'Cannot use \'tell\' with interactive mode'
+        return errno.EINVAL
 
     # fetch JSON sigs from command
     # each line contains one command signature (a placeholder name

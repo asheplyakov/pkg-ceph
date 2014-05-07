@@ -24,8 +24,7 @@
 #include <fstream>
 using namespace std;
 
-#include <ext/hash_map>
-using namespace __gnu_cxx;
+#include "include/unordered_map.h"
 
 #include "include/assert.h"
 
@@ -64,6 +63,7 @@ static const __SWORD_TYPE XFS_SUPER_MAGIC(0x58465342);
 static const __SWORD_TYPE ZFS_SUPER_MAGIC(0x2fc12fc1);
 #endif
 
+
 enum fs_types {
   FS_TYPE_NONE = 0,
   FS_TYPE_XFS,
@@ -97,14 +97,20 @@ inline ostream& operator<<(ostream& out, const FSSuperblock& sb)
 class FileStore : public JournalingObjectStore,
                   public md_config_obs_t
 {
+  static const uint32_t target_version = 3;
 public:
+  uint32_t get_target_version() {
+    return target_version;
+  }
+
+  int peek_journal_fsid(uuid_d *fsid);
 
   struct FSPerfTracker {
     PerfCounters::avg_tracker<uint64_t> os_commit_latency;
     PerfCounters::avg_tracker<uint64_t> os_apply_latency;
 
-    filestore_perf_stat_t get_cur_stats() const {
-      filestore_perf_stat_t ret;
+    objectstore_perf_stat_t get_cur_stats() const {
+      objectstore_perf_stat_t ret;
       ret.filestore_commit_latency = os_commit_latency.avg();
       ret.filestore_apply_latency = os_apply_latency.avg();
       return ret;
@@ -112,12 +118,11 @@ public:
 
     void update_from_perfcounters(PerfCounters &logger);
   } perf_tracker;
-  filestore_perf_stat_t get_cur_stats() {
+  objectstore_perf_stat_t get_cur_stats() {
     perf_tracker.update_from_perfcounters(*logger);
     return perf_tracker.get_cur_stats();
   }
 
-  static const uint32_t target_version = 3;
 private:
   string internal_name;         ///< internal name, used to name the perfcounter instance
   string basedir, journalpath;
@@ -305,7 +310,7 @@ private:
 	       Context *onreadable, Context *onreadable_sync,
 	       TrackedOpRef osd_op);
   void queue_op(OpSequencer *osr, Op *o);
-  void op_queue_reserve_throttle(Op *o);
+  void op_queue_reserve_throttle(Op *o, ThreadPool::TPHandle *handle = NULL);
   void op_queue_release_throttle(Op *o);
   void _journaled_ahead(OpSequencer *osr, Op *o, Context *ondisk);
   friend struct C_JournaledAhead;
@@ -378,7 +383,8 @@ public:
     ThreadPool::TPHandle *handle);
 
   int queue_transactions(Sequencer *osr, list<Transaction*>& tls,
-			 TrackedOpRef op = TrackedOpRef());
+			 TrackedOpRef op = TrackedOpRef(),
+			 ThreadPool::TPHandle *handle = NULL);
 
   /**
    * set replay guard xattr on given file
@@ -549,6 +555,11 @@ public:
   int _collection_move_rename(coll_t oldcid, const ghobject_t& oldoid,
 			      coll_t c, const ghobject_t& o,
 			      const SequencerPosition& spos);
+
+  int _set_alloc_hint(coll_t cid, const ghobject_t& oid,
+                      uint64_t expected_object_size,
+                      uint64_t expected_write_size);
+
   void dump_start(const std::string& file);
   void dump_stop();
   void dump_transactions(list<ObjectStore::Transaction*>& ls, uint64_t seq, OpSequencer *osr);
@@ -601,6 +612,7 @@ private:
   atomic_t m_filestore_kill_at;
   bool m_filestore_sloppy_crc;
   int m_filestore_sloppy_crc_block_size;
+  uint64_t m_filestore_max_alloc_hint_size;
   enum fs_types m_fs_type;
 
   //Determined xattr handling based on fs type
@@ -678,6 +690,7 @@ public:
   virtual bool has_fiemap() = 0;
   virtual int do_fiemap(int fd, off_t start, size_t len, struct fiemap **pfiemap) = 0;
   virtual int clone_range(int from, int to, uint64_t srcoff, uint64_t len, uint64_t dstoff) = 0;
+  virtual int set_alloc_hint(int fd, uint64_t hint) = 0;
 
   // hooks for (sloppy) crc tracking
   virtual int _crc_update_write(int fd, loff_t off, size_t len, const bufferlist& bl) = 0;

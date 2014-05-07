@@ -33,6 +33,238 @@ public:
   virtual void TearDown() {
     clear();
   }
+
+  static hobject_t mk_obj(unsigned id) {
+    hobject_t hoid;
+    stringstream ss;
+    ss << "obj_" << id;
+    hoid.oid = ss.str();
+    hoid.hash = id;
+    return hoid;
+  }
+  static eversion_t mk_evt(unsigned ep, unsigned v) {
+    return eversion_t(ep, v);
+  }
+  static pg_log_entry_t mk_ple_mod(
+    const hobject_t &hoid, eversion_t v, eversion_t pv) {
+    pg_log_entry_t e;
+    e.mod_desc.mark_unrollbackable();
+    e.op = pg_log_entry_t::MODIFY;
+    e.soid = hoid;
+    e.version = v;
+    e.prior_version = pv;
+    return e;
+  }
+  static pg_log_entry_t mk_ple_dt(
+    const hobject_t &hoid, eversion_t v, eversion_t pv) {
+    pg_log_entry_t e;
+    e.mod_desc.mark_unrollbackable();
+    e.op = pg_log_entry_t::DELETE;
+    e.soid = hoid;
+    e.version = v;
+    e.prior_version = pv;
+    return e;
+  }
+  static pg_log_entry_t mk_ple_mod_rb(
+    const hobject_t &hoid, eversion_t v, eversion_t pv) {
+    pg_log_entry_t e;
+    e.op = pg_log_entry_t::MODIFY;
+    e.soid = hoid;
+    e.version = v;
+    e.prior_version = pv;
+    return e;
+  }
+  static pg_log_entry_t mk_ple_dt_rb(
+    const hobject_t &hoid, eversion_t v, eversion_t pv) {
+    pg_log_entry_t e;
+    e.op = pg_log_entry_t::DELETE;
+    e.soid = hoid;
+    e.version = v;
+    e.prior_version = pv;
+    return e;
+  }
+
+  struct TestCase {
+    list<pg_log_entry_t> base;
+    list<pg_log_entry_t> auth;
+    list<pg_log_entry_t> div;
+
+    pg_missing_t init;
+    pg_missing_t final;
+
+    set<hobject_t> toremove;
+    list<pg_log_entry_t> torollback;
+
+  private:
+    IndexedLog fullauth;
+    IndexedLog fulldiv;
+    pg_info_t authinfo;
+    pg_info_t divinfo;
+  public:
+    void setup() {
+      fullauth.log.insert(fullauth.log.end(), base.begin(), base.end());
+      fullauth.log.insert(fullauth.log.end(), auth.begin(), auth.end());
+      fulldiv.log.insert(fulldiv.log.end(), base.begin(), base.end());
+      fulldiv.log.insert(fulldiv.log.end(), div.begin(), div.end());
+
+      fullauth.head = authinfo.last_update = fullauth.log.rbegin()->version;
+      authinfo.last_complete = fullauth.log.rbegin()->version;
+      authinfo.log_tail = fullauth.log.begin()->version;
+      authinfo.log_tail.version--;
+      fullauth.tail = authinfo.log_tail;
+      authinfo.last_backfill = hobject_t::get_max();
+
+      fulldiv.head = divinfo.last_update = fulldiv.log.rbegin()->version;
+      divinfo.last_complete = eversion_t();
+      divinfo.log_tail = fulldiv.log.begin()->version;
+      divinfo.log_tail.version--;
+      fulldiv.tail = divinfo.log_tail;
+      divinfo.last_backfill = hobject_t::get_max();
+
+      if (init.missing.empty()) {
+	divinfo.last_complete = divinfo.last_update;
+      } else {
+	eversion_t fmissing = init.missing[init.rmissing.begin()->second].need;
+	for (list<pg_log_entry_t>::const_iterator i = fulldiv.log.begin();
+	     i != fulldiv.log.end();
+	     ++i) {
+	  if (i->version < fmissing)
+	    divinfo.last_complete = i->version;
+	  else
+	    break;
+	}
+      }
+
+      fullauth.index();
+      fulldiv.index();
+    }
+    const IndexedLog &get_fullauth() const { return fullauth; }
+    const IndexedLog &get_fulldiv() const { return fulldiv; }
+    const pg_info_t &get_authinfo() const { return authinfo; }
+    const pg_info_t &get_divinfo() const { return divinfo; }
+  };
+
+  struct LogHandler : public PGLog::LogEntryHandler {
+    set<hobject_t> removed;
+    list<pg_log_entry_t> rolledback;
+    
+    void rollback(
+      const pg_log_entry_t &entry) {
+      rolledback.push_back(entry);
+    }
+    void remove(
+      const hobject_t &hoid) {
+      removed.insert(hoid);
+    }
+    void trim(
+      const pg_log_entry_t &entry) {}
+  };
+
+  void verify_missing(
+    const TestCase &tcase,
+    const pg_missing_t &missing) {
+    ASSERT_EQ(tcase.final.missing.size(), missing.missing.size());
+    for (map<hobject_t, pg_missing_t::item>::const_iterator i =
+	   missing.missing.begin();
+	 i != missing.missing.end();
+	 ++i) {
+      EXPECT_TRUE(tcase.final.missing.count(i->first));
+      EXPECT_EQ(tcase.final.missing.find(i->first)->second.need, i->second.need);
+      EXPECT_EQ(tcase.final.missing.find(i->first)->second.have, i->second.have);
+    }
+  }
+
+  void verify_sideeffects(
+    const TestCase &tcase,
+    const LogHandler &handler) {
+    ASSERT_EQ(tcase.toremove.size(), handler.removed.size());
+    ASSERT_EQ(tcase.torollback.size(), handler.rolledback.size());
+
+    {
+      list<pg_log_entry_t>::const_iterator titer = tcase.torollback.begin();
+      list<pg_log_entry_t>::const_iterator hiter = handler.rolledback.begin();
+      for (; titer != tcase.torollback.end(); ++titer, ++hiter) {
+	EXPECT_EQ(titer->version, hiter->version);
+      }
+    }
+
+    {
+      set<hobject_t>::const_iterator titer = tcase.toremove.begin();
+      set<hobject_t>::const_iterator hiter = handler.removed.begin();
+      for (; titer != tcase.toremove.end(); ++titer, ++hiter) {
+	EXPECT_EQ(*titer, *hiter);
+      }
+    }
+  }
+
+  void test_merge_log(const TestCase &tcase) {
+    clear();
+    ObjectStore::Transaction t;
+    log = tcase.get_fulldiv();
+    pg_info_t info = tcase.get_divinfo();
+
+    missing = tcase.init;
+
+    IndexedLog olog;
+    olog = tcase.get_fullauth();
+    pg_info_t oinfo = tcase.get_authinfo();
+
+    LogHandler h;
+    bool dirty_info = false;
+    bool dirty_big_info = false;
+    merge_log(
+      t, oinfo, olog, pg_shard_t(1, 0), info,
+      &h, dirty_info, dirty_big_info);
+
+    ASSERT_EQ(info.last_update, oinfo.last_update);
+    verify_missing(tcase, missing);
+    verify_sideeffects(tcase, h);
+  };
+  void test_proc_replica_log(const TestCase &tcase) {
+    clear();
+    ObjectStore::Transaction t;
+    log = tcase.get_fullauth();
+    pg_info_t info = tcase.get_authinfo();
+
+    pg_missing_t omissing = tcase.init;
+
+    IndexedLog olog;
+    olog = tcase.get_fulldiv();
+    pg_info_t oinfo = tcase.get_divinfo();
+
+    proc_replica_log(
+      t, oinfo, olog, omissing, pg_shard_t(1, 0));
+
+    if (!tcase.base.empty()) {
+      ASSERT_EQ(tcase.base.rbegin()->version, oinfo.last_update);
+    }
+
+    for (list<pg_log_entry_t>::const_iterator i = tcase.auth.begin();
+	 i != tcase.auth.end();
+	 ++i) {
+      omissing.add_next_event(*i);
+    }
+    verify_missing(tcase, omissing);
+  }
+  void run_test_case(const TestCase &tcase) {
+    test_merge_log(tcase);
+    test_proc_replica_log(tcase);
+  }
+};
+
+struct TestHandler : public PGLog::LogEntryHandler {
+  list<hobject_t> &removed;
+  TestHandler(list<hobject_t> &removed) : removed(removed) {}
+
+  void rollback(
+    const pg_log_entry_t &entry) {}
+  void remove(
+    const hobject_t &hoid) {
+    removed.push_back(hoid);
+  }
+  void cant_rollback(const pg_log_entry_t &entry) {}
+  void trim(
+    const pg_log_entry_t &entry) {}
 };
 
 TEST_F(PGLogTest, rewind_divergent_log) {
@@ -47,7 +279,8 @@ TEST_F(PGLogTest, rewind_divergent_log) {
     bool dirty_big_info = false;
 
     log.tail = eversion_t(2, 1);
-    EXPECT_THROW(rewind_divergent_log(t, eversion_t(1, 1), info, remove_snap,
+    TestHandler h(remove_snap);
+    EXPECT_THROW(rewind_divergent_log(t, eversion_t(1, 1), info, &h,
 				      dirty_info, dirty_big_info),
 		 FailedAssertion);
   }
@@ -88,6 +321,7 @@ TEST_F(PGLogTest, rewind_divergent_log) {
 
     {
       pg_log_entry_t e;
+      e.mod_desc.mark_unrollbackable();
 
       e.version = eversion_t(1, 1);
       e.soid.hash = 0x5;
@@ -98,6 +332,7 @@ TEST_F(PGLogTest, rewind_divergent_log) {
       e.op = pg_log_entry_t::MODIFY;
       log.log.push_back(e);
       e.version = divergent_version = eversion_t(1, 5);
+      e.prior_version = eversion_t(1, 4);
       e.soid = divergent;
       divergent_object = e.soid;
       e.op = pg_log_entry_t::DELETE;
@@ -119,7 +354,8 @@ TEST_F(PGLogTest, rewind_divergent_log) {
     EXPECT_FALSE(dirty_info);
     EXPECT_FALSE(dirty_big_info);
 
-    rewind_divergent_log(t, newhead, info, remove_snap,
+    TestHandler h(remove_snap);
+    rewind_divergent_log(t, newhead, info, &h,
 			 dirty_info, dirty_big_info);
 
     EXPECT_TRUE(log.objects.count(divergent));
@@ -165,6 +401,7 @@ TEST_F(PGLogTest, rewind_divergent_log) {
     eversion_t newhead;
     {
       pg_log_entry_t e;
+      e.mod_desc.mark_unrollbackable();
 
       info.log_tail = log.tail = eversion_t(1, 1);
       newhead = eversion_t(1, 3);
@@ -185,7 +422,8 @@ TEST_F(PGLogTest, rewind_divergent_log) {
     EXPECT_FALSE(dirty_info);
     EXPECT_FALSE(dirty_big_info);
 
-    rewind_divergent_log(t, newhead, info, remove_snap,
+    TestHandler h(remove_snap);
+    rewind_divergent_log(t, newhead, info, &h,
 			 dirty_info, dirty_big_info);
 
     EXPECT_TRUE(missing.is_missing(divergent_object));
@@ -206,6 +444,7 @@ TEST_F(PGLogTest, merge_old_entry) {
 
     ObjectStore::Transaction t;
     pg_log_entry_t oe;
+    oe.mod_desc.mark_unrollbackable();
     pg_info_t info;
     list<hobject_t> remove_snap;
 
@@ -219,73 +458,14 @@ TEST_F(PGLogTest, merge_old_entry) {
     EXPECT_FALSE(missing.have_missing());
     EXPECT_TRUE(log.empty());
 
-    EXPECT_FALSE(merge_old_entry(t, oe, info, remove_snap));
+    TestHandler h(remove_snap);
+    merge_old_entry(t, oe, info, &h);
 
     EXPECT_FALSE(is_dirty());
     EXPECT_TRUE(remove_snap.empty());
     EXPECT_TRUE(t.empty());
     EXPECT_FALSE(missing.have_missing());
     EXPECT_TRUE(log.empty());
-  }
-
-  // a clone with no non-divergent log entry is deleted
-  {
-    clear();
-
-    ObjectStore::Transaction t;
-    pg_log_entry_t oe;
-    pg_info_t info;
-    list<hobject_t> remove_snap;
-
-    oe.op = pg_log_entry_t::CLONE;
-
-    oe.soid.snap = CEPH_NOSNAP;
-    EXPECT_THROW(merge_old_entry(t, oe, info, remove_snap), FailedAssertion);
-    oe.soid.snap = 1U;
-    missing.add(oe.soid, eversion_t(), eversion_t());
-
-    EXPECT_FALSE(is_dirty());
-    EXPECT_TRUE(remove_snap.empty());
-    EXPECT_TRUE(t.empty());
-    EXPECT_TRUE(missing.have_missing());
-    EXPECT_TRUE(missing.is_missing(oe.soid));
-    EXPECT_TRUE(log.empty());
-
-    EXPECT_FALSE(merge_old_entry(t, oe, info, remove_snap));
-
-    EXPECT_FALSE(is_dirty());
-    EXPECT_EQ(oe.soid, remove_snap.front());
-    EXPECT_TRUE(t.empty());
-    EXPECT_FALSE(missing.have_missing());
-    EXPECT_TRUE(log.empty());
-  }
-
-  // the new entry (from the logs) old entry (from the log entry
-  // given in argument) have the same version : do nothing and return true.
-  {
-    clear();
-
-    ObjectStore::Transaction t;
-    pg_log_entry_t oe;
-    pg_info_t info;
-    list<hobject_t> remove_snap;
-
-    oe.version = eversion_t(1,1);
-    log.add(oe);
-
-    EXPECT_FALSE(is_dirty());
-    EXPECT_TRUE(remove_snap.empty());
-    EXPECT_TRUE(t.empty());
-    EXPECT_FALSE(missing.have_missing());
-    EXPECT_EQ(1U, log.log.size());
-
-    EXPECT_TRUE(merge_old_entry(t, oe, info, remove_snap));
-
-    EXPECT_FALSE(is_dirty());
-    EXPECT_TRUE(remove_snap.empty());
-    EXPECT_TRUE(t.empty());
-    EXPECT_FALSE(missing.have_missing());
-    EXPECT_EQ(1U, log.log.size());
   }
 
   // the new entry (from the logs) has a version that is higher than
@@ -299,6 +479,7 @@ TEST_F(PGLogTest, merge_old_entry) {
     list<hobject_t> remove_snap;
 
     pg_log_entry_t ne;
+    ne.mod_desc.mark_unrollbackable();
     ne.version = eversion_t(2,1);
     log.add(ne);
 
@@ -313,9 +494,11 @@ TEST_F(PGLogTest, merge_old_entry) {
     {
       log.log.front().op = pg_log_entry_t::DELETE;
       pg_log_entry_t oe;
+      oe.mod_desc.mark_unrollbackable();
       oe.version = eversion_t(1,1);
 
-      EXPECT_FALSE(merge_old_entry(t, oe, info, remove_snap));
+      TestHandler h(remove_snap);
+      merge_old_entry(t, oe, info, &h);
     }
 
     // if the newer entry is not DELETE, the object must be in missing
@@ -324,25 +507,17 @@ TEST_F(PGLogTest, merge_old_entry) {
       ne.op = pg_log_entry_t::MODIFY;
       missing.add_next_event(ne);
       pg_log_entry_t oe;
+      oe.mod_desc.mark_unrollbackable();
       oe.version = eversion_t(1,1);
 
-      EXPECT_FALSE(merge_old_entry(t, oe, info, remove_snap));
+      TestHandler h(remove_snap);
+      merge_old_entry(t, oe, info, &h);
 
       missing.rm(ne.soid, ne.version);
     }
 
-    // throw if the newer entry is not DELETE and not in missing
-    {
-      pg_log_entry_t &ne = log.log.front();
-      ne.op = pg_log_entry_t::MODIFY;
-      pg_log_entry_t oe;
-      oe.version = eversion_t(1,1);
-
-      EXPECT_THROW(merge_old_entry(t, oe, info, remove_snap), FailedAssertion);
-    }
-
     EXPECT_FALSE(is_dirty());
-    EXPECT_TRUE(remove_snap.empty());
+    EXPECT_FALSE(remove_snap.empty());
     EXPECT_TRUE(t.empty());
     EXPECT_FALSE(missing.have_missing());
     EXPECT_EQ(1U, log.log.size());
@@ -358,10 +533,12 @@ TEST_F(PGLogTest, merge_old_entry) {
 
     ObjectStore::Transaction t;
     pg_log_entry_t oe;
+    oe.mod_desc.mark_unrollbackable();
     pg_info_t info;
     list<hobject_t> remove_snap;
 
     pg_log_entry_t ne;
+    ne.mod_desc.mark_unrollbackable();
     ne.version = eversion_t(1,1);
     ne.op = pg_log_entry_t::DELETE;
     log.add(ne);
@@ -375,72 +552,14 @@ TEST_F(PGLogTest, merge_old_entry) {
     EXPECT_FALSE(missing.have_missing());
     EXPECT_EQ(1U, log.log.size());
 
-    EXPECT_FALSE(merge_old_entry(t, oe, info, remove_snap));
+    TestHandler h(remove_snap);
+    merge_old_entry(t, oe, info, &h);
 
     EXPECT_FALSE(is_dirty());
     EXPECT_TRUE(remove_snap.empty());
     EXPECT_TRUE(t.empty());
     EXPECT_FALSE(missing.have_missing());
     EXPECT_EQ(1U, log.log.size());
-  }
-
-  // the new entry (from the logs) has a version that is lower than
-  // the old entry (from the log entry given in argument) and
-  // new is update :
-  // if the object is not already in missing, add it
-  // if the object is already in missing, revise the version it needs
-  // return false
-  {
-    __s32 ops[2] = { pg_log_entry_t::MODIFY, pg_log_entry_t::DELETE };
-    for (int i = 0; i < 2; i++) {
-      __s32 oe_op = ops[i];
-
-      clear();
-
-      ObjectStore::Transaction t;
-      pg_log_entry_t oe;
-      pg_info_t info;
-      list<hobject_t> remove_snap;
-
-      pg_log_entry_t ne;
-      ne.version = eversion_t(1,1);
-      ne.op = pg_log_entry_t::MODIFY;
-      log.add(ne);
-
-      oe.version = eversion_t(2,1);
-      oe.op = oe_op;
-
-      EXPECT_FALSE(is_dirty());
-      EXPECT_TRUE(remove_snap.empty());
-      EXPECT_TRUE(t.empty());
-      EXPECT_FALSE(missing.have_missing());
-      EXPECT_EQ(1U, log.log.size());
-
-      eversion_t old_version(0, 0);
-      // if the object is not already in missing, add it
-      {
-        EXPECT_FALSE(merge_old_entry(t, oe, info, remove_snap));
-
-        EXPECT_TRUE(missing.is_missing(ne.soid, ne.version));
-        EXPECT_FALSE(missing.is_missing(ne.soid, old_version));
-      }
-      // if the object is already in missing, revise the version it needs
-      {
-        missing.revise_need(ne.soid, old_version);
-        EXPECT_TRUE(missing.is_missing(ne.soid, old_version));
-
-        EXPECT_FALSE(merge_old_entry(t, oe, info, remove_snap));
-
-        EXPECT_TRUE(missing.is_missing(ne.soid, ne.version));
-        EXPECT_FALSE(missing.is_missing(ne.soid, old_version));
-      }
-
-      EXPECT_FALSE(is_dirty());
-      EXPECT_TRUE(remove_snap.empty());
-      EXPECT_TRUE(t.empty());
-      EXPECT_TRUE(missing.is_missing(ne.soid));
-      EXPECT_EQ(1U, log.log.size());
-    }
   }
 
   // the new entry (from the logs) has a version that is lower than
@@ -452,10 +571,12 @@ TEST_F(PGLogTest, merge_old_entry) {
 
     ObjectStore::Transaction t;
     pg_log_entry_t oe;
+    oe.mod_desc.mark_unrollbackable();
     pg_info_t info;
     list<hobject_t> remove_snap;
 
     pg_log_entry_t ne;
+    ne.mod_desc.mark_unrollbackable();
     ne.version = eversion_t(1,1);
     ne.op = pg_log_entry_t::DELETE;
     log.add(ne);
@@ -470,10 +591,11 @@ TEST_F(PGLogTest, merge_old_entry) {
     EXPECT_TRUE(missing.is_missing(oe.soid));
     EXPECT_EQ(1U, log.log.size());
 
-    EXPECT_FALSE(merge_old_entry(t, oe, info, remove_snap));
+    TestHandler h(remove_snap);
+    merge_old_entry(t, oe, info, &h);
 
     EXPECT_FALSE(is_dirty());
-    EXPECT_TRUE(remove_snap.empty());
+    EXPECT_TRUE(remove_snap.size() > 0);
     EXPECT_TRUE(t.empty());
     EXPECT_FALSE(missing.have_missing());
     EXPECT_EQ(1U, log.log.size());
@@ -488,25 +610,26 @@ TEST_F(PGLogTest, merge_old_entry) {
 
     ObjectStore::Transaction t;
     pg_log_entry_t oe;
+    oe.mod_desc.mark_unrollbackable();
     pg_info_t info;
     list<hobject_t> remove_snap;
 
     info.log_tail = eversion_t(1,1);
     oe.op = pg_log_entry_t::MODIFY;
     oe.prior_version = eversion_t(2,1);
+    missing_add(oe.soid, oe.prior_version, eversion_t());
 
     EXPECT_FALSE(is_dirty());
     EXPECT_TRUE(remove_snap.empty());
     EXPECT_TRUE(t.empty());
-    EXPECT_FALSE(missing.have_missing());
     EXPECT_TRUE(log.empty());
 
-    EXPECT_FALSE(merge_old_entry(t, oe, info, remove_snap));
+    TestHandler h(remove_snap);
+    merge_old_entry(t, oe, info, &h);
 
     EXPECT_FALSE(is_dirty());
     EXPECT_TRUE(remove_snap.empty());
     EXPECT_TRUE(t.empty());
-    EXPECT_FALSE(missing.have_missing());
     EXPECT_TRUE(log.empty());
   }
 
@@ -523,6 +646,7 @@ TEST_F(PGLogTest, merge_old_entry) {
 
     ObjectStore::Transaction t;
     pg_log_entry_t oe;
+    oe.mod_desc.mark_unrollbackable();
     pg_info_t info;
     list<hobject_t> remove_snap;
 
@@ -537,7 +661,8 @@ TEST_F(PGLogTest, merge_old_entry) {
     EXPECT_FALSE(missing.have_missing());
     EXPECT_TRUE(log.empty());
 
-    EXPECT_FALSE(merge_old_entry(t, oe, info, remove_snap));
+    TestHandler h(remove_snap);
+    merge_old_entry(t, oe, info, &h);
 
     EXPECT_TRUE(is_dirty());
     EXPECT_EQ(oe.soid, remove_snap.front());
@@ -559,6 +684,7 @@ TEST_F(PGLogTest, merge_old_entry) {
 
     ObjectStore::Transaction t;
     pg_log_entry_t oe;
+    oe.mod_desc.mark_unrollbackable();
     pg_info_t info;
     list<hobject_t> remove_snap;
 
@@ -573,7 +699,8 @@ TEST_F(PGLogTest, merge_old_entry) {
     EXPECT_FALSE(missing.have_missing());
     EXPECT_TRUE(log.empty());
 
-    EXPECT_FALSE(merge_old_entry(t, oe, info, remove_snap));
+    TestHandler h(remove_snap);
+    merge_old_entry(t, oe, info, &h);
 
     EXPECT_TRUE(is_dirty());
     EXPECT_TRUE(remove_snap.empty());
@@ -583,41 +710,6 @@ TEST_F(PGLogTest, merge_old_entry) {
     EXPECT_EQ(oe.soid, divergent_priors[oe.prior_version]);
   }
 
-  // there is no new entry (from the logs) and
-  // the old entry (from the log entry given in argument) is not a CLONE and
-  // the old entry (from the log entry given in argument) is a DELETE and
-  // the old entry prior_version is eversion_t() :
-  //   remove the prior_version of the object from missing, if any and
-  //   return false
-  {
-    clear();
-
-    ObjectStore::Transaction t;
-    pg_log_entry_t oe;
-    pg_info_t info;
-    list<hobject_t> remove_snap;
-
-    info.log_tail = eversion_t(10,1);
-    oe.soid.hash = 1;
-    oe.op = pg_log_entry_t::DELETE;
-    oe.prior_version = eversion_t();
-
-    missing.add(oe.soid, eversion_t(1,1), eversion_t());
-
-    EXPECT_FALSE(is_dirty());
-    EXPECT_TRUE(remove_snap.empty());
-    EXPECT_TRUE(t.empty());
-    EXPECT_TRUE(missing.is_missing(oe.soid));
-    EXPECT_TRUE(log.empty());
-
-    EXPECT_FALSE(merge_old_entry(t, oe, info, remove_snap));
-
-    EXPECT_FALSE(is_dirty());
-    EXPECT_TRUE(remove_snap.empty());
-    EXPECT_TRUE(t.empty());
-    EXPECT_FALSE(missing.have_missing());
-    EXPECT_TRUE(log.empty());
-  }
 
   // there is no new entry (from the logs) and
   // the old entry (from the log entry given in argument) is not a CLONE and
@@ -631,6 +723,7 @@ TEST_F(PGLogTest, merge_old_entry) {
 
     ObjectStore::Transaction t;
     pg_log_entry_t oe;
+    oe.mod_desc.mark_unrollbackable();
     pg_info_t info;
     list<hobject_t> remove_snap;
 
@@ -647,7 +740,8 @@ TEST_F(PGLogTest, merge_old_entry) {
     EXPECT_TRUE(missing.is_missing(oe.soid));
     EXPECT_TRUE(log.empty());
 
-    EXPECT_FALSE(merge_old_entry(t, oe, info, remove_snap));
+    TestHandler h(remove_snap);
+    merge_old_entry(t, oe, info, &h);
 
     EXPECT_FALSE(is_dirty());
     EXPECT_EQ(oe.soid, remove_snap.front());
@@ -667,7 +761,7 @@ TEST_F(PGLogTest, merge_log) {
     ObjectStore::Transaction t;
     pg_log_t olog;
     pg_info_t oinfo;
-    int fromosd = -1;
+    pg_shard_t fromosd;
     pg_info_t info;
     list<hobject_t> remove_snap;
     bool dirty_info = false;
@@ -691,7 +785,8 @@ TEST_F(PGLogTest, merge_log) {
     EXPECT_FALSE(dirty_info);
     EXPECT_FALSE(dirty_big_info);
 
-    merge_log(t, oinfo, olog, fromosd, info, remove_snap,
+    TestHandler h(remove_snap);
+    merge_log(t, oinfo, olog, fromosd, info, &h,
               dirty_info, dirty_big_info);
 
     EXPECT_FALSE(missing.have_missing());
@@ -714,7 +809,7 @@ TEST_F(PGLogTest, merge_log) {
     ObjectStore::Transaction t;
     pg_log_t olog;
     pg_info_t oinfo;
-    int fromosd = -1;
+    pg_shard_t fromosd;
     pg_info_t info;
     list<hobject_t> remove_snap;
     bool dirty_info = false;
@@ -742,7 +837,8 @@ TEST_F(PGLogTest, merge_log) {
     EXPECT_FALSE(dirty_info);
     EXPECT_FALSE(dirty_big_info);
 
-    merge_log(t, oinfo, olog, fromosd, info, remove_snap,
+    TestHandler h(remove_snap);
+    merge_log(t, oinfo, olog, fromosd, info, &h,
               dirty_info, dirty_big_info);
 
     EXPECT_FALSE(missing.have_missing());
@@ -800,7 +896,7 @@ TEST_F(PGLogTest, merge_log) {
     ObjectStore::Transaction t;
     pg_log_t olog;
     pg_info_t oinfo;
-    int fromosd = -1;
+    pg_shard_t fromosd;
     pg_info_t info;
     list<hobject_t> remove_snap;
     bool dirty_info = false;
@@ -808,6 +904,7 @@ TEST_F(PGLogTest, merge_log) {
 
     {
       pg_log_entry_t e;
+      e.mod_desc.mark_unrollbackable();
 
       e.version = eversion_t(1, 4);
       e.soid.hash = 0x5;
@@ -847,7 +944,8 @@ TEST_F(PGLogTest, merge_log) {
     EXPECT_FALSE(dirty_info);
     EXPECT_FALSE(dirty_big_info);
 
-    merge_log(t, oinfo, olog, fromosd, info, remove_snap,
+    TestHandler h(remove_snap);
+    merge_log(t, oinfo, olog, fromosd, info, &h,
               dirty_info, dirty_big_info);
 
     EXPECT_FALSE(missing.have_missing());
@@ -893,7 +991,7 @@ TEST_F(PGLogTest, merge_log) {
     ObjectStore::Transaction t;
     pg_log_t olog;
     pg_info_t oinfo;
-    int fromosd = -1;
+    pg_shard_t fromosd;
     pg_info_t info;
     list<hobject_t> remove_snap;
     bool dirty_info = false;
@@ -903,6 +1001,7 @@ TEST_F(PGLogTest, merge_log) {
 
     {
       pg_log_entry_t e;
+      e.mod_desc.mark_unrollbackable();
 
       e.version = eversion_t(1, 1);
       e.soid.hash = 0x5;
@@ -956,7 +1055,8 @@ TEST_F(PGLogTest, merge_log) {
     EXPECT_FALSE(dirty_info);
     EXPECT_FALSE(dirty_big_info);
 
-    merge_log(t, oinfo, olog, fromosd, info, remove_snap,
+    TestHandler h(remove_snap);
+    merge_log(t, oinfo, olog, fromosd, info, &h,
               dirty_info, dirty_big_info);
 
     /* When the divergent entry is a DELETE and the authoritative
@@ -1006,7 +1106,7 @@ TEST_F(PGLogTest, merge_log) {
     ObjectStore::Transaction t;
     pg_log_t olog;
     pg_info_t oinfo;
-    int fromosd = -1;
+    pg_shard_t fromosd;
     pg_info_t info;
     list<hobject_t> remove_snap;
     bool dirty_info = false;
@@ -1014,6 +1114,7 @@ TEST_F(PGLogTest, merge_log) {
 
     {
       pg_log_entry_t e;
+      e.mod_desc.mark_unrollbackable();
 
       e.version = eversion_t(1, 1);
       e.soid.hash = 0x5;
@@ -1056,7 +1157,8 @@ TEST_F(PGLogTest, merge_log) {
     EXPECT_FALSE(dirty_info);
     EXPECT_FALSE(dirty_big_info);
 
-    merge_log(t, oinfo, olog, fromosd, info, remove_snap,
+    TestHandler h(remove_snap);
+    merge_log(t, oinfo, olog, fromosd, info, &h,
               dirty_info, dirty_big_info);
 
     EXPECT_FALSE(missing.have_missing());
@@ -1077,7 +1179,7 @@ TEST_F(PGLogTest, merge_log) {
     ObjectStore::Transaction t;
     pg_log_t olog;
     pg_info_t oinfo;
-    int fromosd = -1;
+    pg_shard_t fromosd;
     pg_info_t info;
     list<hobject_t> remove_snap;
     bool dirty_info = false;
@@ -1086,7 +1188,8 @@ TEST_F(PGLogTest, merge_log) {
     // olog has been trimmed
     olog.tail = eversion_t(1, 1);
 
-    ASSERT_THROW(merge_log(t, oinfo, olog, fromosd, info, remove_snap,
+    TestHandler h(remove_snap);
+    ASSERT_THROW(merge_log(t, oinfo, olog, fromosd, info, &h,
                            dirty_info, dirty_big_info), FailedAssertion);
   }
 
@@ -1095,16 +1198,16 @@ TEST_F(PGLogTest, merge_log) {
             +--------+-------+---------+
             |        |object |         |
             |version | hash  | version |
-            |        |       |         |
-       tail > (1,1)  |  x5   |         |
+       tail > (0,0)  |       |         |
+            | (1,1)  |  x5   |         |
             |        |       |         |
             |        |       |         |
        head > (1,2)  |  x3   |         |
             |        |       |         |
-            |        |  x9   |  (2,3)  < tail
+            |        |       |  (2,3)  < tail
+            |        |  x9   |  (2,4)  |
             |        |       |         |
-            |        |       |         |
-            |        |  x5   |  (2,4)  < head
+            |        |  x5   |  (2,5)  < head
             |        |       |         |
             +--------+-------+---------+
 
@@ -1117,7 +1220,7 @@ TEST_F(PGLogTest, merge_log) {
     ObjectStore::Transaction t;
     pg_log_t olog;
     pg_info_t oinfo;
-    int fromosd = -1;
+    pg_shard_t fromosd;
     pg_info_t info;
     list<hobject_t> remove_snap;
     bool dirty_info = false;
@@ -1125,10 +1228,11 @@ TEST_F(PGLogTest, merge_log) {
 
     {
       pg_log_entry_t e;
+      e.mod_desc.mark_unrollbackable();
 
+      log.tail = eversion_t();
       e.version = eversion_t(1, 1);
       e.soid.hash = 0x5;
-      log.tail = e.version;
       log.log.push_back(e);
       e.version = eversion_t(1, 2);
       e.soid.hash = 0x3;
@@ -1138,16 +1242,18 @@ TEST_F(PGLogTest, merge_log) {
 
       info.last_update = log.head;
 
-      e.version = eversion_t(2, 3);
+      olog.tail = eversion_t(2, 3);
+      e.version = eversion_t(2, 4);
       e.soid.hash = 0x9;
       olog.log.push_back(e);
-      e.version = eversion_t(2, 4);
+      e.version = eversion_t(2, 5);
       e.soid.hash = 0x5;
       olog.log.push_back(e);
       olog.head = e.version;
     }
 
-    EXPECT_THROW(merge_log(t, oinfo, olog, fromosd, info, remove_snap,
+    TestHandler h(remove_snap);
+    EXPECT_THROW(merge_log(t, oinfo, olog, fromosd, info, &h,
                            dirty_info, dirty_big_info), FailedAssertion);
   }
 }
@@ -1161,7 +1267,7 @@ TEST_F(PGLogTest, proc_replica_log) {
     pg_log_t olog;
     pg_info_t oinfo;
     pg_missing_t omissing;
-    int from = -1;
+    pg_shard_t from;
 
     eversion_t last_update(1, 1);
     oinfo.last_update = last_update;
@@ -1213,10 +1319,11 @@ TEST_F(PGLogTest, proc_replica_log) {
     pg_log_t olog;
     pg_info_t oinfo;
     pg_missing_t omissing;
-    int from = -1;
+    pg_shard_t from;
 
     {
       pg_log_entry_t e;
+      e.mod_desc.mark_unrollbackable();
 
       e.version = eversion_t(1, 2);
       e.soid.hash = 0x5;
@@ -1252,102 +1359,97 @@ TEST_F(PGLogTest, proc_replica_log) {
 
     EXPECT_TRUE(t.empty());
     EXPECT_FALSE(omissing.have_missing());
-    EXPECT_EQ(olog.head, oinfo.last_update);
-    EXPECT_EQ(olog.head, oinfo.last_complete);
   }
 
-  /*        +--------------------------+
-            |  log              olog   |
-            +--------+-------+---------+
-            |        |object |         |
-            |version | hash  | version |
-            |        |       |         |
-       tail > (1,1)  |  x5   |  (1,1)  < tail
-            |        |       |         |
-            |        |       |         |
-            | (1,2)  |  x3   |  (1,2)  |
-            |        |       |         |
-            |        |       |         |
-            | (1,3)  |  x9   |         |
-            | MODIFY |       |         |
-            |        |       |         |
-            |        |  x7   |  (1,4)  |
-            |        |       |         |
-            | (1,6)  |  x8   |  (1,5)  |
-            |        |       |         |
-            |        |  x9   |  (2,3)  < head < last_backfill
-            |        |       |  DELETE |
-            |        |       |         |
-       head > (1,7)  |  xa   |  (2,5)  |
-            |        |       |         |
-            +--------+-------+---------+
-
-      The log entry (1,3) modifies the object x9 but the olog entry
-      (2,3) deletes it : log is authoritative and the object is added
-      to missing. x7 is divergent and ignored. x8 has a more recent
-      version in the log and the olog entry is ignored. xa is past
-      last_backfill and ignored.
-
-  */
-  {
+ {
     clear();
 
     ObjectStore::Transaction t;
     pg_log_t olog;
     pg_info_t oinfo;
     pg_missing_t omissing;
-    int from = -1;
+    pg_shard_t from;
 
-    eversion_t last_update(1, 2);
     hobject_t divergent_object;
 
     {
       pg_log_entry_t e;
+      e.mod_desc.mark_unrollbackable();
 
-      e.version = eversion_t(1, 1);
-      e.soid.hash = 0x5;
-      log.tail = e.version;
-      log.log.push_back(e);
-      e.version = last_update;
-      e.soid.hash = 0x3;
-      log.log.push_back(e);
-      e.version = eversion_t(1,3);
-      e.soid.hash = 0x9;
-      divergent_object = e.soid;
-      e.op = pg_log_entry_t::MODIFY;
-      log.log.push_back(e);
-      e.version = eversion_t(1, 6);
-      e.soid.hash = 0x8;
-      log.log.push_back(e);
-      e.version = eversion_t(1, 7);
-      e.soid.hash = 0xa;
-      log.log.push_back(e);
-      log.head = e.version;
+      {
+	e.soid = divergent_object;
+	e.soid.hash = 0x1;
+	e.version = eversion_t(1, 1);
+	log.tail = e.version;
+	log.log.push_back(e);
+
+	e.soid = divergent_object;
+	e.prior_version = eversion_t(1, 1);
+	e.version = eversion_t(1, 2);
+	log.tail = e.version;
+	log.log.push_back(e);
+
+	e.soid.hash = 0x3;
+	e.version = eversion_t(1, 4);
+	log.log.push_back(e);
+
+	e.soid.hash = 0x7;
+	e.version = eversion_t(1, 5);
+	log.log.push_back(e);
+
+	e.soid.hash = 0x8;
+	e.version = eversion_t(1, 6);
+	log.log.push_back(e);
+
+	e.soid.hash = 0x9;
+	e.op = pg_log_entry_t::DELETE;
+	e.version = eversion_t(2, 7);
+	log.log.push_back(e);
+
+	e.soid.hash = 0xa;
+	e.version = eversion_t(2, 8);
+	log.head = e.version;
+	log.log.push_back(e);
+      }
       log.index();
 
-      e.version = eversion_t(1, 1);
-      e.soid.hash = 0x5;
-      olog.tail = e.version;
-      olog.log.push_back(e);
-      e.version = last_update;
-      e.soid.hash = 0x3;
-      olog.log.push_back(e);
-      e.version = eversion_t(1, 4); // divergent entry : will be ignored
-      e.soid.hash = 0x7;
-      olog.log.push_back(e);
-      e.version = eversion_t(1, 5); // log has newer entry : it will be ignored
-      e.soid.hash = 0x8;
-      olog.log.push_back(e);
-      e.version = eversion_t(2, 3);
-      e.soid.hash = 0x9;
-      oinfo.last_backfill = e.soid;
-      e.op = pg_log_entry_t::DELETE;
-      olog.log.push_back(e);
-      e.version = eversion_t(2, 4);
-      e.soid.hash = 0xa; // > last_backfill are ignored
-      olog.log.push_back(e);
-      olog.head = e.version;
+      {
+	e.soid = divergent_object;
+	e.soid.hash = 0x1;
+	e.version = eversion_t(1, 1);
+	olog.tail = e.version;
+	olog.log.push_back(e);
 
+	e.soid = divergent_object;
+	e.prior_version = eversion_t(1, 1);
+	e.version = eversion_t(1, 2);
+	olog.log.push_back(e);
+
+	e.prior_version = eversion_t(0, 0);
+	e.soid.hash = 0x3;
+	e.version = eversion_t(1, 4);
+	olog.log.push_back(e);
+
+	e.soid.hash = 0x7;
+	e.version = eversion_t(1, 5);
+	olog.log.push_back(e);
+
+	e.soid.hash = 0x8;
+	e.version = eversion_t(1, 6);
+	olog.log.push_back(e);
+
+	e.soid.hash = 0x9; // should not be added to missing, create
+	e.op = pg_log_entry_t::MODIFY;
+	e.version = eversion_t(1, 7);
+	olog.log.push_back(e);
+
+	e.soid = divergent_object; // should be added to missing at 1,2
+	e.op = pg_log_entry_t::MODIFY;
+	e.version = eversion_t(1, 8);
+	e.prior_version = eversion_t(1, 2);
+	olog.log.push_back(e);
+	olog.head = e.version;
+      }
       oinfo.last_update = olog.head;
       oinfo.last_complete = olog.head;
     }
@@ -1362,9 +1464,9 @@ TEST_F(PGLogTest, proc_replica_log) {
     EXPECT_TRUE(t.empty());
     EXPECT_TRUE(omissing.have_missing());
     EXPECT_TRUE(omissing.is_missing(divergent_object));
-    EXPECT_EQ(eversion_t(1, 3), omissing.missing[divergent_object].need);
-    EXPECT_EQ(last_update, oinfo.last_update);
-    EXPECT_EQ(last_update, oinfo.last_complete);
+    EXPECT_EQ(eversion_t(1, 2), omissing.missing[divergent_object].need);
+    EXPECT_EQ(eversion_t(1, 6), oinfo.last_update);
+    EXPECT_EQ(eversion_t(1, 1), oinfo.last_complete);
   }
 
   /*        +--------------------------+
@@ -1398,12 +1500,13 @@ TEST_F(PGLogTest, proc_replica_log) {
     pg_log_t olog;
     pg_info_t oinfo;
     pg_missing_t omissing;
-    int from = -1;
+    pg_shard_t from;
 
     eversion_t last_update(1, 2);
 
     {
       pg_log_entry_t e;
+      e.mod_desc.mark_unrollbackable();
 
       e.version = eversion_t(1, 1);
       e.soid.hash = 0x5;
@@ -1480,13 +1583,14 @@ TEST_F(PGLogTest, proc_replica_log) {
     pg_log_t olog;
     pg_info_t oinfo;
     pg_missing_t omissing;
-    int from = -1;
+    pg_shard_t from;
 
     eversion_t last_update(1, 2);
     hobject_t divergent_object;
 
     {
       pg_log_entry_t e;
+      e.mod_desc.mark_unrollbackable();
 
       e.version = eversion_t(1, 1);
       e.soid.hash = 0x5;
@@ -1542,23 +1646,24 @@ TEST_F(PGLogTest, proc_replica_log) {
             |        |object |         |
             |version | hash  | version |
             |        |       |         |
-       tail > (1,1)  |  x5   |  (1,1)  < tail
+       tail > (1,1)  |  x9   |  (1,1)  < tail
             |        |       |         |
             |        |       |         |
             | (1,2)  |  x3   |  (1,2)  |
             |        |       |         |
             |        |       |         |
-       head > (1,3)  |  x9   |         |
-            | MODIFY |       |         |
-            |        |       |         |
-            |        |  x9   |  (2,3)  < head
+            |        |  x9   |  (1,3)  < head
             |        |       |  MODIFY |
+            |        |       |         |
+       head > (2,3)  |  x9   |         |
+            | DELETE |       |         |
             |        |       |         |
             +--------+-------+---------+
 
-      The log entry (1,3) deletes the object x9 but the olog entry
-      (2,3) modifies it : remove it from omissing.
-
+      The log entry (2,3) deletes the object x9 but the olog entry
+      (1,3) modifies it : proc_replica_log should adjust missing to
+      1,1 for that object until add_next_event in PG::activate processes
+      the delete.
   */
   {
     clear();
@@ -1567,38 +1672,42 @@ TEST_F(PGLogTest, proc_replica_log) {
     pg_log_t olog;
     pg_info_t oinfo;
     pg_missing_t omissing;
-    int from = -1;
+    pg_shard_t from;
 
     eversion_t last_update(1, 2);
     hobject_t divergent_object;
-    eversion_t new_version(1, 3);
-    eversion_t divergent_version(2, 3);
+    eversion_t new_version(2, 3);
+    eversion_t divergent_version(1, 3);
 
     {
       pg_log_entry_t e;
+      e.mod_desc.mark_unrollbackable();
 
       e.version = eversion_t(1, 1);
-      e.soid.hash = 0x5;
+      e.soid.hash = 0x9;
       log.tail = e.version;
       log.log.push_back(e);
       e.version = last_update;
       e.soid.hash = 0x3;
       log.log.push_back(e);
       e.version = new_version;
+      e.prior_version = eversion_t(1, 1);
       e.soid.hash = 0x9;
-      e.op = pg_log_entry_t::MODIFY;
+      e.op = pg_log_entry_t::DELETE;
       log.log.push_back(e);
       log.head = e.version;
       log.index();
 
+      e.op = pg_log_entry_t::MODIFY;
       e.version = eversion_t(1, 1);
-      e.soid.hash = 0x5;
+      e.soid.hash = 0x9;
       olog.tail = e.version;
       olog.log.push_back(e);
       e.version = last_update;
       e.soid.hash = 0x3;
       olog.log.push_back(e);
       e.version = divergent_version;
+      e.prior_version = eversion_t(1, 1);
       e.soid.hash = 0x9;
       divergent_object = e.soid;
       omissing.add(divergent_object, e.version, eversion_t());
@@ -1621,12 +1730,136 @@ TEST_F(PGLogTest, proc_replica_log) {
 
     EXPECT_TRUE(t.empty());
     EXPECT_TRUE(omissing.have_missing());
-    EXPECT_TRUE(omissing.is_missing(divergent_object));
-    EXPECT_EQ(new_version, omissing.missing[divergent_object].need);
+    EXPECT_TRUE(omissing.missing.begin()->second.need == eversion_t(1, 1));
     EXPECT_EQ(last_update, oinfo.last_update);
-    EXPECT_EQ(last_update, oinfo.last_complete);
+    EXPECT_EQ(eversion_t(0, 0), oinfo.last_complete);
   }
 
+}
+
+TEST_F(PGLogTest, merge_log_1) {
+  TestCase t;
+  t.base.push_back(mk_ple_mod(mk_obj(1), mk_evt(10, 100), mk_evt(8, 80)));
+
+  t.div.push_back(mk_ple_mod(mk_obj(1), mk_evt(10, 101), mk_evt(10, 100)));
+
+  t.final.add(mk_obj(1), mk_evt(10, 100), mk_evt(0, 0));
+
+  t.toremove.insert(mk_obj(1));
+
+  t.setup();
+  run_test_case(t);
+}
+
+TEST_F(PGLogTest, merge_log_2) {
+  TestCase t;
+  t.base.push_back(mk_ple_mod_rb(mk_obj(1), mk_evt(10, 100), mk_evt(8, 80)));
+
+  t.div.push_back(mk_ple_mod_rb(mk_obj(1), mk_evt(10, 101), mk_evt(10, 100)));
+  t.div.push_back(mk_ple_mod_rb(mk_obj(1), mk_evt(10, 102), mk_evt(10, 101)));
+
+  t.torollback.insert(
+    t.torollback.begin(), t.div.rbegin(), t.div.rend());
+
+  t.setup();
+  run_test_case(t);
+}
+
+TEST_F(PGLogTest, merge_log_3) {
+  TestCase t;
+  t.base.push_back(mk_ple_mod_rb(mk_obj(1), mk_evt(10, 100), mk_evt(8, 80)));
+
+  t.div.push_back(mk_ple_mod(mk_obj(1), mk_evt(10, 101), mk_evt(10, 100)));
+  t.div.push_back(mk_ple_mod_rb(mk_obj(1), mk_evt(10, 102), mk_evt(10, 101)));
+
+  t.final.add(mk_obj(1), mk_evt(10, 100), mk_evt(0, 0));
+
+  t.toremove.insert(mk_obj(1));
+
+  t.setup();
+  run_test_case(t);
+}
+
+TEST_F(PGLogTest, merge_log_4) {
+  TestCase t;
+  t.base.push_back(mk_ple_mod_rb(mk_obj(1), mk_evt(10, 100), mk_evt(8, 80)));
+
+  t.div.push_back(mk_ple_mod_rb(mk_obj(1), mk_evt(10, 101), mk_evt(10, 100)));
+  t.div.push_back(mk_ple_mod_rb(mk_obj(1), mk_evt(10, 102), mk_evt(10, 101)));
+
+  t.init.add(mk_obj(1), mk_evt(10, 102), mk_evt(0, 0));
+  t.final.add(mk_obj(1), mk_evt(10, 100), mk_evt(0, 0));
+
+  t.setup();
+  run_test_case(t);
+}
+
+TEST_F(PGLogTest, merge_log_5) {
+  TestCase t;
+  t.base.push_back(mk_ple_mod_rb(mk_obj(1), mk_evt(10, 100), mk_evt(8, 80)));
+
+  t.div.push_back(mk_ple_mod(mk_obj(1), mk_evt(10, 101), mk_evt(10, 100)));
+  t.div.push_back(mk_ple_mod_rb(mk_obj(1), mk_evt(10, 102), mk_evt(10, 101)));
+
+  t.auth.push_back(mk_ple_mod(mk_obj(1), mk_evt(11, 101), mk_evt(10, 100)));
+
+  t.final.add(mk_obj(1), mk_evt(11, 101), mk_evt(0, 0));
+
+  t.toremove.insert(mk_obj(1));
+
+  t.setup();
+  run_test_case(t);
+}
+
+TEST_F(PGLogTest, merge_log_6) {
+  TestCase t;
+  t.base.push_back(mk_ple_mod_rb(mk_obj(1), mk_evt(10, 100), mk_evt(8, 80)));
+
+  t.auth.push_back(mk_ple_mod(mk_obj(1), mk_evt(11, 101), mk_evt(10, 100)));
+
+  t.final.add(mk_obj(1), mk_evt(11, 101), mk_evt(10, 100));
+
+  t.setup();
+  run_test_case(t);
+}
+
+TEST_F(PGLogTest, merge_log_7) {
+  TestCase t;
+  t.base.push_back(mk_ple_mod_rb(mk_obj(1), mk_evt(10, 100), mk_evt(8, 80)));
+
+  t.auth.push_back(mk_ple_mod(mk_obj(1), mk_evt(11, 101), mk_evt(10, 100)));
+
+  t.init.add(mk_obj(1), mk_evt(10, 100), mk_evt(8, 80));
+  t.final.add(mk_obj(1), mk_evt(11, 101), mk_evt(8, 80));
+
+  t.setup();
+  run_test_case(t);
+}
+
+TEST_F(PGLogTest, merge_log_8) {
+  TestCase t;
+  t.base.push_back(mk_ple_mod_rb(mk_obj(1), mk_evt(10, 100), mk_evt(8, 80)));
+
+  t.auth.push_back(mk_ple_dt(mk_obj(1), mk_evt(11, 101), mk_evt(10, 100)));
+
+  t.init.add(mk_obj(1), mk_evt(10, 100), mk_evt(8, 80));
+
+  t.toremove.insert(mk_obj(1));
+
+  t.setup();
+  run_test_case(t);
+}
+
+TEST_F(PGLogTest, merge_log_prior_version_have) {
+  TestCase t;
+  t.base.push_back(mk_ple_mod_rb(mk_obj(1), mk_evt(10, 100), mk_evt(8, 80)));
+
+  t.div.push_back(mk_ple_mod(mk_obj(1), mk_evt(10, 101), mk_evt(10, 100)));
+
+  t.init.add(mk_obj(1), mk_evt(10, 101), mk_evt(10, 100));
+
+  t.setup();
+  run_test_case(t);
 }
 
 int main(int argc, char **argv) {

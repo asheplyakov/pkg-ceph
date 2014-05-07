@@ -58,7 +58,7 @@ struct CapSnap {
   xlist<CapSnap*>::item flushing_item;
 
   CapSnap(Inode *i)
-    : in(i), issued(0), dirty(0), 
+    : in(i), issued(0), dirty(0),
       size(0), time_warp_seq(0), mode(0), uid(0), gid(0), xattr_version(0),
       writing(false), dirty_data(false), flush_tid(0),
       flushing_item(this)
@@ -89,7 +89,7 @@ class Inode {
   gid_t      gid;
 
   // nlink
-  int32_t    nlink;  
+  int32_t    nlink;
 
   // file (data access)
   ceph_dir_layout dir_layout;
@@ -106,10 +106,14 @@ class Inode {
   // dirfrag, recursive accountin
   frag_info_t dirstat;
   nest_info_t rstat;
- 
+
   // special stuff
   version_t version;           // auth only
   version_t xattr_version;
+
+  // inline data
+  version_t  inline_version;
+  bufferlist inline_data;
 
   bool is_symlink() const { return (mode & S_IFMT) == S_IFLNK; }
   bool is_dir()     const { return (mode & S_IFMT) == S_IFDIR; }
@@ -120,6 +124,13 @@ class Inode {
       if (*((const char *)&layout + c))
 	return true;
     return false;
+  }
+
+  __u32 hash_dentry_name(const string &dn) {
+    int which = dir_layout.dl_dir_hash;
+    if (!which)
+      which = CEPH_STR_HASH_LINUX;
+    return ceph_str_hash(which, dn.data(), dn.length());
   }
 
   unsigned flags;
@@ -136,12 +147,9 @@ class Inode {
   __u16 flushing_cap_tid[CEPH_CAP_BITS];
   int shared_gen, cache_gen;
   int snap_caps, snap_cap_refs;
-  unsigned exporting_issued;
-  int exporting_mds;
-  ceph_seq_t exporting_mseq;
   utime_t hold_caps_until;
   xlist<Inode*>::item cap_item, flushing_cap_item;
-  tid_t last_flush_tid;
+  ceph_tid_t last_flush_tid;
 
   SnapRealm *snaprealm;
   xlist<Inode*>::item snaprealm_item;
@@ -176,16 +184,16 @@ class Inode {
   void make_long_path(filepath& p);
   void make_nosnap_relative_path(filepath& p);
 
-  void get() { 
-    _ref++; 
+  void get() {
+    _ref++;
     lsubdout(cct, mds, 15) << "inode.get on " << this << " " <<  ino << '.' << snapid
-		   << " now " << _ref << dendl;
+                           << " now " << _ref << dendl;
   }
   /// private method to put a reference; see Client::put_inode()
   int _put(int n=1) {
     _ref -= n; 
     lsubdout(cct, mds, 15) << "inode.put on " << this << " " << ino << '.' << snapid
-		   << " now " << _ref << dendl;
+                           << " now " << _ref << dendl;
     assert(_ref >= 0);
     return _ref;
   }
@@ -207,11 +215,11 @@ class Inode {
       rdev(0), mode(0), uid(0), gid(0), nlink(0),
       size(0), truncate_seq(1), truncate_size(-1),
       time_warp_seq(0), max_size(0), version(0), xattr_version(0),
+      inline_version(0),
       flags(0),
       dir_hashed(false), dir_replicated(false), auth_cap(NULL),
       dirty_caps(0), flushing_caps(0), flushing_cap_seq(0), shared_gen(0), cache_gen(0),
       snap_caps(0), snap_cap_refs(0),
-      exporting_issued(0), exporting_mds(-1), exporting_mseq(0),
       cap_item(this), flushing_cap_item(this), last_flush_tid(0),
       snaprealm(0), snaprealm_item(this), snapdir_parent(0),
       oset((void *)this, newlayout->fl_pg_pool, ino),
@@ -243,7 +251,7 @@ class Inode {
   bool put_open_ref(int mode);
 
   void get_cap_ref(int cap);
-  bool put_cap_ref(int cap);
+  int put_cap_ref(int cap);
   bool is_any_caps();
   bool cap_is_valid(Cap* cap);
   int caps_issued(int *implemented = 0);

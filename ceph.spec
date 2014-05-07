@@ -9,26 +9,29 @@
 # common
 #################################################################################
 Name:		ceph
-Version:	0.72.2
-Release:	0%{?dist}
+Version:        0.80
+Release:        rc1%{?dist}
 Summary:	User space components of the Ceph file system
 License:	GPL-2.0
 Group:		System Environment/Base
 URL:		http://ceph.com/
-Source0:	http://ceph.com/download/%{name}-%{version}.tar.bz2
+Source0:        http://ceph.com/download/%{name}-%{version}-rc1.tar.bz2
 Requires:	librbd1 = %{version}-%{release}
 Requires:	librados2 = %{version}-%{release}
 Requires:	libcephfs1 = %{version}-%{release}
 Requires:	python
 Requires:	python-argparse
 Requires:	python-ceph
+Requires:	python-requests
 Requires:       xfsprogs
 Requires:	cryptsetup
 Requires:	parted
 Requires:	util-linux
 Requires:	hdparm
+Requires:       redhat-lsb-core
 Requires(post):	binutils
 BuildRoot:      %{_tmppath}/%{name}-%{version}-build
+BuildRequires:	make
 BuildRequires:	gcc-c++
 BuildRequires:	libtool
 BuildRequires:	boost-devel
@@ -38,11 +41,14 @@ BuildRequires:	gdbm
 BuildRequires:	pkgconfig
 BuildRequires:	python
 BuildRequires:	python-nose
+BuildRequires:	python-argparse
 BuildRequires:  libaio-devel
 BuildRequires:  libcurl-devel
 BuildRequires:  libxml2-devel
 BuildRequires:  libuuid-devel
+BuildRequires:  libblkid-devel >= 2.17
 BuildRequires:  leveldb-devel > 1.2
+BuildRequires:  xfsprogs-devel
 BuildRequires:  yasm
 %if 0%{?rhel_version} || 0%{?centos_version} || 0%{?fedora}
 BuildRequires:  snappy-devel
@@ -82,8 +88,10 @@ BuildRequires:  gperftools-devel
 %endif
 
 %description
-Ceph is a distributed network file system designed to provide excellent
-performance, reliability, and scalability.
+Ceph is a massively scalable, open-source, distributed
+storage system that runs on commodity hardware and delivers object,
+block and file system storage.
+
 
 #################################################################################
 # packages
@@ -193,7 +201,6 @@ Requires:	librados2 = %{version}-%{release}
 Requires:	librbd1 = %{version}-%{release}
 Requires:	libcephfs1 = %{version}-%{release}
 Requires:	python-flask
-Requires:	python-requests
 %if 0%{defined suse_version}
 %py_requires
 %endif
@@ -252,7 +259,7 @@ This package contains the Java libraries for the Ceph File System.
 # common
 #################################################################################
 %prep
-%setup -q
+%setup -q -n %{name}-%{version}-rc1
 
 %build
 # Find jni.h
@@ -312,7 +319,7 @@ chmod 0644 $RPM_BUILD_ROOT%{_docdir}/ceph/sample.fetch_config
 install -m 0644 -D udev/50-rbd.rules $RPM_BUILD_ROOT/lib/udev/rules.d/50-rbd.rules
 install -m 0644 -D udev/60-ceph-partuuid-workaround.rules $RPM_BUILD_ROOT/lib/udev/rules.d/60-ceph-partuuid-workaround.rules
 
-%if 0%{?centos}
+%if (0%{?rhel} || 0%{?rhel} < 7)
 install -m 0644 -D udev/95-ceph-osd-alt.rules $RPM_BUILD_ROOT/lib/udev/rules.d/95-ceph-osd.rules
 %else
 install -m 0644 -D udev/95-ceph-osd.rules $RPM_BUILD_ROOT/lib/udev/rules.d/95-ceph-osd.rules
@@ -328,7 +335,7 @@ mkdir -p $RPM_BUILD_ROOT%{_localstatedir}/lib/ceph/osd
 mkdir -p $RPM_BUILD_ROOT%{_localstatedir}/lib/ceph/mds
 mkdir -p $RPM_BUILD_ROOT%{_localstatedir}/lib/ceph/bootstrap-osd
 mkdir -p $RPM_BUILD_ROOT%{_localstatedir}/lib/ceph/bootstrap-mds
-
+mkdir -p $RPM_BUILD_ROOT%{_localstatedir}/log/radosgw
 
 %if %{defined suse_version}
 # Fedora seems to have some problems with this macro, use it only on SUSE
@@ -364,7 +371,7 @@ fi
 %endif
 # Package removal cleanup
 if [ "$1" -eq "0" ] ; then
-    rm -rf /var/log/ceph 
+    rm -rf /var/log/ceph
     rm -rf /etc/ceph
 fi
 
@@ -391,6 +398,8 @@ fi
 %{_bindir}/ceph-authtool
 %{_bindir}/ceph-syn
 %{_bindir}/ceph-post-file
+%{_bindir}/ceph-brag
+%{_bindir}/ceph-crush-location
 %{_bindir}/ceph-run
 %{_bindir}/ceph-mon
 %{_bindir}/ceph-mds
@@ -400,6 +409,7 @@ fi
 %{_bindir}/librados-config
 %{_bindir}/rados
 %{_bindir}/rbd
+%{_bindir}/ceph-client-debug
 %{_bindir}/ceph-debugpack
 %{_bindir}/ceph-coverage
 %{_bindir}/ceph_mon_store_converter
@@ -412,6 +422,8 @@ fi
 %{_sbindir}/rcceph
 /sbin/mkcephfs
 /sbin/mount.ceph
+%dir %{_libdir}/ceph
+%{_libdir}/ceph/ceph_common.sh
 %dir %{_libdir}/rados-classes
 %{_libdir}/rados-classes/libcls_rbd.so*
 %{_libdir}/rados-classes/libcls_hello.so*
@@ -422,8 +434,16 @@ fi
 %{_libdir}/rados-classes/libcls_log.so*
 %{_libdir}/rados-classes/libcls_replica_log.so*
 %{_libdir}/rados-classes/libcls_statelog.so*
+%{_libdir}/rados-classes/libcls_user.so*
 %{_libdir}/rados-classes/libcls_version.so*
-%{_libdir}/ceph
+%dir %{_libdir}/ceph/erasure-code
+%{_libdir}/ceph/erasure-code/libec_example.so*
+%{_libdir}/ceph/erasure-code/libec_fail_to_initialize.so*
+%{_libdir}/ceph/erasure-code/libec_fail_to_register.so*
+%{_libdir}/ceph/erasure-code/libec_hangs.so*
+%{_libdir}/ceph/erasure-code/libec_jerasure*.so*
+%{_libdir}/ceph/erasure-code/libec_test_jerasure*.so*
+%{_libdir}/ceph/erasure-code/libec_missing_entry_point.so*
 /lib/udev/rules.d/50-rbd.rules
 /lib/udev/rules.d/60-ceph-partuuid-workaround.rules
 /lib/udev/rules.d/95-ceph-osd.rules
@@ -497,6 +517,7 @@ fi
 %{_includedir}/rados/crc32c.h
 %{_includedir}/rados/rados_types.h
 %{_includedir}/rados/rados_types.hpp
+%{_includedir}/rados/memory.h
 %dir %{_includedir}/rbd
 %{_includedir}/rbd/librbd.h
 %{_includedir}/rbd/librbd.hpp
@@ -515,6 +536,7 @@ fi
 %{_mandir}/man8/radosgw.8*
 %{_mandir}/man8/radosgw-admin.8*
 %{_sbindir}/rcceph-radosgw
+%dir %{_localstatedir}/log/radosgw/
 
 %post radosgw
 /sbin/ldconfig
@@ -533,6 +555,11 @@ fi
 %restart_on_update ceph-radosgw
 %insserv_cleanup
 %endif
+# Package removal cleanup
+if [ "$1" -eq "0" ] ; then
+    rm -rf /var/log/radosgw
+fi
+
 
 #################################################################################
 %if %{with ocf}
@@ -562,6 +589,8 @@ fi
 
 %post -n librbd1
 /sbin/ldconfig
+mkdir -p /usr/lib64/qemu/ 
+ln -sf %{_libdir}/librbd.so.1 /usr/lib64/qemu/librbd.so.1
 
 %postun -n librbd1
 /sbin/ldconfig
@@ -598,6 +627,8 @@ fi
 %{_bindir}/ceph_dupstore
 %{_bindir}/ceph_kvstorebench
 %{_bindir}/ceph_multi_stress_watch
+%{_bindir}/ceph_erasure_code
+%{_bindir}/ceph_erasure_code_benchmark
 %{_bindir}/ceph_omapbench
 %{_bindir}/ceph_psim
 %{_bindir}/ceph_radosacl
@@ -612,60 +643,7 @@ fi
 %{_bindir}/ceph_filestore_dump
 %{_bindir}/ceph_filestore_tool
 %{_bindir}/ceph_streamtest
-%{_bindir}/ceph_test_cfuse_cache_invalidate
-%{_bindir}/ceph_test_cls_hello
-%{_bindir}/ceph_test_cls_lock
-%{_bindir}/ceph_test_cls_log
-%{_bindir}/ceph_test_cls_rbd
-%{_bindir}/ceph_test_cls_refcount
-%{_bindir}/ceph_test_cls_replica_log
-%{_bindir}/ceph_test_cls_rgw
-%{_bindir}/ceph_test_cls_rgw_log
-%{_bindir}/ceph_test_cls_rgw_meta
-%{_bindir}/ceph_test_cls_rgw_opstate
-%{_bindir}/ceph_test_cls_statelog
-%{_bindir}/ceph_test_cls_version
-%{_bindir}/ceph_test_cors
-%{_bindir}/ceph_test_filejournal
-%{_bindir}/ceph_test_filestore
-%{_bindir}/ceph_test_filestore_idempotent
-%{_bindir}/ceph_test_filestore_idempotent_sequence
-%{_bindir}/ceph_test_filestore_workloadgen
-%{_bindir}/ceph_test_ioctls
-%{_bindir}/ceph_test_keyvaluedb_atomicity
-%{_bindir}/ceph_test_keyvaluedb_iterators
-%{_bindir}/ceph_test_libcephfs
-%{_bindir}/ceph_test_librbd
-%{_bindir}/ceph_test_librbd_fsx
-%{_bindir}/ceph_test_mon_workloadgen
-%{_bindir}/ceph_test_mutate
-%{_bindir}/ceph_test_object_map
-%{_bindir}/ceph_test_objectcacher_stress
-%{_bindir}/ceph_test_rados_api_aio
-%{_bindir}/ceph_test_rados_api_cls
-%{_bindir}/ceph_test_rados_api_cmd
-%{_bindir}/ceph_test_rados_api_io
-%{_bindir}/ceph_test_rados_api_list
-%{_bindir}/ceph_test_rados_api_lock
-%{_bindir}/ceph_test_rados_api_misc
-%{_bindir}/ceph_test_rados_api_pool
-%{_bindir}/ceph_test_rados_api_snapshots
-%{_bindir}/ceph_test_rados_api_stat
-%{_bindir}/ceph_test_rados_api_watch_notify
-%{_bindir}/ceph_test_rewrite_latency
-%{_bindir}/ceph_test_stress_watch
-%{_bindir}/ceph_test_trans
-%{_bindir}/ceph_test_crypto
-%{_bindir}/ceph_test_keys
-%{_bindir}/ceph_test_msgr
-%{_bindir}/ceph_test_rados
-%{_bindir}/ceph_test_rados_delete_pools_parallel
-%{_bindir}/ceph_test_rados_list_parallel
-%{_bindir}/ceph_test_rados_open_pools_parallel
-%{_bindir}/ceph_test_rados_watch_notify
-%{_bindir}/ceph_test_signal_handlers
-%{_bindir}/ceph_test_snap_mapper
-%{_bindir}/ceph_test_timers
+%{_bindir}/ceph_test_*
 %{_bindir}/ceph_tpbench
 %{_bindir}/ceph_xattr_bench
 %{_bindir}/ceph-monstore-tool

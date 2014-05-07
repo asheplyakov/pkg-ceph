@@ -48,7 +48,7 @@ class MMDSCacheRejoin : public Message {
 
   // -- types --
   struct inode_strong { 
-    int32_t nonce;
+    uint32_t nonce;
     int32_t caps_wanted;
     int32_t filelock, nestlock, dftlock;
     inode_strong() {}
@@ -73,7 +73,7 @@ class MMDSCacheRejoin : public Message {
   WRITE_CLASS_ENCODER(inode_strong)
 
   struct dirfrag_strong {
-    int32_t nonce;
+    uint32_t nonce;
     int8_t  dir_rep;
     dirfrag_strong() {}
     dirfrag_strong(int n, int dr) : nonce(n), dir_rep(dr) {}
@@ -93,7 +93,7 @@ class MMDSCacheRejoin : public Message {
     inodeno_t ino;
     inodeno_t remote_ino;
     unsigned char remote_d_type;
-    int32_t nonce;
+    uint32_t nonce;
     int32_t lock;
     dn_strong() : 
       ino(0), remote_ino(0), remote_d_type(0), nonce(0), lock(0) {}
@@ -168,6 +168,8 @@ class MMDSCacheRejoin : public Message {
 
   // open
   map<inodeno_t,map<client_t, ceph_mds_cap_reconnect> > cap_exports;
+  map<client_t, entity_inst_t> client_map;
+  bufferlist imported_caps;
 
   // full
   bufferlist inode_base;
@@ -220,12 +222,10 @@ public:
   void add_strong_inode(vinodeno_t i, int n, int cw, int dl, int nl, int dftl) {
     strong_inodes[i] = inode_strong(n, cw, dl, nl, dftl);
   }
-  void add_inode_locks(CInode *in, __u32 nonce) {
+  void add_inode_locks(CInode *in, __u32 nonce, bufferlist& bl) {
     ::encode(in->inode.ino, inode_locks);
     ::encode(in->last, inode_locks);
     ::encode(nonce, inode_locks);
-    bufferlist bl;
-    in->_encode_locks_state_for_replica(bl);
     ::encode(bl, inode_locks);
   }
   void add_inode_base(CInode *in) {
@@ -299,6 +299,8 @@ public:
     ::encode(xlocked_inodes, payload);
     ::encode(wrlocked_inodes, payload);
     ::encode(cap_exports, payload);
+    ::encode(client_map, payload);
+    ::encode(imported_caps, payload);
     ::encode(strong_dirfrags, payload);
     ::encode(dirfrag_bases, payload);
     ::encode(weak, payload);
@@ -320,6 +322,8 @@ public:
     ::decode(xlocked_inodes, p);
     ::decode(wrlocked_inodes, p);
     ::decode(cap_exports, p);
+    ::decode(client_map, p);
+    ::decode(imported_caps, p);
     ::decode(strong_dirfrags, p);
     ::decode(dirfrag_bases, p);
     ::decode(weak, p);

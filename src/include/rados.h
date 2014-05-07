@@ -64,9 +64,13 @@ struct ceph_pg {
 
 /*
  * pg pool types
+ *
+ * NOTE: These map 1:1 on to the pg_pool_t::TYPE_* values.  They are
+ * duplicated here only for CrushCompiler's benefit.
  */
-#define CEPH_PG_TYPE_REP     1
-#define CEPH_PG_TYPE_RAID4   2
+#define CEPH_PG_TYPE_REPLICATED 1
+/* #define CEPH_PG_TYPE_RAID4   2   never implemented */
+#define CEPH_PG_TYPE_ERASURE 3
 
 /*
  * stable_mod func is used to control number of placement groups.
@@ -117,6 +121,9 @@ extern const char *ceph_osd_state_name(int s);
 #define CEPH_OSD_IN  0x10000
 #define CEPH_OSD_OUT 0
 
+#define CEPH_OSD_MAX_PRIMARY_AFFINITY 0x10000
+#define CEPH_OSD_DEFAULT_PRIMARY_AFFINITY 0x10000
+
 
 /*
  * osd map flag bits
@@ -134,6 +141,7 @@ extern const char *ceph_osd_state_name(int s);
 #define CEPH_OSDMAP_NORECOVER (1<<10) /* block osd recovery and backfill */
 #define CEPH_OSDMAP_NOSCRUB  (1<<11) /* block periodic scrub */
 #define CEPH_OSDMAP_NODEEP_SCRUB (1<<12) /* block periodic deep-scrub */
+#define CEPH_OSDMAP_NOTIERAGENT (1<<13) /* disable tiering agent */
 
 /*
  * The error code to return when an OSD can't handle a write
@@ -153,6 +161,7 @@ extern const char *ceph_osd_state_name(int s);
 #define CEPH_OSD_OP_MODE_WR    0x2000
 #define CEPH_OSD_OP_MODE_RMW   0x3000
 #define CEPH_OSD_OP_MODE_SUB   0x4000
+#define CEPH_OSD_OP_MODE_CACHE 0x8000
 
 #define CEPH_OSD_OP_TYPE       0x0f00
 #define CEPH_OSD_OP_TYPE_LOCK  0x0100
@@ -182,6 +191,9 @@ enum {
 	CEPH_OSD_OP_LIST_WATCHERS = CEPH_OSD_OP_MODE_RD | CEPH_OSD_OP_TYPE_DATA | 9,
 
 	CEPH_OSD_OP_LIST_SNAPS = CEPH_OSD_OP_MODE_RD | CEPH_OSD_OP_TYPE_DATA | 10,
+
+	/* sync */
+	CEPH_OSD_OP_SYNC_READ = CEPH_OSD_OP_MODE_RD | CEPH_OSD_OP_TYPE_DATA | 11,
 
 	/* write */
 	CEPH_OSD_OP_WRITE     = CEPH_OSD_OP_MODE_WR | CEPH_OSD_OP_TYPE_DATA | 1,
@@ -217,11 +229,21 @@ enum {
 	CEPH_OSD_OP_OMAPRMKEYS    = CEPH_OSD_OP_MODE_WR | CEPH_OSD_OP_TYPE_DATA | 24,
 	CEPH_OSD_OP_OMAP_CMP      = CEPH_OSD_OP_MODE_RD | CEPH_OSD_OP_TYPE_DATA | 25,
 
+	/* tiering */
 	CEPH_OSD_OP_COPY_FROM = CEPH_OSD_OP_MODE_WR | CEPH_OSD_OP_TYPE_DATA | 26,
 	CEPH_OSD_OP_COPY_GET_CLASSIC = CEPH_OSD_OP_MODE_RD | CEPH_OSD_OP_TYPE_DATA | 27,
 	CEPH_OSD_OP_UNDIRTY   = CEPH_OSD_OP_MODE_WR | CEPH_OSD_OP_TYPE_DATA | 28,
 	CEPH_OSD_OP_ISDIRTY   = CEPH_OSD_OP_MODE_RD | CEPH_OSD_OP_TYPE_DATA | 29,
 	CEPH_OSD_OP_COPY_GET = CEPH_OSD_OP_MODE_RD | CEPH_OSD_OP_TYPE_DATA | 30,
+	CEPH_OSD_OP_CACHE_FLUSH = CEPH_OSD_OP_MODE_CACHE | CEPH_OSD_OP_TYPE_DATA | 31,
+	CEPH_OSD_OP_CACHE_EVICT = CEPH_OSD_OP_MODE_CACHE | CEPH_OSD_OP_TYPE_DATA | 32,
+	CEPH_OSD_OP_CACHE_TRY_FLUSH = CEPH_OSD_OP_MODE_CACHE | CEPH_OSD_OP_TYPE_DATA | 33,
+
+	/* convert tmap to omap */
+	CEPH_OSD_OP_TMAP2OMAP = CEPH_OSD_OP_MODE_RMW | CEPH_OSD_OP_TYPE_DATA | 34,
+
+	/* hints */
+	CEPH_OSD_OP_SETALLOCHINT = CEPH_OSD_OP_MODE_WR | CEPH_OSD_OP_TYPE_DATA | 35,
 
 	/** multi **/
 	CEPH_OSD_OP_CLONERANGE = CEPH_OSD_OP_MODE_WR | CEPH_OSD_OP_TYPE_MULTI | 1,
@@ -266,6 +288,8 @@ enum {
 	/** pg **/
 	CEPH_OSD_OP_PGLS      = CEPH_OSD_OP_MODE_RD | CEPH_OSD_OP_TYPE_PG | 1,
 	CEPH_OSD_OP_PGLS_FILTER = CEPH_OSD_OP_MODE_RD | CEPH_OSD_OP_TYPE_PG | 2,
+	CEPH_OSD_OP_PG_HITSET_LS = CEPH_OSD_OP_MODE_RD | CEPH_OSD_OP_TYPE_PG | 3,
+	CEPH_OSD_OP_PG_HITSET_GET = CEPH_OSD_OP_MODE_RD | CEPH_OSD_OP_TYPE_PG | 4,
 };
 
 static inline int ceph_osd_op_type_lock(int op)
@@ -306,6 +330,10 @@ static inline int ceph_osd_op_mode_modify(int op)
 {
 	return op & CEPH_OSD_OP_MODE_WR;
 }
+static inline int ceph_osd_op_mode_cache(int op)
+{
+	return op & CEPH_OSD_OP_MODE_CACHE;
+}
 
 /*
  * note that the following tmap stuff is also defined in the ceph librados.h
@@ -340,6 +368,12 @@ enum {
 	CEPH_OSD_FLAG_EXEC_PUBLIC =    0x1000,  /* DEPRECATED op may exec (public) */
 	CEPH_OSD_FLAG_LOCALIZE_READS = 0x2000,  /* read from nearby replica, if any */
 	CEPH_OSD_FLAG_RWORDERED =      0x4000,  /* order wrt concurrent reads */
+	CEPH_OSD_FLAG_IGNORE_CACHE =   0x8000,  /* ignore cache logic */
+	CEPH_OSD_FLAG_SKIPRWLOCKS =   0x10000,  /* skip rw locks */
+	CEPH_OSD_FLAG_IGNORE_OVERLAY =0x20000,  /* ignore pool overlay */
+	CEPH_OSD_FLAG_FLUSH =         0x40000,  /* this is part of flush */
+	CEPH_OSD_FLAG_MAP_SNAP_CLONE =0x80000,  /* map snap direct to clone id
+						 */
 };
 
 enum {
@@ -352,7 +386,6 @@ enum {
 
 /* xattr comparison */
 enum {
-	CEPH_OSD_CMPXATTR_OP_NOP = 0,
 	CEPH_OSD_CMPXATTR_OP_EQ  = 1,
 	CEPH_OSD_CMPXATTR_OP_NE  = 2,
 	CEPH_OSD_CMPXATTR_OP_GT  = 3,
@@ -364,6 +397,18 @@ enum {
 enum {
 	CEPH_OSD_CMPXATTR_MODE_STRING = 1,
 	CEPH_OSD_CMPXATTR_MODE_U64    = 2
+};
+
+enum {
+	CEPH_OSD_COPY_FROM_FLAG_FLUSH = 1,     /* part of a flush operation */
+	CEPH_OSD_COPY_FROM_FLAG_IGNORE_OVERLAY = 2,  /* ignore pool overlay */
+	CEPH_OSD_COPY_FROM_FLAG_IGNORE_CACHE = 4, /* ignore osd cache logic */
+	CEPH_OSD_COPY_FROM_FLAG_MAP_SNAP_CLONE = 8, /* map snap direct to
+						     * cloneid */
+};
+
+enum {
+	CEPH_OSD_TMAP2OMAP_NULLOK = 1,
 };
 
 /*
@@ -417,7 +462,18 @@ struct ceph_osd_op {
 		struct {
 			__le64 snapid;
 			__le64 src_version;
+			__u8 flags;
 		} __attribute__ ((packed)) copy_from;
+		struct {
+			struct ceph_timespec stamp;
+		} __attribute__ ((packed)) hit_set_get;
+		struct {
+			__u8 flags;
+		} __attribute__ ((packed)) tmap2omap;
+		struct {
+			__le64 expected_object_size;
+			__le64 expected_write_size;
+		} __attribute__ ((packed)) alloc_hint;
 	};
 	__le32 payload_len;
 } __attribute__ ((packed));

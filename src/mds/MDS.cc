@@ -117,7 +117,8 @@ MDS::MDS(const std::string &n, Messenger *m, MonClient *mc) :
   mdsmap = new MDSMap;
   osdmap = new OSDMap;
 
-  objecter = new Objecter(m->cct, messenger, monc, osdmap, mds_lock, timer);
+  objecter = new Objecter(m->cct, messenger, monc, osdmap, mds_lock, timer,
+			  0, 0);
   objecter->unset_honor_osdmap_full();
 
   filer = new Filer(objecter);
@@ -134,6 +135,8 @@ MDS::MDS(const std::string &n, Messenger *m, MonClient *mc) :
 
   server = new Server(this);
   locker = new Locker(this, mdcache);
+
+  dispatch_depth = 0;
 
   // clients
   last_client_mdsmap_bcast = 0;
@@ -479,6 +482,33 @@ int MDS::init(int wanted_state)
     return 0;
   }
 
+  objecter->init_locked();
+
+  monc->sub_want("mdsmap", 0, 0);
+  monc->renew_subs();
+
+  mds_lock.Unlock();
+
+  // verify that osds support tmap2omap
+  while (true) {
+    objecter->maybe_request_map();
+    objecter->wait_for_osd_map();
+    uint64_t osd_features = objecter->osdmap->get_up_osd_features();
+    if (osd_features & CEPH_FEATURE_OSD_TMAP2OMAP)
+      break;
+    if (objecter->osdmap->get_num_up_osds() > 0) {
+        derr << "*** one or more OSDs do not support TMAP2OMAP; upgrade OSDs before starting MDS (or downgrade MDS) ***" << dendl;
+    } else {
+        derr << "*** no OSDs are up as of epoch " << objecter->osdmap->get_epoch() << ", waiting" << dendl;
+    }
+    sleep(10);
+  }
+
+  mds_lock.Lock();
+  if (want_state == CEPH_MDS_STATE_DNE) {
+    suicide();  // we could do something more graceful here
+  }
+
   timer.init();
 
   if (wanted_state==MDSMap::STATE_BOOT && g_conf->mds_standby_replay)
@@ -516,11 +546,6 @@ int MDS::init(int wanted_state)
   whoami = -1;
   messenger->set_myname(entity_name_t::MDS(whoami));
   
-  objecter->init_locked();
-
-  monc->sub_want("mdsmap", 0, 0);
-  monc->renew_subs();
-
   // schedule tick
   reset_tick();
 
@@ -588,6 +613,8 @@ void MDS::tick()
   
   if (is_active()) {
     balancer->tick();
+    mdcache->find_stale_fragment_freeze();
+    mdcache->migrator->find_stale_export_freeze();
     if (snapserver)
       snapserver->check_osd_map(false);
   }
@@ -622,7 +649,8 @@ void MDS::beacon_send()
   beacon->set_standby_for_name(standby_for_name);
 
   // include _my_ feature set
-  CompatSet mdsmap_compat(get_mdsmap_compat_set());
+  CompatSet mdsmap_compat(get_mdsmap_compat_set_default());
+  mdsmap_compat.merge(mdsmap->compat);
   beacon->set_compat(mdsmap_compat);
 
   monc->send_mon_message(beacon);
@@ -720,6 +748,9 @@ void MDS::handle_command(MMonCommand *m)
   }
   else if (m->cmd[0] == "exit") {
     suicide();
+  }
+  else if (m->cmd[0] == "respawn") {
+    respawn();
   }
   else if (m->cmd[0] == "session" && m->cmd[1] == "kill") {
     Session *session = sessionmap.get_session(entity_name_t(CEPH_ENTITY_TYPE_CLIENT,
@@ -845,7 +876,7 @@ void MDS::handle_mds_map(MMDSMap *m)
   monc->sub_got("mdsmap", mdsmap->get_epoch());
 
   // verify compatset
-  CompatSet mdsmap_compat(get_mdsmap_compat_set());
+  CompatSet mdsmap_compat(get_mdsmap_compat_set_all());
   dout(10) << "     my compat " << mdsmap_compat << dendl;
   dout(10) << " mdsmap compat " << mdsmap->compat << dendl;
   if (!mdsmap_compat.writeable(mdsmap->compat)) {
@@ -966,9 +997,10 @@ void MDS::handle_mds_map(MMDSMap *m)
     } else {
       // did i just recover?
       if ((is_active() || is_clientreplay()) &&
-          (oldstate == MDSMap::STATE_REJOIN ||
+          (oldstate == MDSMap::STATE_CREATING ||
+	   oldstate == MDSMap::STATE_REJOIN ||
 	   oldstate == MDSMap::STATE_RECONNECT))
-        recovery_done();
+        recovery_done(oldstate);
 
       if (is_active()) {
         active_start();
@@ -995,7 +1027,8 @@ void MDS::handle_mds_map(MMDSMap *m)
   
   // RESOLVE
   // is someone else newly resolving?
-  if (is_resolve() || is_rejoin() || is_clientreplay() || is_active() || is_stopping()) {
+  if (is_resolve() || is_reconnect() || is_rejoin() ||
+      is_clientreplay() || is_active() || is_stopping()) {
     if (!oldmap->is_resolving() && mdsmap->is_resolving()) {
       set<int> resolve;
       mdsmap->get_mds_set(resolve, MDSMap::STATE_RESOLVE);
@@ -1016,28 +1049,31 @@ void MDS::handle_mds_map(MMDSMap *m)
     if (g_conf->mds_dump_cache_after_rejoin &&
 	oldmap->is_rejoining() && !mdsmap->is_rejoining()) 
       mdcache->dump_cache();      // for DEBUG only
-  
-    // ACTIVE|CLIENTREPLAY|REJOIN => we can discover from them.
-    set<int> olddis, dis;
-    oldmap->get_mds_set(olddis, MDSMap::STATE_ACTIVE);
-    oldmap->get_mds_set(olddis, MDSMap::STATE_CLIENTREPLAY);
-    oldmap->get_mds_set(olddis, MDSMap::STATE_REJOIN);
-    mdsmap->get_mds_set(dis, MDSMap::STATE_ACTIVE);
-    mdsmap->get_mds_set(dis, MDSMap::STATE_CLIENTREPLAY);
-    mdsmap->get_mds_set(dis, MDSMap::STATE_REJOIN);
-    for (set<int>::iterator p = dis.begin(); p != dis.end(); ++p) 
-      if (*p != whoami &&            // not me
-	  olddis.count(*p) == 0) {  // newly so?
-	mdcache->kick_discovers(*p);
-	mdcache->kick_open_ino_peers(*p);
-      }
+
+    if (oldstate >= MDSMap::STATE_REJOIN) {
+      // ACTIVE|CLIENTREPLAY|REJOIN => we can discover from them.
+      set<int> olddis, dis;
+      oldmap->get_mds_set(olddis, MDSMap::STATE_ACTIVE);
+      oldmap->get_mds_set(olddis, MDSMap::STATE_CLIENTREPLAY);
+      oldmap->get_mds_set(olddis, MDSMap::STATE_REJOIN);
+      mdsmap->get_mds_set(dis, MDSMap::STATE_ACTIVE);
+      mdsmap->get_mds_set(dis, MDSMap::STATE_CLIENTREPLAY);
+      mdsmap->get_mds_set(dis, MDSMap::STATE_REJOIN);
+      for (set<int>::iterator p = dis.begin(); p != dis.end(); ++p)
+	if (*p != whoami &&            // not me
+	    olddis.count(*p) == 0) {  // newly so?
+	  mdcache->kick_discovers(*p);
+	  mdcache->kick_open_ino_peers(*p);
+	}
+    }
   }
 
   if (oldmap->is_degraded() && !mdsmap->is_degraded() && state >= MDSMap::STATE_ACTIVE)
     dout(1) << "cluster recovered." << dendl;
 
   // did someone go active?
-  if (is_clientreplay() || is_active() || is_stopping()) {
+  if (oldstate >= MDSMap::STATE_CLIENTREPLAY &&
+      (is_clientreplay() || is_active() || is_stopping())) {
     set<int> oldactive, active;
     oldmap->get_mds_set(oldactive, MDSMap::STATE_ACTIVE);
     oldmap->get_mds_set(oldactive, MDSMap::STATE_CLIENTREPLAY);
@@ -1161,19 +1197,19 @@ void MDS::boot_create()
 
   // write empty sessionmap
   sessionmap.save(fin.new_sub());
-  
+
   // initialize tables
   if (mdsmap->get_tableserver() == whoami) {
     dout(10) << "boot_create creating fresh anchortable" << dendl;
     anchorserver->reset();
     anchorserver->save(fin.new_sub());
-    anchorserver->handle_mds_recovery(whoami);
 
     dout(10) << "boot_create creating fresh snaptable" << dendl;
     snapserver->reset();
     snapserver->save(fin.new_sub());
-    snapserver->handle_mds_recovery(whoami);
   }
+
+  assert(g_conf->mds_kill_create_at != 1);
 
   // ok now journal it
   mdlog->journal_segment_subtree_map();
@@ -1530,7 +1566,7 @@ void MDS::active_start()
   finish_contexts(g_ceph_context, waiting_for_active);  // kick waiters
 }
 
-void MDS::recovery_done()
+void MDS::recovery_done(int oldstate)
 {
   dout(1) << "recovery_done -- successful recovery!" << dendl;
   assert(is_clientreplay() || is_active());
@@ -1544,6 +1580,9 @@ void MDS::recovery_done()
     anchorserver->finish_recovery(active);
     snapserver->finish_recovery(active);
   }
+
+  if (oldstate == MDSMap::STATE_CREATING)
+    return;
 
   mdcache->start_recovered_truncates();
   mdcache->do_file_recover();
@@ -1660,13 +1699,25 @@ void MDS::respawn()
   }
   new_argv[orig_argc] = NULL;
 
-  char buf[PATH_MAX];
-  char *cwd = getcwd(buf, sizeof(buf));
-  assert(cwd);
-  dout(1) << " cwd " << cwd << dendl;
+  /* Determine the path to our executable, try to read
+   * linux-specific /proc/ path first */
+  char exe_path[PATH_MAX];
+  ssize_t exe_path_bytes = readlink("/proc/self/exe", exe_path, sizeof(exe_path));
+  if (exe_path_bytes == -1) {
+    /* Print CWD for the user's interest */
+    char buf[PATH_MAX];
+    char *cwd = getcwd(buf, sizeof(buf));
+    assert(cwd);
+    dout(1) << " cwd " << cwd << dendl;
+
+    /* Fall back to a best-effort: just running in our CWD */
+    strncpy(exe_path, orig_argv[0], sizeof(exe_path) - 1);
+  }
+
+  dout(1) << " exe_path " << exe_path << dendl;
 
   unblock_all_signals(NULL);
-  execv(orig_argv[0], new_argv);
+  execv(exe_path, new_argv);
 
   dout(0) << "respawn execv " << orig_argv[0]
 	  << " failed with " << cpp_strerror(errno) << dendl;
@@ -1685,7 +1736,9 @@ bool MDS::ms_dispatch(Message *m)
     m->put();
     ret = true;
   } else {
+    inc_dispatch_depth();
     ret = _dispatch(m);
+    dec_dispatch_depth();
   }
   mds_lock.Unlock();
   return ret;
@@ -1887,6 +1940,9 @@ bool MDS::_dispatch(Message *m)
     }
   }
 
+  if (dispatch_depth > 1)
+    return true;
+
   // finish any triggered contexts
   while (!finished_queue.empty()) {
     dout(7) << "mds has " << finished_queue.size() << " queued contexts" << dendl;
@@ -1980,6 +2036,7 @@ bool MDS::_dispatch(Message *m)
   // hack: thrash fragments
   for (int i=0; i<g_conf->mds_thrash_fragments; i++) {
     if (!is_active()) break;
+    if (mdcache->get_num_fragmenting_dirs() > 5) break;
     dout(7) << "mds thrashing fragments pass " << (i+1) << "/" << g_conf->mds_thrash_fragments << dendl;
     
     // pick a random dir inode
@@ -1991,9 +2048,10 @@ bool MDS::_dispatch(Message *m)
     CDir *dir = ls.front();
     if (!dir->get_parent_dir()) continue;    // must be linked.
     if (!dir->is_auth()) continue;           // must be auth.
-    if (dir->get_frag() == frag_t() || (rand() % 3 == 0)) {
+    frag_t fg = dir->get_frag();
+    if (fg == frag_t() || (rand() % (1 << fg.bits()) == 0))
       mdcache->split_dir(dir, 1);
-    } else
+    else
       balancer->queue_merge(dir);
   }
 
@@ -2069,6 +2127,7 @@ bool MDS::ms_handle_reset(Connection *con)
       if (session->is_closed()) {
 	dout(3) << "ms_handle_reset closing connection for session " << session->info.inst << dendl;
 	messenger->mark_down(con);
+	con->set_priv(NULL);
 	sessionmap.remove_session(session);
       }
       session->put();
@@ -2097,6 +2156,7 @@ void MDS::ms_handle_remote_reset(Connection *con)
       if (session->is_closed()) {
 	dout(3) << "ms_handle_remote_reset closing connection for session " << session->info.inst << dendl;
 	messenger->mark_down(con);
+	con->set_priv(NULL);
 	sessionmap.remove_session(session);
       }
       session->put();

@@ -58,7 +58,7 @@ Building packages
 You can build packages for Debian or Debian-derived (e.g., Ubuntu)
 systems with
 
-$ sudo apt-get dpkg-dev
+$ sudo apt-get install dpkg-dev
 $ dpkg-checkbuilddeps        # make sure we have all dependencies
 $ dpkg-buildpackage
 
@@ -99,7 +99,6 @@ To build the documentation, ensure that you are in the top-level `/ceph director
 Build Prerequisites
 ===================
 
-
 debian-based
 ------------
 To build the source code, you must install the following:
@@ -116,6 +115,7 @@ To build the source code, you must install the following:
 - libtool
 - libfcgi
 - libfcgi-dev
+- xfslibs-dev
 - libfuse-dev
 - linux-kernel-headers
 - libcrypto++-dev
@@ -123,8 +123,10 @@ To build the source code, you must install the following:
 - libgoogle-perftools-dev
 - libkeyutils-dev
 - uuid-dev
+- libblkid-dev
 - libatomic-ops-dev
 - libboost-program-options-dev
+- libboost-system-dev
 - libboost-thread-dev
 - libexpat1-dev
 - libleveldb-dev
@@ -135,7 +137,9 @@ To build the source code, you must install the following:
 
 For example:
 
-	$ apt-get install automake autoconf pkg-config gcc g++ make libboost-dev libedit-dev libssl-dev libtool libfcgi libfcgi-dev libfuse-dev linux-kernel-headers libcrypto++-dev libaio-dev libgoogle-perftools-dev libkeyutils-dev uuid-dev libatomic-ops-dev libboost-program-options-dev libboost-thread-dev libexpat1-dev libleveldb-dev libsnappy-dev libcurl4-gnutls-dev python-argparse python-flask
+	$ apt-get install automake autoconf pkg-config gcc g++ make libboost-dev libedit-dev libssl-dev libtool libfcgi libfcgi-dev xfslibs-dev libfuse-dev linux-kernel-headers libcrypto++-dev libaio-dev libgoogle-perftools-dev libkeyutils-dev uuid-dev libblkid-dev libatomic-ops-dev libboost-program-options-dev libboost-system-dev libboost-thread-dev libexpat1-dev libleveldb-dev libsnappy-dev libcurl4-gnutls-dev python-argparse python-flask python-nose
+
+Note: libsnappy-dev and libleveldb-dev are not available upstream for natty, oneiric, and squeeze.  Backports for Ceph can be found at ceph.com/debian-leveldb.
 
 rpm-based
 ---------
@@ -144,12 +148,20 @@ These are the rpm packages needed to install in an rpm-based OS:
     autoconf
     automake
     gcc
+    gcc-c++
     make
     libtool
     python-argparse
     python-flask
     libuuid-devel
+    libblkid-devel
+    keyutils-libs-devel
+    cryptopp-devel
     nss-devel
+    fcgi-devel
+    expat-devel
+    libcurl-devel
+    xfsprogs-devel
     fuse-devel
     gperftools-devel
     libedit-devel
@@ -158,3 +170,8 @@ These are the rpm packages needed to install in an rpm-based OS:
     leveldb-devel
     libaio-devel
     boost-devel
+
+For example:
+
+	$ yum install autoconf automake gcc gcc-c++ make libtool python-argparse python-flask libuuid-devel libblkid-devel keyutils-libs-devel cryptopp-devel nss-devel fcgi-devel expat-devel libcurl-devel xfsprogs-devel fuse-devel gperftools-devel libedit-devel libatomic_ops-devel snappy-devel leveldb-devel libaio-devel boost-devel python-nose
+

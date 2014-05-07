@@ -2,13 +2,17 @@
 # -*- makefile -*-
 #export DH_VERBOSE=1
 
-export DESTDIR=$(CURDIR)/debian/tmp
+# minimise needless linking
+export DEB_LDFLAGS_MAINT_APPEND= -Wl,--as-needed
 
 # Enable hardening
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
-include /usr/share/dpkg/buildflags.mk
 
 export DEB_HOST_ARCH      ?= $(shell dpkg-architecture -qDEB_HOST_ARCH)
+
+export JAVA_HOME=/usr/lib/jvm/default-java
+## Set JAVAC to prevent FTBFS due to incorrect use of 'gcj' if found (see "m4/ac_prog_javac.m4").
+export JAVAC=javac
 
 extraopts += --disable-silent-rules
 extraopts += --with-ocf --with-rest-bench --with-nss
@@ -22,7 +26,7 @@ ifeq ($(DEB_HOST_ARCH), armel)
 endif
 
 # Only selected architectures support gperftools
-gperftools_archs = i386 amd64 powerpc armhf
+gperftools_archs = i386 amd64 powerpc armhf ppc64el
 ifneq (,$(filter $(DEB_HOST_ARCH), $(gperftools_archs)))
   extraopts += --with-tcmalloc
 else
@@ -33,27 +37,26 @@ endif
 extraopts += --with-system-libs3
 
 %:
-	dh $@ --with javahelper --with python2 --with autoreconf --parallel
+	dh $@ --with javahelper,python2,autoreconf --parallel
+
+# use --as-needed only if supported by dh-autoreconf (to simplify backporting)
+DH_AS_NEEDED=$(shell dpkg --compare-versions $$(dpkg --status dh-autoreconf | grep Version | cut -d' ' -f2) ge 6 && echo --as-needed)
+override_dh_autoreconf:
+	dh_autoreconf $(DH_AS_NEEDED)
 
 override_dh_auto_configure:
 	dh_auto_configure -- $(extraopts)
 
 override_dh_auto_build:
 	dh_auto_build
-	cp src/init-ceph debian/ceph.init
-	cp src/init-radosgw debian/radosgw.init
-	cp src/init-rbdmap debian/ceph.rbdmap.init
-	cp src/logrotate.conf debian/ceph.logrotate
-	cp src/rgw/logrotate.conf debian/radosgw.logrotate
+	cp -v src/upstart/rbdmap.conf debian/ceph.rbdmap.upstart
 
 override_dh_auto_clean:
 	dh_auto_clean
-	rm -f debian/ceph.init debian/radosgw.init debian/ceph.rbdmap.init
-	rm -f debian/ceph.logrotate debian/radosgw.logrotate
-	rm -f debian/*.upstart
+	rm -fv debian/*.upstart
 
 override_dh_auto_install:
-	dh_auto_install
+	dh_auto_install --destdir=$(CURDIR)/debian/tmp
 
 override_dh_installinit:
 	dh_installinit --no-start
@@ -61,18 +64,18 @@ override_dh_installinit:
 	# Install upstart configurations using dh_installinit
 	for conf in `ls -1 src/upstart/ceph*.conf | grep -v mds`; do \
         name=`basename $$conf | cut -d . -f 1`; \
-        cp $$conf debian/ceph.$$name.upstart; \
+        cp -v $$conf debian/ceph.$$name.upstart; \
         dh_installinit -pceph --no-start --name=$$name; \
     done
 	for conf in `ls -1 src/upstart/ceph-mds*.conf`; do \
         name=`basename $$conf | cut -d . -f 1`; \
-        cp $$conf debian/ceph-mds.$$name.upstart; \
+        cp -v $$conf debian/ceph-mds.$$name.upstart; \
         dh_installinit -pceph-mds --no-start --name=$$name; \
     done
 	for conf in `ls -1 src/upstart/radosgw*.conf`; do \
         name=`basename $$conf | cut -d . -f 1`; \
         [ $$name = "radosgw" ] && name="radosgw-instance";\
-        cp $$conf debian/radosgw.$$name.upstart; \
+        cp -v $$conf debian/radosgw.$$name.upstart; \
         dh_installinit -pradosgw --no-start --name=$$name; \
     done
 

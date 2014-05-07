@@ -29,6 +29,7 @@ libcommon_la_SOURCES = \
 	common/safe_io.c \
 	common/snap_types.cc \
 	common/str_list.cc \
+	common/str_map.cc \
 	common/errno.cc \
 	common/RefCountedObj.cc \
 	common/blkdev.cc \
@@ -39,6 +40,7 @@ libcommon_la_SOURCES = \
 	common/buffer.cc \
 	common/code_environment.cc \
 	common/dout.cc \
+	common/histogram.cc \
 	common/signal.cc \
 	common/simple_spin.cc \
 	common/Thread.cc \
@@ -66,11 +68,8 @@ libcommon_la_SOURCES = \
 	common/ceph_frag.cc \
 	common/addr_parsing.c \
 	common/hobject.cc \
-	common/bloom_filter.cc
-
-if LINUX
-libcommon_la_SOURCES += common/secret.c
-endif
+	common/bloom_filter.cc \
+	common/linux_version.c
 
 # these should go out of libcommon
 libcommon_la_SOURCES += \
@@ -79,6 +78,8 @@ libcommon_la_SOURCES += \
 	mon/MonMap.cc \
 	osd/OSDMap.cc \
 	osd/osd_types.cc \
+	osd/ECMsgTypes.cc \
+	osd/HitSet.cc \
 	mds/MDSMap.cc \
 	mds/inode_backtrace.cc \
 	mds/mdstypes.cc 
@@ -106,9 +107,9 @@ noinst_HEADERS += \
 
 # important; libmsg before libauth!
 LIBCOMMON_DEPS += \
+	$(LIBERASURE_CODE) \
 	$(LIBMSG) $(LIBAUTH) \
-	$(LIBCRUSH) $(LIBJSON_SPIRIT) $(LIBLOG) $(LIBARCH) \
-	-lkeyutils
+	$(LIBCRUSH) $(LIBJSON_SPIRIT) $(LIBLOG) $(LIBARCH)
 
 if LINUX
 LIBCOMMON_DEPS += -lrt
@@ -137,6 +138,7 @@ noinst_HEADERS += \
 	common/fd.h \
 	common/version.h \
 	common/hex.h \
+	common/histogram.h \
 	common/entity_name.h \
 	common/errno.h \
 	common/environment.h \
@@ -195,7 +197,8 @@ noinst_HEADERS += \
 	common/AsyncReserver.h \
 	common/sync_filesystem.h \
 	common/cmdparse.h \
-	common/hobject.h
+	common/hobject.h \
+	common/linux_version.h
 
 noinst_LTLIBRARIES += libcommon.la
 

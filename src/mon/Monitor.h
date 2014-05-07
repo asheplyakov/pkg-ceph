@@ -51,7 +51,7 @@
 #include "mon/MonitorDBStore.h"
 
 #include <memory>
-#include <tr1/memory>
+#include "include/memory.h"
 #include <errno.h>
 
 
@@ -102,6 +102,7 @@ struct MRoute;
 struct MForward;
 struct MTimeCheck;
 struct MMonHealth;
+struct MonCommand;
 
 #define COMPAT_SET_LOC "feature_set"
 
@@ -138,6 +139,9 @@ public:
   AuthMethodList auth_service_required;
 
   CompatSet features;
+
+  const MonCommand *leader_supported_mon_commands;
+  int leader_supported_mon_commands_size;
 
 private:
   void new_tick();
@@ -191,12 +195,18 @@ private:
   Paxos *paxos;
   Elector elector;
   friend class Elector;
+
+  /// features we require of peers (based on on-disk compatset)
+  uint64_t required_features;
   
   int leader;            // current leader (to best of knowledge)
   set<int> quorum;       // current active set of monitors (if !starting)
   utime_t leader_since;  // when this monitor became the leader, if it is the leader
   utime_t exited_quorum; // time detected as not in quorum; 0 if in
   uint64_t quorum_features;  ///< intersection of quorum member feature bits
+  bufferlist supported_commands_bl; // encoded MonCommands we support
+  bufferlist classic_commands_bl; // encoded MonCommands supported by Dumpling
+  set<int> classic_mons; // set of "classic" monitors; only valid on leader
 
   set<string> outside_quorum;
 
@@ -509,15 +519,20 @@ public:
   epoch_t get_epoch();
   int get_leader() { return leader; }
   const set<int>& get_quorum() { return quorum; }
-  set<string> get_quorum_names() {
-    set<string> q;
+  list<string> get_quorum_names() {
+    list<string> q;
     for (set<int>::iterator p = quorum.begin(); p != quorum.end(); ++p)
-      q.insert(monmap->get_name(*p));
+      q.push_back(monmap->get_name(*p));
     return q;
   }
   uint64_t get_quorum_features() const {
     return quorum_features;
   }
+  uint64_t get_required_features() const {
+    return quorum_features;
+  }
+  void apply_quorum_to_compatset_features();
+  void apply_compatset_features_to_quorum_requirements();
 
 private:
   void _reset();   ///< called from bootstrap, start_, or join_election
@@ -526,11 +541,24 @@ public:
   void join_election();
   void start_election();
   void win_standalone_election();
+  // end election (called by Elector)
   void win_election(epoch_t epoch, set<int>& q,
-		    uint64_t features);         // end election (called by Elector)
+		    uint64_t features,
+		    const MonCommand *cmdset, int cmdsize,
+		    const set<int> *classic_monitors);
   void lose_election(epoch_t epoch, set<int>& q, int l,
 		     uint64_t features); // end election (called by Elector)
   void finish_election();
+
+  const bufferlist& get_supported_commands_bl() {
+    return supported_commands_bl;
+  }
+  const bufferlist& get_classic_commands_bl() {
+    return classic_commands_bl;
+  }
+  const set<int>& get_classic_mons() {
+    return classic_mons;
+  }
 
   void update_logger();
 
@@ -588,10 +616,17 @@ public:
   void handle_get_version(MMonGetVersion *m);
   void handle_subscribe(MMonSubscribe *m);
   void handle_mon_get_map(MMonGetMap *m);
-  bool _allowed_command(MonSession *s, string &module, string& prefix,
-                        map<string,cmd_vartype>& cmdmap);
-  void _mon_status(Formatter *f, ostream& ss);
+  static void _generate_command_map(map<string,cmd_vartype>& cmdmap,
+                                    map<string,string> &param_str_map);
+  static const MonCommand *_get_moncommand(const string &cmd_prefix,
+                                           MonCommand *cmds, int cmds_size);
+  bool _allowed_command(MonSession *s, string &module, string &prefix,
+                        const map<string,cmd_vartype>& cmdmap,
+                        const map<string,string>& param_str_map,
+                        const MonCommand *this_cmd);
+  void get_mon_status(Formatter *f, ostream& ss);
   void _quorum_status(Formatter *f, ostream& ss);
+  void _osdmonitor_prepare_command(cmdmap_t& cmdmap, ostream& ss);
   void _add_bootstrap_peer_hint(string cmd, cmdmap_t& cmdmap, ostream& ss);
   void handle_command(class MMonCommand *m);
   void handle_route(MRoute *m);
@@ -603,7 +638,7 @@ public:
    * @param detailbl optional bufferlist* to fill with a detailed report
    */
   void get_health(string& status, bufferlist *detailbl, Formatter *f);
-  void get_status(stringstream &ss, Formatter *f);
+  void get_cluster_status(stringstream &ss, Formatter *f);
 
   void reply_command(MMonCommand *m, int rc, const string &rs, version_t version);
   void reply_command(MMonCommand *m, int rc, const string &rs, bufferlist& rdata, version_t version);
@@ -633,8 +668,10 @@ public:
     bufferlist request_bl;
     MonSession *session;
     ConnectionRef con;
+    uint64_t con_features;
     entity_inst_t client_inst;
 
+    RoutedRequest() : tid(0), session(NULL), con_features(0) {}
     ~RoutedRequest() {
       if (session)
 	session->put();
@@ -722,6 +759,8 @@ public:
   // features
   static CompatSet get_supported_features();
   static CompatSet get_legacy_features();
+  /// read the ondisk features into the CompatSet pointed to by read_features
+  static void read_features_off_disk(MonitorDBStore *store, CompatSet *read_features);
   void read_features();
   void write_features(MonitorDBStore::Transaction &t);
 
@@ -843,11 +882,25 @@ public:
     void _convert_machines();
     void _convert_paxos();
   };
+
+  static void format_command_descriptions(const MonCommand *commands,
+					  unsigned commands_size,
+					  Formatter *f,
+					  bufferlist *rdata);
+  void get_locally_supported_monitor_commands(const MonCommand **cmds, int *count);
+  void get_classic_monitor_commands(const MonCommand **cmds, int *count);
+  void get_leader_supported_commands(const MonCommand **cmds, int *count);
+  /// the Monitor owns this pointer once you pass it in
+  void set_leader_supported_commands(const MonCommand *cmds, int size);
+  static bool is_keyring_required();
 };
 
 #define CEPH_MON_FEATURE_INCOMPAT_BASE CompatSet::Feature (1, "initial feature set (~v.18)")
 #define CEPH_MON_FEATURE_INCOMPAT_GV CompatSet::Feature (2, "global version sequencing (v0.52)")
 #define CEPH_MON_FEATURE_INCOMPAT_SINGLE_PAXOS CompatSet::Feature (3, "single paxos with k/v store (v0.\?)")
+#define CEPH_MON_FEATURE_INCOMPAT_OSD_ERASURE_CODES CompatSet::Feature(4, "support erasure code pools")
+#define CEPH_MON_FEATURE_INCOMPAT_OSDMAP_ENC CompatSet::Feature(5, "new-style osdmap encoding")
+// make sure you add your feature to Monitor::get_supported_features
 
 long parse_pos_long(const char *s, ostream *pss = NULL);
 
@@ -857,11 +910,53 @@ struct MonCommand {
   string module;
   string req_perms;
   string availability;
-};
 
-void get_command_descriptions(const MonCommand *commands,
-			      unsigned commands_size,
-			      Formatter *f,
-			      bufferlist *rdata);
+  void encode(bufferlist &bl) const {
+    /*
+     * very naughty: deliberately unversioned because individual commands
+     * shouldn't be encoded standalone, only as a full set (which we do
+     * version, see encode_array() below).
+     */
+    ::encode(cmdstring, bl);
+    ::encode(helpstring, bl);
+    ::encode(module, bl);
+    ::encode(req_perms, bl);
+    ::encode(availability, bl);
+  }
+  void decode(bufferlist::iterator &bl) {
+    ::decode(cmdstring, bl);
+    ::decode(helpstring, bl);
+    ::decode(module, bl);
+    ::decode(req_perms, bl);
+    ::decode(availability, bl);
+  }
+  bool operator==(const MonCommand& o) const {
+    return cmdstring == o.cmdstring && helpstring == o.helpstring &&
+	module == o.module && req_perms == o.req_perms &&
+	availability == o.availability;
+  }
+  bool operator!=(const MonCommand& o) const {
+    return !(*this == o);
+  }
+
+  static void encode_array(const MonCommand *cmds, int size, bufferlist &bl) {
+    ENCODE_START(1, 1, bl);
+    uint16_t s = size;
+    ::encode(s, bl);
+    ::encode_array_nohead(cmds, size, bl);
+    ENCODE_FINISH(bl);
+  }
+  static void decode_array(MonCommand **cmds, int *size,
+                           bufferlist::iterator &bl) {
+    DECODE_START(1, bl);
+    uint16_t s = 0;
+    ::decode(s, bl);
+    *size = s;
+    *cmds = new MonCommand[*size];
+    ::decode_array_nohead(*cmds, *size, bl);
+    DECODE_FINISH(bl);
+  }
+};
+WRITE_CLASS_ENCODER(MonCommand);
 
 #endif

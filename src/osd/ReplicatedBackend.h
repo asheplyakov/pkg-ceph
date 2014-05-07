@@ -18,30 +18,24 @@
 #include "OSD.h"
 #include "PGBackend.h"
 #include "osd_types.h"
+#include "../include/memory.h"
 
 struct C_ReplicatedBackend_OnPullComplete;
 class ReplicatedBackend : public PGBackend {
   struct RPGHandle : public PGBackend::RecoveryHandle {
-    map<int, vector<PushOp> > pushes;
-    map<int, vector<PullOp> > pulls;
+    map<pg_shard_t, vector<PushOp> > pushes;
+    map<pg_shard_t, vector<PullOp> > pulls;
   };
   friend struct C_ReplicatedBackend_OnPullComplete;
-private:
-  bool temp_created;
-  const coll_t temp_coll;
-  coll_t get_temp_coll() const {
-    return temp_coll;
-  }
-  bool have_temp_coll() const { return temp_created; }
-
-  // Track contents of temp collection, clear on reset
-  set<hobject_t> temp_contents;
 public:
-  coll_t coll;
-  OSDService *osd;
   CephContext *cct;
 
-  ReplicatedBackend(PGBackend::Listener *pg, coll_t coll, OSDService *osd);
+  ReplicatedBackend(
+    PGBackend::Listener *pg,
+    coll_t coll,
+    coll_t temp_coll,
+    ObjectStore *store,
+    CephContext *cct);
 
   /// @see PGBackend::open_recovery_op
   RPGHandle *_open_recovery_op() {
@@ -59,6 +53,7 @@ public:
   /// @see PGBackend::recover_object
   void recover_object(
     const hobject_t &hoid,
+    eversion_t v,
     ObjectContextRef head,
     ObjectContextRef obc,
     RecoveryHandle *h
@@ -66,43 +61,48 @@ public:
 
   void check_recovery_sources(const OSDMapRef osdmap);
 
+  /// @see PGBackend::delay_message_until_active
+  bool can_handle_while_inactive(OpRequestRef op);
+
   /// @see PGBackend::handle_message
   bool handle_message(
     OpRequestRef op
     );
 
-  void on_change(ObjectStore::Transaction *t);
+  void _on_change(ObjectStore::Transaction *t);
   void clear_state();
   void on_flushed();
 
-  void temp_colls(list<coll_t> *out) {
-    if (temp_created)
-      out->push_back(temp_coll);
+  class RPCRecPred : public IsRecoverablePredicate {
+  public:
+    bool operator()(const set<pg_shard_t> &have) const {
+      return !have.empty();
+    }
+  };
+  IsRecoverablePredicate *get_is_recoverable_predicate() {
+    return new RPCRecPred;
   }
-  void split_colls(
-    pg_t child,
-    int split_bits,
-    int seed,
-    ObjectStore::Transaction *t) {
-    coll_t target = coll_t::make_temp_coll(child);
-    if (!temp_created)
-      return;
-    t->create_collection(target);
-    t->split_collection(
-      temp_coll,
-      split_bits,
-      seed,
-      target);
+
+  class RPCReadPred : public IsReadablePredicate {
+    pg_shard_t whoami;
+  public:
+    RPCReadPred(pg_shard_t whoami) : whoami(whoami) {}
+    bool operator()(const set<pg_shard_t> &have) const {
+      return have.count(whoami);
+    }
+  };
+  IsReadablePredicate *get_is_readable_predicate() {
+    return new RPCReadPred(get_parent()->whoami_shard());
   }
 
   virtual void dump_recovery_info(Formatter *f) const {
     {
       f->open_array_section("pull_from_peer");
-      for (map<int, set<hobject_t> >::const_iterator i = pull_from_peer.begin();
+      for (map<pg_shard_t, set<hobject_t> >::const_iterator i = pull_from_peer.begin();
 	   i != pull_from_peer.end();
 	   ++i) {
 	f->open_object_section("pulling_from");
-	f->dump_int("pull_from", i->first);
+	f->dump_stream("pull_from") << i->first;
 	{
 	  f->open_array_section("pulls");
 	  for (set<hobject_t>::const_iterator j = i->second.begin();
@@ -121,7 +121,7 @@ public:
     }
     {
       f->open_array_section("pushing");
-      for (map<hobject_t, map<int, PushInfo> >::const_iterator i =
+      for (map<hobject_t, map<pg_shard_t, PushInfo> >::const_iterator i =
 	     pushing.begin();
 	   i != pushing.end();
 	   ++i) {
@@ -129,11 +129,11 @@ public:
 	f->dump_stream("pushing") << i->first;
 	{
 	  f->open_array_section("pushing_to");
-	  for (map<int, PushInfo>::const_iterator j = i->second.begin();
+	  for (map<pg_shard_t, PushInfo>::const_iterator j = i->second.begin();
 	       j != i->second.end();
 	       ++j) {
 	    f->open_object_section("push_progress");
-	    f->dump_stream("object_pushing") << j->first;
+	    f->dump_stream("pushing_to") << j->first;
 	    {
 	      f->open_object_section("push_info");
 	      j->second.dump(f);
@@ -149,25 +149,18 @@ public:
     }
   }
 
-  /// List objects in collection
-  int objects_list_partial(
-    const hobject_t &begin,
-    int min,
-    int max,
-    snapid_t seq,
-    vector<hobject_t> *ls,
-    hobject_t *next);
-
-  int objects_list_range(
-    const hobject_t &start,
-    const hobject_t &end,
-    snapid_t seq,
-    vector<hobject_t> *ls);
-
-  int objects_get_attr(
+  int objects_read_sync(
     const hobject_t &hoid,
-    const string &attr,
-    bufferlist *out);
+    uint64_t off,
+    uint64_t len,
+    bufferlist *bl);
+
+  void objects_read_async(
+    const hobject_t &hoid,
+    const list<pair<pair<uint64_t, uint64_t>,
+	       pair<bufferlist*, Context*> > > &to_read,
+    Context *on_complete);
+
 private:
   // push
   struct PushInfo {
@@ -189,7 +182,7 @@ private:
       }
     }
   };
-  map<hobject_t, map<int, PushInfo> > pushing;
+  map<hobject_t, map<pg_shard_t, PushInfo> > pushing;
 
   // pull
   struct PullInfo {
@@ -217,18 +210,10 @@ private:
     }
   };
 
-  coll_t get_temp_coll(ObjectStore::Transaction *t);
-  void add_temp_obj(const hobject_t &oid) {
-    temp_contents.insert(oid);
-  }
-  void clear_temp_obj(const hobject_t &oid) {
-    temp_contents.erase(oid);
-  }
-
   map<hobject_t, PullInfo> pulling;
 
   // Reverse mapping from osd peer to objects beging pulled from that peer
-  map<int, set<hobject_t> > pull_from_peer;
+  map<pg_shard_t, set<hobject_t> > pull_from_peer;
 
   void sub_op_push(OpRequestRef op);
   void sub_op_push_reply(OpRequestRef op);
@@ -246,13 +231,13 @@ private:
   void do_pull(OpRequestRef op);
   void do_push_reply(OpRequestRef op);
 
-  bool handle_push_reply(int peer, PushReplyOp &op, PushOp *reply);
-  void handle_pull(int peer, PullOp &op, PushOp *reply);
+  bool handle_push_reply(pg_shard_t peer, PushReplyOp &op, PushOp *reply);
+  void handle_pull(pg_shard_t peer, PullOp &op, PushOp *reply);
   bool handle_pull_response(
-    int from, PushOp &op, PullOp *response,
+    pg_shard_t from, PushOp &op, PullOp *response,
     list<hobject_t> *to_continue,
     ObjectStore::Transaction *t);
-  void handle_push(int from, PushOp &op, PushReplyOp *response,
+  void handle_push(pg_shard_t from, PushOp &op, PushReplyOp *response,
 		   ObjectStore::Transaction *t);
 
   static void trim_pushed_data(const interval_set<uint64_t> &copy_subset,
@@ -260,18 +245,18 @@ private:
 			       bufferlist data_received,
 			       interval_set<uint64_t> *intervals_usable,
 			       bufferlist *data_usable);
-  void _failed_push(int from, const hobject_t &soid);
+  void _failed_push(pg_shard_t from, const hobject_t &soid);
 
-  void send_pushes(int prio, map<int, vector<PushOp> > &pushes);
+  void send_pushes(int prio, map<pg_shard_t, vector<PushOp> > &pushes);
   void prep_push_op_blank(const hobject_t& soid, PushOp *op);
-  int send_push_op_legacy(int priority, int peer,
+  int send_push_op_legacy(int priority, pg_shard_t peer,
 			  PushOp &pop);
-  int send_pull_legacy(int priority, int peer,
+  int send_pull_legacy(int priority, pg_shard_t peer,
 		       const ObjectRecoveryInfo& recovery_info,
 		       ObjectRecoveryProgress progress);
   void send_pulls(
     int priority,
-    map<int, vector<PullOp> > &pulls);
+    map<pg_shard_t, vector<PullOp> > &pulls);
 
   int build_push_op(const ObjectRecoveryInfo &recovery_info,
 		    const ObjectRecoveryProgress &progress,
@@ -284,7 +269,7 @@ private:
 			const interval_set<uint64_t> &intervals_included,
 			bufferlist data_included,
 			bufferlist omap_header,
-			map<string, bufferptr> &attrs,
+			map<string, bufferlist> &attrs,
 			map<string, bufferlist> &omap_entries,
 			ObjectStore::Transaction *t);
   void submit_push_complete(ObjectRecoveryInfo &recovery_info,
@@ -296,6 +281,7 @@ private:
     interval_set<uint64_t>& data_subset,
     map<hobject_t, interval_set<uint64_t> >& clone_subsets);
   void prepare_pull(
+    eversion_t v,
     const hobject_t& soid,
     ObjectContextRef headctx,
     RPGHandle *h);
@@ -304,13 +290,13 @@ private:
     ObjectContextRef obj,
     RPGHandle *h);
   void prep_push_to_replica(
-    ObjectContextRef obc, const hobject_t& soid, int peer,
+    ObjectContextRef obc, const hobject_t& soid, pg_shard_t peer,
     PushOp *pop);
   void prep_push(ObjectContextRef obc,
-		 const hobject_t& oid, int dest,
+		 const hobject_t& oid, pg_shard_t dest,
 		 PushOp *op);
   void prep_push(ObjectContextRef obc,
-		 const hobject_t& soid, int peer,
+		 const hobject_t& soid, pg_shard_t peer,
 		 eversion_t version,
 		 interval_set<uint64_t> &data_subset,
 		 map<hobject_t, interval_set<uint64_t> >& clone_subsets,
@@ -324,6 +310,109 @@ private:
     const ObjectRecoveryInfo& recovery_info,
     SnapSetContext *ssc
     );
+
+  /**
+   * Client IO
+   */
+  struct InProgressOp {
+    ceph_tid_t tid;
+    set<pg_shard_t> waiting_for_commit;
+    set<pg_shard_t> waiting_for_applied;
+    Context *on_commit;
+    Context *on_applied;
+    OpRequestRef op;
+    eversion_t v;
+    InProgressOp(
+      ceph_tid_t tid, Context *on_commit, Context *on_applied,
+      OpRequestRef op, eversion_t v)
+      : tid(tid), on_commit(on_commit), on_applied(on_applied),
+	op(op), v(v) {}
+    bool done() const {
+      return waiting_for_commit.empty() &&
+	waiting_for_applied.empty();
+    }
+  };
+  map<ceph_tid_t, InProgressOp> in_progress_ops;
+public:
+  PGTransaction *get_transaction();
+  friend class C_OSD_OnOpCommit;
+  friend class C_OSD_OnOpApplied;
+  void submit_transaction(
+    const hobject_t &hoid,
+    const eversion_t &at_version,
+    PGTransaction *t,
+    const eversion_t &trim_to,
+    vector<pg_log_entry_t> &log_entries,
+    boost::optional<pg_hit_set_history_t> &hset_history,
+    Context *on_local_applied_sync,
+    Context *on_all_applied,
+    Context *on_all_commit,
+    ceph_tid_t tid,
+    osd_reqid_t reqid,
+    OpRequestRef op
+    );
+
+private:
+  void issue_op(
+    const hobject_t &soid,
+    const eversion_t &at_version,
+    ceph_tid_t tid,
+    osd_reqid_t reqid,
+    eversion_t pg_trim_to,
+    hobject_t new_temp_oid,
+    hobject_t discard_temp_oid,
+    vector<pg_log_entry_t> &log_entries,
+    boost::optional<pg_hit_set_history_t> &hset_history,
+    InProgressOp *op,
+    ObjectStore::Transaction *op_t);
+  void op_applied(InProgressOp *op);
+  void op_commit(InProgressOp *op);
+  void sub_op_modify_reply(OpRequestRef op);
+  void sub_op_modify(OpRequestRef op);
+
+  struct RepModify {
+    OpRequestRef op;
+    bool applied, committed;
+    int ackerosd;
+    eversion_t last_complete;
+    epoch_t epoch_started;
+
+    uint64_t bytes_written;
+
+    ObjectStore::Transaction opt, localt;
+    
+    RepModify() : applied(false), committed(false), ackerosd(-1),
+		  epoch_started(0), bytes_written(0) {}
+  };
+  typedef ceph::shared_ptr<RepModify> RepModifyRef;
+
+  struct C_OSD_RepModifyApply : public Context {
+    ReplicatedBackend *pg;
+    RepModifyRef rm;
+    C_OSD_RepModifyApply(ReplicatedBackend *pg, RepModifyRef r)
+      : pg(pg), rm(r) {}
+    void finish(int r) {
+      pg->sub_op_modify_applied(rm);
+    }
+  };
+  struct C_OSD_RepModifyCommit : public Context {
+    ReplicatedBackend *pg;
+    RepModifyRef rm;
+    C_OSD_RepModifyCommit(ReplicatedBackend *pg, RepModifyRef r)
+      : pg(pg), rm(r) {}
+    void finish(int r) {
+      pg->sub_op_modify_commit(rm);
+    }
+  };
+  void sub_op_modify_applied(RepModifyRef rm);
+  void sub_op_modify_commit(RepModifyRef rm);
+  bool scrub_supported() { return true; }
+
+  void be_deep_scrub(
+    const hobject_t &obj,
+    ScrubMap::object &o,
+    ThreadPool::TPHandle &handle);
+  uint64_t be_get_ondisk_size(uint64_t logical_size) { return logical_size; }
 };
 
 #endif

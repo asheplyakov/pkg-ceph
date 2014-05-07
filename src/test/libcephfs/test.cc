@@ -69,6 +69,7 @@ TEST(LibCephFS, MountNonExist) {
   ASSERT_EQ(0, ceph_conf_parse_env(cmount, NULL));
   ASSERT_EQ(0, ceph_conf_read_file(cmount, NULL));
   ASSERT_NE(0, ceph_mount(cmount, "/non-exist"));
+  ceph_shutdown(cmount);
 }
 
 TEST(LibCephFS, MountDouble) {
@@ -471,6 +472,45 @@ TEST(LibCephFS, Xattrs) {
 
   ceph_close(cmount, fd);
   ceph_shutdown(cmount);
+
+}
+
+TEST(LibCephFS, Xattrs_ll) {
+  struct ceph_mount_info *cmount;
+  ASSERT_EQ(ceph_create(&cmount, NULL), 0);
+  ASSERT_EQ(0, ceph_conf_parse_env(cmount, NULL));
+  ASSERT_EQ(ceph_conf_read_file(cmount, NULL), 0);
+  ASSERT_EQ(ceph_mount(cmount, NULL), 0);
+
+  char test_xattr_file[256];
+  sprintf(test_xattr_file, "test_xattr_%d", getpid());
+  int fd = ceph_open(cmount, test_xattr_file, O_CREAT, 0666);
+  ASSERT_GT(fd, 0);
+  ceph_close(cmount, fd);
+
+  Inode *root = NULL;
+  Inode *existent_file_handle = NULL;
+  struct stat attr;
+
+  int res = ceph_ll_lookup_root(cmount, &root);
+  ASSERT_EQ(res, 0);
+  res = ceph_ll_lookup(cmount, root, test_xattr_file, &attr, &existent_file_handle, 0, 0);
+  ASSERT_EQ(res, 0);
+
+  const char *valid_name = "user.attrname";
+  const char *value = "attrvalue";
+  char value_buf[256] = { 0 };
+
+  res = ceph_ll_setxattr(cmount, existent_file_handle, valid_name, value, strlen(value), 0, 0, 0);
+  ASSERT_EQ(res, 0);
+
+  res = ceph_ll_getxattr(cmount, existent_file_handle, valid_name, value_buf, 256, 0, 0);
+  ASSERT_EQ(res, (int)strlen(value));
+
+  value_buf[res] = '\0';
+  ASSERT_STREQ(value_buf, value);
+
+  ceph_shutdown(cmount);
 }
 
 TEST(LibCephFS, LstatSlashdot) {
@@ -809,6 +849,8 @@ TEST(LibCephFS, BadFileDesc) {
   ASSERT_EQ(ceph_get_file_stripe_unit(cmount, -1), -EBADF);
   ASSERT_EQ(ceph_get_file_pool(cmount, -1), -EBADF);
   ASSERT_EQ(ceph_get_file_replication(cmount, -1), -EBADF);
+
+  ceph_shutdown(cmount);
 }
 
 TEST(LibCephFS, ReadEmptyFile) {
@@ -1021,24 +1063,24 @@ TEST(LibCephFS, GetExtentOsds) {
   int ret = ceph_get_file_extent_osds(cmount, fd, 0, NULL, NULL, 0);
   EXPECT_GT(ret, 0);
 
-  loff_t len;
+  int64_t len;
   int osds[ret];
 
   /* full stripe extent */
   EXPECT_EQ(ret, ceph_get_file_extent_osds(cmount, fd, 0, &len, osds, ret));
-  EXPECT_EQ(len, (loff_t)stripe_unit);
+  EXPECT_EQ(len, (int64_t)stripe_unit);
 
   /* half stripe extent */
   EXPECT_EQ(ret, ceph_get_file_extent_osds(cmount, fd, stripe_unit/2, &len, osds, ret));
-  EXPECT_EQ(len, (loff_t)stripe_unit/2);
+  EXPECT_EQ(len, (int64_t)stripe_unit/2);
 
   /* 1.5 stripe unit offset -1 byte */
   EXPECT_EQ(ret, ceph_get_file_extent_osds(cmount, fd, 3*stripe_unit/2-1, &len, osds, ret));
-  EXPECT_EQ(len, (loff_t)stripe_unit/2+1);
+  EXPECT_EQ(len, (int64_t)stripe_unit/2+1);
 
   /* 1.5 stripe unit offset +1 byte */
   EXPECT_EQ(ret, ceph_get_file_extent_osds(cmount, fd, 3*stripe_unit/2+1, &len, osds, ret));
-  EXPECT_EQ(len, (loff_t)stripe_unit/2-1);
+  EXPECT_EQ(len, (int64_t)stripe_unit/2-1);
 
   /* only when more than 1 osd */
   if (ret > 1)
@@ -1063,7 +1105,7 @@ TEST(LibCephFS, GetOsdCrushLocation) {
 
   char path[256];
   ASSERT_EQ(ceph_get_osd_crush_location(cmount, 9999999, path, 0), -ENOENT);
-  ASSERT_EQ(ceph_get_osd_crush_location(cmount, -1, path, 0), -ENOENT);
+  ASSERT_EQ(ceph_get_osd_crush_location(cmount, -1, path, 0), -EINVAL);
 
   char test_file[256];
   sprintf(test_file, "test_osds_loc_%d", getpid());

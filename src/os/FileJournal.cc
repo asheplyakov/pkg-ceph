@@ -11,6 +11,7 @@
  * Foundation.  See file COPYING.
  * 
  */
+#include "acconfig.h"
 
 #include "common/debug.h"
 #include "common/errno.h"
@@ -18,7 +19,7 @@
 #include "FileJournal.h"
 #include "include/color.h"
 #include "common/perf_counters.h"
-#include "os/ObjectStore.h"
+#include "os/FileStore.h"
 
 #include "include/compat.h"
 
@@ -31,7 +32,7 @@
 #include <sys/mount.h>
 
 #include "common/blkdev.h"
-
+#include "common/linux_version.h"
 
 #define dout_subsys ceph_subsys_journal
 #undef dout_prefix
@@ -74,8 +75,8 @@ int FileJournal::_open(bool forwrite, bool create)
   fd = TEMP_FAILURE_RETRY(::open(fn.c_str(), flags, 0644));
   if (fd < 0) {
     int err = errno;
-    dout(2) << "FileJournal::_open: unable to open journal: open() failed: "
-	    << cpp_strerror(err) << dendl;
+    dout(2) << "FileJournal::_open unable to open journal "
+	    << fn << ": " << cpp_strerror(err) << dendl;
     return -err;
   }
 
@@ -123,7 +124,7 @@ int FileJournal::_open(bool forwrite, bool create)
   return 0;
 
  out_fd:
-  TEMP_FAILURE_RETRY(::close(fd));
+  VOID_TEMP_FAILURE_RETRY(::close(fd));
   return ret;
 }
 
@@ -158,49 +159,10 @@ int FileJournal::_open_block_device()
   return 0;
 }
 
-static int get_kernel_version(int *a, int *b, int *c)
-{
-  int ret;
-  char buf[128];
-  memset(buf, 0, sizeof(buf));
-  int fd = TEMP_FAILURE_RETRY(::open("/proc/version", O_RDONLY));
-  if (fd < 0) {
-    ret = errno;
-    derr << "get_kernel_version: failed to open /proc/version: "
-	 << cpp_strerror(ret) << dendl;
-    goto out;
-  }
-  ret = safe_read(fd, buf, sizeof(buf) - 1);
-  if (ret < 0) {
-    derr << "get_kernel_version: failed to read from /proc/version: "
-	 << cpp_strerror(ret) << dendl;
-    goto close_fd;
-  }
-
-  if (sscanf(buf, "Linux version %d.%d.%d", a, b, c) != 3) {
-    if (sscanf(buf, "Linux version %d.%d", a, b) != 2) {
-      derr << "get_kernel_version: failed to parse string: '"
-	   << buf << "'" << dendl;
-      ret = EIO;
-      goto close_fd;
-    }
-    *c = 0;
-  }
-
-  dout(0) << " kernel version is " << *a <<"." << *b << "." << *c << dendl;
-  ret = 0;
-
-close_fd:
-  TEMP_FAILURE_RETRY(::close(fd));
-out:
-  return ret;
-}
-
 void FileJournal::_check_disk_write_cache() const
 {
   ostringstream hdparm_cmd;
   FILE *fp = NULL;
-  int a, b, c;
 
   if (geteuid() != 0) {
     dout(10) << "_check_disk_write_cache: not root, NOT checking disk write "
@@ -243,11 +205,10 @@ void FileJournal::_check_disk_write_cache() const
     }
 
     // is our kernel new enough?
-    if (get_kernel_version(&a, &b, &c)) {
-      dout(10) << "_check_disk_write_cache: failed to get kernel version."
-	       << dendl;
-    }
-    else if ((a >= 2 && b >= 6 && c >= 33) || a >= 3) {
+    int ver = get_linux_version();
+    if (ver == 0) {
+      dout(10) << "_check_disk_write_cache: get_linux_version failed" << dendl;
+    } else if (ver >= KERNEL_VERSION(2, 6, 33)) {
       dout(20) << "_check_disk_write_cache: disk write cache is on, but your "
 	       << "kernel is new enough to handle it correctly. (fn:"
 	       << fn << ")" << dendl;
@@ -264,9 +225,9 @@ void FileJournal::_check_disk_write_cache() const
   }
 
 close_f:
-  if (::fclose(fp)) {
+  if (pclose(fp)) {
     int ret = -errno;
-    derr << "_check_disk_write_cache: fclose error: " << cpp_strerror(ret)
+    derr << "_check_disk_write_cache: pclose failed: " << cpp_strerror(ret)
 	 << dendl;
   }
 done:
@@ -298,6 +259,7 @@ int FileJournal::_open_file(int64_t oldsize, blksize_t blksize,
 	   << newsize << " bytes: " << cpp_strerror(err) << dendl;
       return -err;
     }
+#ifdef HAVE_POSIX_FALLOCATE
     ret = ::posix_fallocate(fd, 0, newsize);
     if (ret) {
       derr << "FileJournal::_open_file : unable to preallocation journal to "
@@ -305,6 +267,24 @@ int FileJournal::_open_file(int64_t oldsize, blksize_t blksize,
       return -ret;
     }
     max_size = newsize;
+#elif defined(__APPLE__)
+    fstore_t store;
+    store.fst_flags = F_ALLOCATECONTIG;
+    store.fst_posmode = F_PEOFPOSMODE;
+    store.fst_offset = 0;
+    store.fst_length = newsize;
+
+    ret = ::fcntl(fd, F_PREALLOCATE, &store);
+    if (ret == -1) {
+      ret = -errno;
+      derr << "FileJournal::_open_file : unable to preallocation journal to "
+	   << newsize << " bytes: " << cpp_strerror(ret) << dendl;
+      return ret;
+    }
+    max_size = newsize;
+#else
+# error "Journal pre-allocation not supported on platform."
+#endif
   }
   else {
     max_size = oldsize;
@@ -364,7 +344,7 @@ int FileJournal::check()
   ret = 0;
 
  done:
-  TEMP_FAILURE_RETRY(::close(fd));
+  VOID_TEMP_FAILURE_RETRY(::close(fd));
   fd = -1;
   return ret;
 }
@@ -565,7 +545,7 @@ void FileJournal::close()
   // close
   assert(writeq_empty());
   assert(fd >= 0);
-  TEMP_FAILURE_RETRY(::close(fd));
+  VOID_TEMP_FAILURE_RETRY(::close(fd));
   fd = -1;
 }
 
@@ -1596,9 +1576,12 @@ void FileJournal::put_throttle(uint64_t ops, uint64_t bytes)
   }
 }
 
-void FileJournal::make_writeable()
+int FileJournal::make_writeable()
 {
-  _open(true);
+  dout(10) << __func__ << dendl;
+  int r = _open(true);
+  if (r < 0)
+    return r;
 
   if (read_pos > 0)
     write_pos = read_pos;
@@ -1608,6 +1591,7 @@ void FileJournal::make_writeable()
 
   must_write_header = true;
   start_writer();
+  return 0;
 }
 
 void FileJournal::wrap_read_bl(
@@ -1627,11 +1611,7 @@ void FileJournal::wrap_read_bl(
     else
       len = olen;                         // rest
     
-#ifdef DARWIN
-    int64_t actual = ::lseek(fd, pos, SEEK_SET);
-#else
     int64_t actual = ::lseek64(fd, pos, SEEK_SET);
-#endif
     assert(actual == pos);
     
     bufferptr bp = buffer::create(len);
@@ -1835,22 +1815,14 @@ void FileJournal::corrupt(
   if (corrupt_at >= header.max_size)
     corrupt_at = corrupt_at + get_top() - header.max_size;
 
-#ifdef DARWIN
-    int64_t actual = ::lseek(fd, corrupt_at, SEEK_SET);
-#else
     int64_t actual = ::lseek64(fd, corrupt_at, SEEK_SET);
-#endif
     assert(actual == corrupt_at);
 
     char buf[10];
     int r = safe_read_exact(fd, buf, 1);
     assert(r == 0);
 
-#ifdef DARWIN
-    actual = ::lseek(wfd, corrupt_at, SEEK_SET);
-#else
     actual = ::lseek64(wfd, corrupt_at, SEEK_SET);
-#endif
     assert(actual == corrupt_at);
 
     buf[0]++;

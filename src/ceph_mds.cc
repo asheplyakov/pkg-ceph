@@ -56,7 +56,9 @@ void usage()
        << "  --debug_mds n\n"
        << "        debug MDS level (e.g. 10)\n"
        << "  --dump-journal rank filename\n"
-       << "        dump the MDS journal for rank.\n"
+       << "        dump the MDS journal (binary) for rank.\n"
+       << "  --dump-journal-entries rank filename\n"
+       << "        dump the MDS journal (JSON) for rank.\n"
        << "  --journal-check rank\n"
        << "        replay the journal for rank, then exit\n"
        << "  --hot-standby rank\n"
@@ -71,39 +73,32 @@ void usage()
 static int do_cmds_special_action(const std::string &action,
 				  const std::string &dump_file, int rank)
 {
-  common_init_finish(g_ceph_context);
-  Messenger *messenger = Messenger::create(g_ceph_context,
-					   entity_name_t::CLIENT(), "mds",
-					   getpid());
-  int r = messenger->bind(g_conf->public_addr);
-  if (r < 0)
-    return r;
-  MonClient mc(g_ceph_context);
-  if (mc.build_initial_monmap() < 0)
-    return -1;
+  common_init_finish(g_ceph_context, CINIT_FLAG_NO_DAEMON_ACTIONS);
 
   if (action == "dump-journal") {
     dout(0) << "dumping journal for mds." << rank << " to " << dump_file << dendl;
-    Dumper *journal_dumper = new Dumper(messenger, &mc);
-    journal_dumper->init(rank);
-    journal_dumper->dump(dump_file.c_str());
-    mc.shutdown();
-  }
-  else if (action == "undump-journal") {
+    Dumper journal_dumper;
+    journal_dumper.init(rank);
+    journal_dumper.dump(dump_file.c_str());
+    journal_dumper.shutdown();
+  } else if (action == "dump-journal-entries") {
+    Dumper journal_dumper;
+    journal_dumper.init(rank);
+    journal_dumper.dump_entries();
+    journal_dumper.shutdown();
+  } else if (action == "undump-journal") {
     dout(0) << "undumping journal for mds." << rank << " from " << dump_file << dendl;
-    Dumper *journal_dumper = new Dumper(messenger, &mc);
-    journal_dumper->init(rank);
-    journal_dumper->undump(dump_file.c_str());
-    mc.shutdown();
-  }
-  else if (action == "reset-journal") {
+    Dumper journal_dumper;
+    journal_dumper.init(rank);
+    journal_dumper.undump(dump_file.c_str());
+    journal_dumper.shutdown();
+  } else if (action == "reset-journal") {
     dout(0) << "resetting journal" << dendl;
-    Resetter *jr = new Resetter(messenger, &mc);
-    jr->init(rank);
-    jr->reset();
-    mc.shutdown();
-  }
-  else {
+    Resetter resetter;
+    resetter.init(rank);
+    resetter.reset();
+    resetter.shutdown();
+  } else {
     assert(0);
   }
   return 0;
@@ -183,6 +178,10 @@ int main(int argc, const char **argv)
       }
       dump_file = *i++;
     }
+    else if (ceph_argparse_witharg(args, i, &val, "--dump-journal-entries", (char*)NULL)){
+      set_special_action(action, "dump-journal-entries");
+      rank = parse_rank("dump-journal-entries", val);
+    }
     else if (ceph_argparse_witharg(args, i, &val, "--reset-journal", (char*)NULL)) {
       set_special_action(action, "reset-journal");
       rank = parse_rank("reset-journal", val);
@@ -243,8 +242,10 @@ int main(int argc, const char **argv)
     CEPH_FEATURE_UID |
     CEPH_FEATURE_NOSRCADDR |
     CEPH_FEATURE_DIRLAYOUTHASH |
+    CEPH_FEATURE_MDS_INLINE_DATA |
     CEPH_FEATURE_PGID64 |
-    CEPH_FEATURE_MSG_AUTH;
+    CEPH_FEATURE_MSG_AUTH |
+    CEPH_FEATURE_EXPORT_PEER;
   uint64_t required =
     CEPH_FEATURE_OSDREPLYMUX;
   messenger->set_default_policy(Messenger::Policy::lossy_client(supported, required));

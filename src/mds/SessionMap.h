@@ -18,8 +18,7 @@
 #include <set>
 using std::set;
 
-#include <ext/hash_map>
-using __gnu_cxx::hash_map;
+#include "include/unordered_map.h"
 
 #include "include/Context.h"
 #include "include/xlist.h"
@@ -28,7 +27,7 @@ using __gnu_cxx::hash_map;
 #include "mdstypes.h"
 
 class CInode;
-struct MDRequest;
+struct MDRequestImpl;
 
 #include "CInode.h"
 #include "Capability.h"
@@ -89,7 +88,7 @@ public:
 
   list<Message*> preopen_out_queue;  ///< messages for client, queued before they connect
 
-  elist<MDRequest*> requests;
+  elist<MDRequestImpl*> requests;
 
   interval_set<inodeno_t> pending_prealloc_inos; // journaling prealloc, will be added to prealloc_inos
 
@@ -144,6 +143,7 @@ public:
   // -- caps --
 private:
   version_t cap_push_seq;        // cap push seq #
+  map<version_t, list<Context*> > waitfor_flush; // flush session messages
 public:
   xlist<Capability*> caps;     // inodes with caps; front=most recently used
   xlist<ClientLease*> leases;  // metadata leases to clients
@@ -152,6 +152,19 @@ public:
 public:
   version_t inc_push_seq() { return ++cap_push_seq; }
   version_t get_push_seq() const { return cap_push_seq; }
+
+  version_t wait_for_flush(Context* c) {
+    waitfor_flush[get_push_seq()].push_back(c);
+    return get_push_seq();
+  }
+  void finish_flush(version_t seq, list<Context*>& ls) {
+    while (!waitfor_flush.empty()) {
+      if (waitfor_flush.begin()->first > seq)
+	break;
+      ls.splice(ls.end(), waitfor_flush.begin()->second);
+      waitfor_flush.erase(waitfor_flush.begin());
+    }
+  }
 
   void add_cap(Capability *cap) {
     caps.push_back(&cap->item_session_caps);
@@ -168,17 +181,17 @@ private:
 
 
 public:
-  void add_completed_request(tid_t t, inodeno_t created) {
+  void add_completed_request(ceph_tid_t t, inodeno_t created) {
     info.completed_requests[t] = created;
   }
-  void trim_completed_requests(tid_t mintid) {
+  void trim_completed_requests(ceph_tid_t mintid) {
     // trim
     while (!info.completed_requests.empty() && 
 	   (mintid == 0 || info.completed_requests.begin()->first < mintid))
       info.completed_requests.erase(info.completed_requests.begin());
   }
-  bool have_completed_request(tid_t tid, inodeno_t *pcreated) const {
-    map<tid_t,inodeno_t>::const_iterator p = info.completed_requests.find(tid);
+  bool have_completed_request(ceph_tid_t tid, inodeno_t *pcreated) const {
+    map<ceph_tid_t,inodeno_t>::const_iterator p = info.completed_requests.find(tid);
     if (p == info.completed_requests.end())
       return false;
     if (pcreated)
@@ -221,7 +234,7 @@ class MDS;
 class SessionMap {
 private:
   MDS *mds;
-  hash_map<entity_name_t, Session*> session_map;
+  ceph::unordered_map<entity_name_t, Session*> session_map;
 public:
   map<int,xlist<Session*>* > by_state;
   
@@ -267,12 +280,13 @@ public:
   }
   Session* get_or_add_session(const entity_inst_t& i) {
     Session *s;
-    if (session_map.count(i.name))
+    if (session_map.count(i.name)) {
       s = session_map[i.name];
-    else
+    } else {
       s = session_map[i.name] = new Session;
-    s->info.inst = i;
-    s->last_cap_renew = ceph_clock_now(g_ceph_context);
+      s->info.inst = i;
+      s->last_cap_renew = ceph_clock_now(g_ceph_context);
+    }
     return s;
   }
   void add_session(Session *s) {
@@ -317,14 +331,14 @@ public:
   void dump();
 
   void get_client_set(set<client_t>& s) {
-    for (hash_map<entity_name_t,Session*>::iterator p = session_map.begin();
+    for (ceph::unordered_map<entity_name_t,Session*>::iterator p = session_map.begin();
 	 p != session_map.end();
 	 ++p)
       if (p->second->info.inst.name.is_client())
 	s.insert(p->second->info.inst.name.num());
   }
   void get_client_session_set(set<Session*>& s) {
-    for (hash_map<entity_name_t,Session*>::iterator p = session_map.begin();
+    for (ceph::unordered_map<entity_name_t,Session*>::iterator p = session_map.begin();
 	 p != session_map.end();
 	 ++p)
       if (p->second->info.inst.name.is_client())
@@ -356,7 +370,7 @@ public:
     Session *session = get_session(rid.name);
     return session && session->have_completed_request(rid.tid, NULL);
   }
-  void trim_completed_requests(entity_name_t c, tid_t tid) {
+  void trim_completed_requests(entity_name_t c, ceph_tid_t tid) {
     Session *session = get_session(c);
     assert(session);
     session->trim_completed_requests(tid);

@@ -224,7 +224,7 @@ int HashIndex::col_split_level(
 int HashIndex::_split(
   uint32_t match,
   uint32_t bits,
-  std::tr1::shared_ptr<CollectionIndex> dest) {
+  ceph::shared_ptr<CollectionIndex> dest) {
   assert(collection_version() == dest->collection_version());
   unsigned mkdirred = 0;
   return col_split_level(
@@ -418,13 +418,14 @@ int HashIndex::set_info(const vector<string> &path, const subdir_info_s &info) {
 
 bool HashIndex::must_merge(const subdir_info_s &info) {
   return (info.hash_level > 0 &&
+          merge_threshold > 0 &&
 	  info.objs < (unsigned)merge_threshold &&
 	  info.subdirs == 0);
 }
 
 bool HashIndex::must_split(const subdir_info_s &info) {
   return (info.hash_level < (unsigned)MAX_HASH_LEVEL &&
-	  info.objs > ((unsigned)merge_threshold * 16 * split_multiplier));
+	  info.objs > ((unsigned)(abs(merge_threshold)) * 16 * split_multiplier));
 			    
 }
 

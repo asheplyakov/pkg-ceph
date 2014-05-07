@@ -4,6 +4,9 @@
  * Ceph - scalable distributed file system
  *
  * Copyright (C) 2004-2006 Sage Weil <sage@newdream.net>
+ * Copyright (C) 2013,2014 Cloudwatt <libre.licensing@cloudwatt.com>
+ *
+ * Author: Loic Dachary <loic@dachary.org>
  *
  * This is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -38,11 +41,10 @@
 #include <list>
 #include <set>
 #include <map>
-#include <tr1/memory>
+#include "include/memory.h"
 using namespace std;
 
-#include <ext/hash_set>
-using __gnu_cxx::hash_set;
+#include "include/unordered_set.h"
 
 /*
  * we track up to two intervals during which the osd was alive and
@@ -86,13 +88,14 @@ WRITE_CLASS_ENCODER(osd_info_t)
 
 ostream& operator<<(ostream& out, const osd_info_t& info);
 
-
 struct osd_xinfo_t {
   utime_t down_stamp;      ///< timestamp when we were last marked down
   float laggy_probability; ///< encoded as __u32: 0 = definitely not laggy, 0xffffffff definitely laggy
   __u32 laggy_interval;    ///< average interval between being marked laggy and recovering
+  uint64_t features;       ///< features supported by this osd we should know about
 
-  osd_xinfo_t() : laggy_probability(0), laggy_interval(0) {}
+  osd_xinfo_t() : laggy_probability(0), laggy_interval(0),
+                  features(0) {}
 
   void dump(Formatter *f) const;
   void encode(bufferlist& bl) const;
@@ -111,6 +114,9 @@ class OSDMap {
 public:
   class Incremental {
   public:
+    /// feature bits we were encoded with.  the subsequent OSDMap
+    /// encoding should match.
+    uint64_t encode_features;
     uuid_d fsid;
     epoch_t epoch;   // new epoch; we are a diff from epoch-1 to epoch
     utime_t modified;
@@ -126,11 +132,15 @@ public:
     map<int64_t,pg_pool_t> new_pools;
     map<int64_t,string> new_pool_names;
     set<int64_t> old_pools;
+    map<string,map<string,string> > new_erasure_code_profiles;
+    vector<string> old_erasure_code_profiles;
     map<int32_t,entity_addr_t> new_up_client;
     map<int32_t,entity_addr_t> new_up_cluster;
     map<int32_t,uint8_t> new_state;             // XORed onto previous state.
     map<int32_t,uint32_t> new_weight;
     map<pg_t,vector<int32_t> > new_pg_temp;     // [] to remove
+    map<pg_t, int> new_primary_temp;            // [-1] to remove
+    map<int32_t,uint32_t> new_primary_affinity;
     map<int32_t,epoch_t> new_up_thru;
     map<int32_t,pair<epoch_t,epoch_t> > new_last_clean_interval;
     map<int32_t,epoch_t> new_lost;
@@ -149,12 +159,15 @@ public:
     int identify_osd(uuid_d u) const;
 
     void encode_client_old(bufferlist& bl) const;
+    void encode_classic(bufferlist& bl, uint64_t features) const;
     void encode(bufferlist& bl, uint64_t features=CEPH_FEATURES_ALL) const;
-    void decode(bufferlist::iterator &p);
+    void decode_classic(bufferlist::iterator &p);
+    void decode(bufferlist::iterator &bl);
     void dump(Formatter *f) const;
     static void generate_test_instances(list<Incremental*>& o);
 
     Incremental(epoch_t e=0) :
+      encode_features(0),
       epoch(e), new_pool_max(-1), new_flags(-1), new_max_osd(-1) {
       memset(&fsid, 0, sizeof(fsid));
     }
@@ -171,6 +184,18 @@ public:
 	new_pools[pool] = *orig;
       return &new_pools[pool];
     }
+    bool has_erasure_code_profile(const string &name) const {
+      map<string,map<string,string> >::const_iterator i =
+	new_erasure_code_profiles.find(name);
+      return i != new_erasure_code_profiles.end();
+    }
+    void set_erasure_code_profile(const string &name,
+				  const map<string,string> &profile) {
+      new_erasure_code_profiles[name] = profile;
+    }
+
+    /// propage update pools' snap metadata to any of their tiers
+    int propagate_snaps_to_tiers(CephContext *cct, const OSDMap &base);
   };
   
 private:
@@ -186,33 +211,36 @@ private:
   vector<uint8_t> osd_state;
 
   struct addrs_s {
-    vector<std::tr1::shared_ptr<entity_addr_t> > client_addr;
-    vector<std::tr1::shared_ptr<entity_addr_t> > cluster_addr;
-    vector<std::tr1::shared_ptr<entity_addr_t> > hb_back_addr;
-    vector<std::tr1::shared_ptr<entity_addr_t> > hb_front_addr;
+    vector<ceph::shared_ptr<entity_addr_t> > client_addr;
+    vector<ceph::shared_ptr<entity_addr_t> > cluster_addr;
+    vector<ceph::shared_ptr<entity_addr_t> > hb_back_addr;
+    vector<ceph::shared_ptr<entity_addr_t> > hb_front_addr;
     entity_addr_t blank;
   };
-  std::tr1::shared_ptr<addrs_s> osd_addrs;
+  ceph::shared_ptr<addrs_s> osd_addrs;
 
   vector<__u32>   osd_weight;   // 16.16 fixed point, 0x10000 = "in", 0 = "out"
   vector<osd_info_t> osd_info;
-  std::tr1::shared_ptr< map<pg_t,vector<int> > > pg_temp;  // temp pg mapping (e.g. while we rebuild)
+  ceph::shared_ptr< map<pg_t,vector<int> > > pg_temp;  // temp pg mapping (e.g. while we rebuild)
+  ceph::shared_ptr< map<pg_t,int > > primary_temp;  // temp primary mapping (e.g. while we rebuild)
+  ceph::shared_ptr< vector<__u32> > osd_primary_affinity; ///< 16.16 fixed point, 0x10000 = baseline
 
   map<int64_t,pg_pool_t> pools;
   map<int64_t,string> pool_name;
+  map<string,map<string,string> > erasure_code_profiles;
   map<string,int64_t> name_pool;
 
-  std::tr1::shared_ptr< vector<uuid_d> > osd_uuid;
+  ceph::shared_ptr< vector<uuid_d> > osd_uuid;
   vector<osd_xinfo_t> osd_xinfo;
 
-  hash_map<entity_addr_t,utime_t> blacklist;
+  ceph::unordered_map<entity_addr_t,utime_t> blacklist;
 
   epoch_t cluster_snapshot_epoch;
   string cluster_snapshot;
   bool new_blacklist_entries;
 
  public:
-  std::tr1::shared_ptr<CrushWrapper> crush;       // hierarchical map
+  ceph::shared_ptr<CrushWrapper> crush;       // hierarchical map
 
   friend class OSDMonitor;
   friend class PGMonitor;
@@ -225,11 +253,33 @@ private:
 	     num_osd(0), max_osd(0),
 	     osd_addrs(new addrs_s),
 	     pg_temp(new map<pg_t,vector<int> >),
+	     primary_temp(new map<pg_t,int>),
 	     osd_uuid(new vector<uuid_d>),
 	     cluster_snapshot_epoch(0),
 	     new_blacklist_entries(false),
 	     crush(new CrushWrapper) {
     memset(&fsid, 0, sizeof(fsid));
+  }
+
+  // no copying
+  /* oh, how i long for c++11...
+private:
+  OSDMap(const OSDMap& other) = default;
+  const OSDMap& operator=(const OSDMap& other) = default;
+public:
+  */
+
+  void deepish_copy_from(const OSDMap& o) {
+    *this = o;
+    primary_temp.reset(new map<pg_t,int>(*o.primary_temp));
+    pg_temp.reset(new map<pg_t,vector<int> >(*o.pg_temp));
+    osd_uuid.reset(new vector<uuid_d>(*o.osd_uuid));
+
+    // NOTE: this still references shared entity_addr_t's.
+    osd_addrs.reset(new addrs_s(*o.osd_addrs));
+
+    // NOTE: we do not copy crush.  note that apply_incremental will
+    // allocate a new CrushWrapper, though.
   }
 
   // map info
@@ -259,14 +309,15 @@ private:
   int get_max_osd() const { return max_osd; }
   void set_max_osd(int m);
 
-  int get_num_osds() const {
+  unsigned get_num_osds() const {
     return num_osd;
   }
   int calc_num_osds();
 
   void get_all_osds(set<int32_t>& ls) const;
-  int get_num_up_osds() const;
-  int get_num_in_osds() const;
+  void get_up_osds(set<int32_t>& ls) const;
+  unsigned get_num_up_osds() const;
+  unsigned get_num_in_osds() const;
 
   int get_flags() const { return flags; }
   int test_flag(int f) const { return flags & f; }
@@ -307,6 +358,48 @@ private:
   }
   void adjust_osd_weights(const map<int,double>& weights, Incremental& inc) const;
 
+  void set_primary_affinity(int o, int w) {
+    assert(o < max_osd);
+    if (!osd_primary_affinity)
+      osd_primary_affinity.reset(new vector<__u32>(max_osd,
+						   CEPH_OSD_DEFAULT_PRIMARY_AFFINITY));
+    (*osd_primary_affinity)[o] = w;
+  }
+  unsigned get_primary_affinity(int o) const {
+    assert(o < max_osd);
+    if (!osd_primary_affinity)
+      return CEPH_OSD_DEFAULT_PRIMARY_AFFINITY;
+    return (*osd_primary_affinity)[o];
+  }
+  float get_primary_affinityf(int o) const {
+    return (float)get_primary_affinity(o) / (float)CEPH_OSD_MAX_PRIMARY_AFFINITY;
+  }
+
+  bool has_erasure_code_profile(const string &name) const {
+    map<string,map<string,string> >::const_iterator i =
+      erasure_code_profiles.find(name);
+    return i != erasure_code_profiles.end();
+  }
+  void set_erasure_code_profile(const string &name,
+				const map<string,string> &profile) {
+    erasure_code_profiles[name] = profile;
+  }
+  const map<string,string> &get_erasure_code_profile(const string &name) const {
+    map<string,map<string,string> >::const_iterator i =
+      erasure_code_profiles.find(name);
+    static map<string,string> empty;
+    if (i == erasure_code_profiles.end())
+      return empty;
+    else
+      return i->second;
+  }
+  map<string,string> &get_erasure_code_profile(const string &name) {
+    return erasure_code_profiles[name];
+  }
+  const map<string,map<string,string> > &get_erasure_code_profiles() const {
+    return erasure_code_profiles;
+  }
+
   bool exists(int osd) const {
     //assert(osd >= 0);
     return osd >= 0 && osd < max_osd && (osd_state[osd] & CEPH_OSD_EXISTS);
@@ -317,7 +410,7 @@ private:
   }
 
   bool is_down(int osd) const {
-    return !exists(osd) || !is_up(osd);
+    return !is_up(osd);
   }
 
   bool is_out(int osd) const {
@@ -325,7 +418,7 @@ private:
   }
 
   bool is_in(int osd) const {
-    return exists(osd) && !is_out(osd);
+    return !is_out(osd);
   }
 
   /**
@@ -445,18 +538,31 @@ private:
    */
   uint64_t get_features(uint64_t *mask) const;
 
+  /**
+   * get intersection of features supported by up osds
+   */
+  uint64_t get_up_osd_features() const;
+
   int apply_incremental(const Incremental &inc);
 
   /// try to re-use/reference addrs in oldmap from newmap
   static void dedup(const OSDMap *oldmap, OSDMap *newmap);
 
+  static void remove_redundant_temporaries(CephContext *cct, const OSDMap& osdmap,
+					   Incremental *pending_inc);
+  static void remove_down_temps(CephContext *cct, const OSDMap& osdmap,
+                                Incremental *pending_inc);
+
   // serialize, unserialize
 private:
   void encode_client_old(bufferlist& bl) const;
+  void encode_classic(bufferlist& bl, uint64_t features) const;
+  void decode_classic(bufferlist::iterator& p);
+  void post_decode();
 public:
   void encode(bufferlist& bl, uint64_t features=CEPH_FEATURES_ALL) const;
   void decode(bufferlist& bl);
-  void decode(bufferlist::iterator& p);
+  void decode(bufferlist::iterator& bl);
 
 
   /****   mapping facilities   ****/
@@ -488,19 +594,98 @@ public:
 
 private:
   /// pg -> (raw osd list)
-  int _pg_to_osds(const pg_pool_t& pool, pg_t pg, vector<int>& osds) const;
-  void _remove_nonexistent_osds(vector<int>& osds) const;
+  int _pg_to_osds(const pg_pool_t& pool, pg_t pg,
+                  vector<int> *osds, int *primary,
+		  ps_t *ppps) const;
+  void _remove_nonexistent_osds(const pg_pool_t& pool, vector<int>& osds) const;
+
+  void _apply_primary_affinity(ps_t seed, const pg_pool_t& pool,
+			       vector<int> *osds, int *primary) const;
 
   /// pg -> (up osd list)
-  void _raw_to_up_osds(pg_t pg, vector<int>& raw, vector<int>& up) const;
+  void _raw_to_up_osds(const pg_pool_t& pool, const vector<int>& raw,
+                       vector<int> *up, int *primary) const;
 
-  bool _raw_to_temp_osds(const pg_pool_t& pool, pg_t pg, vector<int>& raw, vector<int>& temp) const;
+  /**
+   * Get the pg and primary temp, if they are specified.
+   * @param temp_pg [out] Will be empty or contain the temp PG mapping on return
+   * @param temp_primary [out] Will be the value in primary_temp, or a value derived
+   * from the pg_temp (if specified), or -1 if you should use the calculated (up_)primary.
+   */
+  void _get_temp_osds(const pg_pool_t& pool, pg_t pg,
+                      vector<int> *temp_pg, int *temp_primary) const;
+
+  /**
+   *  map to up and acting. Fills in whatever fields are non-NULL.
+   */
+  void _pg_to_up_acting_osds(pg_t pg, vector<int> *up, int *up_primary,
+                             vector<int> *acting, int *acting_primary) const;
 
 public:
-  int pg_to_osds(pg_t pg, vector<int>& raw) const;
-  int pg_to_acting_osds(pg_t pg, vector<int>& acting) const;
-  void pg_to_raw_up(pg_t pg, vector<int>& up) const;
-  void pg_to_up_acting_osds(pg_t pg, vector<int>& up, vector<int>& acting) const;
+  /***
+   * This is suitable only for looking at raw CRUSH outputs. It skips
+   * applying the temp and up checks and should not be used
+   * by anybody for data mapping purposes.
+   * raw and primary must be non-NULL
+   */
+  int pg_to_osds(pg_t pg, vector<int> *raw, int *primary) const;
+  /// map a pg to its acting set. @return acting set size
+  int pg_to_acting_osds(pg_t pg, vector<int> *acting,
+                        int *acting_primary) const {
+    _pg_to_up_acting_osds(pg, NULL, NULL, acting, acting_primary);
+    return acting->size();
+  }
+  int pg_to_acting_osds(pg_t pg, vector<int>& acting) const {
+    int primary;
+    int r = pg_to_acting_osds(pg, &acting, &primary);
+    return r;
+  }
+  /**
+   * This does not apply temp overrides and should not be used
+   * by anybody for data mapping purposes. Specify both pointers.
+   */
+  void pg_to_raw_up(pg_t pg, vector<int> *up, int *primary) const;
+  /**
+   * map a pg to its acting set as well as its up set. You must use
+   * the acting set for data mapping purposes, but some users will
+   * also find the up set useful for things like deciding what to
+   * set as pg_temp.
+   * Each of these pointers must be non-NULL.
+   */
+  void pg_to_up_acting_osds(pg_t pg, vector<int> *up, int *up_primary,
+                            vector<int> *acting, int *acting_primary) const {
+    _pg_to_up_acting_osds(pg, up, up_primary, acting, acting_primary);
+  }
+  void pg_to_up_acting_osds(pg_t pg, vector<int>& up, vector<int>& acting) const {
+    int up_primary, acting_primary;
+    pg_to_up_acting_osds(pg, &up, &up_primary, &acting, &acting_primary);
+  }
+  bool pg_is_ec(pg_t pg) const {
+    map<int64_t, pg_pool_t>::const_iterator i = pools.find(pg.pool());
+    assert(i != pools.end());
+    return i->second.ec_pool();
+  }
+  bool get_primary_shard(pg_t pgid, spg_t *out) const {
+    map<int64_t, pg_pool_t>::const_iterator i = get_pools().find(pgid.pool());
+    if (i == get_pools().end()) {
+      return false;
+    }
+    int primary;
+    vector<int> acting;
+    pg_to_acting_osds(pgid, &acting, &primary);
+    if (i->second.ec_pool()) {
+      for (shard_id_t i = 0; i < acting.size(); ++i) {
+	if (acting[i] == primary) {
+	  *out = spg_t(pgid, i);
+	  return true;
+	}
+      }
+    } else {
+      *out = spg_t(pgid);
+      return true;
+    }
+    return false;
+  }
 
   int64_t lookup_pg_pool_name(const string& name) {
     if (name_pool.count(name))
@@ -549,15 +734,6 @@ public:
     return pools.find(pg.pool())->second.raw_pg_to_pg(pg);
   }
 
-  // pg -> primary osd
-  int get_pg_primary(pg_t pg) const {
-    vector<int> group;
-    int nrep = pg_to_osds(pg, group);
-    if (nrep)
-      return group[0];
-    return -1;  // we fail!
-  }
-
   // pg -> acting primary osd
   int get_pg_acting_primary(pg_t pg) const {
     vector<int> group;
@@ -576,8 +752,13 @@ public:
 
 
   /* what replica # is a given osd? 0 primary, -1 for none. */
-  static int calc_pg_rank(int osd, vector<int>& acting, int nrep=0);
-  static int calc_pg_role(int osd, vector<int>& acting, int nrep=0);
+  static int calc_pg_rank(int osd, const vector<int>& acting, int nrep=0);
+  static int calc_pg_role(int osd, const vector<int>& acting, int nrep=0);
+  static bool primary_changed(
+    int oldprimary,
+    const vector<int> &oldacting,
+    int newprimary,
+    const vector<int> &newacting);
   
   /* rank is -1 (stray), 0 (primary), 1,2,3,... (replica) */
   int get_pg_acting_rank(pg_t pg, int osd) const {
@@ -596,16 +777,36 @@ public:
   /*
    * handy helpers to build simple maps...
    */
-  void build_simple(CephContext *cct, epoch_t e, uuid_d &fsid,
-		    int num_osd, int pg_bits, int pgp_bits);
-  int build_simple_from_conf(CephContext *cct, epoch_t e, uuid_d &fsid,
-			     int pg_bits, int pgp_bits);
-  static void build_simple_crush_map(CephContext *cct, CrushWrapper& crush,
-				     map<int, const char*>& poolsets, int num_osd);
-  static void build_simple_crush_map_from_conf(CephContext *cct, CrushWrapper& crush,
-					       map<int, const char*>& rulesets);
+  /**
+   * Build an OSD map suitable for basic usage. If **num_osd** is >= 0
+   * it will be initialized with the specified number of OSDs in a
+   * single host. If **num_osd** is < 0 the layout of the OSD map will 
+   * be built by reading the content of the configuration file.
+   *
+   * @param cct [in] in core ceph context 
+   * @param e [in] initial epoch
+   * @param fsid [in] id of the cluster
+   * @param num_osd [in] number of OSDs if >= 0 or read from conf if < 0
+   * @return **0** on success, negative errno on error.
+   */
+  int build_simple(CephContext *cct, epoch_t e, uuid_d &fsid,
+		   int num_osd, int pg_bits, int pgp_bits);
+  static int _build_crush_types(CrushWrapper& crush);
+  static int build_simple_crush_map(CephContext *cct, CrushWrapper& crush,
+				    int num_osd, ostream *ss);
+  static int build_simple_crush_map_from_conf(CephContext *cct,
+					      CrushWrapper& crush,
+					      ostream *ss);
+  static int build_simple_crush_rulesets(CephContext *cct, CrushWrapper& crush,
+					 const string& root,
+					 ostream *ss);
 
   bool crush_ruleset_in_use(int ruleset) const;
+
+  void clear_temp() {
+    pg_temp->clear();
+    primary_temp->clear();
+  }
 
 private:
   void print_osd_line(int cur, ostream *out, Formatter *f) const;
@@ -617,6 +818,8 @@ public:
 
   string get_flag_string() const;
   static string get_flag_string(unsigned flags);
+  static void dump_erasure_code_profiles(const map<string,map<string,string> > &profiles,
+					 Formatter *f);
   void dump_json(ostream& out) const;
   void dump(Formatter *f) const;
   static void generate_test_instances(list<OSDMap*>& o);
@@ -625,7 +828,7 @@ public:
 WRITE_CLASS_ENCODER_FEATURES(OSDMap)
 WRITE_CLASS_ENCODER_FEATURES(OSDMap::Incremental)
 
-typedef std::tr1::shared_ptr<const OSDMap> OSDMapRef;
+typedef ceph::shared_ptr<const OSDMap> OSDMapRef;
 
 inline ostream& operator<<(ostream& out, const OSDMap& m) {
   m.print_oneline_summary(out);

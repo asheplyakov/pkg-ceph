@@ -40,6 +40,14 @@ void RGWObjManifestPart::dump(Formatter *f) const
   f->dump_unsigned("size", size);
 }
 
+void RGWObjManifestRule::dump(Formatter *f) const
+{
+  encode_json("start_part_num", start_part_num, f);
+  encode_json("start_ofs", start_ofs, f);
+  encode_json("part_size", part_size, f);
+  encode_json("stripe_max_size", stripe_max_size, f);
+}
+
 void RGWObjManifest::dump(Formatter *f) const
 {
   map<uint64_t, RGWObjManifestPart>::const_iterator iter = objs.begin();
@@ -52,6 +60,13 @@ void RGWObjManifest::dump(Formatter *f) const
   }
   f->close_section();
   f->dump_unsigned("obj_size", obj_size);
+  ::encode_json("explicit_objs", explicit_objs, f);
+  ::encode_json("head_obj", head_obj, f);
+  ::encode_json("head_size", head_size, f);
+  ::encode_json("max_head_size", max_head_size, f);
+  ::encode_json("prefix", prefix, f);
+  ::encode_json("tail_bucket", tail_bucket, f);
+  ::encode_json("rules", rules, f);
 }
 
 void rgw_log_entry::dump(Formatter *f) const
@@ -397,6 +412,8 @@ void RGWUserInfo::dump(Formatter *f) const
   encode_json("default_placement", default_placement, f);
   encode_json("placement_tags", placement_tags, f);
   encode_json("bucket_quota", bucket_quota, f);
+  encode_json("user_quota", user_quota, f);
+  encode_json("temp_url_keys", temp_url_keys, f);
 }
 
 
@@ -448,6 +465,8 @@ void RGWUserInfo::decode_json(JSONObj *obj)
   JSONDecoder::decode_json("default_placement", default_placement, obj);
   JSONDecoder::decode_json("placement_tags", placement_tags, obj);
   JSONDecoder::decode_json("bucket_quota", bucket_quota, obj);
+  JSONDecoder::decode_json("user_quota", user_quota, obj);
+  JSONDecoder::decode_json("temp_url_keys", temp_url_keys, obj);
 }
 
 void RGWQuotaInfo::dump(Formatter *f) const
@@ -468,6 +487,7 @@ void rgw_bucket::dump(Formatter *f) const
 {
   encode_json("name", name, f);
   encode_json("pool", data_pool, f);
+  encode_json("data_extra_pool", data_extra_pool, f);
   encode_json("index_pool", index_pool, f);
   encode_json("marker", marker, f);
   encode_json("bucket_id", bucket_id, f);
@@ -476,6 +496,7 @@ void rgw_bucket::dump(Formatter *f) const
 void rgw_bucket::decode_json(JSONObj *obj) {
   JSONDecoder::decode_json("name", name, obj);
   JSONDecoder::decode_json("pool", data_pool, obj);
+  JSONDecoder::decode_json("data_extra_pool", data_extra_pool, obj);
   JSONDecoder::decode_json("index_pool", index_pool, obj);
   JSONDecoder::decode_json("marker", marker, obj);
   JSONDecoder::decode_json("bucket_id", bucket_id, obj);
@@ -595,12 +616,14 @@ void RGWZonePlacementInfo::dump(Formatter *f) const
 {
   encode_json("index_pool", index_pool, f);
   encode_json("data_pool", data_pool, f);
+  encode_json("data_extra_pool", data_extra_pool, f);
 }
 
 void RGWZonePlacementInfo::decode_json(JSONObj *obj)
 {
   JSONDecoder::decode_json("index_pool", index_pool, obj);
   JSONDecoder::decode_json("data_pool", data_pool, obj);
+  JSONDecoder::decode_json("data_extra_pool", data_extra_pool, obj);
 }
 
 void RGWZoneParams::decode_json(JSONObj *obj)
@@ -692,13 +715,14 @@ void RGWRegionMap::dump(Formatter *f) const
   encode_json("regions", regions, f);
   encode_json("master_region", master_region, f);
   encode_json("bucket_quota", bucket_quota, f);
+  encode_json("user_quota", user_quota, f);
 }
 
 void RGWRegionMap::decode_json(JSONObj *obj)
 {
   JSONDecoder::decode_json("regions", regions, obj);
   JSONDecoder::decode_json("master_region", master_region, obj);
-  JSONDecoder::decode_json("bucket_quota", bucket_quota, obj);
+  JSONDecoder::decode_json("user_quota", user_quota, obj);
 }
 
 void RGWMetadataLogInfo::dump(Formatter *f) const

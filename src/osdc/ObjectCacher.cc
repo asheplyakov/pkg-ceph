@@ -443,6 +443,7 @@ void ObjectCacher::Object::truncate(loff_t s)
 
     // remove bh entirely
     assert(bh->start() >= s);
+    assert(bh->waitfor_read.empty());
     oc->bh_remove(this, bh);
     delete bh;
   }
@@ -482,6 +483,7 @@ void ObjectCacher::Object::discard(loff_t off, loff_t len)
 
     ++p;
     ldout(oc->cct, 10) << "discard " << *this << " bh " << *bh << dendl;
+    assert(bh->waitfor_read.empty());
     oc->bh_remove(this, bh);
     delete bh;
   }
@@ -522,7 +524,7 @@ ObjectCacher::~ObjectCacher()
   finisher.stop();
   perf_stop();
   // we should be empty.
-  for (vector<hash_map<sobject_t, Object *> >::iterator i = objects.begin();
+  for (vector<ceph::unordered_map<sobject_t, Object *> >::iterator i = objects.begin();
       i != objects.end();
       ++i)
     assert(i->empty());
@@ -625,7 +627,7 @@ void ObjectCacher::bh_read(BufferHead *bh)
   ++reads_outstanding;
 }
 
-void ObjectCacher::bh_read_finish(int64_t poolid, sobject_t oid, tid_t tid,
+void ObjectCacher::bh_read_finish(int64_t poolid, sobject_t oid, ceph_tid_t tid,
 				  loff_t start, uint64_t length,
 				  bufferlist &bl, int r,
 				  bool trust_enoent)
@@ -810,7 +812,7 @@ void ObjectCacher::bh_write(BufferHead *bh)
   C_WriteCommit *oncommit = new C_WriteCommit(this, bh->ob->oloc.pool,
                                               bh->ob->get_soid(), bh->start(), bh->length());
   // go
-  tid_t tid = writeback_handler.write(bh->ob->get_oid(), bh->ob->get_oloc(),
+  ceph_tid_t tid = writeback_handler.write(bh->ob->get_oid(), bh->ob->get_oloc(),
 				      bh->start(), bh->length(),
 				      bh->snapc, bh->bl, bh->last_write,
 				      bh->ob->truncate_size, bh->ob->truncate_seq,
@@ -830,7 +832,7 @@ void ObjectCacher::bh_write(BufferHead *bh)
 }
 
 void ObjectCacher::bh_write_commit(int64_t poolid, sobject_t oid, loff_t start,
-				   uint64_t length, tid_t tid, int r)
+				   uint64_t length, ceph_tid_t tid, int r)
 {
   assert(lock.is_locked());
   ldout(cct, 7) << "bh_write_commit " 
@@ -946,19 +948,14 @@ void ObjectCacher::flush(loff_t amount)
 }
 
 
-void ObjectCacher::trim(loff_t max_bytes, loff_t max_ob)
+void ObjectCacher::trim()
 {
   assert(lock.is_locked());
-  if (max_bytes < 0) 
-    max_bytes = max_size;
-  if (max_ob < 0)
-    max_ob = max_objects;
-  
-  ldout(cct, 10) << "trim  start: bytes: max " << max_bytes << "  clean " << get_stat_clean()
-		 << ", objects: max " << max_ob << " current " << ob_lru.lru_get_size()
+  ldout(cct, 10) << "trim  start: bytes: max " << max_size << "  clean " << get_stat_clean()
+		 << ", objects: max " << max_objects << " current " << ob_lru.lru_get_size()
 		 << dendl;
 
-  while (get_stat_clean() > max_bytes) {
+  while (get_stat_clean() > 0 && (uint64_t) get_stat_clean() > max_size) {
     BufferHead *bh = static_cast<BufferHead*>(bh_lru_rest.lru_expire());
     if (!bh)
       break;
@@ -976,7 +973,7 @@ void ObjectCacher::trim(loff_t max_bytes, loff_t max_ob)
     }
   }
 
-  while (ob_lru.lru_get_size() > max_ob) {
+  while (ob_lru.lru_get_size() > max_objects) {
     Object *ob = static_cast<Object*>(ob_lru.lru_expire());
     if (!ob)
       break;
@@ -985,8 +982,8 @@ void ObjectCacher::trim(loff_t max_bytes, loff_t max_ob)
     close_object(ob);
   }
   
-  ldout(cct, 10) << "trim finish:  max " << max_bytes << "  clean " << get_stat_clean()
-		 << ", objects: max " << max_ob << " current " << ob_lru.lru_get_size()
+  ldout(cct, 10) << "trim finish:  max " << max_size << "  clean " << get_stat_clean()
+		 << ", objects: max " << max_objects << " current " << ob_lru.lru_get_size()
 		 << dendl;
 }
 
@@ -1250,6 +1247,8 @@ int ObjectCacher::_readx(OSDRead *rd, ObjectSet *oset, Context *onfinish,
     ldout(cct, 10) << "readx  result is " << rd->bl->length() << dendl;
   } else {
     ldout(cct, 10) << "readx  no bufferlist ptr (readahead?), done." << dendl;
+    map<uint64_t,bufferlist>::reverse_iterator i = stripe_map.rbegin();
+    pos = i->first + i->second.length();
   }
 
   // done with read.
@@ -1358,7 +1357,9 @@ void ObjectCacher::maybe_wait_for_writeback(uint64_t len)
   //  - do not wait for bytes other waiters are waiting on.  this means that
   //    threads do not wait for each other.  this effectively allows the cache
   //    size to balloon proportional to the data that is in flight.
-  while (get_stat_dirty() + get_stat_tx() >= max_dirty + get_stat_dirty_waiting()) {
+  while (get_stat_dirty() + get_stat_tx() > 0 &&
+	 (uint64_t) (get_stat_dirty() + get_stat_tx()) >=
+	 max_dirty + get_stat_dirty_waiting()) {
     ldout(cct, 10) << __func__ << " waiting for dirty|tx "
 		   << (get_stat_dirty() + get_stat_tx()) << " >= max "
 		   << max_dirty << " + dirty_waiting "
@@ -1413,7 +1414,7 @@ int ObjectCacher::_wait_for_write(OSDWrite *wr, uint64_t len, ObjectSet *oset, M
   }
 
   // start writeback anyway?
-  if (get_stat_dirty() > target_dirty) {
+  if (get_stat_dirty() > 0 && (uint64_t) get_stat_dirty() > target_dirty) {
     ldout(cct, 10) << "wait_for_write " << get_stat_dirty() << " > target "
 		   << target_dirty << ", nudging flusher" << dendl;
     flusher_cond.Signal();
@@ -1437,7 +1438,7 @@ void ObjectCacher::flusher_entry()
 		   << max_dirty << " max)"
 		   << dendl;
     loff_t actual = get_stat_dirty() + get_stat_dirty_waiting();
-    if (actual > target_dirty) {
+    if (actual > 0 && (uint64_t) actual > target_dirty) {
       // flush some dirty pages
       ldout(cct, 10) << "flusher " 
 		     << get_stat_dirty() << " dirty + " << get_stat_dirty_waiting()
@@ -1456,6 +1457,12 @@ void ObjectCacher::flusher_entry()
 	     --max > 0) {
 	ldout(cct, 10) << "flusher flushing aged dirty bh " << *bh << dendl;
 	bh_write(bh);
+      }
+      if (!max) {
+	// back off the lock to avoid starving other threads
+	lock.Unlock();
+	lock.Lock();
+	continue;
       }
     }
     if (flusher_stop)
@@ -1482,6 +1489,18 @@ void ObjectCacher::flusher_entry()
 
 // -------------------------------------------------
 
+bool ObjectCacher::set_is_empty(ObjectSet *oset)
+{
+  assert(lock.is_locked());
+  if (oset->objects.empty())
+    return true;
+
+  for (xlist<Object*>::iterator p = oset->objects.begin(); !p.end(); ++p)
+    if (!(*p)->is_empty())
+      return false;
+
+  return true;
+}
 
 bool ObjectCacher::set_is_cached(ObjectSet *oset)
 {
@@ -1758,11 +1777,11 @@ uint64_t ObjectCacher::release_all()
   ldout(cct, 10) << "release_all" << dendl;
   uint64_t unclean = 0;
   
-  vector<hash_map<sobject_t, Object*> >::iterator i = objects.begin();
+  vector<ceph::unordered_map<sobject_t, Object*> >::iterator i = objects.begin();
   while (i != objects.end()) {
-    hash_map<sobject_t, Object*>::iterator p = i->begin();
+    ceph::unordered_map<sobject_t, Object*>::iterator p = i->begin();
     while (p != i->end()) {
-      hash_map<sobject_t, Object*>::iterator n = p;
+      ceph::unordered_map<sobject_t, Object*>::iterator n = p;
       ++n;
 
       Object *ob = p->second;
@@ -1847,10 +1866,10 @@ void ObjectCacher::verify_stats() const
   ldout(cct, 10) << "verify_stats" << dendl;
 
   loff_t clean = 0, zero = 0, dirty = 0, rx = 0, tx = 0, missing = 0, error = 0;
-  for (vector<hash_map<sobject_t, Object*> >::const_iterator i = objects.begin();
+  for (vector<ceph::unordered_map<sobject_t, Object*> >::const_iterator i = objects.begin();
       i != objects.end();
       ++i) {
-    for (hash_map<sobject_t, Object*>::const_iterator p = i->begin();
+    for (ceph::unordered_map<sobject_t, Object*>::const_iterator p = i->begin();
         p != i->end();
         ++p) {
       Object *ob = p->second;

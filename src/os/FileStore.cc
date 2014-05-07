@@ -48,6 +48,7 @@
 #include "FileStore.h"
 #include "GenericFileStoreBackend.h"
 #include "BtrfsFileStoreBackend.h"
+#include "XfsFileStoreBackend.h"
 #include "ZFSFileStoreBackend.h"
 #include "common/BackTrace.h"
 #include "include/types.h"
@@ -86,6 +87,13 @@ using ceph::crypto::SHA1;
 #define REPLAY_GUARD_XATTR "user.cephos.seq"
 #define GLOBAL_REPLAY_GUARD_XATTR "user.cephos.gseq"
 
+// XATTR_SPILL_OUT_NAME as a xattr is used to maintain that indicates whether
+// xattrs spill over into DBObjectMap, if XATTR_SPILL_OUT_NAME exists in file
+// xattrs and the value is "no", it indicates no xattrs in DBObjectMap
+#define XATTR_SPILL_OUT_NAME "user.cephos.spill_out"
+#define XATTR_NO_SPILL_OUT "0"
+#define XATTR_SPILL_OUT "1"
+
 //Initial features in new superblock.
 static CompatSet get_fs_initial_compat_set() {
   CompatSet::FeatureSet ceph_osd_feature_compat;
@@ -103,6 +111,15 @@ static CompatSet get_fs_supported_compat_set() {
   return compat;
 }
 
+
+int FileStore::peek_journal_fsid(uuid_d *fsid)
+{
+  // make sure we don't try to use aio or direct_io (and get annoying
+  // error messages from failing to do so); performance implications
+  // should be irrelevant for this use
+  FileJournal j(*fsid, 0, 0, journalpath.c_str(), false, false);
+  return j.peek_fsid(*fsid);
+}
 
 void FileStore::FSPerfTracker::update_from_perfcounters(
   PerfCounters &logger)
@@ -216,50 +233,63 @@ int FileStore::lfn_open(coll_t cid,
   if (!(*index)) {
     r = get_index(cid, index);
   }
-  Mutex::Locker l(fdcache_lock);
-  if (!replaying)
-    *outfd = fdcache.lookup(oid);
-  if (*outfd) {
-    return 0;
-  }
-  IndexedPath path2;
-  if (!path)
-    path = &path2;
+
   int fd, exist;
-  if (r < 0) {
-    derr << "error getting collection index for " << cid
-	 << ": " << cpp_strerror(-r) << dendl;
-    goto fail;
-  }
-  r = (*index)->lookup(oid, path, &exist);
-  if (r < 0) {
-    derr << "could not find " << oid << " in index: "
-	 << cpp_strerror(-r) << dendl;
-    goto fail;
+  if (!replaying) {
+    Mutex::Locker l(fdcache_lock);
+    *outfd = fdcache.lookup(oid);
+    if (*outfd)
+      return 0;
   }
 
-  r = ::open((*path)->path(), flags, 0644);
-  if (r < 0) {
-    r = -errno;
-    dout(10) << "error opening file " << (*path)->path() << " with flags="
-	     << flags << ": " << cpp_strerror(-r) << dendl;
-    goto fail;
-  }
-  fd = r;
-
-  if (create && (!exist)) {
-    r = (*index)->created(oid, (*path)->path());
+  {
+    IndexedPath path2;
+    if (!path)
+      path = &path2;
     if (r < 0) {
-      TEMP_FAILURE_RETRY(::close(fd));
-      derr << "error creating " << oid << " (" << (*path)->path()
-	   << ") in index: " << cpp_strerror(-r) << dendl;
+      derr << "error getting collection index for " << cid
+	   << ": " << cpp_strerror(-r) << dendl;
       goto fail;
     }
+    r = (*index)->lookup(oid, path, &exist);
+    if (r < 0) {
+      derr << "could not find " << oid << " in index: "
+	   << cpp_strerror(-r) << dendl;
+      goto fail;
+    }
+
+    r = ::open((*path)->path(), flags, 0644);
+    if (r < 0) {
+      r = -errno;
+      dout(10) << "error opening file " << (*path)->path() << " with flags="
+	       << flags << ": " << cpp_strerror(-r) << dendl;
+      goto fail;
+    }
+    fd = r;
+
+    if (create && (!exist)) {
+      r = (*index)->created(oid, (*path)->path());
+      if (r < 0) {
+	VOID_TEMP_FAILURE_RETRY(::close(fd));
+	derr << "error creating " << oid << " (" << (*path)->path()
+	     << ") in index: " << cpp_strerror(-r) << dendl;
+	goto fail;
+      }
+    }
   }
-  if (!replaying)
-    *outfd = fdcache.add(oid, fd);
-  else
+
+  if (!replaying) {
+    Mutex::Locker l(fdcache_lock);
+    *outfd = fdcache.lookup(oid);
+    if (*outfd) {
+      VOID_TEMP_FAILURE_RETRY(::close(fd));
+      return 0;
+    } else {
+      *outfd = fdcache.add(oid, fd);
+    }
+  } else {
     *outfd = FDRef(new FDCache::FD(fd));
+  }
   return 0;
 
  fail:
@@ -284,6 +314,11 @@ int FileStore::lfn_link(coll_t c, coll_t newcid, const ghobject_t& o, const ghob
     r = get_index(c, &index_old);
     if (r < 0)
       return r;
+  } else if (c == newcid) {
+    r = get_index(c, &index_old);
+    if (r < 0)
+      return r;
+    index_new = index_old;
   } else {
     r = get_index(c, &index_old);
     if (r < 0)
@@ -377,6 +412,7 @@ int FileStore::lfn_unlink(coll_t cid, const ghobject_t& o,
 }
 
 FileStore::FileStore(const std::string &base, const std::string &jdev, const char *name, bool do_update) :
+  JournalingObjectStore(base),
   internal_name(name),
   basedir(base), journalpath(jdev),
   blk_size(0),
@@ -425,6 +461,7 @@ FileStore::FileStore(const std::string &base, const std::string &jdev, const cha
   m_filestore_dump_fmt(true),
   m_filestore_sloppy_crc(g_conf->filestore_sloppy_crc),
   m_filestore_sloppy_crc_block_size(g_conf->filestore_sloppy_crc_block_size),
+  m_filestore_max_alloc_hint_size(g_conf->filestore_max_alloc_hint_size),
   m_fs_type(FS_TYPE_NONE),
   m_filestore_max_inline_xattr_size(0),
   m_filestore_max_inline_xattrs(0)
@@ -644,6 +681,10 @@ int FileStore::mkfs()
 #if defined(__linux__)
     backend = new BtrfsFileStoreBackend(this);
 #endif
+  } else if (basefs.f_type == XFS_SUPER_MAGIC) {
+#ifdef HAVE_LIBXFS
+    backend = new XfsFileStoreBackend(this);
+#endif
   } else if (basefs.f_type == ZFS_SUPER_MAGIC) {
 #ifdef HAVE_LIBZFS
     backend = new ZFSFileStoreBackend(this);
@@ -668,7 +709,7 @@ int FileStore::mkfs()
     if (initial_seq == 0) {
       int err = write_op_seq(fd, 1);
       if (err < 0) {
-	TEMP_FAILURE_RETRY(::close(fd));
+	VOID_TEMP_FAILURE_RETRY(::close(fd));
 	derr << "mkfs: failed to write to " << current_op_seq_fn << ": "
 	     << cpp_strerror(err) << dendl;
 	goto close_fsid_fd;
@@ -681,15 +722,15 @@ int FileStore::mkfs()
 	char s[NAME_MAX];
 	snprintf(s, sizeof(s), COMMIT_SNAP_ITEM, 1ull);
 	ret = backend->create_checkpoint(s, NULL);
-	TEMP_FAILURE_RETRY(::close(current_fd));
+	VOID_TEMP_FAILURE_RETRY(::close(current_fd));
 	if (ret < 0 && ret != -EEXIST) {
-	  TEMP_FAILURE_RETRY(::close(fd));  
+	  VOID_TEMP_FAILURE_RETRY(::close(fd));  
 	  derr << "mkfs: failed to create snap_1: " << cpp_strerror(ret) << dendl;
 	  goto close_fsid_fd;
 	}
       }
     }
-    TEMP_FAILURE_RETRY(::close(fd));  
+    VOID_TEMP_FAILURE_RETRY(::close(fd));  
   }
 
   {
@@ -716,10 +757,10 @@ int FileStore::mkfs()
   ret = 0;
 
  close_fsid_fd:
-  TEMP_FAILURE_RETRY(::close(fsid_fd));
+  VOID_TEMP_FAILURE_RETRY(::close(fsid_fd));
   fsid_fd = -1;
  close_basedir_fd:
-  TEMP_FAILURE_RETRY(::close(basedir_fd));
+  VOID_TEMP_FAILURE_RETRY(::close(basedir_fd));
   if (backend != generic_backend) {
     delete backend;
     backend = generic_backend;
@@ -742,10 +783,10 @@ int FileStore::mkjournal()
   ret = read_fsid(fd, &fsid);
   if (ret < 0) {
     derr << "FileStore::mkjournal: read error: " << cpp_strerror(ret) << dendl;
-    TEMP_FAILURE_RETRY(::close(fd));
+    VOID_TEMP_FAILURE_RETRY(::close(fd));
     return ret;
   }
-  TEMP_FAILURE_RETRY(::close(fd));
+  VOID_TEMP_FAILURE_RETRY(::close(fd));
 
   ret = 0;
 
@@ -816,7 +857,7 @@ bool FileStore::test_mount_in_use()
   if (fsid_fd < 0)
     return 0;   // no fsid, ok.
   bool inuse = lock_fsid() < 0;
-  TEMP_FAILURE_RETRY(::close(fsid_fd));
+  VOID_TEMP_FAILURE_RETRY(::close(fsid_fd));
   fsid_fd = -1;
   return inuse;
 }
@@ -831,30 +872,37 @@ int FileStore::_detect_fs()
   blk_size = st.f_bsize;
 
   m_fs_type = FS_TYPE_OTHER;
-#if defined(__linux__)
   if (st.f_type == BTRFS_SUPER_MAGIC) {
+#if defined(__linux__)
     dout(0) << "mount detected btrfs" << dendl;
     backend = new BtrfsFileStoreBackend(this);
+    m_fs_type = FS_TYPE_BTRFS;
 
     wbthrottle.set_fs(WBThrottle::BTRFS);
-    m_fs_type = FS_TYPE_BTRFS;
+#endif
   } else if (st.f_type == XFS_SUPER_MAGIC) {
-    dout(1) << "mount detected xfs" << dendl;
+#ifdef HAVE_LIBXFS
+    dout(0) << "mount detected xfs (libxfs)" << dendl;
+    backend = new XfsFileStoreBackend(this);
+#else
+    dout(0) << "mount detected xfs" << dendl;
+#endif
+    m_fs_type = FS_TYPE_XFS;
+
+    // wbthrottle is constructed with fs(WBThrottle::XFS)
     if (m_filestore_replica_fadvise) {
       dout(1) << " disabling 'filestore replica fadvise' due to known issues with fadvise(DONTNEED) on xfs" << dendl;
       g_conf->set_val("filestore_replica_fadvise", "false");
       g_conf->apply_changes(NULL);
       assert(m_filestore_replica_fadvise == false);
-      m_fs_type = FS_TYPE_XFS;
     }
-  }
-#endif
+  } else if (st.f_type == ZFS_SUPER_MAGIC) {
 #ifdef HAVE_LIBZFS
-  if (st.f_type == ZFS_SUPER_MAGIC) {
+    dout(0) << "mount detected zfs (libzfs)" << dendl;
     backend = new ZFSFileStoreBackend(this);
     m_fs_type = FS_TYPE_ZFS;
-  }
 #endif
+  }
 
   set_xattr_limits_via_conf();
 
@@ -886,7 +934,7 @@ int FileStore::_detect_fs()
     *_dout << "If you are using ext3 or ext4, be sure to mount the underlying "
 	   << "file system with the 'user_xattr' option." << dendl;
     ::unlink(fn);
-    TEMP_FAILURE_RETRY(::close(tmpfd));
+    VOID_TEMP_FAILURE_RETRY(::close(tmpfd));
     return -ENOTSUP;
   }
 
@@ -907,7 +955,7 @@ int FileStore::_detect_fs()
   chain_fremovexattr(tmpfd, "user.test5");
 
   ::unlink(fn);
-  TEMP_FAILURE_RETRY(::close(tmpfd));
+  VOID_TEMP_FAILURE_RETRY(::close(tmpfd));
 
   return 0;
 }
@@ -995,7 +1043,8 @@ void FileStore::set_allow_sharded_objects()
 
 bool FileStore::get_allow_sharded_objects()
 {
-  return superblock.compat_features.incompat.contains(CEPH_FS_FEATURE_INCOMPAT_SHARDS);
+  return g_conf->filestore_debug_disable_sharded_check ||
+    superblock.compat_features.incompat.contains(CEPH_FS_FEATURE_INCOMPAT_SHARDS);
 }
 
 int FileStore::update_version_stamp()
@@ -1045,7 +1094,7 @@ int FileStore::read_op_seq(uint64_t *seq)
   int ret = safe_read(op_fd, s, sizeof(s) - 1);
   if (ret < 0) {
     derr << "error reading " << current_op_seq_fn << ": " << cpp_strerror(ret) << dendl;
-    TEMP_FAILURE_RETRY(::close(op_fd));
+    VOID_TEMP_FAILURE_RETRY(::close(op_fd));
     assert(!m_filestore_fail_eio || ret != -EIO);
     return ret;
   }
@@ -1212,7 +1261,7 @@ int FileStore::mount()
 	{
 	  int fd = read_op_seq(&curr_seq);
 	  if (fd >= 0) {
-	    TEMP_FAILURE_RETRY(::close(fd));
+	    VOID_TEMP_FAILURE_RETRY(::close(fd));
 	  }
 	}
 	if (curr_seq)
@@ -1287,7 +1336,7 @@ int FileStore::mount()
       derr << "FileStore::mount: failed to create current/nosnap" << dendl;
       goto close_current_fd;
     }
-    TEMP_FAILURE_RETRY(::close(r));
+    VOID_TEMP_FAILURE_RETRY(::close(r));
   } else {
     // clear nosnap marker, if present.
     ::unlink(nosnapfn);
@@ -1296,14 +1345,23 @@ int FileStore::mount()
   {
     LevelDBStore *omap_store = new LevelDBStore(g_ceph_context, omap_dir);
 
-    omap_store->options.write_buffer_size = g_conf->osd_leveldb_write_buffer_size;
-    omap_store->options.cache_size = g_conf->osd_leveldb_cache_size;
-    omap_store->options.block_size = g_conf->osd_leveldb_block_size;
-    omap_store->options.bloom_size = g_conf->osd_leveldb_bloom_size;
-    omap_store->options.compression_enabled = g_conf->osd_leveldb_compression;
-    omap_store->options.paranoid_checks = g_conf->osd_leveldb_paranoid;
-    omap_store->options.max_open_files = g_conf->osd_leveldb_max_open_files;
-    omap_store->options.log_file = g_conf->osd_leveldb_log;
+    omap_store->init();
+    if (g_conf->osd_leveldb_write_buffer_size)
+      omap_store->options.write_buffer_size = g_conf->osd_leveldb_write_buffer_size;
+    if (g_conf->osd_leveldb_cache_size)
+      omap_store->options.cache_size = g_conf->osd_leveldb_cache_size;
+    if (g_conf->osd_leveldb_block_size)
+      omap_store->options.block_size = g_conf->osd_leveldb_block_size;
+    if (g_conf->osd_leveldb_bloom_size)
+      omap_store->options.bloom_size = g_conf->osd_leveldb_bloom_size;
+    if (g_conf->osd_leveldb_compression)
+      omap_store->options.compression_enabled = g_conf->osd_leveldb_compression;
+    if (g_conf->osd_leveldb_paranoid)
+      omap_store->options.paranoid_checks = g_conf->osd_leveldb_paranoid;
+    if (g_conf->osd_leveldb_max_open_files)
+      omap_store->options.max_open_files = g_conf->osd_leveldb_max_open_files;
+    if (g_conf->osd_leveldb_log.length())
+      omap_store->options.log_file = g_conf->osd_leveldb_log;
 
     stringstream err;
     if (omap_store->create_and_open(err)) {
@@ -1393,6 +1451,7 @@ int FileStore::mount()
     }
   }
 
+  wbthrottle.start();
   sync_thread.create();
 
   ret = journal_replay(initial_op_seq);
@@ -1409,6 +1468,8 @@ int FileStore::mount()
     sync_cond.Signal();
     lock.Unlock();
     sync_thread.join();
+
+    wbthrottle.stop();
 
     goto close_current_fd;
   }
@@ -1434,13 +1495,13 @@ int FileStore::mount()
   return 0;
 
 close_current_fd:
-  TEMP_FAILURE_RETRY(::close(current_fd));
+  VOID_TEMP_FAILURE_RETRY(::close(current_fd));
   current_fd = -1;
 close_basedir_fd:
-  TEMP_FAILURE_RETRY(::close(basedir_fd));
+  VOID_TEMP_FAILURE_RETRY(::close(basedir_fd));
   basedir_fd = -1;
 close_fsid_fd:
-  TEMP_FAILURE_RETRY(::close(fsid_fd));
+  VOID_TEMP_FAILURE_RETRY(::close(fsid_fd));
   fsid_fd = -1;
 done:
   assert(!m_filestore_fail_eio || ret != -EIO);
@@ -1459,6 +1520,7 @@ int FileStore::umount()
   sync_cond.Signal();
   lock.Unlock();
   sync_thread.join();
+  wbthrottle.stop();
   op_tp.stop();
 
   journal_stop();
@@ -1467,19 +1529,19 @@ int FileStore::umount()
   ondisk_finisher.stop();
 
   if (fsid_fd >= 0) {
-    TEMP_FAILURE_RETRY(::close(fsid_fd));
+    VOID_TEMP_FAILURE_RETRY(::close(fsid_fd));
     fsid_fd = -1;
   }
   if (op_fd >= 0) {
-    TEMP_FAILURE_RETRY(::close(op_fd));
+    VOID_TEMP_FAILURE_RETRY(::close(op_fd));
     op_fd = -1;
   }
   if (current_fd >= 0) {
-    TEMP_FAILURE_RETRY(::close(current_fd));
+    VOID_TEMP_FAILURE_RETRY(::close(current_fd));
     current_fd = -1;
   }
   if (basedir_fd >= 0) {
-    TEMP_FAILURE_RETRY(::close(basedir_fd));
+    VOID_TEMP_FAILURE_RETRY(::close(basedir_fd));
     basedir_fd = -1;
   }
 
@@ -1564,7 +1626,7 @@ void FileStore::queue_op(OpSequencer *osr, Op *o)
   op_wq.queue(osr);
 }
 
-void FileStore::op_queue_reserve_throttle(Op *o)
+void FileStore::op_queue_reserve_throttle(Op *o, ThreadPool::TPHandle *handle)
 {
   // Do not call while holding the journal lock!
   uint64_t max_ops = m_filestore_queue_max_ops;
@@ -1586,7 +1648,11 @@ void FileStore::op_queue_reserve_throttle(Op *o)
 	      && (op_queue_bytes + o->bytes) > max_bytes)) {
       dout(2) << "waiting " << op_queue_len + 1 << " > " << max_ops << " ops || "
 	      << op_queue_bytes + o->bytes << " > " << max_bytes << dendl;
+      if (handle)
+	handle->suspend_tp_timeout();
       op_throttle_cond.Wait(op_throttle_lock);
+      if (handle)
+	handle->reset_tp_timeout();
     }
 
     op_queue_len++;
@@ -1652,7 +1718,9 @@ void FileStore::_finish_op(OpSequencer *osr)
   if (o->onreadable_sync) {
     o->onreadable_sync->complete(0);
   }
-  op_finisher.queue(o->onreadable);
+  if (o->onreadable) {
+    op_finisher.queue(o->onreadable);
+  }
   delete o;
 }
 
@@ -1671,7 +1739,8 @@ struct C_JournaledAhead : public Context {
 };
 
 int FileStore::queue_transactions(Sequencer *posr, list<Transaction*> &tls,
-				  TrackedOpRef osd_op)
+				  TrackedOpRef osd_op,
+				  ThreadPool::TPHandle *handle)
 {
   Context *onreadable;
   Context *ondisk;
@@ -1680,6 +1749,9 @@ int FileStore::queue_transactions(Sequencer *posr, list<Transaction*> &tls,
     tls, &onreadable, &ondisk, &onreadable_sync);
   if (g_conf->filestore_blackhole) {
     dout(0) << "queue_transactions filestore_blackhole = TRUE, dropping transaction" << dendl;
+    delete ondisk;
+    delete onreadable;
+    delete onreadable_sync;
     return 0;
   }
 
@@ -1699,7 +1771,7 @@ int FileStore::queue_transactions(Sequencer *posr, list<Transaction*> &tls,
 
   if (journal && journal->is_writeable() && !m_filestore_journal_trailing) {
     Op *o = build_op(tls, onreadable, onreadable_sync, osd_op);
-    op_queue_reserve_throttle(o);
+    op_queue_reserve_throttle(o, handle);
     journal->throttle();
     uint64_t op_num = submit_manager.op_submit_start();
     o->op = op_num;
@@ -1838,7 +1910,7 @@ void FileStore::_set_global_replay_guard(coll_t cid,
 
   _inject_failure();
 
-  TEMP_FAILURE_RETRY(::close(fd));
+  VOID_TEMP_FAILURE_RETRY(::close(fd));
   dout(10) << __func__ << ": " << spos << " done" << dendl;
 }
 
@@ -1861,7 +1933,7 @@ int FileStore::_check_global_replay_guard(coll_t cid,
   if (r < 0) {
     dout(20) << __func__ << " no xattr" << dendl;
     assert(!m_filestore_fail_eio || r != -EIO);
-    TEMP_FAILURE_RETRY(::close(fd));
+    VOID_TEMP_FAILURE_RETRY(::close(fd));
     return 1;  // no xattr
   }
   bufferlist bl;
@@ -1871,7 +1943,7 @@ int FileStore::_check_global_replay_guard(coll_t cid,
   bufferlist::iterator p = bl.begin();
   ::decode(opos, p);
 
-  TEMP_FAILURE_RETRY(::close(fd));
+  VOID_TEMP_FAILURE_RETRY(::close(fd));
   return spos >= opos ? 1 : -1;
 }
 
@@ -2009,7 +2081,7 @@ int FileStore::_check_replay_guard(coll_t cid, const SequencerPosition& spos)
     return 1;  // if collection does not exist, there is no guard, and we can replay.
   }
   int ret = _check_replay_guard(fd, spos);
-  TEMP_FAILURE_RETRY(::close(fd));
+  VOID_TEMP_FAILURE_RETRY(::close(fd));
   return ret;
 }
 
@@ -2373,6 +2445,18 @@ unsigned FileStore::_do_transaction(
       }
       break;
 
+    case Transaction::OP_SETALLOCHINT:
+      {
+        coll_t cid = i.get_cid();
+        ghobject_t oid = i.get_oid();
+        uint64_t expected_object_size = i.get_length();
+        uint64_t expected_write_size = i.get_length();
+        if (_check_replay_guard(cid, oid, spos) > 0)
+          r = _set_alloc_hint(cid, oid, expected_object_size,
+                              expected_write_size);
+      }
+      break;
+
     default:
       derr << "bad op " << op << dendl;
       assert(0);
@@ -2394,6 +2478,14 @@ unsigned FileStore::_do_transaction(
 	ok = true; // Hack for upgrade from snapcolls to snapmapper
       if (r == -ENODATA)
 	ok = true;
+
+      if (op == Transaction::OP_SETALLOCHINT)
+        // Either EOPNOTSUPP or EINVAL most probably.  EINVAL in most
+        // cases means invalid hint size (e.g. too big, not a multiple
+        // of block size, etc) or, at least on xfs, an attempt to set
+        // or change it when the file is not empty.  However,
+        // OP_SETALLOCHINT is advisory, so ignore all errors.
+        ok = true;
 
       if (replaying && !backend->can_checkpoint()) {
 	if (r == -EEXIST && op == Transaction::OP_MKCOLL) {
@@ -3130,6 +3222,7 @@ void FileStore::sync_entry()
       goto again;
     }
   }
+  stop = false;
   lock.Unlock();
 }
 
@@ -3444,15 +3537,29 @@ int FileStore::getattrs(coll_t cid, const ghobject_t& oid, map<string,bufferptr>
   Index index;
   dout(15) << "getattrs " << cid << "/" << oid << dendl;
   FDRef fd;
+  bool spill_out = true;
+  char buf[2];
+
   int r = lfn_open(cid, oid, false, &fd);
   if (r < 0) {
     goto out;
   }
+
+  r = chain_fgetxattr(**fd, XATTR_SPILL_OUT_NAME, buf, sizeof(buf));
+  if (r >= 0 && !strncmp(buf, XATTR_NO_SPILL_OUT, sizeof(XATTR_NO_SPILL_OUT)))
+    spill_out = false;
+
   r = _fgetattrs(**fd, aset, user_only);
   if (r < 0) {
     goto out;
   }
   lfn_close(fd);
+
+  if (!spill_out) {
+    dout(10) << __func__ << " no xattr exists in object_map r = " << r << dendl;
+    goto out;
+  }
+
   r = get_index(cid, &index);
   if (r < 0) {
     dout(10) << __func__ << " could not get index r = " << r << dendl;
@@ -3463,6 +3570,7 @@ int FileStore::getattrs(coll_t cid, const ghobject_t& oid, map<string,bufferptr>
     dout(10) << __func__ << " could not get omap_attrs r = " << r << dendl;
     goto out;
   }
+
   r = object_map->get_xattrs(oid, omap_attrs, &omap_aset);
   if (r < 0 && r != -ENOENT) {
     dout(10) << __func__ << " could not get omap_attrs r = " << r << dendl;
@@ -3507,14 +3615,25 @@ int FileStore::_setattrs(coll_t cid, const ghobject_t& oid, map<string,bufferptr
   map<string, bufferptr> inline_set;
   map<string, bufferptr> inline_to_set;
   FDRef fd;
+  int spill_out = -1;
+
   int r = lfn_open(cid, oid, false, &fd);
   if (r < 0) {
     goto out;
   }
+
+  char buf[2];
+  r = chain_fgetxattr(**fd, XATTR_SPILL_OUT_NAME, buf, sizeof(buf));
+  if (r >= 0 && !strncmp(buf, XATTR_NO_SPILL_OUT, sizeof(XATTR_NO_SPILL_OUT)))
+    spill_out = 0;
+  else
+    spill_out = 1;
+
   r = _fgetattrs(**fd, inline_set, false);
   assert(!m_filestore_fail_eio || r != -EIO);
   dout(15) << "setattrs " << cid << "/" << oid << dendl;
   r = 0;
+
   for (map<string,bufferptr>::iterator p = aset.begin();
        p != aset.end();
        ++p) {
@@ -3547,14 +3666,18 @@ int FileStore::_setattrs(coll_t cid, const ghobject_t& oid, map<string,bufferptr
     inline_set.insert(*p);
 
     inline_to_set.insert(*p);
+  }
 
+  if (spill_out != 1 && !omap_set.empty()) {
+    chain_fsetxattr(**fd, XATTR_SPILL_OUT_NAME, XATTR_SPILL_OUT,
+		    sizeof(XATTR_SPILL_OUT));
   }
 
   r = _fsetattrs(**fd, inline_to_set);
   if (r < 0)
     goto out_close;
 
-  if (!omap_remove.empty()) {
+  if (spill_out && !omap_remove.empty()) {
     r = object_map->remove_xattrs(oid, omap_remove, &spos);
     if (r < 0 && r != -ENOENT) {
       dout(10) << __func__ << " could not remove_xattrs r = " << r << dendl;
@@ -3564,7 +3687,7 @@ int FileStore::_setattrs(coll_t cid, const ghobject_t& oid, map<string,bufferptr
       r = 0; // don't confuse the debug output
     }
   }
-  
+
   if (!omap_set.empty()) {
     r = object_map->set_xattrs(oid, omap_set, &spos);
     if (r < 0) {
@@ -3586,14 +3709,24 @@ int FileStore::_rmattr(coll_t cid, const ghobject_t& oid, const char *name,
 {
   dout(15) << "rmattr " << cid << "/" << oid << " '" << name << "'" << dendl;
   FDRef fd;
+  bool spill_out = true;
+  bufferptr bp;
+
   int r = lfn_open(cid, oid, false, &fd);
   if (r < 0) {
     goto out;
   }
+
+  char buf[2];
+  r = chain_fgetxattr(**fd, XATTR_SPILL_OUT_NAME, buf, sizeof(buf));
+  if (r >= 0 && !strncmp(buf, XATTR_NO_SPILL_OUT, sizeof(XATTR_NO_SPILL_OUT))) {
+    spill_out = false;
+  }
+
   char n[CHAIN_XATTR_MAX_NAME_LEN];
   get_attrname(name, n, CHAIN_XATTR_MAX_NAME_LEN);
   r = chain_fremovexattr(**fd, n);
-  if (r == -ENODATA) {
+  if (r == -ENODATA && spill_out) {
     Index index;
     r = get_index(cid, &index);
     if (r < 0) {
@@ -3625,10 +3758,19 @@ int FileStore::_rmattrs(coll_t cid, const ghobject_t& oid,
   FDRef fd;
   set<string> omap_attrs;
   Index index;
+  bool spill_out = true;
+
   int r = lfn_open(cid, oid, false, &fd);
   if (r < 0) {
     goto out;
   }
+
+  char buf[2];
+  r = chain_fgetxattr(**fd, XATTR_SPILL_OUT_NAME, buf, sizeof(buf));
+  if (r >= 0 && !strncmp(buf, XATTR_NO_SPILL_OUT, sizeof(XATTR_NO_SPILL_OUT))) {
+    spill_out = false;
+  }
+
   r = _fgetattrs(**fd, aset, false);
   if (r >= 0) {
     for (map<string,bufferptr>::iterator p = aset.begin(); p != aset.end(); ++p) {
@@ -3639,26 +3781,36 @@ int FileStore::_rmattrs(coll_t cid, const ghobject_t& oid,
 	break;
     }
   }
-  lfn_close(fd);
+
+  if (!spill_out) {
+    dout(10) << __func__ << " no xattr exists in object_map r = " << r << dendl;
+    goto out_close;
+  }
 
   r = get_index(cid, &index);
   if (r < 0) {
     dout(10) << __func__ << " could not get index r = " << r << dendl;
-    return r;
+    goto out_close;
   }
   r = object_map->get_all_xattrs(oid, &omap_attrs);
   if (r < 0 && r != -ENOENT) {
     dout(10) << __func__ << " could not get omap_attrs r = " << r << dendl;
     assert(!m_filestore_fail_eio || r != -EIO);
-    return r;
+    goto out_close;
   }
   r = object_map->remove_xattrs(oid, omap_attrs, &spos);
   if (r < 0 && r != -ENOENT) {
     dout(10) << __func__ << " could not remove omap_attrs r = " << r << dendl;
-    return r;
+    goto out_close;
   }
   if (r == -ENOENT)
     r = 0;
+
+  chain_fsetxattr(**fd, XATTR_SPILL_OUT_NAME, XATTR_NO_SPILL_OUT,
+		  sizeof(XATTR_NO_SPILL_OUT));
+
+ out_close:
+  lfn_close(fd);
  out:
   dout(10) << "rmattrs " << cid << "/" << oid << " = " << r << dendl;
   return r;
@@ -3683,7 +3835,7 @@ int FileStore::collection_getattr(coll_t c, const char *name,
   char n[PATH_MAX];
   get_attrname(name, n, PATH_MAX);
   r = chain_fgetxattr(fd, n, value, size);
-  TEMP_FAILURE_RETRY(::close(fd));
+  VOID_TEMP_FAILURE_RETRY(::close(fd));
  out:
   dout(10) << "collection_getattr " << fn << " '" << name << "' len " << size << " = " << r << dendl;
   assert(!m_filestore_fail_eio || r != -EIO);
@@ -3706,7 +3858,7 @@ int FileStore::collection_getattr(coll_t c, const char *name, bufferlist& bl)
   }
   r = _fgetattr(fd, n, bp);
   bl.push_back(bp);
-  TEMP_FAILURE_RETRY(::close(fd));
+  VOID_TEMP_FAILURE_RETRY(::close(fd));
  out:
   dout(10) << "collection_getattr " << fn << " '" << name << "' = " << r << dendl;
   assert(!m_filestore_fail_eio || r != -EIO);
@@ -3725,7 +3877,7 @@ int FileStore::collection_getattrs(coll_t cid, map<string,bufferptr>& aset)
     goto out;
   }
   r = _fgetattrs(fd, aset, true);
-  TEMP_FAILURE_RETRY(::close(fd));
+  VOID_TEMP_FAILURE_RETRY(::close(fd));
  out:
   dout(10) << "collection_getattrs " << fn << " = " << r << dendl;
   assert(!m_filestore_fail_eio || r != -EIO);
@@ -3748,7 +3900,7 @@ int FileStore::_collection_setattr(coll_t c, const char *name,
   }
   get_attrname(name, n, PATH_MAX);
   r = chain_fsetxattr(fd, n, value, size);
-  TEMP_FAILURE_RETRY(::close(fd));
+  VOID_TEMP_FAILURE_RETRY(::close(fd));
  out:
   dout(10) << "collection_setattr " << fn << " '" << name << "' len " << size << " = " << r << dendl;
   return r;
@@ -3768,7 +3920,7 @@ int FileStore::_collection_rmattr(coll_t c, const char *name)
     goto out;
   }
   r = chain_fremovexattr(fd, n);
-  TEMP_FAILURE_RETRY(::close(fd));
+  VOID_TEMP_FAILURE_RETRY(::close(fd));
  out:
   dout(10) << "collection_rmattr " << fn << " = " << r << dendl;
   return r;
@@ -3795,7 +3947,7 @@ int FileStore::_collection_setattrs(coll_t cid, map<string,bufferptr>& aset)
     if (r < 0)
       break;
   }
-  TEMP_FAILURE_RETRY(::close(fd));
+  VOID_TEMP_FAILURE_RETRY(::close(fd));
  out:
   dout(10) << "collection_setattrs " << fn << " = " << r << dendl;
   return r;
@@ -3873,7 +4025,7 @@ int FileStore::_collection_rename(const coll_t &cid, const coll_t &ncid,
     int fd = ::open(new_coll, O_RDONLY);
     assert(fd >= 0);
     _set_replay_guard(fd, spos);
-    TEMP_FAILURE_RETRY(::close(fd));
+    VOID_TEMP_FAILURE_RETRY(::close(fd));
   }
 
   dout(10) << "collection_rename '" << cid << "' to '" << ncid << "'"
@@ -4315,19 +4467,34 @@ int FileStore::_collection_move_rename(coll_t oldcid, const ghobject_t& oldoid,
 
     _inject_failure();
 
-    // the name changed; link the omap content
-    r = object_map->clone(oldoid, o, &spos);
-    if (r == -ENOENT)
-      r = 0;
+    if (r == 0) {
+      // the name changed; link the omap content
+      r = object_map->clone(oldoid, o, &spos);
+      if (r == -ENOENT)
+	r = 0;
+    }
 
     _inject_failure();
 
+    lfn_close(fd);
+    fd = FDRef();
+
+    if (r == 0)
+      r = lfn_unlink(oldcid, oldoid, spos, true);
+
+    if (r == 0)
+      r = lfn_open(c, o, 0, &fd);
+
     // close guard on object so we don't do this again
-    if (r == 0) {
+    if (r == 0)
       _close_replay_guard(**fd, spos);
-    }
+
     lfn_close(fd);
   }
+
+  dout(10) << __func__ << " " << c << "/" << o << " from " << oldcid << "/" << oldoid
+	   << " = " << r << dendl;
+  return r;
 
  out_rm_src:
   // remove source
@@ -4360,7 +4527,7 @@ int FileStore::_omap_clear(coll_t cid, const ghobject_t &hoid,
   int r = lfn_find(cid, hoid, &path);
   if (r < 0)
     return r;
-  r = object_map->clear(hoid, &spos);
+  r = object_map->clear_keys_header(hoid, &spos);
   if (r < 0 && r != -ENOENT)
     return r;
   return 0;
@@ -4550,6 +4717,34 @@ int FileStore::_split_collection_create(coll_t cid,
   return r;
 }
 
+int FileStore::_set_alloc_hint(coll_t cid, const ghobject_t& oid,
+                               uint64_t expected_object_size,
+                               uint64_t expected_write_size)
+{
+  dout(15) << "set_alloc_hint " << cid << "/" << oid << " object_size " << expected_object_size << " write_size " << expected_write_size << dendl;
+
+  FDRef fd;
+  int ret;
+
+  ret = lfn_open(cid, oid, false, &fd);
+  if (ret < 0)
+    goto out;
+
+  {
+    // TODO: a more elaborate hint calculation
+    uint64_t hint = MIN(expected_write_size, m_filestore_max_alloc_hint_size);
+
+    ret = backend->set_alloc_hint(**fd, hint);
+    dout(20) << "set_alloc_hint hint " << hint << " ret " << ret << dendl;
+  }
+
+  lfn_close(fd);
+out:
+  dout(10) << "set_alloc_hint " << cid << "/" << oid << " object_size " << expected_object_size << " write_size " << expected_write_size << " = " << ret << dendl;
+  assert(!m_filestore_fail_eio || ret != -EIO);
+  return ret;
+}
+
 const char** FileStore::get_tracked_conf_keys() const
 {
   static const char* KEYS[] = {
@@ -4566,6 +4761,7 @@ const char** FileStore::get_tracked_conf_keys() const
     "filestore_replica_fadvise",
     "filestore_sloppy_crc",
     "filestore_sloppy_crc_block_size",
+    "filestore_max_alloc_hint_size",
     NULL
   };
   return KEYS;
@@ -4595,6 +4791,7 @@ void FileStore::handle_conf_change(const struct md_config_t *conf,
       changed.count("filestore_fail_eio") ||
       changed.count("filestore_sloppy_crc") ||
       changed.count("filestore_sloppy_crc_block_size") ||
+      changed.count("filestore_max_alloc_hint_size") ||
       changed.count("filestore_replica_fadvise")) {
     Mutex::Locker l(lock);
     m_filestore_min_sync_interval = conf->filestore_min_sync_interval;
@@ -4608,6 +4805,7 @@ void FileStore::handle_conf_change(const struct md_config_t *conf,
     m_filestore_replica_fadvise = conf->filestore_replica_fadvise;
     m_filestore_sloppy_crc = conf->filestore_sloppy_crc;
     m_filestore_sloppy_crc_block_size = conf->filestore_sloppy_crc_block_size;
+    m_filestore_max_alloc_hint_size = conf->filestore_max_alloc_hint_size;
   }
   if (changed.count("filestore_commit_timeout")) {
     Mutex::Locker l(sync_entry_timeo_lock);

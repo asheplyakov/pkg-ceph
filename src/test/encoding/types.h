@@ -34,9 +34,9 @@ TYPEWITHSTRAYDATA(OSDMap)
 TYPEWITHSTRAYDATA(OSDMap::Incremental)
 
 #include "crush/CrushWrapper.h"
-TYPE(CrushWrapper)
+TYPE_NOCOPY(CrushWrapper)
 
-#include "include/histogram.h"
+#include "common/histogram.h"
 TYPE(pow2_hist_t)
 
 #include "osd/osd_types.h"
@@ -45,7 +45,7 @@ TYPE(object_locator_t)
 TYPE(request_redirect_t)
 TYPE(pg_t)
 TYPE(coll_t)
-TYPE(filestore_perf_stat_t)
+TYPE(objectstore_perf_stat_t)
 TYPE(osd_stat_t)
 TYPE(OSDSuperblock)
 TYPE_FEATUREFUL(pool_snap_info_t)
@@ -73,12 +73,30 @@ TYPE(ObjectRecoveryInfo)
 TYPE(ObjectRecoveryProgress)
 TYPE(ScrubMap::object)
 TYPE(ScrubMap)
+TYPE(pg_hit_set_info_t)
+TYPE(pg_hit_set_history_t)
 TYPE(osd_peer_stat_t)
 TYPE(clone_info)
 TYPE(obj_list_snap_response_t)
 TYPE(PullOp)
 TYPE(PushOp)
 TYPE(PushReplyOp)
+
+#include "osd/ECUtil.h"
+TYPE(ECUtil::HashInfo)
+
+#include "osd/ECMsgTypes.h"
+TYPE(ECSubWrite)
+TYPE(ECSubWriteReply)
+TYPE(ECSubRead)
+TYPE(ECSubReadReply)
+
+#include "osd/HitSet.h"
+TYPE(ExplicitHashHitSet)
+TYPE(ExplicitObjectHitSet)
+TYPE(BloomHitSet)
+TYPE(HitSet)
+TYPE(HitSet::Params)
 
 #include "os/ObjectStore.h"
 TYPE(ObjectStore::Transaction)
@@ -110,6 +128,9 @@ TYPE(MonCap)
 #include "os/DBObjectMap.h"
 TYPE(DBObjectMap::_Header)
 TYPE(DBObjectMap::State)
+
+#include "osdc/Journaler.h"
+TYPE(Journaler::Header)
 
 #include "mds/Anchor.h"
 TYPE(Anchor)
@@ -143,10 +164,16 @@ TYPE_FEATUREFUL(MDSMap)
 TYPE_FEATUREFUL(MDSMap::mds_info_t)
 
 #include "mds/Capability.h"
-TYPE(Capability)
+TYPE_NOCOPY(Capability)
 
 #include "mds/AnchorServer.h"
-TYPE(AnchorServer)
+TYPEWITHSTRAYDATA(AnchorServer)
+
+#include "mds/InoTable.h"
+TYPE(InoTable)
+
+#include "mds/SnapServer.h"
+TYPEWITHSTRAYDATA(SnapServer)
 
 #include "mds/SessionMap.h"
 TYPE(SessionMap)
@@ -162,7 +189,7 @@ TYPE(EImportFinish)
 #include "mds/events/EImportStart.h"
 TYPE(EImportStart)
 #include "mds/events/EMetaBlob.h"
-TYPE(EMetaBlob::fullbit)
+TYPE_NOCOPY(EMetaBlob::fullbit)
 TYPE(EMetaBlob::remotebit)
 TYPE(EMetaBlob::nullbit)
 TYPE(EMetaBlob::dirlump)
@@ -238,6 +265,21 @@ TYPE(cls_rgw_bi_log_list_ret)
 
 #include "cls/rgw/cls_rgw_client.h"
 TYPE(rgw_bi_log_entry)
+
+#include "cls/user/cls_user_types.h"
+TYPE(cls_user_bucket)
+TYPE(cls_user_bucket_entry)
+TYPE(cls_user_stats)
+TYPE(cls_user_header)
+
+#include "cls/user/cls_user_ops.h"
+TYPE(cls_user_set_buckets_op)
+TYPE(cls_user_remove_bucket_op)
+TYPE(cls_user_list_buckets_op)
+TYPE(cls_user_list_buckets_ret)
+TYPE(cls_user_get_header_op)
+TYPE(cls_user_get_header_ret)
+TYPE(cls_user_complete_stats_sync_op)
 
 #include "rgw/rgw_common.h"
 TYPE(RGWAccessKey);

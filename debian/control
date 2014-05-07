@@ -3,7 +3,8 @@ Section: admin
 Priority: optional
 Maintainer: Ceph Maintainers <ceph-maintainers@lists.ceph.com>
 Uploaders: Laszlo Boszormenyi (GCS) <gcs@debian.org>,
-           James Page <jamespage@debian.org>
+           James Page <jamespage@debian.org>,
+           Dmitry Smirnov <onlyjob@debian.org>
 Homepage: http://ceph.com/
 Vcs-Git: git://anonscm.debian.org/pkg-ceph/ceph.git
 Vcs-Browser: http://anonscm.debian.org/gitweb/?p=pkg-ceph/ceph.git
@@ -15,16 +16,17 @@ Build-Depends: debhelper (>= 9~),
                junit4,
                libaio-dev,
                libatomic-ops-dev,
-               libboost-dev (>= 1.42),
-               libboost-program-options-dev (>= 1.42),
-               libboost-system-dev (>= 1.42),
-               libboost-thread-dev (>= 1.42),
+               libblkid-dev,
+               libboost-dev,
+               libboost-program-options-dev,
+               libboost-system-dev,
+               libboost-thread-dev,
                libcurl4-gnutls-dev,
                libedit-dev,
                libexpat1-dev,
                libfcgi-dev,
                libfuse-dev,
-               libgoogle-perftools-dev [i386 amd64 powerpc armhf],
+               libgoogle-perftools-dev [i386 amd64 powerpc armhf ppc64el],
                libkeyutils-dev,
                libleveldb-dev,
                libnss3-dev,
@@ -36,16 +38,18 @@ Build-Depends: debhelper (>= 9~),
                python-all (>= 2.6.6-3~),
                python-nose,
                uuid-dev,
+               uuid-runtime,
+               xfslibs-dev,
                yasm
 Build-Conflicts: libcrypto++-dev
-Standards-Version: 3.9.4
+Standards-Version: 3.9.5
 X-Python-Version: >= 2.6
 XS-Testsuite: autopkgtest
 
 Package: ceph
 Architecture: linux-any
 Depends: binutils,
-         ceph-common,
+         ceph-common (= ${binary:Version}),
          cryptsetup-bin | cryptsetup,
          gdisk,
          hdparm | sdparm,
@@ -59,6 +63,7 @@ Pre-Depends: ${misc:Pre-Depends}
 Conflicts: gceph, librgw-dev, librgw1, librgw1-dbg, obsync
 Replaces: gceph, librgw-dev, librgw1, librgw1-dbg, obsync
 Recommends: libcephfs1, librados2, librbd1
+Suggests: logrotate
 Description: distributed storage and file system
  Ceph is a distributed storage system designed to provide excellent
  performance, reliability, and scalability.
@@ -80,6 +85,35 @@ Description: debugging symbols for ceph
  performance, reliability, and scalability.
  .
  This package contains the debugging symbols for ceph.
+
+Package: ceph-common
+Architecture: linux-any
+Depends: librbd1 (= ${binary:Version}),
+         python-ceph (= ${binary:Version}),
+         ${misc:Depends},
+         ${python:Depends},
+         ${shlibs:Depends}
+Conflicts: ceph-client-tools
+Replaces: ceph-client-tools
+Suggests: ceph, ceph-mds
+Description: common utilities to mount and interact with a ceph storage cluster
+ Ceph is a distributed storage and file system designed to provide
+ excellent performance, reliability, and scalability.  This is a collection
+ of common tools that allow one to interact with and administer a Ceph cluster.
+
+Package: ceph-common-dbg
+Architecture: linux-any
+Section: debug
+Priority: extra
+Depends: ceph-common (= ${binary:Version}), ${misc:Depends}
+Conflicts: ceph-client-tools-dbg
+Replaces: ceph-client-tools-dbg
+Description: debugging symbols for ceph-common
+ Ceph is a distributed storage and file system designed to provide
+ excellent performance, reliability, and scalability.  This is a collection
+ of common tools that allow one to interact with and administer a Ceph cluster.
+ .
+ This package contains the debugging symbols for ceph-common.
 
 Package: ceph-mds
 Architecture: linux-any
@@ -157,35 +191,6 @@ Description: debugging symbols for rbd-fuse
  .
  This package contains the debugging symbols for rbd-fuse.
 
-Package: ceph-common
-Architecture: linux-any
-Depends: librbd1 (= ${binary:Version}),
-         python-ceph (= ${binary:Version}),
-         ${misc:Depends},
-         ${python:Depends},
-         ${shlibs:Depends}
-Conflicts: ceph-client-tools
-Replaces: ceph-client-tools
-Suggests: ceph, ceph-mds
-Description: common utilities to mount and interact with a ceph storage cluster
- Ceph is a distributed storage and file system designed to provide
- excellent performance, reliability, and scalability.  This is a collection
- of common tools that allow one to interact with and administer a Ceph cluster.
-
-Package: ceph-common-dbg
-Architecture: linux-any
-Depends: ceph-common (= ${binary:Version}), ${misc:Depends}
-Conflicts: ceph-client-tools-dbg
-Replaces: ceph-client-tools-dbg
-Section: debug
-Priority: extra
-Description: debugging symbols for ceph-common
- Ceph is a distributed storage and file system designed to provide
- excellent performance, reliability, and scalability.  This is a collection
- of common tools that allow one to interact with and administer a Ceph cluster.
- .
- This package contains the debugging symbols for ceph-common.
-
 Package: ceph-fs-common
 Architecture: linux-any
 Depends: ${misc:Depends}, ${shlibs:Depends}
@@ -201,11 +206,11 @@ Description: common utilities to mount and interact with a ceph file system
 
 Package: ceph-fs-common-dbg
 Architecture: linux-any
+Section: debug
+Priority: extra
 Depends: ceph-fs-common (= ${binary:Version}), ${misc:Depends}
 Conflicts: ceph-client-tools-dbg
 Replaces: ceph-client-tools-dbg
-Section: debug
-Priority: extra
 Description: debugging symbols for ceph-fs-common
  Ceph is a distributed network file system designed to provide
  excellent performance, reliability, and scalability.  This is a collection
@@ -216,8 +221,8 @@ Description: debugging symbols for ceph-fs-common
 
 Package: ceph-resource-agents
 Architecture: all
-Recommends: pacemaker
 Priority: extra
+Recommends: pacemaker
 Depends: ceph (>= ${binary:Version}), resource-agents, ${misc:Depends}
 Description: OCF-compliant resource agents for Ceph
  Ceph is a distributed storage and network file system designed to provide
@@ -228,10 +233,10 @@ Description: OCF-compliant resource agents for Ceph
  such as Pacemaker.
 
 Package: librados2
-Conflicts: libcrush, libcrush1, librados, librados1
-Replaces: libcrush, libcrush1, librados, librados1
 Architecture: linux-any
 Section: libs
+Conflicts: libcrush, libcrush1, librados, librados1
+Replaces: libcrush, libcrush1, librados, librados1
 Depends: ${misc:Depends}, ${shlibs:Depends}
 Pre-Depends: ${misc:Pre-Depends}
 Description: RADOS distributed object store client library
@@ -241,11 +246,11 @@ Description: RADOS distributed object store client library
  store using a simple file-like interface.
 
 Package: librados2-dbg
-Conflicts: libcrush1-dbg, librados1-dbg
-Replaces: libcrush1-dbg, librados1-dbg
 Architecture: linux-any
 Section: debug
 Priority: extra
+Conflicts: libcrush1-dbg, librados1-dbg
+Replaces: libcrush1-dbg, librados1-dbg
 Depends: librados2 (= ${binary:Version}), ${misc:Depends}
 Description: debugging symbols for librados2
  RADOS is a reliable, autonomic distributed object storage cluster
@@ -310,10 +315,10 @@ Description: RADOS block device client library (development files)
  link against librbd1.
 
 Package: libcephfs1
-Conflicts: libceph, libceph1, libcephfs
-Replaces: libceph, libceph1, libcephfs
 Architecture: linux-any
 Section: libs
+Conflicts: libceph, libceph1, libcephfs
+Replaces: libceph, libceph1, libcephfs
 Depends: ${misc:Depends}, ${shlibs:Depends}
 Pre-Depends: ${misc:Pre-Depends}
 Description: Ceph distributed file system client library
@@ -355,6 +360,7 @@ Description: Ceph distributed file system client library (development files)
 Package: radosgw
 Architecture: linux-any
 Depends: ceph-common (= ${binary:Version}), ${misc:Depends}, ${shlibs:Depends}
+Suggests: logrotate
 Description: REST gateway for RADOS distributed object store
  RADOS is a distributed object store used by the Ceph distributed
  storage system.  This package provides a REST gateway to the
@@ -387,7 +393,7 @@ Architecture: linux-any
 Section: debug
 Priority: extra
 Depends: rest-bench (= ${binary:Version}), ${misc:Depends}
-Description: RESTful bencher that can be used to benchmark radosgw performance
+Description: debugging symbols for rest-bench
  Simple tool to benchmark radosgw (or S3) (based on 'rados-bench' command).
  .
  This package contains the debugging symbols for rest-bench.
@@ -405,8 +411,8 @@ Package: ceph-test-dbg
 Architecture: linux-any
 Section: debug
 Priority: extra
-Depends: ceph-common, curl, xml2, ${misc:Depends}, ${shlibs:Depends}
-Description: Debugging symbols for ceph-test
+Depends: ceph-test (= ${binary:Version}), ${misc:Depends}
+Description: debugging symbols for ceph-test
  Ceph is a distributed storage system designed to provide excellent
  performance, reliability, and scalability.
  .
@@ -431,8 +437,8 @@ Description: Python libraries for the Ceph distributed filesystem
  RADOS object storage, and RBD (RADOS block device).
 
 Package: libcephfs-java
-Section: java
 Architecture: all
+Section: java
 Depends: libcephfs-jni (>= ${binary:Version}), ${java:Depends}, ${misc:Depends}
 Description: Java library for the Ceph File System
  Ceph is a distributed storage system designed to provide excellent
@@ -457,7 +463,7 @@ Architecture: linux-any
 Section: debug
 Priority: extra
 Depends: libcephfs-jni (= ${binary:Version}), ${misc:Depends}
-Description: Debugging symbols for libcephfs-jni
+Description: debugging symbols for libcephfs-jni
  Ceph is a distributed storage system designed to provide excellent
  performance, reliability, and scalability.
  .

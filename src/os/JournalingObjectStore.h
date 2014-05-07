@@ -68,6 +68,13 @@ protected:
       max_applied_seq(0),
       com_lock("JOS::ApplyManager::com_lock", false, true, false, g_ceph_context),
       committing_seq(0), committed_seq(0) {}
+    void reset() {
+      assert(open_ops == 0);
+      assert(blocked == false);
+      max_applied_seq = 0;
+      committing_seq = 0;
+      committed_seq = 0;
+    }
     void add_waiter(uint64_t, Context*);
     uint64_t op_apply_start(uint64_t op);
     void op_apply_finish(uint64_t op);
@@ -120,9 +127,12 @@ public:
   }
 
 public:
-  JournalingObjectStore() : journal(NULL), finisher(g_ceph_context),
-			    apply_manager(journal, finisher),
-			    replaying(false) {}
+  JournalingObjectStore(const std::string& path)
+    : ObjectStore(path),
+      journal(NULL),
+      finisher(g_ceph_context),
+      apply_manager(journal, finisher),
+      replaying(false) {}
   
 };
 

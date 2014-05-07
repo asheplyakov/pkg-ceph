@@ -61,9 +61,8 @@ extern "C" {
 
 using namespace std;
 
-#include <ext/hash_map>
-using namespace __gnu_cxx;
-
+#include "include/unordered_map.h"
+#include "include/hash_namespace.h"
 
 #include "object.h"
 #include "intarith.h"
@@ -84,37 +83,6 @@ typedef long long off64_t;
 typedef off_t loff_t;
 typedef off_t off64_t;
 #endif
-
-// -- stl crap --
-
-namespace __gnu_cxx {
-  template<> struct hash< std::string >
-  {
-    size_t operator()( const std::string& x ) const
-    {
-      static hash<const char*> H;
-      return H(x.c_str());
-    }
-  };
-
-#ifndef __LP64__
-  template<> struct hash<int64_t> {
-    size_t operator()(int64_t __x) const { 
-      static hash<int32_t> H;
-      return H((__x >> 32) ^ (__x & 0xffffffff)); 
-    }
-  };
-  template<> struct hash<uint64_t> {
-    size_t operator()(uint64_t __x) const { 
-      static hash<uint32_t> H;
-      return H((__x >> 32) ^ (__x & 0xffffffff)); 
-    }
-  };
-#endif
-
-}
-
-
 
 // -- io helpers --
 
@@ -211,8 +179,8 @@ inline ostream& operator<<(ostream& out, const multimap<A,B>& m)
 /*
  * comparators for stl containers
  */
-// for hash_map:
-//   hash_map<const char*, long, hash<const char*>, eqstr> vals;
+// for ceph::unordered_map:
+//   ceph::unordered_map<const char*, long, hash<const char*>, eqstr> vals;
 struct eqstr
 {
   bool operator()(const char* s1, const char* s2) const
@@ -242,6 +210,7 @@ WRITE_RAW_ENCODER(ceph_mds_request_head)
 WRITE_RAW_ENCODER(ceph_mds_request_release)
 WRITE_RAW_ENCODER(ceph_filelock)
 WRITE_RAW_ENCODER(ceph_mds_caps)
+WRITE_RAW_ENCODER(ceph_mds_cap_peer)
 WRITE_RAW_ENCODER(ceph_mds_cap_release)
 WRITE_RAW_ENCODER(ceph_mds_cap_item)
 WRITE_RAW_ENCODER(ceph_mds_lease)
@@ -266,7 +235,7 @@ WRITE_RAW_ENCODER(ceph_mon_statfs_reply)
 // some basic types
 
 // NOTE: these must match ceph_fs.h typedefs
-typedef uint64_t tid_t;         // transaction id
+typedef uint64_t ceph_tid_t; // transaction id
 typedef uint64_t version_t;
 typedef __u32 epoch_t;       // map epoch  (32bits -> 13 epochs/second for 10 years)
 
@@ -328,7 +297,7 @@ inline ostream& operator<<(ostream& out, inodeno_t ino) {
   return out << hex << ino.val << dec;
 }
 
-namespace __gnu_cxx {
+CEPH_HASH_NAMESPACE_START
   template<> struct hash< inodeno_t >
   {
     size_t operator()( const inodeno_t& x ) const
@@ -337,7 +306,7 @@ namespace __gnu_cxx {
       return H(x.val);
     }
   };
-}
+CEPH_HASH_NAMESPACE_END
 
 
 // file modes

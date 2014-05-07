@@ -21,6 +21,7 @@
 
 #include "msg/Message.h"
 #include "include/ceph_features.h"
+#include "common/errno.h"
 
 #include <vector>
 using namespace std;
@@ -108,6 +109,8 @@ struct InodeStat {
   uint64_t truncate_size;
   utime_t ctime, mtime, atime;
   version_t time_warp_seq;
+  bufferlist inline_data;
+  version_t inline_version;
 
   frag_info_t dirstat;
   nest_info_t rstat;
@@ -174,6 +177,13 @@ struct InodeStat {
 
     xattr_version = e.xattr_version;
     ::decode(xattrbl, p);
+
+    if (features & CEPH_FEATURE_MDS_INLINE_DATA) {
+      ::decode(inline_version, p);
+      ::decode(inline_data, p);
+    } else {
+      inline_version = CEPH_INLINE_NONE;
+    }
   }
   
   // see CInode::encode_inodestat for encoder.
@@ -220,8 +230,7 @@ public:
     o << "client_reply(???:" << get_tid();
     o << " = " << get_result();
     if (get_result() <= 0) {
-      char buf[80];
-      o << " " << strerror_r(-get_result(), buf, sizeof(buf));
+      o << " " << cpp_strerror(get_result());
     }
     if (head.op & CEPH_MDS_OP_WRITE) {
       if (head.safe)

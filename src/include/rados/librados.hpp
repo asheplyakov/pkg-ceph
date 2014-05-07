@@ -6,9 +6,9 @@
 #include <list>
 #include <map>
 #include <set>
-#include <tr1/memory>
 #include <vector>
 #include <utility>
+#include "memory.h"
 #include "buffer.h"
 
 #include "librados.h"
@@ -64,6 +64,9 @@ namespace librados
     ObjectIterator() {}
     ObjectIterator(ObjListCtx *ctx_);
     ~ObjectIterator();
+    ObjectIterator(const ObjectIterator &rhs);
+    ObjectIterator& operator=(const ObjectIterator& rhs);
+
     bool operator==(const ObjectIterator& rhs) const;
     bool operator!=(const ObjectIterator& rhs) const;
     const std::pair<std::string, std::string>& operator*() const;
@@ -71,9 +74,16 @@ namespace librados
     ObjectIterator &operator++(); // Preincrement
     ObjectIterator operator++(int); // Postincrement
     friend class IoCtx;
+
+    /// get current hash position of the iterator, rounded to the current pg
+    uint32_t get_pg_hash_position() const;
+
+    /// move the iterator to a given hash position.  this may (will!) be rounded to the nearest pg.
+    uint32_t seek(uint32_t pos);
+
   private:
     void get_next();
-    std::tr1::shared_ptr < ObjListCtx > ctx;
+    ceph::shared_ptr < ObjListCtx > ctx;
     std::pair<std::string, std::string> cur_obj;
   };
 
@@ -96,7 +106,7 @@ namespace librados
     bool is_complete_and_cb();
     bool is_safe_and_cb();
     int get_return_value();
-    int get_version();  ///< DEPRECATED get_version() only returns 32-bits
+    int get_version() __attribute__ ((deprecated));
     uint64_t get_version64();
     void release();
     AioCompletionImpl *pc;
@@ -117,8 +127,8 @@ namespace librados
    * ops added to an ObjectOperation.
    */
   enum ObjectOperationFlags {
-    OP_EXCL =   1,
-    OP_FAILOK = 2,
+    OP_EXCL =   LIBRADOS_OP_FLAG_EXCL,
+    OP_FAILOK = LIBRADOS_OP_FLAG_FAILOK,
   };
 
   class ObjectOperationCompletion {
@@ -137,12 +147,24 @@ namespace librados
    * ORDER_READS_WRITES will order reads the same way writes are
    * ordered (e.g., waiting for degraded objects).  In particular, it
    * will make a write followed by a read sequence be preserved.
+   *
+   * IGNORE_CACHE will skip the caching logic on the OSD that normally
+   * handles promotion of objects between tiers.  This allows an operation
+   * to operate (or read) the cached (or uncached) object, even if it is
+   * not coherent.
+   *
+   * IGNORE_OVERLAY will ignore the pool overlay tiering metadata and
+   * process the op directly on the destination pool.  This is useful
+   * for CACHE_FLUSH and CACHE_EVICT operations.
    */
   enum ObjectOperationGlobalFlags {
     OPERATION_NOFLAG         = 0,
     OPERATION_BALANCE_READS  = 1,
     OPERATION_LOCALIZE_READS = 2,
     OPERATION_ORDER_READS_WRITES = 4,
+    OPERATION_IGNORE_CACHE = 8,
+    OPERATION_SKIPRWLOCKS = 16,
+    OPERATION_IGNORE_OVERLAY = 32,
   };
 
   /*
@@ -245,6 +267,15 @@ namespace librados
     void selfmanaged_snap_rollback(uint64_t snapid);
 
     /**
+     * Rollback an object to the specified snapshot id
+     *
+     * Used with pool snapshots
+     *
+     * @param snapid [in] snopshot id specified
+     */
+    void snap_rollback(uint64_t snapid);
+
+    /**
      * set keys and values according to map
      *
      * @param map [in] keys and values to set
@@ -281,7 +312,8 @@ namespace librados
      * @param src_ioctx ioctx for the source object
      * @param version current version of the source object
      */
-    void copy_from(const std::string& src, const IoCtx& src_ioctx, uint64_t src_version);
+    void copy_from(const std::string& src, const IoCtx& src_ioctx,
+		   uint64_t src_version);
 
     /**
      * undirty an object
@@ -289,6 +321,15 @@ namespace librados
      * Clear an objects dirty flag
      */
     void undirty();
+
+    /**
+     * Set allocation hint for an object
+     *
+     * @param expected_object_size expected size of the object, in bytes
+     * @param expected_write_size expected size of writes to the object, in bytes
+     */
+    void set_alloc_hint(uint64_t expected_object_size,
+                        uint64_t expected_write_size);
 
     friend class IoCtx;
   };
@@ -416,6 +457,31 @@ namespace librados
      */
     void is_dirty(bool *isdirty, int *prval);
 
+    /**
+     * flush a cache tier object to backing tier; will block racing
+     * updates.
+     *
+     * This should be used in concert with OPERATION_IGNORE_CACHE to avoid
+     * triggering a promotion.
+     */
+    void cache_flush();
+
+    /**
+     * Flush a cache tier object to backing tier; will EAGAIN if we race
+     * with an update.  Must be used with the SKIPRWLOCKS flag.
+     *
+     * This should be used in concert with OPERATION_IGNORE_CACHE to avoid
+     * triggering a promotion.
+     */
+    void cache_try_flush();
+
+    /**
+     * evict a clean cache tier object
+     *
+     * This should be used in concert with OPERATION_IGNORE_CACHE to avoid
+     * triggering a promote on the OSD (that is then evicted).
+     */
+    void cache_evict();
   };
 
   /* IoCtx : This is a context in which we can perform I/O.
@@ -454,6 +520,9 @@ namespace librados
     int get_auid(uint64_t *auid_);
 
     std::string get_pool_name();
+
+    bool pool_requires_alignment();
+    uint64_t pool_required_alignment();
 
     // create an object
     int create(const std::string& oid, bool exclusive);
@@ -505,6 +574,7 @@ namespace librados
      */
     int tmap_put(const std::string& oid, bufferlist& bl);
     int tmap_get(const std::string& oid, bufferlist& bl);
+    int tmap_to_omap(const std::string& oid, bool nullok=false);
 
     int omap_get_vals(const std::string& oid,
                       const std::string& start_after,
@@ -553,6 +623,8 @@ namespace librados
 
     int snap_list(std::vector<snap_t> *snaps);
 
+    int snap_rollback(const std::string& oid, const char *snapname);
+    // Deprecated name kept for backward compatibility - same as snap_rollback()
     int rollback(const std::string& oid, const char *snapname);
 
     int selfmanaged_snap_create(uint64_t *snapid);
@@ -584,8 +656,33 @@ namespace librados
 		     std::list<librados::locker_t> *lockers);
 
 
+    /// Start enumerating objects for a pool
     ObjectIterator objects_begin();
+    /// Start enumerating objects for a pool starting from a hash position
+    ObjectIterator objects_begin(uint32_t start_hash_position);
+    /// Iterator indicating the end of a pool
     const ObjectIterator& objects_end() const;
+
+    /**
+     * List available hit set objects
+     *
+     * @param uint32_t [in] hash position to query
+     * @param c [in] completion
+     * @param pls [out] list of available intervals
+     */
+    int hit_set_list(uint32_t hash, AioCompletion *c,
+		     std::list< std::pair<time_t, time_t> > *pls);
+
+    /**
+     * Retrieve hit set for a given hash, and time
+     *
+     * @param uint32_t [in] hash position
+     * @param c [in] completion
+     * @param stamp [in] time interval that falls within the hit set's interval
+     * @param pbl [out] buffer to store the result in
+     */
+    int hit_set_get(uint32_t hash, AioCompletion *c, time_t stamp,
+		    bufferlist *pbl);
 
     uint64_t get_last_version();
 
@@ -661,6 +758,11 @@ namespace librados
      */
     int aio_remove(const std::string& oid, AioCompletion *c);
 
+    /**
+     * Wait for all currently pending aio writes to be safe.
+     *
+     * @returns 0 on success, negative error code on failure
+     */
     int aio_flush();
 
     /**
@@ -682,6 +784,7 @@ namespace librados
     int operate(const std::string& oid, ObjectWriteOperation *op);
     int operate(const std::string& oid, ObjectReadOperation *op, bufferlist *pbl);
     int aio_operate(const std::string& oid, AioCompletion *c, ObjectWriteOperation *op);
+    int aio_operate(const std::string& oid, AioCompletion *c, ObjectWriteOperation *op, int flags);
     /**
      * Schedule an async write operation with explicit snapshot parameters
      *
@@ -701,8 +804,14 @@ namespace librados
 		    std::vector<snap_t>& snaps);
     int aio_operate(const std::string& oid, AioCompletion *c,
 		    ObjectReadOperation *op, bufferlist *pbl);
+
     int aio_operate(const std::string& oid, AioCompletion *c,
 		    ObjectReadOperation *op, snap_t snapid, int flags,
+		    bufferlist *pbl)
+      __attribute__ ((deprecated));
+
+    int aio_operate(const std::string& oid, AioCompletion *c,
+		    ObjectReadOperation *op, int flags,
 		    bufferlist *pbl);
 
     // watch/notify
@@ -714,6 +823,22 @@ namespace librados
     int list_snaps(const std::string& o, snap_set_t *out_snaps);
     void set_notify_timeout(uint32_t timeout);
 
+    /**
+     * Set allocation hint for an object
+     *
+     * This is an advisory operation, it will always succeed (as if it
+     * was submitted with a OP_FAILOK flag set) and is not guaranteed
+     * to do anything on the backend.
+     *
+     * @param o the name of the object
+     * @param expected_object_size expected size of the object, in bytes
+     * @param expected_write_size expected size of writes to the object, in bytes
+     * @returns 0 on success, negative error code on failure
+     */
+    int set_alloc_hint(const std::string& o,
+                       uint64_t expected_object_size,
+                       uint64_t expected_write_size);
+
     // assert version for next sync operations
     void set_assert_version(uint64_t ver);
     void set_assert_src_version(const std::string& o, uint64_t ver);
@@ -724,6 +849,9 @@ namespace librados
     void set_namespace(const std::string& nspace);
 
     int64_t get_id();
+
+    uint32_t get_object_hash_position(const std::string& oid);
+    uint32_t get_object_pg_hash_position(const std::string& oid);
 
     config_t cct();
 
@@ -763,16 +891,19 @@ namespace librados
 
     int pool_create(const char *name);
     int pool_create(const char *name, uint64_t auid);
-    int pool_create(const char *name, uint64_t auid, __u8 crush_rule);
+    int pool_create(const char *name, uint64_t auid, uint8_t crush_rule);
     int pool_create_async(const char *name, PoolAsyncCompletion *c);
     int pool_create_async(const char *name, uint64_t auid, PoolAsyncCompletion *c);
-    int pool_create_async(const char *name, uint64_t auid, __u8 crush_rule, PoolAsyncCompletion *c);
+    int pool_create_async(const char *name, uint64_t auid, uint8_t crush_rule, PoolAsyncCompletion *c);
     int pool_delete(const char *name);
     int pool_delete_async(const char *name, PoolAsyncCompletion *c);
     int64_t pool_lookup(const char *name);
     int pool_reverse_lookup(int64_t id, std::string *name);
 
     uint64_t get_instance_id();
+
+    int mon_command(std::string cmd, const bufferlist& inbl,
+		    bufferlist *outbl, std::string *outs);
 
     int ioctx_create(const char *name, IoCtx &pioctx);
 
@@ -788,6 +919,9 @@ namespace librados
 		       std::map<std::string, stats_map>& stats);
     int cluster_stat(cluster_stat_t& result);
     int cluster_fsid(std::string *fsid);
+
+    /// get/wait for the most recent osdmap
+    int wait_for_latest_osdmap();
 
     /*
      * pool aio

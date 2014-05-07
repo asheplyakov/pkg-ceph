@@ -41,6 +41,7 @@ LIBRGW_DEPS += \
 	libcls_rgw_client.la \
 	libcls_log_client.a \
 	libcls_statelog_client.a \
+	libcls_user_client.a \
 	libcls_replica_log_client.a \
 	libcls_lock_client.la \
 	libcls_refcount_client.la \
@@ -48,7 +49,8 @@ LIBRGW_DEPS += \
 	-lcurl \
 	-lexpat \
 	-lm \
-	-lfcgi
+	-lfcgi \
+	-ldl
 
 radosgw_SOURCES = \
 	rgw/rgw_resolve.cc \
@@ -67,8 +69,12 @@ radosgw_SOURCES = \
 	rgw/rgw_http_client.cc \
 	rgw/rgw_swift.cc \
 	rgw/rgw_swift_auth.cc \
+	rgw/rgw_loadgen.cc \
+	rgw/rgw_civetweb.cc \
+	civetweb/src/civetweb.c \
 	rgw/rgw_main.cc
-radosgw_LDADD = $(LIBRGW) $(LIBRGW_DEPS) -lresolv $(CEPH_GLOBAL)
+radosgw_CFLAGS = -Icivetweb/include
+radosgw_LDADD = $(LIBRGW) $(LIBRGW_DEPS) $(RESOLV_LIBS) $(CEPH_GLOBAL)
 bin_PROGRAMS += radosgw
 
 radosgw_admin_SOURCES = rgw/rgw_admin.cc
@@ -116,6 +122,7 @@ noinst_HEADERS += \
 	rgw/rgw_formats.h \
 	rgw/rgw_http_errors.h \
 	rgw/rgw_log.h \
+	rgw/rgw_loadgen.h \
 	rgw/rgw_multi.h \
 	rgw/rgw_policy_s3.h \
 	rgw/rgw_gc.h \
@@ -148,5 +155,9 @@ noinst_HEADERS += \
 	rgw/rgw_usage.h \
 	rgw/rgw_user.h \
 	rgw/rgw_bucket.h \
-	rgw/rgw_keystone.h
+	rgw/rgw_keystone.h \
+	rgw/rgw_civetweb.h \
+	civetweb/civetweb.h \
+	civetweb/include/civetweb.h \
+	civetweb/src/md5.h
 

@@ -13,6 +13,8 @@
 #include "common/safe_io.h"
 #include "common/Clock.h"
 #include "include/assert.h"
+#include "include/compat.h"
+#include "include/on_exit.h"
 
 #define DEFAULT_MAX_NEW    100
 #define DEFAULT_MAX_RECENT 10000
@@ -22,7 +24,9 @@
 namespace ceph {
 namespace log {
 
-static void log_on_exit(int r, void *p)
+static OnExitManager exit_callbacks;
+
+static void log_on_exit(void *p)
 {
   Log *l = *(Log **)p;
   if (l)
@@ -68,7 +72,7 @@ Log::~Log()
 
   assert(!is_started());
   if (m_fd >= 0)
-    TEMP_FAILURE_RETRY(::close(m_fd));
+    VOID_TEMP_FAILURE_RETRY(::close(m_fd));
 
   pthread_mutex_destroy(&m_queue_mutex);
   pthread_mutex_destroy(&m_flush_mutex);
@@ -87,7 +91,7 @@ void Log::set_flush_on_exit()
   // assume that exit() won't race with ~Log().
   if (m_indirect_this == NULL) {
     m_indirect_this = new (Log*)(this);
-    on_exit(log_on_exit, m_indirect_this);
+    exit_callbacks.add_callback(log_on_exit, m_indirect_this);
   }
 }
 
@@ -109,7 +113,7 @@ void Log::set_log_file(string fn)
 void Log::reopen_log_file()
 {
   if (m_fd >= 0)
-    TEMP_FAILURE_RETRY(::close(m_fd));
+    VOID_TEMP_FAILURE_RETRY(::close(m_fd));
   if (m_log_file.length()) {
     m_fd = ::open(m_log_file.c_str(), O_CREAT|O_WRONLY|O_APPEND, 0644);
   } else {

@@ -225,6 +225,7 @@ public:
     static const int STATE_DIRTY =       (1<<2);  // dirty due to THIS journal item, that is!
     static const int STATE_NEW =         (1<<3);  // new directory
     static const int STATE_IMPORTING =	 (1<<4);  // importing directory
+    static const int STATE_DIRTYDFT =	 (1<<5);  // dirty dirfragtree
 
     //version_t  dirv;
     fnode_t fnode;
@@ -234,7 +235,7 @@ public:
   private:
     mutable bufferlist dnbl;
     bool dn_decoded;
-    list<std::tr1::shared_ptr<fullbit> >   dfull;
+    list<ceph::shared_ptr<fullbit> >   dfull;
     list<remotebit> dremote;
     list<nullbit>   dnull;
 
@@ -249,8 +250,10 @@ public:
     void mark_new() { state |= STATE_NEW; }
     bool is_importing() { return state & STATE_IMPORTING; }
     void mark_importing() { state |= STATE_IMPORTING; }
+    bool is_dirty_dft() { return state & STATE_DIRTYDFT; }
+    void mark_dirty_dft() { state |= STATE_DIRTYDFT; }
 
-    list<std::tr1::shared_ptr<fullbit> >   &get_dfull()   { return dfull; }
+    list<ceph::shared_ptr<fullbit> >   &get_dfull()   { return dfull; }
     list<remotebit> &get_dremote() { return dremote; }
     list<nullbit>   &get_dnull()   { return dnull; }
 
@@ -260,7 +263,7 @@ public:
 	  << " num " << nfull << "/" << nremote << "/" << nnull
 	  << std::endl;
       _decode_bits();
-      for (list<std::tr1::shared_ptr<fullbit> >::iterator p = dfull.begin(); p != dfull.end(); ++p)
+      for (list<ceph::shared_ptr<fullbit> >::iterator p = dfull.begin(); p != dfull.end(); ++p)
 	(*p)->print(out);
       for (list<remotebit>::iterator p = dremote.begin(); p != dremote.end(); ++p)
 	p->print(out);
@@ -312,7 +315,7 @@ private:
   // my lumps.  preserve the order we added them in a list.
   list<dirfrag_t>         lump_order;
   map<dirfrag_t, dirlump> lump_map;
-  list<std::tr1::shared_ptr<fullbit> > roots;
+  list<ceph::shared_ptr<fullbit> > roots;
 
   list<pair<__u8,version_t> > table_tids;  // tableclient transactions
 
@@ -448,13 +451,16 @@ private:
     //cout << "journaling " << in->inode.ino << " at " << my_offset << std::endl;
 
     inode_t *pi = in->get_projected_inode();
+    if ((state & fullbit::STATE_DIRTY) && pi->is_backtrace_updated())
+      state |= fullbit::STATE_DIRTYPARENT;
+
     bufferlist snapbl;
     sr_t *sr = in->get_projected_srnode();
     if (sr)
       sr->encode(snapbl);
 
     lump.nfull++;
-    lump.get_dfull().push_back(std::tr1::shared_ptr<fullbit>(new fullbit(dn->get_name(), 
+    lump.get_dfull().push_back(ceph::shared_ptr<fullbit>(new fullbit(dn->get_name(), 
 									 dn->first, dn->last,
 									 dn->get_projected_version(), 
 									 *pi, in->dirfragtree,
@@ -507,7 +513,7 @@ private:
     else
       in->encode_snap_blob(snapbl);
 
-    for (list<std::tr1::shared_ptr<fullbit> >::iterator p = roots.begin(); p != roots.end(); ++p) {
+    for (list<ceph::shared_ptr<fullbit> >::iterator p = roots.begin(); p != roots.end(); ++p) {
       if ((*p)->inode.ino == in->ino()) {
 	roots.erase(p);
 	break;
@@ -515,7 +521,7 @@ private:
     }
 
     string empty;
-    roots.push_back(std::tr1::shared_ptr<fullbit>(new fullbit(empty, in->first, in->last, 0, *pi,
+    roots.push_back(ceph::shared_ptr<fullbit>(new fullbit(empty, in->first, in->last, 0, *pi,
 							      *pdft, *px, in->symlink, snapbl,
 							      dirty ? fullbit::STATE_DIRTY : 0,
 							      &in->old_inodes)));
@@ -532,10 +538,15 @@ private:
   dirlump& add_import_dir(CDir *dir) {
     // dirty=false would be okay in some cases
     return add_dir(dir->dirfrag(), dir->get_projected_fnode(), dir->get_projected_version(),
-		   true, dir->is_complete(), false, true);
+		   dir->is_dirty(), dir->is_complete(), false, true, dir->is_dirty_dft());
+  }
+  dirlump& add_fragmented_dir(CDir *dir, bool dirty, bool dirtydft) {
+    return add_dir(dir->dirfrag(), dir->get_projected_fnode(), dir->get_projected_version(),
+		   dirty, false, false, false, dirtydft);
   }
   dirlump& add_dir(dirfrag_t df, fnode_t *pf, version_t pv, bool dirty,
-		   bool complete=false, bool isnew=false, bool importing=false) {
+		   bool complete=false, bool isnew=false,
+		   bool importing=false, bool dirty_dft=false) {
     if (lump_map.count(df) == 0)
       lump_order.push_back(df);
 
@@ -546,6 +557,7 @@ private:
     if (dirty) l.mark_dirty();
     if (isnew) l.mark_new();
     if (importing) l.mark_importing();
+    if (dirty_dft) l.mark_dirty_dft();
     return l;
   }
   
