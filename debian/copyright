@@ -332,6 +332,7 @@ License: GPL-3/OpenSSL
  can be found in "/usr/share/common-licenses/GPL-3' file.
 
 Files: man/*
+       debian/man/*
 Copyright: 2010-2014, Inktank Storage, Inc. and contributors.
 License: CC-BY-SA-3.0
 
