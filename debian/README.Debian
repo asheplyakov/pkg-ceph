@@ -4,16 +4,6 @@
 
 -------- -------- --------
 
-## rbdmap caveats
-
- Rbd kernel driver do not support authentication so the following setting
- in "/etc/ceph/ceph.conf" may be used to relax client auth. requirements:
-
-    cephx cluster require signatures = true
-    cephx service require signatures = false
-
--------- -------- --------
-
 ## Upgrade procedure (0.72.2 to 0.80):
 
  * Read "Upgrade Sequencing" in release notes:
@@ -57,7 +47,18 @@
 
 -------- -------- --------
 
-## CephFS
+ Jerasure pool(s) will bump requirements to Linux_3.15 (not yet released) for
+ kernel CephFS and RBD clients.
+
+-------- -------- --------
+
+ RBD kernel driver do not support authentication so the following setting
+ in "/etc/ceph/ceph.conf" may be used to relax client auth. requirements:
+
+    cephx cluster require signatures = true
+    cephx service require signatures = false
+
+-------- -------- --------
 
 > How to mount CephFS using fuse client from "/etc/fstab"?
 
@@ -71,14 +72,19 @@
 
  as root.
 
-### Caveats
+-------- -------- --------
 
  To avoid known issue with kernel FS client it is recommended to use
  'readdir_max_entries' mount option, for example:
 
     mount -t ceph 1.2.3.4:/ /mnt/ceph -o readdir_max_entries=64
 
-----
+-------- -------- --------
 
- Jerasure pool(s) will bump requirements to Linux_3.15 (not yet released) for
- kernel CephFS and RBD clients.
+ Beware of "mlocate" scanning of OSD file systems. To avoid problems add
+ "/var/lib/ceph" to PRUNEPATHS in the "/etc/updatedb.conf" like in the
+ following example:
+
+    PRUNEPATHS="/tmp /var/spool /media /mnt /var/lib/ceph"
+
+-------- -------- --------
