@@ -1,0 +1,66 @@
+From e7df73dd7aaf5a0b1171f73d6695d26cd25b7b35 Mon Sep 17 00:00:00 2001
+From: Sage Weil <sage@inktank.com>
+Date: Thu, 1 May 2014 16:53:17 -0700
+Subject: [PATCH] osd: Prevent divide by zero in agent_choose_mode()
+
+Fixes: #8175
+Backport: firefly
+
+Signed-off-by: David Zafman <david.zafman@inktank.com>
+Signed-off-by: Sage Weil <sage@inktank.com>
+(cherry picked from commit f47f867952e6b2a16a296c82bb9b585b21cde6c8)
+
+--- a/src/osd/ReplicatedPG.cc
++++ b/src/osd/ReplicatedPG.cc
+@@ -11369,8 +11369,9 @@
+     return;
+   }
+ 
+   uint64_t divisor = pool.info.get_pg_num_divisor(info.pgid.pgid);
++  assert(divisor > 0);
+ 
+   uint64_t num_user_objects = info.stats.stats.sum.num_objects;
+ 
+   // adjust (effective) user objects down based on the number
+@@ -11417,21 +11418,22 @@
+     uint64_t avg_size = info.stats.stats.sum.num_bytes /
+       info.stats.stats.sum.num_objects;
+     dirty_micro =
+       num_dirty * avg_size * 1000000 /
+-      (pool.info.target_max_bytes / divisor);
++      MAX(pool.info.target_max_bytes / divisor, 1);
+     full_micro =
+       num_user_objects * avg_size * 1000000 /
+-      (pool.info.target_max_bytes / divisor);
++      MAX(pool.info.target_max_bytes / divisor, 1);
+   }
+   if (pool.info.target_max_objects) {
+     uint64_t dirty_objects_micro =
+       num_dirty * 1000000 /
+-      (pool.info.target_max_objects / divisor);
++      MAX(pool.info.target_max_objects / divisor, 1);
+     if (dirty_objects_micro > dirty_micro)
+       dirty_micro = dirty_objects_micro;
+     uint64_t full_objects_micro =
+-      num_user_objects * 1000000 / (pool.info.target_max_objects / divisor);
++      num_user_objects * 1000000 /
++      MAX(pool.info.target_max_objects / divisor, 1);
+     if (full_objects_micro > full_micro)
+       full_micro = full_objects_micro;
+   }
+   dout(20) << __func__ << " dirty " << ((float)dirty_micro / 1000000.0)
+@@ -11473,9 +11475,13 @@
+   } else if (full_micro > evict_target) {
+     // set effort in [0..1] range based on where we are between
+     evict_mode = TierAgentState::EVICT_MODE_SOME;
+     uint64_t over = full_micro - evict_target;
+-    uint64_t span = 1000000 - evict_target;
++    uint64_t span;
++    if (evict_target >= 1000000)
++      span = 1;
++    else
++      span = 1000000 - evict_target;
+     evict_effort = MAX(over * 1000000 / span,
+ 		       (unsigned)(1000000.0 * g_conf->osd_agent_min_evict_effort));
+ 
+     // quantize effort to avoid too much reordering in the agent_queue.

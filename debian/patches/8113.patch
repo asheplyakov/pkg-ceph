@@ -1,0 +1,389 @@
+From 022d467b5d6b77c17b6fdaeec8369cae61e9e5a4 Mon Sep 17 00:00:00 2001
+From: David Zafman <david.zafman@inktank.com>
+Date: Mon, 21 Apr 2014 23:52:04 -0700
+Subject: [PATCH] osd, common: If agent_work() finds no objs to work on delay 5
+ (default) secs
+
+Add config osd_agent_delay_time of 5 seconds
+Honor delay by ignoring agent_choose_mode() calls
+Add tier_delay to logger
+Treat restart after delay like we were previously idle
+
+Fixes: #8113
+Backport: firefly
+
+Signed-off-by: David Zafman <david.zafman@inktank.com>
+(cherry picked from commit b7d31e5f5952c631dd4172bcb825e77a13fc60bc)
+
+--- a/src/common/config_opts.h
++++ b/src/common/config_opts.h
+@@ -398,8 +398,9 @@
+ // max agent flush ops
+ OPTION(osd_agent_max_ops, OPT_INT, 4)
+ OPTION(osd_agent_min_evict_effort, OPT_FLOAT, .1)
+ OPTION(osd_agent_quantize_effort, OPT_FLOAT, .1)
++OPTION(osd_agent_delay_time, OPT_FLOAT, 5.0)
+ 
+ // decay atime and hist histograms after how many objects go by
+ OPTION(osd_agent_hist_halflife, OPT_INT, 1000)
+ 
+--- a/src/osd/OSD.cc
++++ b/src/osd/OSD.cc
+@@ -200,8 +200,10 @@
+   agent_ops(0),
+   agent_active(true),
+   agent_thread(this),
+   agent_stop_flag(false),
++  agent_timer_lock("OSD::agent_timer_lock"),
++  agent_timer(osd->client_messenger->cct, agent_timer_lock),
+   objecter_lock("OSD::objecter_lock"),
+   objecter_timer(osd->client_messenger->cct, objecter_lock),
+   objecter(new Objecter(osd->client_messenger->cct, osd->objecter_messenger, osd->monc, &objecter_osdmap,
+ 			objecter_lock, objecter_timer, 0, 0)),
+@@ -434,8 +436,12 @@
+   {
+     Mutex::Locker l(backfill_request_lock);
+     backfill_request_timer.shutdown();
+   }
++  {
++    Mutex::Locker l(agent_timer_lock);
++    agent_timer.shutdown();
++  }
+   osdmap = OSDMapRef();
+   next_osdmap = OSDMapRef();
+ }
+ 
+@@ -450,8 +456,9 @@
+     objecter->set_client_incarnation(0);
+     objecter->init_locked();
+   }
+   watch_timer.init();
++  agent_timer.init();
+ 
+   agent_thread.create();
+ }
+ 
+@@ -465,8 +472,17 @@
+   agent_cond.Signal();
+   agent_lock.Unlock();
+ }
+ 
++class AgentTimeoutCB : public Context {
++  PGRef pg;
++public:
++  AgentTimeoutCB(PGRef _pg) : pg(_pg) {}
++  void finish(int) {
++    pg->agent_choose_mode_restart();
++  }
++};
++
+ void OSDService::agent_entry()
+ {
+   dout(10) << __func__ << " start" << dendl;
+   agent_lock.Lock();
+@@ -500,9 +516,20 @@
+     }
+     PGRef pg = *agent_queue_pos;
+     int max = g_conf->osd_agent_max_ops - agent_ops;
+     agent_lock.Unlock();
+-    pg->agent_work(max);
++    if (!pg->agent_work(max)) {
++      dout(10) << __func__ << " " << *pg
++	<< " no agent_work, delay for " << g_conf->osd_agent_delay_time
++	<< " seconds" << dendl;
++
++      osd->logger->inc(l_osd_tier_delay);
++      // Queue a timer to call agent_choose_mode for this pg in 5 seconds
++      agent_timer_lock.Lock();
++      Context *cb = new AgentTimeoutCB(pg);
++      agent_timer.add_event_after(g_conf->osd_agent_delay_time, cb);
++      agent_timer_lock.Unlock();
++    }
+     agent_lock.Lock();
+   }
+   agent_lock.Unlock();
+   dout(10) << __func__ << " finish" << dendl;
+@@ -1477,8 +1504,9 @@
+   osd_plb.add_u64_counter(l_osd_tier_evict, "tier_evict");
+   osd_plb.add_u64_counter(l_osd_tier_whiteout, "tier_whiteout");
+   osd_plb.add_u64_counter(l_osd_tier_dirty, "tier_dirty");
+   osd_plb.add_u64_counter(l_osd_tier_clean, "tier_clean");
++  osd_plb.add_u64_counter(l_osd_tier_delay, "tier_delay");
+ 
+   osd_plb.add_u64_counter(l_osd_agent_wake, "agent_wake");
+   osd_plb.add_u64_counter(l_osd_agent_skip, "agent_skip");
+   osd_plb.add_u64_counter(l_osd_agent_flush, "agent_flush");
+--- a/src/osd/OSD.h
++++ b/src/osd/OSD.h
+@@ -132,8 +132,9 @@
+   l_osd_tier_evict,
+   l_osd_tier_whiteout,
+   l_osd_tier_dirty,
+   l_osd_tier_clean,
++  l_osd_tier_delay,
+ 
+   l_osd_agent_wake,
+   l_osd_agent_skip,
+   l_osd_agent_flush,
+@@ -465,8 +466,10 @@
+       return NULL;
+     }
+   } agent_thread;
+   bool agent_stop_flag;
++  Mutex agent_timer_lock;
++  SafeTimer agent_timer;
+ 
+   void agent_entry();
+   void agent_stop();
+ 
+--- a/src/osd/PG.h
++++ b/src/osd/PG.h
+@@ -2130,11 +2130,13 @@
+   virtual void on_shutdown() = 0;
+   virtual void check_blacklisted_watchers() = 0;
+   virtual void get_watchers(std::list<obj_watch_item_t>&) = 0;
+ 
+-  virtual void agent_work(int max) = 0;
++  virtual bool agent_work(int max) = 0;
+   virtual void agent_stop() = 0;
++  virtual void agent_delay() = 0;
+   virtual void agent_clear() = 0;
++  virtual void agent_choose_mode_restart() = 0;
+ };
+ 
+ ostream& operator<<(ostream& out, const PG& pg);
+ 
+--- a/src/osd/ReplicatedPG.cc
++++ b/src/osd/ReplicatedPG.cc
+@@ -10965,8 +10965,9 @@
+     agent_state->position.pool = info.pgid.pool();
+     agent_state->position.hash = pool.info.get_random_pg_position(
+       info.pgid.pgid,
+       rand());
++    agent_state->start = agent_state->position;
+ 
+     dout(10) << __func__ << " allocated new state, position "
+ 	     << agent_state->position << dendl;
+   } else {
+@@ -10985,23 +10986,24 @@
+   agent_stop();
+   agent_state.reset(NULL);
+ }
+ 
+-void ReplicatedPG::agent_work(int start_max)
++// Return false if no objects operated on since start of object hash space
++bool ReplicatedPG::agent_work(int start_max)
+ {
+   lock();
+   if (!agent_state) {
+     dout(10) << __func__ << " no agent state, stopping" << dendl;
+     unlock();
+-    return;
++    return true;
+   }
+ 
+   assert(!deleting);
+ 
+   if (agent_state->is_idle()) {
+     dout(10) << __func__ << " idle, stopping" << dendl;
+     unlock();
+-    return;
++    return true;
+   }
+ 
+   osd->logger->inc(l_osd_agent_wake);
+ 
+@@ -11100,15 +11102,44 @@
+     agent_state->atime_hist.decay();
+     agent_state->temp_hist.decay();
+   }
+ 
++  // Total objects operated on so far
++  int total_started = agent_state->started + started;
++  bool need_delay = false;
++
++  dout(20) << __func__ << " start pos " << agent_state->position
++    << " next start pos " << next
++    << " started " << total_started << dendl;
++
++  // See if we've made a full pass over the object hash space
++  // This might check at most ls_max objects a second time to notice that
++  // we've checked every objects at least once.
++  if (agent_state->position < agent_state->start && next >= agent_state->start) {
++    dout(20) << __func__ << " wrap around " << agent_state->start << dendl;
++    if (total_started == 0)
++      need_delay = true;
++    else
++      total_started = 0;
++    agent_state->start = next;
++  }
++  agent_state->started = total_started;
++
++  // See if we are starting from beginning
+   if (next.is_max())
+     agent_state->position = hobject_t();
+   else
+     agent_state->position = next;
+-  dout(20) << __func__ << " final position " << agent_state->position << dendl;
++
++  if (need_delay) {
++    assert(agent_state->delaying == false);
++    agent_delay();
++    unlock();
++    return false;
++  }
+   agent_choose_mode();
+   unlock();
++  return true;
+ }
+ 
+ void ReplicatedPG::agent_load_hit_sets()
+ {
+@@ -11308,10 +11339,37 @@
+     osd->agent_disable_pg(this, agent_state->evict_effort);
+   }
+ }
+ 
+-void ReplicatedPG::agent_choose_mode()
++void ReplicatedPG::agent_delay()
+ {
++  dout(20) << __func__ << dendl;
++  if (agent_state && !agent_state->is_idle()) {
++    assert(agent_state->delaying == false);
++    agent_state->delaying = true;
++    osd->agent_disable_pg(this, agent_state->evict_effort);
++  }
++}
++
++void ReplicatedPG::agent_choose_mode_restart()
++{
++  dout(20) << __func__ << dendl;
++  lock();
++  if (agent_state && agent_state->delaying) {
++    agent_state->delaying = false;
++    agent_choose_mode(true);
++  }
++  unlock();
++}
++
++void ReplicatedPG::agent_choose_mode(bool restart)
++{
++  // Let delay play out
++  if (agent_state->delaying) {
++    dout(20) << __func__ << this << " delaying, ignored" << dendl;
++    return;
++  }
++
+   uint64_t divisor = pool.info.get_pg_num_divisor(info.pgid.pgid);
+ 
+   uint64_t num_user_objects = info.stats.stats.sum.num_objects;
+ 
+@@ -11383,9 +11441,9 @@
+   // flush mode
+   TierAgentState::flush_mode_t flush_mode = TierAgentState::FLUSH_MODE_IDLE;
+   uint64_t flush_target = pool.info.cache_target_dirty_ratio_micro;
+   uint64_t flush_slop = (float)flush_target * g_conf->osd_agent_slop;
+-  if (agent_state->flush_mode == TierAgentState::FLUSH_MODE_IDLE)
++  if (restart || agent_state->flush_mode == TierAgentState::FLUSH_MODE_IDLE)
+     flush_target += flush_slop;
+   else
+     flush_target -= MIN(flush_target, flush_slop);
+ 
+@@ -11400,9 +11458,9 @@
+   TierAgentState::evict_mode_t evict_mode = TierAgentState::EVICT_MODE_IDLE;
+   unsigned evict_effort = 0;
+   uint64_t evict_target = pool.info.cache_target_full_ratio_micro;
+   uint64_t evict_slop = (float)evict_target * g_conf->osd_agent_slop;
+-  if (agent_state->evict_mode == TierAgentState::EVICT_MODE_IDLE)
++  if (restart || agent_state->evict_mode == TierAgentState::EVICT_MODE_IDLE)
+     evict_target += evict_slop;
+   else
+     evict_target -= MIN(evict_target, evict_slop);
+ 
+@@ -11464,13 +11522,13 @@
+   // NOTE: we are using evict_effort as a proxy for *all* agent effort
+   // (including flush).  This is probably fine (they should be
+   // correlated) but it is not precisely correct.
+   if (agent_state->is_idle()) {
+-    if (!old_idle) {
++    if (!restart && !old_idle) {
+       osd->agent_disable_pg(this, old_effort);
+     }
+   } else {
+-    if (old_idle) {
++    if (restart || old_idle) {
+       osd->agent_enable_pg(this, agent_state->evict_effort);
+     } else if (old_effort != agent_state->evict_effort) {
+       osd->agent_adjust_pg(this, old_effort, agent_state->evict_effort);
+     }
+--- a/src/osd/ReplicatedPG.h
++++ b/src/osd/ReplicatedPG.h
+@@ -808,9 +808,9 @@
+   friend class C_AgentFlushStartStop;
+   friend class C_HitSetFlushing;
+ 
+   void agent_setup();       ///< initialize agent state
+-  void agent_work(int max); ///< entry point to do some agent work
++  bool agent_work(int max); ///< entry point to do some agent work
+   bool agent_maybe_flush(ObjectContextRef& obc);  ///< maybe flush
+   bool agent_maybe_evict(ObjectContextRef& obc);  ///< maybe evict
+ 
+   void agent_load_hit_sets();  ///< load HitSets, if needed
+@@ -824,13 +824,15 @@
+ 				 int *atime, int *temperature);
+ 
+   /// stop the agent
+   void agent_stop();
++  void agent_delay();
+ 
+   /// clear agent state
+   void agent_clear();
+ 
+-  void agent_choose_mode();  ///< choose (new) agent mode(s)
++  void agent_choose_mode(bool restart = false);  ///< choose (new) agent mode(s)
++  void agent_choose_mode_restart();
+ 
+   /// true if we can send an ondisk/commit for v
+   bool already_complete(eversion_t v) {
+     for (xlist<RepGather*>::iterator i = repop_queue.begin();
+--- a/src/osd/TierAgentState.h
++++ b/src/osd/TierAgentState.h
+@@ -16,8 +16,12 @@
+ 
+ struct TierAgentState {
+   /// current position iterating across pool
+   hobject_t position;
++  /// Count of agent_work since "start" position of object hash space
++  int started;
++  hobject_t start;
++  bool delaying;
+ 
+   /// histogram of ages we've encountered
+   pow2_hist_t atime_hist;
+   pow2_hist_t temp_hist;
+@@ -65,19 +69,22 @@
+   /// distributed) that i should aim to evict.
+   unsigned evict_effort;
+ 
+   TierAgentState()
+-    : hist_age(0),
++    : started(0),
++      delaying(false),
++      hist_age(0),
+       flush_mode(FLUSH_MODE_IDLE),
+       evict_mode(EVICT_MODE_IDLE),
+       evict_effort(0)
+   {}
+ 
+   /// false if we have any work to do
+   bool is_idle() const {
+     return
+-      flush_mode == FLUSH_MODE_IDLE &&
+-      evict_mode == EVICT_MODE_IDLE;
++      delaying ||
++      (flush_mode == FLUSH_MODE_IDLE &&
++      evict_mode == EVICT_MODE_IDLE);
+   }
+ 
+   /// add archived HitSet
+   void add_hit_set(time_t start, HitSetRef hs) {

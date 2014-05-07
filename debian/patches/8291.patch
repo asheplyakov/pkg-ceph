@@ -1,0 +1,132 @@
+From 09a1bc5a4601d356b9cc69be8541e6515d763861 Mon Sep 17 00:00:00 2001
+From: "Yan, Zheng" <zheng.z.yan@intel.com>
+Date: Fri, 11 Apr 2014 15:03:37 +0800
+Subject: [PATCH] client: add asok command to kick sessions that were remote
+ reset
+
+Fixes: #8021
+Signed-off-by: Yan, Zheng <zheng.z.yan@intel.com>
+
+--- a/src/client/Client.cc
++++ b/src/client/Client.cc
+@@ -119,8 +119,10 @@
+   else if (command == "mds_sessions")
+     m_client->dump_mds_sessions(f);
+   else if (command == "dump_cache")
+     m_client->dump_cache(f);
++  else if (command == "kick_stale_sessions")
++    m_client->_kick_stale_sessions();
+   else
+     assert(0 == "bad command registered");
+   m_client->client_lock.Unlock();
+   f->close_section();
+@@ -403,8 +405,16 @@
+   if (ret < 0) {
+     lderr(cct) << "error registering admin socket command: "
+ 	       << cpp_strerror(-ret) << dendl;
+   }
++  ret = admin_socket->register_command("kick_stale_sessions",
++				       "kick_stale_sessions",
++				       &m_command_hook,
++				       "kick sessions that were remote reset");
++  if (ret < 0) {
++    lderr(cct) << "error registering admin socket command: "
++	       << cpp_strerror(-ret) << dendl;
++  }
+ 
+   client_lock.Lock();
+   initialized = true;
+   client_lock.Unlock();
+@@ -418,8 +428,9 @@
+   AdminSocket* admin_socket = cct->get_admin_socket();
+   admin_socket->unregister_command("mds_requests");
+   admin_socket->unregister_command("mds_sessions");
+   admin_socket->unregister_command("dump_cache");
++  admin_socket->unregister_command("kick_stale_sessions");
+ 
+   if (ino_invalidate_cb) {
+     ldout(cct, 10) << "shutdown stopping cache invalidator finisher" << dendl;
+     async_ino_invalidator.wait_for_empty();
+@@ -1537,9 +1548,10 @@
+ bool Client::have_open_session(int mds)
+ {
+   return
+     mds_sessions.count(mds) &&
+-    mds_sessions[mds]->state == MetaSession::STATE_OPEN;
++    (mds_sessions[mds]->state == MetaSession::STATE_OPEN ||
++     mds_sessions[mds]->state == MetaSession::STATE_STALE);
+ }
+ 
+ MetaSession *Client::_get_mds_session(int mds, Connection *con)
+ {
+@@ -1648,8 +1660,21 @@
+ 
+   m->put();
+ }
+ 
++void Client::_kick_stale_sessions()
++{
++  ldout(cct, 1) << "kick_stale_sessions" << dendl;
++
++  for (map<int,MetaSession*>::iterator p = mds_sessions.begin();
++       p != mds_sessions.end(); ) {
++    MetaSession *s = p->second;
++    ++p;
++    if (s->state == MetaSession::STATE_STALE)
++      _closed_mds_session(s);
++  }
++}
++
+ void Client::send_request(MetaRequest *request, MetaSession *session)
+ {
+   // make the request
+   int mds = session->mds_num;
+@@ -8959,8 +8984,12 @@
+ 	  }
+ 	  break;
+ 
+ 	case MetaSession::STATE_OPEN:
++	  ldout(cct, 1) << "reset from mds we were open; mark session as stale" << dendl;
++	  s->state = MetaSession::STATE_STALE;
++	  break;
++
+ 	case MetaSession::STATE_NEW:
+ 	case MetaSession::STATE_CLOSED:
+ 	default:
+ 	  break;
+--- a/src/client/Client.h
++++ b/src/client/Client.h
+@@ -249,8 +249,9 @@
+   MetaSession *_get_or_open_mds_session(int mds);
+   MetaSession *_open_mds_session(int mds);
+   void _close_mds_session(MetaSession *s);
+   void _closed_mds_session(MetaSession *s);
++  void _kick_stale_sessions();
+   void handle_client_session(MClientSession *m);
+   void send_reconnect(MetaSession *s);
+   void resend_unsafe_requests(MetaSession *s);
+ 
+--- a/src/client/MetaSession.cc
++++ b/src/client/MetaSession.cc
+@@ -14,8 +14,9 @@
+   case STATE_OPENING: return "opening";
+   case STATE_OPEN: return "open";
+   case STATE_CLOSING: return "closing";
+   case STATE_CLOSED: return "closed";
++  case STATE_STALE: return "stale";
+   default: return "unknown";
+   }
+ }
+ 
+--- a/src/client/MetaSession.h
++++ b/src/client/MetaSession.h
+@@ -32,8 +32,9 @@
+     STATE_OPENING,
+     STATE_OPEN,
+     STATE_CLOSING,
+     STATE_CLOSED,
++    STATE_STALE,
+   } state;
+ 
+   list<Context*> waiting_for_open;
+ 

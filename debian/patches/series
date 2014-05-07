@@ -1,4 +1,13 @@
+## Backported
+8113.patch
+8175.patch
+8282.patch
+8291.patch
+bp0001.patch
+
+## Debian
 arch.patch
 gcj.patch
 modules.patch
+sample.ceph.conf.patch
 virtualenv-never-download.patch
