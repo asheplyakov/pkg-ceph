@@ -14,13 +14,25 @@
 
 -------- -------- --------
 
-## Upgrade procedure (0.72.2 to 0.78):
+## Upgrade procedure (0.72.2 to 0.80):
+
+ * Read "Upgrade Sequencing" in release notes:
+
+    http://ceph.com/docs/firefly/release-notes/
 
  * Upgrade packages.
- * Restart all OSDs.
- * Run `ceph osd crush tunables default`.
+
  * Restart MONs.
+
+ * Restart all OSDs.
+
+ * Run `ceph osd crush tunables default`.
+
  * (Restart MDSes).
+
+ * Set 'hashpspool' flag on your pools (new default):
+
+    ceph osd pool set {pool} hashpspool true
 
  Read more about tunables in
 
@@ -41,14 +53,11 @@
 
  See also:
 
-    http://ceph.com/docs/master/install/upgrading-ceph/
-    http://ceph.com/docs/master/release-notes/
+    http://ceph.com/docs/firefly/install/upgrading-ceph/
 
 -------- -------- --------
 
 ## CephFS
-
- **CephFS is not production quality yet.**
 
 > How to mount CephFS using fuse client from "/etc/fstab"?
 
@@ -68,3 +77,8 @@
  'readdir_max_entries' mount option, for example:
 
     mount -t ceph 1.2.3.4:/ /mnt/ceph -o readdir_max_entries=64
+
+----
+
+ Jerasure pool(s) will bump requirements to Linux_3.15 (not yet released) for
+ kernel CephFS and RBD clients.
