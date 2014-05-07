@@ -331,6 +331,34 @@ License: GPL-3/OpenSSL
  The complete text of the GNU General Public License version 3
  can be found in "/usr/share/common-licenses/GPL-3' file.
 
+Files: src/mount/mtab.c
+Copyright: util-linux-ng AUTHORS
+License: GPL-2+
+Comment:
+ "mount/fstab.c" from line 565:
+ https://gitorious.org/util-linux-ng/util-linux-ng/source/d8c36bdf037b901d92c8cbe45546b210dc5f8b90:mount/fstab.c#L565
+ https://gitorious.org/util-linux-ng/util-linux-ng/source/d8c36bdf037b901d92c8cbe45546b210dc5f8b90:README.licensing
+
+Files: src/test/librbd/fsx.c
+Copyright: 1991, NeXT Computer, Inc.
+License: APSL-2.0
+ The contents of this file constitute Original Code as defined in and
+ are subject to the Apple Public Source License Version 2.0 (the
+ "License"). You may not use this file except in compliance with the
+ License. Please obtain a copy of the License at
+ http://www.opensource.apple.com/apsl/ and read it before using this file.
+ .
+ This Original Code and all software distributed under the License are
+ distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+ EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
+ INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE OR NON-INFRINGEMENT. Please see the
+ License for the specific language governing rights and limitations
+ under the License.
+Comment:
+ http://codemonkey.org.uk/projects/fsx/
+ https://gitorious.org/freebsd/freebsd/source/35d508eed26d6b836a57b4aa6dba5677e171efde:tools/regression/fsx/fsx.c
+
 Files: man/*
        debian/man/*
 Copyright: 2010-2014, Inktank Storage, Inc. and contributors.
@@ -339,7 +367,7 @@ License: CC-BY-SA-3.0
 Files: debian/*
 Copyright: 2010      Sage Weil <sage@newdream.net>
            2010      Canonical, Ltd.
-           2011-2013 Laszlo Boszormenyi (GCS) <gcs@debian.org>
+           2011-2013 László Böszörményi (GCS) <gcs@debian.org>
            2013-2014 James Page <james.page@ubuntu.com>
            2014      Dmitry Smirnov <onlyjob@debian.org>
 License: LGPL-2.1
@@ -361,6 +389,23 @@ License: GPL-2
  .
  On Debian systems, the complete text of the GNU General Public License
  version 2 can be found in `/usr/share/common-licenses/GPL-2' file.
+
+License: GPL-2+
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 2 of the License, or
+ (at your option) any later version.
+ .
+ This package is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+ .
+ You should have received a copy of the GNU General Public License
+ along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ .
+ On Debian systems, the complete text of the GNU General Public License
+ version 2 can be found in `/usr/share/common-licenses/GPL-2'.
 
 License: LGPL-2.1
  This library is free software; you can redistribute it and/or

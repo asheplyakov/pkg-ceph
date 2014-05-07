@@ -3,6 +3,7 @@ ceph (0.80-1) unstable; urgency=low
   * New upstream release [May 2014].
     + upload to unstable.
   * Updated "README.Debian".
+  * Updated "debian/copyright"; Thanks, László Böszörményi.
   * Added backported patches:
       [8113, 8175, 8282, 8291, bp0001, sample.ceph.conf].
   * "gbp.conf": don't merge to experimental.
