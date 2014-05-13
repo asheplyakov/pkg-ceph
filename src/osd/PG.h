@@ -1118,13 +1118,6 @@ public:
   void build_scrub_map(ScrubMap &map, ThreadPool::TPHandle &handle);
   void build_inc_scrub_map(
     ScrubMap &map, eversion_t v, ThreadPool::TPHandle &handle);
-  /**
-   * returns true if [begin, end) is good to scrub at this time
-   * a false return value obliges the implementer to requeue scrub when the
-   * condition preventing scrub clears
-   */
-  virtual bool _range_available_for_scrub(
-    const hobject_t &begin, const hobject_t &end) = 0;
   virtual void _scrub(ScrubMap &map) { }
   virtual void _scrub_clear_state() { }
   virtual void _scrub_finish() { }
@@ -2131,9 +2124,11 @@ public:
   virtual void check_blacklisted_watchers() = 0;
   virtual void get_watchers(std::list<obj_watch_item_t>&) = 0;
 
-  virtual void agent_work(int max) = 0;
+  virtual bool agent_work(int max) = 0;
   virtual void agent_stop() = 0;
+  virtual void agent_delay() = 0;
   virtual void agent_clear() = 0;
+  virtual void agent_choose_mode_restart() = 0;
 };
 
 ostream& operator<<(ostream& out, const PG& pg);
