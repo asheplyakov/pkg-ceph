@@ -1,0 +1,44 @@
+From 3e41f92b8439fcae33f412c7b833a7233e1faecb Mon Sep 17 00:00:00 2001
+From: "Yan, Zheng" <zheng.z.yan@intel.com>
+Date: Fri, 11 Apr 2014 16:42:42 +0800
+Subject: [PATCH] client: cleanup unsafe requests if MDS session is reset
+
+Signed-off-by: Yan, Zheng <zheng.z.yan@intel.com>
+---
+ src/client/Client.cc | 22 ++++++++++++++--------
+ 1 file changed, 14 insertions(+), 8 deletions(-)
+
+--- a/src/client/Client.cc
++++ b/src/client/Client.cc
+@@ -2089,17 +2089,23 @@
+ void Client::kick_requests_closed(MetaSession *session)
+ {
+   ldout(cct, 10) << "kick_requests_closed for mds." << session->mds_num << dendl;
+   for (map<ceph_tid_t, MetaRequest*>::iterator p = mds_requests.begin();
+-       p != mds_requests.end();
+-       ++p) {
+-    if (p->second->mds == session->mds_num) {
+-      if (p->second->caller_cond) {
+-	p->second->kick = true;
+-	p->second->caller_cond->Signal();
++       p != mds_requests.end(); ) {
++    MetaRequest *req = p->second;
++    ++p;
++    if (req->mds == session->mds_num) {
++      if (req->caller_cond) {
++	req->kick = true;
++	req->caller_cond->Signal();
++      }
++      req->item.remove_myself();
++      if (req->got_unsafe) {
++	lderr(cct) << "kick_requests_closed removing unsafe request " << req->get_tid() << dendl;
++	req->unsafe_item.remove_myself();
++	mds_requests.erase(req->get_tid());
++	put_request(req);
+       }
+-      p->second->item.remove_myself();
+-      p->second->unsafe_item.remove_myself();
+     }
+   }
+   assert(session->requests.empty());
+   assert(session->unsafe_requests.empty());

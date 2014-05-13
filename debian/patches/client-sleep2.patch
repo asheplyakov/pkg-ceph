@@ -1,0 +1,41 @@
+From 70ab0793cc7d2d75ac942efb677a0b3297d3792a Mon Sep 17 00:00:00 2001
+From: "Yan, Zheng" <zheng.z.yan@intel.com>
+Date: Fri, 11 Apr 2014 16:31:29 +0800
+Subject: [PATCH] client: wake up cap waiters if MDS session is reset
+
+Signed-off-by: Yan, Zheng <zheng.z.yan@intel.com>
+---
+ src/client/Client.cc | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+--- a/src/client/Client.cc
++++ b/src/client/Client.cc
+@@ -2351,8 +2351,11 @@
+ 
+ int Client::get_caps(Inode *in, int need, int want, int *phave, loff_t endoff)
+ {
+   while (1) {
++    if (!in->is_any_caps())
++      return -ESTALE;
++
+     if (endoff > 0 &&
+ 	(endoff >= (loff_t)in->max_size ||
+ 	 endoff > (loff_t)(in->size << 1)) &&
+ 	endoff > (loff_t)in->wanted_max_size) {
+@@ -3082,11 +3085,15 @@
+   while (s->caps.size()) {
+     Cap *cap = *s->caps.begin();
+     Inode *in = cap->inode;
+     int dirty_caps = 0;
+-    if (in->auth_cap == cap)
++    if (in->auth_cap == cap) {
+       dirty_caps = in->dirty_caps | in->flushing_caps;
++      in->wanted_max_size = 0;
++      in->requested_max_size = 0;
++    }
+     remove_cap(cap, false);
++    signal_cond_list(in->waitfor_caps);
+     if (dirty_caps) {
+       lderr(cct) << "remove_session_caps still has dirty|flushing caps on " << *in << dendl;
+       if (in->flushing_caps)
+ 	num_flushing_caps--;
