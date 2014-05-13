@@ -1,13 +1,8 @@
-## Backported
+## Backported / Upstream
 client-sleep1.patch
 client-sleep2.patch
 client-sleep3.patch
 sleep-recover.patch
-8113.patch
-8175.patch
-8282.patch
-8291.patch
-bp0001.patch
 
 ## Debian
 arch.patch

@@ -1,3 +1,13 @@
+ceph (0.80.1-1) unstable; urgency=low
+
+  * New upstream release [May 2014].
+  * Dropped all backported patches.
+  * New "sleep-recover" and "client-sleep[1,2,3]" patches to fix
+    fuse-client hang after resume from suspend [#8291]; thanks, Zheng Yan.
+  * New "gcj_search_path.patch" to find "jni.h" with gcj-jdk v4.9.0.
+
+ -- Dmitry Smirnov <onlyjob@debian.org>  Wed, 14 May 2014 09:24:15 +1000
+
 ceph (0.80-1) unstable; urgency=low
 
   * New upstream release [May 2014].
