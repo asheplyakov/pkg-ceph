@@ -1,0 +1,22 @@
+Last-Update: 2014-05-12
+Forwarded: https://github.com/ceph/ceph/pull/1803
+Author: Dmitry Smirnov <onlyjob@member.fsf.org>
+Description: look for "jni.h" in gcj-jdk path, fixes FTBFS with gcj-jdk_4.9.0
+~~~~
+  checking for jni.h... no
+  configure: error: Cannot find header 'jni.h'. Try setting --with-jdk-dir
+~~~~
+
+--- a/configure.ac
++++ b/configure.ac
+@@ -391,9 +391,9 @@
+ 
+ 	# setup defaults for Debian default-jdk package (without --with-jdk-dir)
+ 	AS_IF([test -z "$with_jdk_dir"], [
+ 		   # This works with Debian's and CentOS' default-jdk package
+-       for dir in '/usr/lib/jvm/default-java/' '/usr/lib/jvm/java/' ; do
++       for dir in '/usr/lib/jvm/default-java/' '/usr/lib/jvm/java/' '/usr/lib/jvm/java-gcj/'; do
+           # only test if a suitable path has not yet been found
+           AS_IF([test "$EXTRA_JDK_BIN_DIR" == ""], [
+ 		          AS_IF([test -x "$javac_prog"], [
+ 				          EXTRA_JDK_BIN_DIR=`dirname $javac_prog`])

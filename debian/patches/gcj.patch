@@ -1,5 +1,5 @@
 Last-Update: 2014-03-25
-Forwarded: no
+Forwarded: https://github.com/ceph/ceph/pull/1803
 Author: Dmitry Smirnov <onlyjob@member.fsf.org>
 Description: gcj compatibility, partial fix for FTBFS with "gcj" (i.e. "gcj-jdk").
  * prioritise use of `javac` executable (gcj provides it through alternatives).

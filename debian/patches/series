@@ -8,6 +8,7 @@ bp0001.patch
 ## Debian
 arch.patch
 gcj.patch
+gcj_search_path.patch
 modules.patch
 sample.ceph.conf.patch
 virtualenv-never-download.patch
