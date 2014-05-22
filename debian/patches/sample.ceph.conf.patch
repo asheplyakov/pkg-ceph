@@ -1,4 +1,4 @@
-Last-Update: 2014-05-07
+Last-Update: 2014-05-23
 Forwarded: yes
 Author: Dmitry Smirnov <onlyjob@member.fsf.org>
 Description: sample.ceph.conf update:
@@ -178,7 +178,7 @@ Description: sample.ceph.conf update:
      # The percentage of disk space used before an OSD is considered full.
      # Type: Float
      # (Default: .95)
-@@ -208,10 +203,15 @@
+@@ -208,10 +203,21 @@
      # Type: Float
      # (Default: .85)
      ;mon osd nearfull ratio     = .85
@@ -188,6 +188,12 @@ Description: sample.ceph.conf update:
 +    # Type: 32-bit Integer
 +    # (Default: 300)
 +    ;mon osd down out interval  = 300
++
++    # The grace period in seconds before declaring unresponsive Ceph OSD
++    # Daemons "down".
++    # Type: 32-bit Integer
++    # (Default: 900)
++    ;mon osd report timeout          = 300
  
 -### http://ceph.com/docs/next/rados/troubleshooting/log-and-debug/
 +### http://ceph.com/docs/firefly/rados/troubleshooting/log-and-debug/
@@ -195,7 +201,7 @@ Description: sample.ceph.conf update:
      # logging, for debugging monitor crashes, in order of
      # their likelihood of being helpful :)
      ;debug ms                   = 1
-@@ -238,18 +238,30 @@
+@@ -238,18 +244,30 @@
  # You must deploy at least one metadata server to use CephFS. There is
  # experimental support for running multiple metadata servers. Do not run
  # multiple metadata servers in production.
@@ -217,18 +223,18 @@ Description: sample.ceph.conf update:
      ;debug ms                   = 1
      ;debug mds                  = 20
 +    ;debug journaler            = 20
- 
++
 +    # The number of inodes to cache.
 +    # Type: 32-bit Integer
 +    # (Default: 100000)
 +    ;mds cache size             = 250000
-+
+ 
 +    ;mds mem max                = 1048576     # KB
  
  ;[mds.alpha]
  ;    host                       = alpha
  
-@@ -260,10 +272,9 @@
+@@ -260,10 +278,9 @@
  ## osd
  # You need at least one.  Two or more if you want data to be replicated.
  # Define as many as you like.
@@ -240,7 +246,20 @@ Description: sample.ceph.conf update:
      # The path to the OSDs data.
      # You must create the directory when deploying Ceph.
      # You should mount a drive for OSD data at this mount point.
-@@ -302,17 +313,22 @@
+@@ -281,8 +298,12 @@
+     # Type: 32-bit Integer
+     # (Default: 5)
+     ;osd recovery max active      = 3
+ 
++    # The maximum number of simultaneous scrub operations for a Ceph OSD Daemon.
++    # Type: 32-bit Int
++    # (Default: 1)
++    ;osd max scrubs               = 2
+ 
+     # You may add settings for mkcephfs so that it will create and mount
+     # the file system for you. Remove the comment `#` character for
+     # the following settings and replace the values in parenthesis
+@@ -302,17 +323,22 @@
      ## hundred MB should be enough; more if you have fast or many
      ## disks.  You can use a file under the osd data dir if need be
      ## (e.g. /data/$name/journal), but it will be slower than a
@@ -265,7 +284,7 @@ Description: sample.ceph.conf update:
      # The size of the journal in megabytes. If this is 0,
      # and the journal is a block device, the entire block device is used.
      # Since v0.54, this is ignored if the journal is a block device,
-@@ -320,23 +336,18 @@
+@@ -320,30 +346,49 @@
      # Type: 32-bit Integer
      # (Default: 5120)
      # Recommended: Begin with 1GB. Should be at least twice the product
@@ -291,12 +310,8 @@ Description: sample.ceph.conf update:
      ;debug ms                     = 1
      ;debug osd                    = 20
      ;debug filestore              = 20
-@@ -361,4 +372,72 @@
+     ;debug journal                = 20
  
- ;[osd.3]
- ;    host                         = eta
- ;    devs                         = /dev/sdy
-+
 +### http://ceph.com/docs/firefly/rados/configuration/filestore-config-ref/
 +
 +    # The maximum interval in seconds for synchronizing the filestore.
@@ -309,12 +324,29 @@ Description: sample.ceph.conf update:
 +    # Required: No. Only used for btrfs.
 +    # (Default: true)
 +    ;filestore btrfs snap        = false
-+
+ 
 +    # Enables the filestore flusher.
 +    # Type: Boolean
 +    # Required: No
 +    # (Default: false)
 +    ;filestore flusher            = true
++
++    # Defines the maximum number of in progress operations the file store
++    # accepts before blocking on queuing new operations.
++    # Type: Integer
++    # Required: No. Minimal impact on performance.
++    # (Default: 500)
++    ;filestore queue max ops      = 500
+ 
+ ;[osd.0]
+ ;    host                         = delta
+ 
+@@ -361,4 +406,54 @@
+ 
+ ;[osd.3]
+ ;    host                         = eta
+ ;    devs                         = /dev/sdy
++
 +
 +##################
 +## client settings
