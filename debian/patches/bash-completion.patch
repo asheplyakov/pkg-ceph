@@ -1,0 +1,105 @@
+Last-Update: 2014-05-13
+Forwarded: not-needed
+Origin: upstream, 8dd1190dd544cd87f565384f060ff9efcb37516f
+Author: Wido den Hollander <wido@42on.com>
+Description: Improve Bash completion for various tools
+
+--- a/src/bash_completion/ceph
++++ b/src/bash_completion/ceph
+@@ -15,8 +15,9 @@
+ 
+         COMPREPLY=()
+         cur="${COMP_WORDS[COMP_CWORD]}"
+         prev="${COMP_WORDS[COMP_CWORD-1]}"
++        prevprev="${COMP_WORDS[COMP_CWORD-2]}"
+ 
+         if [[ ${cur} == -* ]] ; then
+             COMPREPLY=( $(compgen -W "--conf -c --name --id -m --version -s --status -w --watch -o --out-file -i --in-file" -- ${cur}) )
+             return 0
+@@ -31,30 +32,42 @@
+                 COMPREPLY=( $(compgen -A hostname ${cur}) )
+                 return 0
+                 ;;
+             auth)
+-                COMPREPLY=( $(compgen -W "list add del" -- ${cur}) )
++                COMPREPLY=( $(compgen -W "list add del print_key print-key export get get-key import get-or-create get-or-create-key" -- ${cur}) )
+                 return 0
+                 ;;
+             pg)
+-                COMPREPLY=( $(compgen -W "stat dump getmap map send_pg_creates scrub deep-scrub repair" -- ${cur}) )
++                COMPREPLY=( $(compgen -W "stat dump dump_json dump_stuck force_create_pg getmap map send_pg_creates scrub deep-scrub repair" -- ${cur}) )
+                 return 0
+                 ;;
+             osd)
+-                COMPREPLY=( $(compgen -W "tell stat pool dump getmaxosd tree getmap getcrushmap lspools" -- ${cur}) )
++                COMPREPLY=( $(compgen -W "stat pool dump getmaxosd tree getmap getcrushmap lspools reweight-by-utilization trash tier" -- ${cur}) )
+                 return 0
+                 ;;
+             mon)
+-                COMPREPLY=( $(compgen -W "tell stat getmap" -- ${cur}) )
++                COMPREPLY=( $(compgen -W "stat getmap add remove dump" -- ${cur}) )
+                 return 0
+                 ;;
+             mds)
+-                COMPREPLY=( $(compgen -W "tell stat stat getmap dump compat" -- ${cur}) )
++                COMPREPLY=( $(compgen -W "stat stat getmap dump compat" -- ${cur}) )
+                 return 0
+                 ;;
+-            *)
+-                COMPREPLY=( $(compgen -W "osd mon mds pg auth" -- ${cur}) )
++            pool)
++                COMPREPLY=( $(compgen -W "create delete rename stats set set-quota get rmsnap mksnap" -- ${cur}) )
+                 return 0
+-            ;;
++                ;;
++            health)
++                COMPREPLY=( $(compgen -W "detail" -- ${cur}) )
++                return 0
++                ;;
++            tier)
++                COMPREPLY=( $(compgen -W "remove cache-mode" -- ${cur}) )
++                return 0
++                ;;
++            ceph)
++                COMPREPLY=( $(compgen -W "osd mon mds pg auth health df" -- ${cur}) )
++                return 0
++                ;;
+         esac
+ }
+ complete -F _ceph ceph
+--- a/src/bash_completion/rados
++++ b/src/bash_completion/rados
+@@ -30,9 +30,9 @@
+             -m)
+                 COMPREPLY=( $(compgen -A hostname ${cur}) )
+                 return 0
+                 ;;
+-            *)
++            rados)
+                 COMPREPLY=( $(compgen -W "lspools mkpool rmpool df ls chown get put create rm listxattr getxattr setxattr rmxattr stat mapext lssnap mksnap rmsnap rollback bench" -- ${cur}) )
+                 return 0
+             ;;
+         esac
+--- a/src/bash_completion/rbd
++++ b/src/bash_completion/rbd
+@@ -31,13 +31,17 @@
+                 COMPREPLY=( $(compgen -A hostname ${cur}) )
+                 return 0
+                 ;;
+             snap)
+-                COMPREPLY=( $(compgen -W "ls create rollback rm" -- ${cur}) )
++                COMPREPLY=( $(compgen -W "ls create rollback rm purge protect unprotect" -- ${cur}) )
+                 return 0
+                 ;;
+-            *)
+-                COMPREPLY=( $(compgen -W "ls list info create resize rm export import cp copy mv rename snap watch map unmap showmapped" -- ${cur}) )
++            lock)
++                COMPREPLY=( $(compgen -W "list add remove" -- ${cur}) )
++                return 0
++                ;;
++            rbd)
++                COMPREPLY=( $(compgen -W "ls list info create clone flatten resize rm export import diff export-diff import-diff cp copy mv rename snap watch lock bench-write map unmap showmapped" -- ${cur}) )
+                 return 0
+             ;;
+         esac
+ }

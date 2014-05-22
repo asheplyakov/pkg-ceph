@@ -1,4 +1,5 @@
 p1846.patch
+bash-completion.patch
 ceph-ao-require-cas.patch
 
 ## Backported / Upstream
