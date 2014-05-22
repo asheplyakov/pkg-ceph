@@ -1,0 +1,29 @@
+Last-Update: 2014-05-21
+Author: Gregory Farnum <greg@inktank.com>
+Bug-Ceph: http://tracker.ceph.com/issues/8359
+Description: fix FTBFS with gcj-jdk
+ ~~~~
+    java/native/libcephfs_jni.cc:2878:55: error: invalid conversion from 'const jbyte* {aka const signed char*}' to 'jbyte* {aka signed char*}' [-fpermissive]
+                 reinterpret_cast<const jbyte*>(rawAddress));
+                                                           ^
+    In file included from java/native/libcephfs_jni.cc:27:0:
+    /usr/lib/gcc/x86_64-linux-gnu/4.8/include/jni.h:1471:8: error:   initializing argument 4 of 'void _Jv_JNIEnv::SetByteArrayRegion(jbyteArray, jsize, jsize, jbyte*)' [-fpermissive]
+       void SetByteArrayRegion (jbyteArray val0, jsize val1, jsize val2, jbyte * val3)
+            ^
+    make[5] *** [java/native/libcephfs_jni_la-libcephfs_jni.lo] Error 1
+ ~~~~
+
+--- a/src/java/native/libcephfs_jni.cc
++++ b/src/java/native/libcephfs_jni.cc
+@@ -2874,9 +2874,10 @@
+     if (byteArray.get() == NULL) {
+         return NULL;
+     }
+     env->SetByteArrayRegion(byteArray.get(), 0, addressLength,
+-            reinterpret_cast<const jbyte*>(rawAddress));
++            reinterpret_cast<jbyte*>(const_cast<void*>(rawAddress)));
++
+ 
+     if (ss.ss_family == AF_UNIX) {
+         // Note that we get here for AF_UNIX sockets on accept(2). The unix(7) man page claims
+         // that the peer's sun_path will contain the path, but in practice it doesn't, and the

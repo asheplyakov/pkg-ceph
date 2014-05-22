@@ -7,19 +7,6 @@ Description: gcj compatibility, partial fix for FTBFS with "gcj" (i.e. "gcj-jdk"
 
  Changes should not affect OpenJDK which understand '-classpath' as well.
 
- With gcj-jdk we still get FTBFS in "src/client/Trace.cc" later:
-
- ~~~~
-    java/native/libcephfs_jni.cc:2878:55: error: invalid conversion from 'const jbyte* {aka const signed char*}' to 'jbyte* {aka signed char*}' [-fpermissive] 
-                 reinterpret_cast<const jbyte*>(rawAddress)); 
-                                                           ^ 
-    In file included from java/native/libcephfs_jni.cc:27:0: 
-    /usr/lib/gcc/x86_64-linux-gnu/4.8/include/jni.h:1471:8: error:   initializing argument 4 of 'void _Jv_JNIEnv::SetByteArrayRegion(jbyteArray, jsize, jsize, jbyte*)' [-fpermissive] 
-       void SetByteArrayRegion (jbyteArray val0, jsize val1, jsize val2, jbyte * val3) 
-            ^ 
-    make[5] *** [java/native/libcephfs_jni_la-libcephfs_jni.lo] Error 1 
- ~~~~
-
 --- a/m4/ac_prog_javac.m4
 +++ b/m4/ac_prog_javac.m4
 @@ -34,11 +34,11 @@

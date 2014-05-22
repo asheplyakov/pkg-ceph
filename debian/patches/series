@@ -6,6 +6,7 @@ sleep-recover.patch
 
 ## Debian
 arch.patch
+gcj-jdk.patch
 gcj.patch
 gcj_search_path.patch
 modules.patch
