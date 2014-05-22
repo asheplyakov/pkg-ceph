@@ -1,3 +1,5 @@
+ceph-ao-require-cas.patch
+
 ## Backported / Upstream
 client-sleep1.patch
 client-sleep2.patch
