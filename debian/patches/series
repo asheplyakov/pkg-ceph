@@ -7,6 +7,7 @@ client-sleep1.patch
 client-sleep2.patch
 client-sleep3.patch
 sleep-recover.patch
+bug-8428.patch
 
 ## Debian
 arch.patch

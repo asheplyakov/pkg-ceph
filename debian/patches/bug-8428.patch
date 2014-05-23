@@ -1,0 +1,36 @@
+From 88905013d76ee7a7f5708d7fa10a9f9d6d6f1299 Mon Sep 17 00:00:00 2001
+From: Yehuda Sadeh <yehuda@inktank.com>
+Date: Thu, 22 May 2014 18:27:58 -0700
+Subject: [PATCH] rgw: check appropriate entity permission on put_metadata
+
+Fixes: #8428
+
+Signed-off-by: Yehuda Sadeh <yehuda@inktank.com>
+---
+ ceph-object-corpus | 2 +-
+ src/rgw/rgw_op.cc  | 9 +++++++--
+ 2 files changed, 8 insertions(+), 3 deletions(-)
+
+diff --git a/src/rgw/rgw_op.cc b/src/rgw/rgw_op.cc
+index f3501fb..a57783b 100644
+--- a/src/rgw/rgw_op.cc
++++ b/src/rgw/rgw_op.cc
+@@ -1752,8 +1752,13 @@ void RGWPostObj::execute()
+ 
+ int RGWPutMetadata::verify_permission()
+ {
+-  if (!verify_object_permission(s, RGW_PERM_WRITE))
+-    return -EACCES;
++  if (s->object) {
++    if (!verify_object_permission(s, RGW_PERM_WRITE))
++      return -EACCES;
++  } else {
++    if (!verify_bucket_permission(s, RGW_PERM_WRITE))
++      return -EACCES;
++  }
+ 
+   return 0;
+ }
+-- 
+1.9.3
+
