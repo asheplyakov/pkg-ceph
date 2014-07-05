@@ -1,0 +1,41 @@
+From 2b007c25bc6d383cec0f9fd0e76f0742c2e9a671 Mon Sep 17 00:00:00 2001
+From: Joao Eduardo Luis <joao.luis@inktank.com>
+Date: Mon, 23 Jun 2014 23:27:05 +0100
+Subject: [PATCH] mon: MDSMonitor: print pool name along with id during 'newfs'
+ errors
+
+Signed-off-by: Joao Eduardo Luis <joao.luis@inktank.com>
+---
+ src/mon/MDSMonitor.cc | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+--- a/src/mon/MDSMonitor.cc
++++ b/src/mon/MDSMonitor.cc
+@@ -1130,9 +1130,12 @@
+       ss << "pool id '" << data << "' does not exist";
+       r = -ENOENT;
+       goto out;
+     } else if (p->is_erasure()) {
+-      ss << "pool id '" << data << "' is an erasure-code pool";
++      const char *pn = mon->osdmon()->osdmap.get_pool_name(data);
++      assert(pn != NULL);
++      ss << "pool '" << pn << "' (id '" << data << "')"
++         << " is an erasure-code pool";
+       r = -EINVAL;
+       goto out;
+     }
+ 
+@@ -1141,9 +1144,12 @@
+       ss << "pool id '" << metadata << "' does not exist";
+       r = -ENOENT;
+       goto out;
+     } else if (p->is_erasure()) {
+-      ss << "pool id '" << metadata << "' is an erasure-code pool";
++      const char *pn = mon->osdmon()->osdmap.get_pool_name(metadata);
++      assert(pn != NULL);
++      ss << "pool '" << pn << "' (id '" << metadata << "')"
++         << " is an erasure-code pool";
+       r = -EINVAL;
+       goto out;
+     }
+ 
