@@ -1,19 +1,16 @@
-p1846.patch
-bash-completion.patch
-ceph-ao-require-cas.patch
-
 ## Backported / Upstream
+firefly-post-release.patch
 client-sleep1.patch
 client-sleep2.patch
 client-sleep3.patch
 sleep-recover.patch
-bug-8428.patch
+backfill-prio.patch
+p1846.patch
+bash-completion.patch
+ceph-ao-require-cas.patch
 
 ## Debian
 arch.patch
-gcj-jdk.patch
-gcj.patch
-gcj_search_path.patch
 modules.patch
 sample.ceph.conf.patch
 virtualenv-never-download.patch

@@ -1,0 +1,2917 @@
+Last-Update: 2014-07-05
+Forwarded: not-needed
+Origin: upstream
+Author: Dmitry Smirnov <onlyjob@member.fsf.org>
+Description: fixes from "firefly" branch since 0.80.1 release
+ Fixes:
+ #6700, #6966, #7588, #8010, #8011, #8169, #8205, #8241, #8305, #8307,
+ #8311, #8319, #8328, #8331, #8332, #8334, #8373, #8380, #8428, #8436,
+ #8440, #8447, #8452, #8507, #8542, #8554, #8556, #8585, #8599, #8608,
+ #8629, #8652 and others.
+
+--- a/configure.ac
++++ b/configure.ac
+@@ -391,9 +391,9 @@
+ 
+ 	# setup defaults for Debian default-jdk package (without --with-jdk-dir)
+ 	AS_IF([test -z "$with_jdk_dir"], [
+ 		   # This works with Debian's and CentOS' default-jdk package
+-       for dir in '/usr/lib/jvm/default-java/' '/usr/lib/jvm/java/' ; do
++       for dir in '/usr/lib/jvm/default-java/' '/usr/lib/jvm/java/' '/usr/lib/jvm/java-gcj/'; do
+           # only test if a suitable path has not yet been found
+           AS_IF([test "$EXTRA_JDK_BIN_DIR" == ""], [
+ 		          AS_IF([test -x "$javac_prog"], [
+ 				          EXTRA_JDK_BIN_DIR=`dirname $javac_prog`])
+--- a/m4/ac_prog_javac.m4
++++ b/m4/ac_prog_javac.m4
+@@ -34,11 +34,11 @@
+ 
+ AC_DEFUN([AC_PROG_JAVAC],[
+ AC_REQUIRE([AC_EXEEXT])dnl
+ if test "x$JAVAPREFIX" = x; then
+-        test "x$JAVAC" = x && AC_CHECK_PROGS(JAVAC, "gcj$EXEEXT -C" guavac$EXEEXT jikes$EXEEXT javac$EXEEXT)
++        test "x$JAVAC" = x && AC_CHECK_PROGS(JAVAC, javac$EXEEXT "gcj$EXEEXT -C" guavac$EXEEXT jikes$EXEEXT)
+ else
+-        test "x$JAVAC" = x && AC_CHECK_PROGS(JAVAC, "gcj$EXEEXT -C" guavac$EXEEXT jikes$EXEEXT javac$EXEEXT, $JAVAPREFIX)
++        test "x$JAVAC" = x && AC_CHECK_PROGS(JAVAC, javac$EXEEXT "gcj$EXEEXT -C" guavac$EXEEXT jikes$EXEEXT, $JAVAPREFIX)
+ fi
+ test "x$JAVAC" = x && AC_MSG_ERROR([no acceptable Java compiler found in \$PATH])
+ AC_PROG_JAVAC_WORKS
+ AC_PROVIDE([$0])dnl
+--- a/src/brag/client/ceph-brag
++++ b/src/brag/client/ceph-brag
+@@ -6,19 +6,206 @@
+ import json
+ import sys
+ import ast
+ import requests
+-from collections import Counter
++from operator import itemgetter
++from heapq import nlargest
++from itertools import repeat, ifilter
++
+ 
+ CLUSTER_UUID_NAME='cluster-uuid'
+ CLUSTER_OWNERSHIP_NAME='cluster-ownership'
+ 
++
++class Counter(dict):
++    '''Dict subclass for counting hashable objects.  Sometimes called a bag
++    or multiset.  Elements are stored as dictionary keys and their counts
++    are stored as dictionary values.
++
++    >>> Counter('zyzygy')
++    Counter({'y': 3, 'z': 2, 'g': 1})
++
++    '''
++
++    def __init__(self, iterable=None, **kwds):
++        '''Create a new, empty Counter object.  And if given, count elements
++        from an input iterable.  Or, initialize the count from another mapping
++        of elements to their counts.
++
++        >>> c = Counter()                           # a new, empty counter
++        >>> c = Counter('gallahad')                 # a new counter from an iterable
++        >>> c = Counter({'a': 4, 'b': 2})           # a new counter from a mapping
++        >>> c = Counter(a=4, b=2)                   # a new counter from keyword args
++
++        '''
++        self.update(iterable, **kwds)
++
++    def __missing__(self, key):
++        return 0
++
++    def most_common(self, n=None):
++        '''List the n most common elements and their counts from the most
++        common to the least.  If n is None, then list all element counts.
++
++        >>> Counter('abracadabra').most_common(3)
++        [('a', 5), ('r', 2), ('b', 2)]
++
++        '''
++        if n is None:
++            return sorted(self.iteritems(), key=itemgetter(1), reverse=True)
++        return nlargest(n, self.iteritems(), key=itemgetter(1))
++
++    def elements(self):
++        '''Iterator over elements repeating each as many times as its count.
++
++        >>> c = Counter('ABCABC')
++        >>> sorted(c.elements())
++        ['A', 'A', 'B', 'B', 'C', 'C']
++
++        If an element's count has been set to zero or is a negative number,
++        elements() will ignore it.
++
++        '''
++        for elem, count in self.iteritems():
++            for _ in repeat(None, count):
++                yield elem
++
++    # Override dict methods where the meaning changes for Counter objects.
++
++    @classmethod
++    def fromkeys(cls, iterable, v=None):
++        raise NotImplementedError(
++            'Counter.fromkeys() is undefined.  Use Counter(iterable) instead.')
++
++    def update(self, iterable=None, **kwds):
++        '''Like dict.update() but add counts instead of replacing them.
++
++        Source can be an iterable, a dictionary, or another Counter instance.
++
++        >>> c = Counter('which')
++        >>> c.update('witch')           # add elements from another iterable
++        >>> d = Counter('watch')
++        >>> c.update(d)                 # add elements from another counter
++        >>> c['h']                      # four 'h' in which, witch, and watch
++        4
++
++        '''
++        if iterable is not None:
++            if hasattr(iterable, 'iteritems'):
++                if self:
++                    self_get = self.get
++                    for elem, count in iterable.iteritems():
++                        self[elem] = self_get(elem, 0) + count
++                else:
++                    dict.update(self, iterable) # fast path when counter is empty
++            else:
++                self_get = self.get
++                for elem in iterable:
++                    self[elem] = self_get(elem, 0) + 1
++        if kwds:
++            self.update(kwds)
++
++    def copy(self):
++        'Like dict.copy() but returns a Counter instance instead of a dict.'
++        return Counter(self)
++
++    def __delitem__(self, elem):
++        'Like dict.__delitem__() but does not raise KeyError for missing values.'
++        if elem in self:
++            dict.__delitem__(self, elem)
++
++    def __repr__(self):
++        if not self:
++            return '%s()' % self.__class__.__name__
++        items = ', '.join(map('%r: %r'.__mod__, self.most_common()))
++        return '%s({%s})' % (self.__class__.__name__, items)
++
++    # Multiset-style mathematical operations discussed in:
++    #       Knuth TAOCP Volume II section 4.6.3 exercise 19
++    #       and at http://en.wikipedia.org/wiki/Multiset
++    #
++    # Outputs guaranteed to only include positive counts.
++    #
++    # To strip negative and zero counts, add-in an empty counter:
++    #       c += Counter()
++
++    def __add__(self, other):
++        '''Add counts from two counters.
++
++        >>> Counter('abbb') + Counter('bcc')
++        Counter({'b': 4, 'c': 2, 'a': 1})
++
++
++        '''
++        if not isinstance(other, Counter):
++            return NotImplemented
++        result = Counter()
++        for elem in set(self) | set(other):
++            newcount = self[elem] + other[elem]
++            if newcount > 0:
++                result[elem] = newcount
++        return result
++
++    def __sub__(self, other):
++        ''' Subtract count, but keep only results with positive counts.
++
++        >>> Counter('abbbc') - Counter('bccd')
++        Counter({'b': 2, 'a': 1})
++
++        '''
++        if not isinstance(other, Counter):
++            return NotImplemented
++        result = Counter()
++        for elem in set(self) | set(other):
++            newcount = self[elem] - other[elem]
++            if newcount > 0:
++                result[elem] = newcount
++        return result
++
++    def __or__(self, other):
++        '''Union is the maximum of value in either of the input counters.
++
++        >>> Counter('abbb') | Counter('bcc')
++        Counter({'b': 3, 'c': 2, 'a': 1})
++
++        '''
++        if not isinstance(other, Counter):
++            return NotImplemented
++        _max = max
++        result = Counter()
++        for elem in set(self) | set(other):
++            newcount = _max(self[elem], other[elem])
++            if newcount > 0:
++                result[elem] = newcount
++        return result
++
++    def __and__(self, other):
++        ''' Intersection is the minimum of corresponding counts.
++
++        >>> Counter('abbb') & Counter('bcc')
++        Counter({'b': 1})
++
++        '''
++        if not isinstance(other, Counter):
++            return NotImplemented
++        _min = min
++        result = Counter()
++        if len(self) < len(other):
++            self, other = other, self
++        for elem in ifilter(self.__contains__, other):
++            newcount = _min(self[elem], other[elem])
++            if newcount > 0:
++                result[elem] = newcount
++        return result
++
++
+ def run_command(cmd):
+   child = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE)
+   (o, e) = child.communicate()
+   return (child.returncode, o, e)
+ 
++
+ def get_uuid():
+   (rc,uid,e) = run_command(['ceph', 'config-key', 'get', CLUSTER_UUID_NAME])
+   if rc is not 0:
+     #uuid is not yet set.
+@@ -42,9 +229,9 @@
+   if byte_scale == 'PB':
+     return byte_count >> 50
+   if byte_scale == 'EB':
+     return byte_count >> 60
+-  
++
+   return byte_count
+ 
+ def get_nums():
+   (rc, o, e) = run_command(['ceph', '-s', '-f', 'json'])
+@@ -63,9 +250,9 @@
+ 
+   (rc, o, e) = run_command(['ceph', 'pg', 'dump', 'pools', '-f', 'json-pretty'])
+   if rc is not 0:
+     raise RuntimeError("\'ceph pg dump pools\' failed - " + e)
+- 
++
+   pools = json.loads(o)
+   num_pools = len(pools)
+   num_objs = 0
+   for p in pools:
+@@ -125,9 +312,9 @@
+ 
+ def get_sysinfo(max_osds):
+   count = 0
+   osd_metadata_available = False
+-  
++
+   os = {}
+   kern_version = {}
+   kern_description = {}
+   distro = {}
+@@ -164,12 +351,12 @@
+         dstr += jmeta['distro_description'] + ')'
+         distro[dstr] = incr(distro, dstr)
+       except KeyError as ke:
+         pass
+-  
++
+       cpu[jmeta['cpu']] = incr(cpu, jmeta['cpu'])
+       arch[jmeta['arch']] = incr(arch, jmeta['arch'])
+-  
++
+     count = count + 1
+ 
+   sysinfo = {}
+   if osd_metadata_available is False:
+@@ -201,9 +388,9 @@
+ 
+ def output_json():
+   out = {}
+   url = None
+-  
++
+   out['uuid'] = get_uuid()
+   nums = get_nums()
+   num_osds = int(nums['num_osds'])
+   out['components_count'] = nums
+@@ -304,14 +491,14 @@
+     print >> sys.stderr, "URL is not updated yet"
+     return 1
+ 
+   uuid = get_uuid()
+-  
++
+   params = {'uuid':uuid}
+   req = requests.delete(url, params=params)
+   if req.status_code is not 200:
+     print >> sys.stderr, "Failed to unpublish, server responsed with code " + str(req.status_code)
+-    return 1 
++    return 1
+ 
+   return 0
+ 
+ def main():
+--- a/src/ceph-disk
++++ b/src/ceph-disk
+@@ -279,9 +279,9 @@
+     This returns the output of the command and the return code of the
+     process in a tuple: (output, returncode).
+     """
+     arguments = _get_command_executable(arguments)
+-
++    LOG.info('Running command: %s' % ' '.join(arguments))
+     process = subprocess.Popen(
+         arguments,
+         stdout=subprocess.PIPE,
+         **kwargs)
+@@ -299,8 +299,9 @@
+     of making sure that executables *will* be found and will error nicely
+     otherwise.
+     """
+     arguments = _get_command_executable(arguments)
++    LOG.info('Running command: %s' % ' '.join(arguments))
+     return subprocess.check_call(arguments)
+ 
+ 
+ def platform_distro():
+@@ -1181,8 +1182,11 @@
+     if is_partition(data):
+         LOG.debug('OSD data device %s is a partition', data)
+         rawdev = data
+     else:
++        if journal_dmcrypt is not None:
++            dmcrypt_unmap(journal)
++
+         LOG.debug('Creating osd partition on %s', data)
+         try:
+             command_check_call(
+                 [
+@@ -1198,8 +1202,14 @@
+                 ],
+             )
+             command(
+                 [
++                    'partprobe',
++                    data,
++                    ],
++                )
++            command(
++                [
+                     # wait for udev event queue to clear
+                     'udevadm',
+                     'settle',
+                     ],
+@@ -1256,8 +1266,10 @@
+             unmount(path)
+     finally:
+         if rawdev != dev:
+             dmcrypt_unmap(osd_uuid)
++        if journal_dmcrypt is not None:
++            dmcrypt_unmap(journal)
+ 
+     if not is_partition(data):
+         try:
+             command_check_call(
+--- a/src/ceph_common.sh
++++ b/src/ceph_common.sh
+@@ -136,8 +136,26 @@
+ 	$rootssh $2 "if [ ! -d $sshdir ]; then mkdir -p $sshdir; fi ; cd $sshdir; ulimit -c unlimited ; $1" || { echo "failed: '$rootssh $1'" ; exit 1; }
+     fi
+ }
+ 
++do_root_cmd_okfail() {
++    ERR=0
++    if [ -z "$ssh" ]; then
++	[ $verbose -eq 1 ] && echo "--- $host# $1"
++	ulimit -c unlimited
++	whoami=`whoami`
++	if [ "$whoami" = "root" ]; then
++	    bash -c "$1" || { [ -z "$3" ] && echo "failed: '$1'" && ERR=1 && return 1; }
++	else
++	    sudo bash -c "$1" || { [ -z "$3" ] && echo "failed: '$1'" && ERR=1 && return 1; }
++	fi
++    else
++	[ $verbose -eq 1 ] && echo "--- $rootssh $2 \"if [ ! -d $sshdir ]; then mkdir -p $sshdir; fi; cd $sshdir ; ulimit -c unlimited ; $1\""
++	$rootssh $2 "if [ ! -d $sshdir ]; then mkdir -p $sshdir; fi; cd $sshdir ; ulimit -c unlimited ; $1" || { [ -z "$3" ] && echo "failed: '$rootssh $1'" && ERR=1 && return 1; }
++    fi
++    return 0
++}
++
+ get_local_daemon_list() {
+     type=$1
+     if [ -d "/var/lib/ceph/$type" ]; then
+ 	for i in `find -L /var/lib/ceph/$type -mindepth 1 -maxdepth 1 -type d -printf '%f\n'`; do
+--- a/src/crush/CrushWrapper.cc
++++ b/src/crush/CrushWrapper.cc
+@@ -1,5 +1,6 @@
+ 
++#include "osd/osd_types.h"
+ #include "common/debug.h"
+ #include "common/Formatter.h"
+ #include "common/errno.h"
+ 
+@@ -1373,8 +1374,14 @@
+   o.push_back(new CrushWrapper);
+   // fixme
+ }
+ 
++/**
++ * Determine the default CRUSH ruleset ID to be used with
++ * newly created replicated pools.
++ *
++ * @returns a ruleset ID (>=0) or an error (<0)
++ */
+ int CrushWrapper::get_osd_pool_default_crush_replicated_ruleset(CephContext *cct)
+ {
+   int crush_ruleset = cct->_conf->osd_pool_default_crush_replicated_ruleset;
+   if (cct->_conf->osd_pool_default_crush_rule != -1) {
+@@ -1387,8 +1394,13 @@
+                   << cct->_conf->osd_pool_default_crush_replicated_ruleset
+                   << dendl;
+     crush_ruleset = cct->_conf->osd_pool_default_crush_rule;
+   }
++
++  if (crush_ruleset == CEPH_DEFAULT_CRUSH_REPLICATED_RULESET) {
++    crush_ruleset = find_first_ruleset(pg_pool_t::TYPE_REPLICATED);
++  }
++
+   return crush_ruleset;
+ }
+ 
+ bool CrushWrapper::is_valid_crush_name(const string& s)
+--- a/src/crush/CrushWrapper.h
++++ b/src/crush/CrushWrapper.h
+@@ -862,8 +862,38 @@
+   int find_rule(int ruleset, int type, int size) const {
+     if (!crush) return -1;
+     return crush_find_rule(crush, ruleset, type, size);
+   }
++
++  bool ruleset_exists(int ruleset) const {
++    for (size_t i = 0; i < crush->max_rules; ++i) {
++     if (crush->rules[i]->mask.ruleset == ruleset) {
++       return true;
++     }
++    }
++
++    return false;
++  }
++
++  /**
++   * Return the lowest numbered ruleset of type `type`
++   *
++   * @returns a ruleset ID, or -1 if no matching rulesets found.
++   */
++  int find_first_ruleset(int type) const {
++    int result = -1;
++
++    for (size_t i = 0; i < crush->max_rules; ++i) {
++      if (crush->rules[i]
++          && crush->rules[i]->mask.type == type
++          && (crush->rules[i]->mask.ruleset < result || result == -1)) {
++        result = crush->rules[i]->mask.ruleset;
++      }
++    }
++
++    return result;
++  }
++
+   void do_rule(int rule, int x, vector<int>& out, int maxout,
+ 	       const vector<__u32>& weight) const {
+     Mutex::Locker l(mapper_lock);
+     int rawout[maxout];
+@@ -901,9 +931,9 @@
+   void list_rules(Formatter *f) const;
+   void dump_tree(const vector<__u32>& w, ostream *out, Formatter *f) const;
+   static void generate_test_instances(list<CrushWrapper*>& o);
+ 
+-  static int get_osd_pool_default_crush_replicated_ruleset(CephContext *cct);
++  int get_osd_pool_default_crush_replicated_ruleset(CephContext *cct);
+ 
+   static bool is_valid_crush_name(const string& s);
+   static bool is_valid_crush_loc(CephContext *cct,
+ 				 const map<string,string>& loc);
+--- a/src/include/ceph_features.h
++++ b/src/include/ceph_features.h
+@@ -50,8 +50,9 @@
+ #define CEPH_FEATURE_MDS_INLINE_DATA     (1ULL<<40)
+ #define CEPH_FEATURE_CRUSH_TUNABLES3     (1ULL<<41)
+ #define CEPH_FEATURE_OSD_PRIMARY_AFFINITY (1ULL<<41)  /* overlap w/ tunables3 */
+ #define CEPH_FEATURE_MSGR_KEEPALIVE2   (1ULL<<42)
++#define CEPH_FEATURE_OSD_POOLRESEND    (1ULL<<43)
+ 
+ /*
+  * The introduction of CEPH_FEATURE_OSD_SNAPMAPPER caused the feature
+  * vector to evaluate to 64 bit ~0.  To cope, we designate 1ULL << 63
+@@ -121,8 +122,9 @@
+ 	 CEPH_FEATURE_MDS_INLINE_DATA |	    \
+ 	 CEPH_FEATURE_CRUSH_TUNABLES3 |	    \
+ 	 CEPH_FEATURE_OSD_PRIMARY_AFFINITY |	\
+ 	 CEPH_FEATURE_MSGR_KEEPALIVE2 |	\
++	 CEPH_FEATURE_OSD_POOLRESEND |	\
+ 	 0ULL)
+ 
+ #define CEPH_FEATURES_SUPPORTED_DEFAULT  CEPH_FEATURES_ALL
+ 
+--- a/src/init-ceph.in
++++ b/src/init-ceph.in
+@@ -310,12 +310,16 @@
+ 		[ -n "$pre_mount" ] && do_cmd "$pre_mount"
+ 
+ 		if [ "$fs_type" = "btrfs" ]; then
+ 		    echo Mounting Btrfs on $host:$fs_path
+-		    do_root_cmd "modprobe btrfs ; btrfs device scan || btrfsctl -a ; egrep -q '^[^ ]+ $fs_path' /proc/mounts || mount -t btrfs $fs_opt $first_dev $fs_path"
++		    do_root_cmd_okfail "modprobe btrfs ; btrfs device scan || btrfsctl -a ; egrep -q '^[^ ]+ $fs_path' /proc/mounts || mount -t btrfs $fs_opt $first_dev $fs_path"
+ 		else
+ 		    echo Mounting $fs_type on $host:$fs_path
+-		    do_root_cmd "modprobe $fs_type ; egrep -q '^[^ ]+ $fs_path' /proc/mounts || mount -t $fs_type $fs_opt $first_dev $fs_path"
++		    do_root_cmd_okfail "modprobe $fs_type ; egrep -q '^[^ ]+ $fs_path' /proc/mounts || mount -t $fs_type $fs_opt $first_dev $fs_path"
++		fi
++		if [ "$ERR" != "0" ]; then
++		    EXIT_STATUS=$ERR
++		    continue
+ 		fi
+ 	    fi
+ 
+ 	    if [ "$type" = "osd" ]; then
+--- a/src/java/Makefile.am
++++ b/src/java/Makefile.am
+@@ -43,13 +43,13 @@
+ #   https://blogs.oracle.com/darcy/entry/bootclasspath_older_source
+ 
+ $(CEPH_PROXY): $(JAVA_SRC)
+ 	export CLASSPATH=java/ ; \
+-	$(JAVAC) -source 1.5 -target 1.5 -Xlint:-options java/com/ceph/fs/*.java
++	$(JAVAC) -classpath java -source 1.5 -target 1.5 -Xlint:-options java/com/ceph/fs/*.java
+ 
+ $(JAVA_H): $(CEPH_PROXY)
+ 	export CLASSPATH=java/ ; \
+-	$(JAVAH) -jni -o $@ com.ceph.fs.CephMount
++	$(JAVAH) -classpath java -jni -o $@ com.ceph.fs.CephMount
+ 
+ libcephfs.jar: $(CEPH_PROXY)
+ 	$(JAR) cf $@ $(JAVA_CLASSES:%=-C java %) 
+ 
+--- a/src/java/native/libcephfs_jni.cc
++++ b/src/java/native/libcephfs_jni.cc
+@@ -2874,9 +2874,9 @@
+     if (byteArray.get() == NULL) {
+         return NULL;
+     }
+     env->SetByteArrayRegion(byteArray.get(), 0, addressLength,
+-            reinterpret_cast<const jbyte*>(rawAddress));
++			    reinterpret_cast<jbyte*>(const_cast<void*>(rawAddress)));
+ 
+     if (ss.ss_family == AF_UNIX) {
+         // Note that we get here for AF_UNIX sockets on accept(2). The unix(7) man page claims
+         // that the peer's sun_path will contain the path, but in practice it doesn't, and the
+--- a/src/librados/librados.cc
++++ b/src/librados/librados.cc
+@@ -2057,12 +2057,12 @@
+   int needed = 0;
+   std::list<std::string>::const_iterator i = pools.begin();
+   std::list<std::string>::const_iterator p_end = pools.end();
+   for (; i != p_end; ++i) {
+-    if (len == 0)
+-      break;
+     int rl = i->length() + 1;
+-    strncat(b, i->c_str(), len - 2); // leave space for two NULLs
++    if (len < (unsigned)rl)
++      break;
++    strncat(b, i->c_str(), rl);
+     needed += rl;
+     len -= rl;
+     b += rl;
+   }
+--- a/src/mon/MonCommands.h
++++ b/src/mon/MonCommands.h
+@@ -584,13 +584,15 @@
+ COMMAND("osd tier add " \
+ 	"name=pool,type=CephPoolname " \
+ 	"name=tierpool,type=CephPoolname " \
+ 	"name=force_nonempty,type=CephChoices,strings=--force-nonempty,req=false",
+-	"add the tier <tierpool> to base pool <pool>", "osd", "rw", "cli,rest")
++	"add the tier <tierpool> (the second one) to base pool <pool> (the first one)", \
++	"osd", "rw", "cli,rest")
+ COMMAND("osd tier remove " \
+ 	"name=pool,type=CephPoolname " \
+ 	"name=tierpool,type=CephPoolname",
+-	"remove the tier <tierpool> from base pool <pool>", "osd", "rw", "cli,rest")
++	"remove the tier <tierpool> (the second one) from base pool <pool> (the first one)", \
++	"osd", "rw", "cli,rest")
+ COMMAND("osd tier cache-mode " \
+ 	"name=pool,type=CephPoolname " \
+ 	"name=mode,type=CephChoices,strings=none|writeback|forward|readonly", \
+ 	"specify the caching mode for cache tier <pool>", "osd", "rw", "cli,rest")
+@@ -605,9 +607,9 @@
+ COMMAND("osd tier add-cache " \
+ 	"name=pool,type=CephPoolname " \
+ 	"name=tierpool,type=CephPoolname " \
+ 	"name=size,type=CephInt,range=0", \
+-	"add a cache <tierpool> of size <size> to existing pool <pool>", \
++	"add a cache <tierpool> (the second one) of size <size> to existing pool <pool> (the first one)", \
+ 	"osd", "rw", "cli,rest")
+ 
+ /*
+  * mon/ConfigKeyService.cc
+--- a/src/mon/OSDMonitor.cc
++++ b/src/mon/OSDMonitor.cc
+@@ -282,17 +282,16 @@
+ }
+ 
+ void OSDMonitor::update_msgr_features()
+ {
+-  uint64_t mask;
+-  uint64_t features = osdmap.get_features(&mask);
+-
+   set<int> types;
+   types.insert((int)entity_name_t::TYPE_OSD);
+   types.insert((int)entity_name_t::TYPE_CLIENT);
+   types.insert((int)entity_name_t::TYPE_MDS);
+   types.insert((int)entity_name_t::TYPE_MON);
+   for (set<int>::iterator q = types.begin(); q != types.end(); ++q) {
++    uint64_t mask;
++    uint64_t features = osdmap.get_features(*q, &mask);
+     if ((mon->messenger->get_policy(*q).features_required & mask) != features) {
+       dout(0) << "crush map has features " << features << ", adjusting msgr requires" << dendl;
+       Messenger::Policy p = mon->messenger->get_policy(*q);
+       p.features_required = (p.features_required & ~mask) | features;
+@@ -1178,9 +1177,10 @@
+ 
+   assert(m->get_orig_source_inst().name.is_osd());
+ 
+   // check if osd has required features to boot
+-  if ((osdmap.get_features(NULL) & CEPH_FEATURE_OSD_ERASURE_CODES) &&
++  if ((osdmap.get_features(CEPH_ENTITY_TYPE_OSD, NULL) &
++       CEPH_FEATURE_OSD_ERASURE_CODES) &&
+       !(m->get_connection()->get_features() & CEPH_FEATURE_OSD_ERASURE_CODES)) {
+     dout(0) << __func__ << " osdmap requires Erasure Codes but osd at "
+             << m->get_orig_source_inst()
+             << " doesn't announce support -- ignore" << dendl;
+@@ -2951,9 +2951,9 @@
+ }
+ 
+ int OSDMonitor::get_erasure_code(const string &erasure_code_profile,
+ 				 ErasureCodeInterfaceRef *erasure_code,
+-				 stringstream &ss)
++				 stringstream &ss) const
+ {
+   if (pending_inc.has_erasure_code_profile(erasure_code_profile))
+     return -EAGAIN;
+   const map<string,string> &profile =
+@@ -3125,10 +3125,14 @@
+ {
+   if (*crush_ruleset < 0) {
+     switch (pool_type) {
+     case pg_pool_t::TYPE_REPLICATED:
+-      *crush_ruleset =
+-	CrushWrapper::get_osd_pool_default_crush_replicated_ruleset(g_ceph_context);
++      *crush_ruleset = osdmap.crush->get_osd_pool_default_crush_replicated_ruleset(g_ceph_context);
++      if (*crush_ruleset < 0) {
++        // Errors may happen e.g. if no valid ruleset is available
++        ss << "No suitable CRUSH ruleset exists";
++        return *crush_ruleset;
++      }
+       break;
+     case pg_pool_t::TYPE_ERASURE:
+       {
+ 	int err = crush_ruleset_create_erasure(ruleset_name,
+@@ -3154,8 +3158,13 @@
+ 	 << " is not a known pool type";
+       return -EINVAL;
+       break;
+     }
++  } else {
++    if (!osdmap.crush->ruleset_exists(*crush_ruleset)) {
++      ss << "CRUSH ruleset " << *crush_ruleset << " not found";
++      return -ENOENT;
++    }
+   }
+ 
+   return 0;
+ }
+@@ -3410,9 +3419,9 @@
+     if (interr.length()) {
+       ss << "error parsing integer value '" << val << "': " << interr;
+       return -EINVAL;
+     }
+-    if (!osdmap.crush->rule_exists(n)) {
++    if (!osdmap.crush->ruleset_exists(n)) {
+       ss << "crush ruleset " << n << " does not exist";
+       return -ENOENT;
+     }
+     p.crush_ruleset = n;
+@@ -3503,9 +3512,9 @@
+     if (f < 0 || f > 1.0) {
+       ss << "value must be in the range 0..1";
+       return -ERANGE;
+     }
+-    p.cache_target_full_ratio_micro = n;
++    p.cache_target_full_ratio_micro = f * 1000000;
+   } else if (var == "cache_min_flush_age") {
+     if (interr.length()) {
+       ss << "error parsing int '" << val << "': " << interr;
+       return -EINVAL;
+@@ -4489,9 +4498,10 @@
+     if (osdmap.exists(id)) {
+       pending_inc.new_primary_affinity[id] = ww;
+       ss << "set osd." << id << " primary-affinity to " << w << " (" << ios::hex << ww << ios::dec << ")";
+       getline(ss, rs);
+-      wait_for_finished_proposal(new Monitor::C_Command(mon, m, 0, rs, get_last_committed()));
++      wait_for_finished_proposal(new Monitor::C_Command(mon, m, 0, rs,
++                                                get_last_committed() + 1));
+       return true;
+     }
+   } else if (prefix == "osd reweight") {
+     int64_t id;
+@@ -5073,10 +5083,12 @@
+       err = -EINVAL;
+       goto reply;
+     }
+     // go
+-    pending_inc.get_new_pool(pool_id, p)->read_tier = overlaypool_id;
+-    pending_inc.get_new_pool(pool_id, p)->write_tier = overlaypool_id;
++    pg_pool_t *np = pending_inc.get_new_pool(pool_id, p);
++    np->read_tier = overlaypool_id;
++    np->write_tier = overlaypool_id;
++    np->last_force_op_resend = pending_inc.epoch;
+     ss << "overlay for '" << poolstr << "' is now (or already was) '" << overlaypoolstr << "'";
+     wait_for_finished_proposal(new Monitor::C_Command(mon, m, 0, ss.str(),
+ 					      get_last_committed() + 1));
+     return true;
+@@ -5096,10 +5108,12 @@
+       ss << "there is now (or already was) no overlay for '" << poolstr << "'";
+       goto reply;
+     }
+     // go
+-    pending_inc.get_new_pool(pool_id, p)->clear_read_tier();
+-    pending_inc.get_new_pool(pool_id, p)->clear_write_tier();
++    pg_pool_t *np = pending_inc.get_new_pool(pool_id, p);
++    np->clear_read_tier();
++    np->clear_write_tier();
++    np->last_force_op_resend = pending_inc.epoch;
+     ss << "there is now (or already was) no overlay for '" << poolstr << "'";
+     wait_for_finished_proposal(new Monitor::C_Command(mon, m, 0, ss.str(),
+ 					      get_last_committed() + 1));
+     return true;
+@@ -5566,16 +5580,8 @@
+ 				   ostream *ss)
+ {
+   string poolstr = osdmap.get_pool_name(pool);
+ 
+-  // If the Pool is in use by CephFS, refuse to delete it
+-  MDSMap const &pending_mdsmap = mon->mdsmon()->pending_mdsmap;
+-  if (pending_mdsmap.is_data_pool(pool) ||
+-      pending_mdsmap.get_metadata_pool() == pool) {
+-    *ss << "pool '" << poolstr << "' is in use by CephFS";
+-    return -EBUSY;
+-  }
+-
+   if (p->tier_of >= 0) {
+     *ss << "pool '" << poolstr << "' is a tier of '"
+ 	<< osdmap.get_pool_name(p->tier_of) << "'";
+     return -EBUSY;
+--- a/src/mon/OSDMonitor.h
++++ b/src/mon/OSDMonitor.h
+@@ -248,9 +248,9 @@
+ 				   int *ruleset,
+ 				   stringstream &ss);
+   int get_erasure_code(const string &erasure_code_profile,
+ 		       ErasureCodeInterfaceRef *erasure_code,
+-		       stringstream &ss);
++		       stringstream &ss) const;
+   int prepare_pool_crush_ruleset(const unsigned pool_type,
+ 				 const string &erasure_code_profile,
+ 				 const string &ruleset_name,
+ 				 int *crush_ruleset,
+--- a/src/msg/Pipe.cc
++++ b/src/msg/Pipe.cc
+@@ -248,8 +248,12 @@
+   bufferlist authorizer, authorizer_reply;
+   bool authorizer_valid;
+   uint64_t feat_missing;
+   bool replaced = false;
++  // this variable denotes if the connection attempt from peer is a hard 
++  // reset or not, it is true if there is an existing connection and the
++  // connection sequence from peer is equal to zero
++  bool is_reset_from_peer = false;
+   CryptoKey session_key;
+   int removed; // single-use down below
+ 
+   // this should roughly mirror pseudocode at
+@@ -461,8 +465,10 @@
+ 			 << " state " << existing->get_state_name() << dendl;
+ 
+       if (connect.connect_seq == 0 && existing->connect_seq > 0) {
+ 	ldout(msgr->cct,0) << "accept peer reset, then tried to connect to us, replacing" << dendl;
++        // this is a hard reset from peer
++        is_reset_from_peer = true;
+ 	if (policy.resetcheck)
+ 	  existing->was_session_reset(); // this resets out_queue, msg_ and connect_seq #'s
+ 	goto replace;
+       }
+@@ -583,9 +589,10 @@
+   
+  replace:
+   assert(existing->pipe_lock.is_locked());
+   assert(pipe_lock.is_locked());
+-  if (connect.features & CEPH_FEATURE_RECONNECT_SEQ) {
++  // if it is a hard reset from peer, we don't need a round-trip to negotiate in/out sequence
++  if ((connect.features & CEPH_FEATURE_RECONNECT_SEQ) && !is_reset_from_peer) {
+     reply_tag = CEPH_MSGR_TAG_SEQ;
+     existing_seq = existing->in_seq;
+   }
+   ldout(msgr->cct,10) << "accept replacing " << existing << dendl;
+@@ -617,9 +624,12 @@
+     // steal incoming queue
+     uint64_t replaced_conn_id = conn_id;
+     conn_id = existing->conn_id;
+     existing->conn_id = replaced_conn_id;
+-    in_seq = existing->in_seq;
++
++    // reset the in_seq if this is a hard reset from peer,
++    // otherwise we respect our original connection's value
++    in_seq = is_reset_from_peer ? 0 : existing->in_seq;
+     in_seq_acked = in_seq;
+ 
+     // steal outgoing queue and out_seq
+     existing->requeue_sent();
+--- a/src/os/FileStore.cc
++++ b/src/os/FileStore.cc
+@@ -274,8 +274,16 @@
+ 	derr << "error creating " << oid << " (" << (*path)->path()
+ 	     << ") in index: " << cpp_strerror(-r) << dendl;
+ 	goto fail;
+       }
++      r = chain_fsetxattr(fd, XATTR_SPILL_OUT_NAME,
++                          XATTR_NO_SPILL_OUT, sizeof(XATTR_NO_SPILL_OUT));
++      if (r < 0) {
++        VOID_TEMP_FAILURE_RETRY(::close(fd));
++        derr << "error setting spillout xattr for oid " << oid << " (" << (*path)->path()
++                       << "):" << cpp_strerror(-r) << dendl;
++        goto fail;
++      }
+     }
+   }
+ 
+   if (!replaying) {
+@@ -2904,13 +2912,25 @@
+       goto out3;
+   }
+ 
+   {
++    char buf[2];
+     map<string, bufferptr> aset;
+     r = _fgetattrs(**o, aset, false);
+     if (r < 0)
+       goto out3;
+ 
++    r = chain_fgetxattr(**o, XATTR_SPILL_OUT_NAME, buf, sizeof(buf));
++    if (r >= 0 && !strncmp(buf, XATTR_NO_SPILL_OUT, sizeof(XATTR_NO_SPILL_OUT))) {
++      r = chain_fsetxattr(**n, XATTR_SPILL_OUT_NAME, XATTR_NO_SPILL_OUT,
++                          sizeof(XATTR_NO_SPILL_OUT));
++    } else {
++      r = chain_fsetxattr(**n, XATTR_SPILL_OUT_NAME, XATTR_SPILL_OUT,
++                          sizeof(XATTR_SPILL_OUT));
++    }
++    if (r < 0)
++      goto out3;
++
+     r = _fsetattrs(**n, aset);
+     if (r < 0)
+       goto out3;
+   }
+--- a/src/os/HashIndex.cc
++++ b/src/os/HashIndex.cc
+@@ -35,10 +35,14 @@
+   bufferlist::iterator i = bl.begin();
+   InProgressOp in_progress(i);
+   subdir_info_s info;
+   r = get_info(in_progress.path, &info);
+-  if (r < 0)
++  if (r == -ENOENT) {
++    return end_split_or_merge(in_progress.path);
++  } else if (r < 0) {
+     return r;
++  }
++
+   if (in_progress.is_split())
+     return complete_split(in_progress.path, info);
+   else if (in_progress.is_merge())
+     return complete_merge(in_progress.path, info);
+--- a/src/os/XfsFileStoreBackend.cc
++++ b/src/os/XfsFileStoreBackend.cc
+@@ -60,8 +60,16 @@
+     dout(0) << "set_extsize: FSGETXATTR: " << cpp_strerror(ret) << dendl;
+     goto out;
+   }
+ 
++  // already set?
++  if ((fsx.fsx_xflags & XFS_XFLAG_EXTSIZE) && fsx.fsx_extsize == val)
++    return 0;
++
++  // xfs won't change extent size if any extents are allocated
++  if (fsx.fsx_nextents != 0)
++    return 0;
++
+   fsx.fsx_xflags |= XFS_XFLAG_EXTSIZE;
+   fsx.fsx_extsize = val;
+ 
+   if (ioctl(fd, XFS_IOC_FSSETXATTR, &fsx) < 0) {
+--- a/src/osd/OSD.cc
++++ b/src/osd/OSD.cc
+@@ -2504,26 +2504,33 @@
+     vector<int> acting;
+     oldmap->pg_to_acting_osds(pgid.pgid, acting);
+     dout(20) << "  " << pgid << " in epoch " << e << " was " << acting << dendl;
+     int up = 0;
+-    for (unsigned i=0; i<acting.size(); i++)
+-      if (osdmap->is_up(acting[i])) {
+-	if (acting[i] != whoami) {
+-	  pset.insert(
+-	    pg_shard_t(
+-	      acting[i],
+-	      osdmap->pg_is_ec(pgid.pgid) ? i : ghobject_t::NO_SHARD));
++    int actual_osds = 0;
++    for (unsigned i=0; i<acting.size(); i++) {
++      if (acting[i] != CRUSH_ITEM_NONE) {
++	if (osdmap->is_up(acting[i])) {
++	  if (acting[i] != whoami) {
++	    pset.insert(
++	      pg_shard_t(
++		acting[i],
++		osdmap->pg_is_ec(pgid.pgid) ? shard_id_t(i) : ghobject_t::NO_SHARD));
++	  }
++	  up++;
+ 	}
+-	up++;
++	actual_osds++;
+       }
+-    if (!up && !acting.empty()) {
++    }
++    if (!up && actual_osds) {
+       // sucky.  add down osds, even tho we can't reach them right now.
+-      for (unsigned i=0; i<acting.size(); i++)
+-	if (acting[i] != whoami)
++      for (unsigned i=0; i<acting.size(); i++) {
++	if (acting[i] != whoami && acting[i] != CRUSH_ITEM_NONE) {
+ 	  pset.insert(
+ 	    pg_shard_t(
+ 	      acting[i],
+ 	      osdmap->pg_is_ec(pgid.pgid) ? i : ghobject_t::NO_SHARD));
++	}
++      }
+     }
+   }
+   dout(10) << "calc_priors_during " << pgid
+ 	   << " [" << start << "," << end 
+@@ -3658,9 +3665,9 @@
+     return;
+   }
+   
+   // get all the latest maps
+-  if (osdmap->get_epoch() > oldest)
++  if (osdmap->get_epoch() + 1 >= oldest)
+     osdmap_subscribe(osdmap->get_epoch() + 1, true);
+   else
+     osdmap_subscribe(oldest - 1, true);
+ }
+@@ -3976,9 +3983,9 @@
+   stat_lock.Lock();
+   osd_stat_t cur_stat = osd_stat;
+   stat_lock.Unlock();
+ 
+-  osd_stat.fs_perf_stat = store->get_cur_stats();
++  cur_stat.fs_perf_stat = store->get_cur_stats();
+    
+   pg_stat_queue_lock.Lock();
+ 
+   if (osd_stat_updated || !pg_stat_queue.empty()) {
+@@ -5570,9 +5577,9 @@
+ 	       !osdmap->get_hb_back_addr(whoami).probably_equals(hb_back_server_messenger->get_myaddr()) ||
+ 	       (osdmap->get_hb_front_addr(whoami) != entity_addr_t() &&
+                 !osdmap->get_hb_front_addr(whoami).probably_equals(hb_front_server_messenger->get_myaddr()))) {
+       if (!osdmap->is_up(whoami)) {
+-	if (service.is_preparing_to_stop()) {
++	if (service.is_preparing_to_stop() || service.is_stopping()) {
+ 	  service.got_stop_ack();
+ 	} else {
+ 	  clog.warn() << "map e" << osdmap->get_epoch()
+ 		      << " wrongly marked me down";
+@@ -5686,39 +5693,52 @@
+   // since we are only accessing existing Policy structures a their
+   // current memory location, and setting or clearing bits in integer
+   // fields, and we are the only writer, this is not a problem.
+ 
+-  uint64_t mask;
+-  uint64_t features = osdmap->get_features(&mask);
+-
+   {
+     Messenger::Policy p = client_messenger->get_default_policy();
++    uint64_t mask;
++    uint64_t features = osdmap->get_features(entity_name_t::TYPE_CLIENT, &mask);
+     if ((p.features_required & mask) != features) {
+       dout(0) << "crush map has features " << features
+ 	      << ", adjusting msgr requires for clients" << dendl;
+       p.features_required = (p.features_required & ~mask) | features;
+       client_messenger->set_default_policy(p);
+     }
+   }
+   {
++    Messenger::Policy p = cluster_messenger->get_policy(entity_name_t::TYPE_MON);
++    uint64_t mask;
++    uint64_t features = osdmap->get_features(entity_name_t::TYPE_MON, &mask);
++    if ((p.features_required & mask) != features) {
++      dout(0) << "crush map has features " << features
++	      << ", adjusting msgr requires for mons" << dendl;
++      p.features_required = (p.features_required & ~mask) | features;
++      client_messenger->set_policy(entity_name_t::TYPE_MON, p);
++    }
++  }
++  {
+     Messenger::Policy p = cluster_messenger->get_policy(entity_name_t::TYPE_OSD);
++    uint64_t mask;
++    uint64_t features = osdmap->get_features(entity_name_t::TYPE_OSD, &mask);
++
+     if ((p.features_required & mask) != features) {
+       dout(0) << "crush map has features " << features
+ 	      << ", adjusting msgr requires for osds" << dendl;
+       p.features_required = (p.features_required & ~mask) | features;
+       cluster_messenger->set_policy(entity_name_t::TYPE_OSD, p);
+     }
+-  }
+ 
+-  if ((features & CEPH_FEATURE_OSD_ERASURE_CODES) &&
++    if ((features & CEPH_FEATURE_OSD_ERASURE_CODES) &&
+ 	!fs->get_allow_sharded_objects()) {
+-    dout(0) << __func__ << " enabling on-disk ERASURE CODES compat feature" << dendl;
+-    superblock.compat_features.incompat.insert(CEPH_OSD_FEATURE_INCOMPAT_SHARDS);
+-    ObjectStore::Transaction *t = new ObjectStore::Transaction;
+-    write_superblock(*t);
+-    int err = store->queue_transaction_and_cleanup(NULL, t);
+-    assert(err == 0);
+-    fs->set_allow_sharded_objects();
++      dout(0) << __func__ << " enabling on-disk ERASURE CODES compat feature" << dendl;
++      superblock.compat_features.incompat.insert(CEPH_OSD_FEATURE_INCOMPAT_SHARDS);
++      ObjectStore::Transaction *t = new ObjectStore::Transaction;
++      write_superblock(*t);
++      int err = store->queue_transaction_and_cleanup(NULL, t);
++      assert(err == 0);
++      fs->set_allow_sharded_objects();
++    }
+   }
+ }
+ 
+ void OSD::advance_pg(
+--- a/src/osd/OSDMap.cc
++++ b/src/osd/OSDMap.cc
+@@ -949,9 +949,9 @@
+   return -1;
+ }
+ 
+ 
+-uint64_t OSDMap::get_features(uint64_t *pmask) const
++uint64_t OSDMap::get_features(int entity_type, uint64_t *pmask) const
+ {
+   uint64_t features = 0;  // things we actually have
+   uint64_t mask = 0;      // things we could have
+ 
+@@ -969,18 +969,20 @@
+   for (map<int64_t,pg_pool_t>::const_iterator p = pools.begin(); p != pools.end(); ++p) {
+     if (p->second.flags & pg_pool_t::FLAG_HASHPSPOOL) {
+       features |= CEPH_FEATURE_OSDHASHPSPOOL;
+     }
+-    if (p->second.is_erasure()) {
++    if (p->second.is_erasure() &&
++	entity_type != CEPH_ENTITY_TYPE_CLIENT) { // not for clients
+       features |= CEPH_FEATURE_OSD_ERASURE_CODES;
+     }
+     if (!p->second.tiers.empty() ||
+ 	p->second.is_tier()) {
+       features |= CEPH_FEATURE_OSD_CACHEPOOL;
+     }
+   }
+-  mask |= CEPH_FEATURE_OSDHASHPSPOOL | CEPH_FEATURE_OSD_CACHEPOOL |
+-          CEPH_FEATURE_OSD_ERASURE_CODES;
++  mask |= CEPH_FEATURE_OSDHASHPSPOOL | CEPH_FEATURE_OSD_CACHEPOOL;
++  if (entity_type != CEPH_ENTITY_TYPE_CLIENT)
++    mask |= CEPH_FEATURE_OSD_ERASURE_CODES;
+ 
+   if (osd_primary_affinity) {
+     for (int i = 0; i < max_osd; ++i) {
+       if ((*osd_primary_affinity)[i] != CEPH_OSD_DEFAULT_PRIMARY_AFFINITY) {
+@@ -2508,10 +2510,20 @@
+   pool_names.push_back("data");
+   pool_names.push_back("metadata");
+   pool_names.push_back("rbd");
+ 
++  stringstream ss;
++  int r;
++  if (nosd >= 0)
++    r = build_simple_crush_map(cct, *crush, nosd, &ss);
++  else
++    r = build_simple_crush_map_from_conf(cct, *crush, &ss);
++
+   int poolbase = get_max_osd() ? get_max_osd() : 1;
+ 
++  int const default_replicated_ruleset = crush->get_osd_pool_default_crush_replicated_ruleset(cct);
++  assert(default_replicated_ruleset >= 0);
++
+   for (vector<string>::iterator p = pool_names.begin();
+        p != pool_names.end(); ++p) {
+     int64_t pool = ++pool_max;
+     pools[pool].type = pg_pool_t::TYPE_REPLICATED;
+@@ -2519,10 +2531,9 @@
+     if (cct->_conf->osd_pool_default_flag_hashpspool)
+       pools[pool].flags |= pg_pool_t::FLAG_HASHPSPOOL;
+     pools[pool].size = cct->_conf->osd_pool_default_size;
+     pools[pool].min_size = cct->_conf->get_osd_pool_default_min_size();
+-    pools[pool].crush_ruleset =
+-      CrushWrapper::get_osd_pool_default_crush_replicated_ruleset(cct);
++    pools[pool].crush_ruleset = default_replicated_ruleset;
+     pools[pool].object_hash = CEPH_STR_HASH_RJENKINS;
+     pools[pool].set_pg_num(poolbase << pg_bits);
+     pools[pool].set_pgp_num(poolbase << pgp_bits);
+     pools[pool].last_change = epoch;
+@@ -2531,15 +2542,8 @@
+     pool_name[pool] = *p;
+     name_pool[*p] = pool;
+   }
+ 
+-  stringstream ss;
+-  int r;
+-  if (nosd >= 0)
+-    r = build_simple_crush_map(cct, *crush, nosd, &ss);
+-  else
+-    r = build_simple_crush_map_from_conf(cct, *crush, &ss);
+-
+   if (r < 0)
+     lderr(cct) << ss.str() << dendl;
+   
+   for (int i=0; i<get_max_osd(); i++) {
+--- a/src/osd/OSDMap.h
++++ b/src/osd/OSDMap.h
+@@ -532,12 +532,13 @@
+ 
+   /**
+    * get feature bits required by the current structure
+    *
++   * @param entity_type [in] what entity type we are asking about
+    * @param mask [out] set of all possible map-related features we could set
+    * @return feature bits used by this map
+    */
+-  uint64_t get_features(uint64_t *mask) const;
++  uint64_t get_features(int entity_type, uint64_t *mask) const;
+ 
+   /**
+    * get intersection of features supported by up osds
+    */
+--- a/src/osd/PG.cc
++++ b/src/osd/PG.cc
+@@ -396,9 +396,10 @@
+     from, oinfo, omissing);
+   if (found_missing && num_unfound_before != missing_loc.num_unfound())
+     publish_stats_to_osd();
+   if (found_missing &&
+-    (get_osdmap()->get_features(NULL) & CEPH_FEATURE_OSD_ERASURE_CODES)) {
++      (get_osdmap()->get_features(CEPH_ENTITY_TYPE_OSD, NULL) &
++       CEPH_FEATURE_OSD_ERASURE_CODES)) {
+     pg_info_t tinfo(oinfo);
+     tinfo.pgid.shard = pg_whoami.shard;
+     (*(ctx->info_map))[from.osd].push_back(
+       make_pair(
+@@ -3879,8 +3880,9 @@
+         scrubber.primary_scrubmap = ScrubMap();
+         scrubber.received_maps.clear();
+ 
+         {
++	  hobject_t candidate_end;
+ 
+           // get the start and end of our scrub chunk
+           //
+           // start and end need to lie on a hash boundary. We test for this by
+@@ -3897,33 +3899,42 @@
+ 	      cct->_conf->osd_scrub_chunk_min,
+ 	      cct->_conf->osd_scrub_chunk_max,
+ 	      0,
+ 	      &objects,
+-	      &scrubber.end);
++	      &candidate_end);
+             assert(ret >= 0);
+ 
+             // in case we don't find a boundary: start again at the end
+-            start = scrubber.end;
++            start = candidate_end;
+ 
+             // special case: reached end of file store, implicitly a boundary
+             if (objects.empty()) {
+               break;
+             }
+ 
+             // search backward from the end looking for a boundary
+-            objects.push_back(scrubber.end);
++            objects.push_back(candidate_end);
+             while (!boundary_found && objects.size() > 1) {
+               hobject_t end = objects.back().get_boundary();
+               objects.pop_back();
+ 
+               if (objects.back().get_filestore_key() != end.get_filestore_key()) {
+-                scrubber.end = end;
++                candidate_end = end;
+                 boundary_found = true;
+               }
+             }
+           }
+-        }
+ 
++	  if (!_range_available_for_scrub(scrubber.start, candidate_end)) {
++	    // we'll be requeued by whatever made us unavailable for scrub
++	    dout(10) << __func__ << ": scrub blocked somewhere in range "
++		     << "[" << scrubber.start << ", " << candidate_end << ")"
++		     << dendl;
++	    done = true;
++	    break;
++	  }
++	  scrubber.end = candidate_end;
++        }
+         scrubber.block_writes = true;
+ 
+         // walk the log to find the latest update that affects our chunk
+         scrubber.subset_last_update = pg_log.get_tail();
+@@ -4937,8 +4948,15 @@
+ 	    << ", dropping " << *m << dendl;
+     return true;
+   }
+ 
++  if (m->get_map_epoch() < pool.info.last_force_op_resend &&
++      m->get_connection()->has_feature(CEPH_FEATURE_OSD_POOLRESEND)) {
++    dout(7) << __func__ << " sent before last_force_op_resend "
++	    << pool.info.last_force_op_resend << ", dropping" << *m << dendl;
++    return true;
++  }
++
+   if ((m->get_flags() & (CEPH_OSD_FLAG_BALANCE_READS |
+ 			 CEPH_OSD_FLAG_LOCALIZE_READS)) &&
+       op->may_read() &&
+       !(op->may_write() || op->may_cache())) {
+--- a/src/osd/PG.h
++++ b/src/osd/PG.h
+@@ -1117,8 +1117,15 @@
+     ThreadPool::TPHandle &handle);
+   void build_scrub_map(ScrubMap &map, ThreadPool::TPHandle &handle);
+   void build_inc_scrub_map(
+     ScrubMap &map, eversion_t v, ThreadPool::TPHandle &handle);
++  /**
++   * returns true if [begin, end) is good to scrub at this time
++   * a false return value obliges the implementer to requeue scrub when the
++   * condition preventing scrub clears
++   */
++  virtual bool _range_available_for_scrub(
++    const hobject_t &begin, const hobject_t &end) = 0;
+   virtual void _scrub(ScrubMap &map) { }
+   virtual void _scrub_clear_state() { }
+   virtual void _scrub_finish() { }
+   virtual void get_colls(list<coll_t> *out) = 0;
+--- a/src/osd/ReplicatedPG.cc
++++ b/src/osd/ReplicatedPG.cc
+@@ -1837,9 +1837,10 @@
+   // trim log?
+   calc_trim_to();
+ 
+   // verify that we are doing this in order?
+-  if (cct->_conf->osd_debug_op_order && m->get_source().is_client()) {
++  if (cct->_conf->osd_debug_op_order && m->get_source().is_client() &&
++      !pool.info.is_tier() && !pool.info.has_tiers()) {
+     map<client_t,ceph_tid_t>& cm = debug_op_order[obc->obs.oi.soid];
+     ceph_tid_t t = m->get_tid();
+     client_t n = m->get_source().num();
+     map<client_t,ceph_tid_t>::iterator p = cm.find(n);
+@@ -6150,9 +6151,10 @@
+ 	(fop->blocking || !blocking)) {
+       // nonblocking can join anything
+       // blocking can only join a blocking flush
+       dout(20) << __func__ << " piggybacking on existing flush " << dendl;
+-      fop->dup_ops.push_back(op);
++      if (op)
++	fop->dup_ops.push_back(op);
+       return -EAGAIN;   // clean up this ctx; op will retry later
+     }
+ 
+     // cancel current flush since it will fail anyway, or because we
+@@ -6168,8 +6170,9 @@
+   }
+ 
+   // construct a SnapContext appropriate for this clone/head
+   SnapContext dsnapc;
++  dsnapc.seq = 0;
+   SnapContext snapc;
+   if (soid.snap == CEPH_NOSNAP) {
+     snapc.seq = snapset.seq;
+     snapc.snaps = snapset.snaps;
+@@ -6194,25 +6197,31 @@
+     while (p != snapset.snaps.end() && *p >= oi.snaps.back())
+       ++p;
+     snapc.snaps = vector<snapid_t>(p, snapset.snaps.end());
+ 
++    while (p != snapset.snaps.end() && *p >= oi.snaps.back())
++      ++p;
++    vector<snapid_t>::iterator dnewest = p;
++
+     // we may need to send a delete first
+     while (p != snapset.snaps.end() && *p > prev_snapc)
+       ++p;
+     dsnapc.snaps = vector<snapid_t>(p, snapset.snaps.end());
+ 
+-    if (dsnapc.snaps.empty()) {
++    if (p == dnewest) {
++      // no snaps between the oldest in this clone and prev_snapc
+       snapc.seq = prev_snapc;
+     } else {
++      // snaps between oldest in this clone and prev_snapc, send delete
+       dsnapc.seq = prev_snapc;
+       snapc.seq = oi.snaps.back() - 1;
+     }
+   }
+ 
+   object_locator_t base_oloc(soid);
+   base_oloc.pool = pool.info.tier_of;
+ 
+-  if (!dsnapc.snaps.empty()) {
++  if (dsnapc.seq > 0) {
+     ObjectOperation o;
+     o.remove();
+     osd->objecter_lock.Lock();
+     osd->objecter->mutate(
+@@ -7438,8 +7447,11 @@
+   list<OpRequestRef>& ls = p->second;
+   dout(10) << __func__ << " " << soid << " requeuing " << ls.size() << " requests" << dendl;
+   requeue_ops(ls);
+   waiting_for_blocked_object.erase(p);
++
++  if (obc->requeue_scrub_on_unblock)
++    osd->queue_for_scrub(this);
+ }
+ 
+ SnapSetContext *ReplicatedPG::create_snapset_context(const hobject_t& oid)
+ {
+@@ -11579,8 +11591,28 @@
+ // ==========================================================================================
+ // SCRUB
+ 
+ 
++bool ReplicatedPG::_range_available_for_scrub(
++  const hobject_t &begin, const hobject_t &end)
++{
++  pair<hobject_t, ObjectContextRef> next;
++  next.second = object_contexts.lookup(begin);
++  next.first = begin;
++  bool more = true;
++  while (more && next.first < end) {
++    if (next.second && next.second->is_blocked()) {
++      next.second->requeue_scrub_on_unblock = true;
++      dout(10) << __func__ << ": scrub delayed, "
++	       << next.first << " is blocked"
++	       << dendl;
++      return false;
++    }
++    more = object_contexts.get_next(next.first, &next);
++  }
++  return true;
++}
++
+ void ReplicatedPG::_scrub(ScrubMap& scrubmap)
+ {
+   dout(10) << "_scrub" << dendl;
+ 
+--- a/src/osd/ReplicatedPG.h
++++ b/src/osd/ReplicatedPG.h
+@@ -1242,8 +1242,10 @@
+ 
+   friend struct C_Flush;
+ 
+   // -- scrub --
++  virtual bool _range_available_for_scrub(
++    const hobject_t &begin, const hobject_t &end);
+   virtual void _scrub(ScrubMap& map);
+   virtual void _scrub_clear_state();
+   virtual void _scrub_finish();
+   object_stat_collection_t scrub_cstat;
+--- a/src/osd/osd_types.cc
++++ b/src/osd/osd_types.cc
+@@ -769,8 +769,9 @@
+   f->dump_int("pg_num", get_pg_num());
+   f->dump_int("pg_placement_num", get_pgp_num());
+   f->dump_unsigned("crash_replay_interval", get_crash_replay_interval());
+   f->dump_stream("last_change") << get_last_change();
++  f->dump_stream("last_force_op_resend") << get_last_force_op_resend();
+   f->dump_unsigned("auid", get_auid());
+   f->dump_string("snap_mode", is_pool_snaps_mode() ? "pool" : "selfmanaged");
+   f->dump_unsigned("snap_seq", get_snap_seq());
+   f->dump_unsigned("snap_epoch", get_snap_epoch());
+@@ -1057,9 +1058,9 @@
+     return;
+   }
+ 
+   __u8 encode_compat = 5;
+-  ENCODE_START(14, encode_compat, bl);
++  ENCODE_START(15, encode_compat, bl);
+   ::encode(type, bl);
+   ::encode(size, bl);
+   ::encode(crush_ruleset, bl);
+   ::encode(object_hash, bl);
+@@ -1096,14 +1097,15 @@
+   ::encode(cache_target_full_ratio_micro, bl);
+   ::encode(cache_min_flush_age, bl);
+   ::encode(cache_min_evict_age, bl);
+   ::encode(erasure_code_profile, bl);
++  ::encode(last_force_op_resend, bl);
+   ENCODE_FINISH(bl);
+ }
+ 
+ void pg_pool_t::decode(bufferlist::iterator& bl)
+ {
+-  DECODE_START_LEGACY_COMPAT_LEN(14, 5, 5, bl);
++  DECODE_START_LEGACY_COMPAT_LEN(15, 5, 5, bl);
+   ::decode(type, bl);
+   ::decode(size, bl);
+   ::decode(crush_ruleset, bl);
+   ::decode(object_hash, bl);
+@@ -1198,9 +1200,13 @@
+   }
+   if (struct_v >= 14) {
+     ::decode(erasure_code_profile, bl);
+   }
+-
++  if (struct_v >= 15) {
++    ::decode(last_force_op_resend, bl);
++  } else {
++    last_force_op_resend = 0;
++  }
+   DECODE_FINISH(bl);
+   calc_pg_masks();
+ }
+ 
+@@ -1215,8 +1221,9 @@
+   a.object_hash = 4;
+   a.pg_num = 6;
+   a.pgp_num = 5;
+   a.last_change = 9;
++  a.last_force_op_resend = 123823;
+   a.snap_seq = 10;
+   a.snap_epoch = 11;
+   a.auid = 12;
+   a.crash_replay_interval = 13;
+@@ -1263,10 +1270,13 @@
+       << " crush_ruleset " << p.get_crush_ruleset()
+       << " object_hash " << p.get_object_hash_name()
+       << " pg_num " << p.get_pg_num()
+       << " pgp_num " << p.get_pgp_num()
+-      << " last_change " << p.get_last_change()
+-      << " owner " << p.get_auid();
++      << " last_change " << p.get_last_change();
++  if (p.get_last_force_op_resend())
++    out << " lfor " << p.get_last_force_op_resend();
++  if (p.get_auid())
++    out << " owner " << p.get_auid();
+   if (p.flags)
+     out << " flags " << p.get_flags_string();
+   if (p.crash_replay_interval)
+     out << " crash_replay_interval " << p.crash_replay_interval;
+--- a/src/osd/osd_types.h
++++ b/src/osd/osd_types.h
+@@ -881,8 +881,9 @@
+ public:
+   map<string,string> properties;  ///< OBSOLETE
+   string erasure_code_profile; ///< name of the erasure code profile in OSDMap
+   epoch_t last_change;      ///< most recent epoch changed, exclusing snapshot changes
++  epoch_t last_force_op_resend; ///< last epoch that forced clients to resend
+   snapid_t snap_seq;        ///< seq for per-pool snapshot
+   epoch_t snap_epoch;       ///< osdmap epoch of last snap
+   uint64_t auid;            ///< who owns the pg
+   __u32 crash_replay_interval; ///< seconds to allow clients to replay ACKed but unCOMMITted requests
+@@ -913,8 +914,9 @@
+   int64_t write_tier;      ///< pool/tier for objecter to direct writes to
+   cache_mode_t cache_mode;  ///< cache pool mode
+ 
+   bool is_tier() const { return tier_of >= 0; }
++  bool has_tiers() const { return !tiers.empty(); }
+   void clear_tier() { tier_of = -1; }
+   bool has_read_tier() const { return read_tier >= 0; }
+   void clear_read_tier() { read_tier = -1; }
+   bool has_write_tier() const { return write_tier >= 0; }
+@@ -939,8 +941,9 @@
+     : flags(0), type(0), size(0), min_size(0),
+       crush_ruleset(0), object_hash(0),
+       pg_num(0), pgp_num(0),
+       last_change(0),
++      last_force_op_resend(0),
+       snap_seq(0), snap_epoch(0),
+       auid(0),
+       crash_replay_interval(0),
+       quota_max_bytes(0), quota_max_objects(0),
+@@ -978,8 +981,9 @@
+   const char *get_object_hash_name() const {
+     return ceph_str_hash_name(get_object_hash());
+   }
+   epoch_t get_last_change() const { return last_change; }
++  epoch_t get_last_force_op_resend() const { return last_force_op_resend; }
+   epoch_t get_snap_epoch() const { return snap_epoch; }
+   snapid_t get_snap_seq() const { return snap_seq; }
+   uint64_t get_auid() const { return auid; }
+   unsigned get_crash_replay_interval() const { return crash_replay_interval; }
+@@ -2689,8 +2693,9 @@
+ 
+   // set if writes for this object are blocked on another objects recovery
+   ObjectContextRef blocked_by;      // object blocking our writes
+   set<ObjectContextRef> blocking;   // objects whose writes we block
++  bool requeue_scrub_on_unblock;    // true if we need to requeue scrub on unblock
+ 
+   // any entity in obs.oi.watchers MUST be in either watchers or unconnected_watchers.
+   map<pair<uint64_t, entity_name_t>, WatchRef> watchers;
+ 
+@@ -2861,9 +2866,9 @@
+     : ssc(NULL),
+       destructor_callback(0),
+       lock("ReplicatedPG::ObjectContext::lock"),
+       unstable_writes(0), readers(0), writers_waiting(0), readers_waiting(0),
+-      blocked(false) {}
++      blocked(false), requeue_scrub_on_unblock(false) {}
+ 
+   ~ObjectContext() {
+     assert(rwstate.empty());
+     if (destructor_callback)
+--- a/src/osdc/ObjectCacher.cc
++++ b/src/osdc/ObjectCacher.cc
+@@ -1618,8 +1618,11 @@
+   for (xlist<Object*>::iterator i = oset->objects.begin();
+        !i.end(); ++i) {
+     Object *ob = *i;
+ 
++    if (ob->dirty_or_tx == 0)
++      continue;
++
+     if (!flush(ob, 0, 0)) {
+       // we'll need to gather...
+       ldout(cct, 10) << "flush_set " << oset << " will wait for ack tid " 
+                << ob->last_write_tid 
+--- a/src/osdc/Objecter.cc
++++ b/src/osdc/Objecter.cc
+@@ -1242,11 +1242,13 @@
+ }
+ 
+ ceph_tid_t Objecter::_op_submit(Op *op)
+ {
+-  // pick tid
+-  ceph_tid_t mytid = ++last_tid;
+-  op->tid = mytid;
++  // pick tid if we haven't got one yet
++  if (op->tid == ceph_tid_t(0)) {
++    ceph_tid_t mytid = ++last_tid;
++    op->tid = mytid;
++  }
+   assert(client_inc >= 0);
+ 
+   // pick target
+   num_homeless_ops++;  // initially; recalc_op_target() will decrement if it finds a target
+@@ -1436,21 +1438,25 @@
+ {
+   bool is_read = t->flags & CEPH_OSD_FLAG_READ;
+   bool is_write = t->flags & CEPH_OSD_FLAG_WRITE;
+ 
++  const pg_pool_t *pi = osdmap->get_pg_pool(t->base_oloc.pool);
++  bool force_resend = false;
+   bool need_check_tiering = false;
+-  if (t->target_oid.name.empty()) {
++  if (pi && osdmap->get_epoch() == pi->last_force_op_resend) {
++    force_resend = true;
++  }
++  if (t->target_oid.name.empty() || force_resend) {
+     t->target_oid = t->base_oid;
+     need_check_tiering = true;
+   }
+-  if (t->target_oloc.empty()) {
++  if (t->target_oloc.empty() || force_resend) {
+     t->target_oloc = t->base_oloc;
+     need_check_tiering = true;
+   }
+   
+   if (need_check_tiering &&
+       (t->flags & CEPH_OSD_FLAG_IGNORE_OVERLAY) == 0) {
+-    const pg_pool_t *pi = osdmap->get_pg_pool(t->base_oloc.pool);
+     if (pi) {
+       if (is_read && pi->has_read_tier())
+ 	t->target_oloc.pool = pi->read_tier;
+       if (is_write && pi->has_write_tier())
+@@ -1484,9 +1490,10 @@
+     need_resend = true;
+   }
+ 
+   if (t->pgid != pgid ||
+-      is_pg_changed(t->primary, t->acting, primary, acting, t->used_replica)) {
++      is_pg_changed(t->primary, t->acting, primary, acting, t->used_replica) ||
++      force_resend) {
+     t->pgid = pgid;
+     t->acting = acting;
+     t->primary = primary;
+     ldout(cct, 10) << __func__ << " pgid " << pgid
+--- a/src/pybind/ceph_rest_api.py
++++ b/src/pybind/ceph_rest_api.py
+@@ -273,9 +273,9 @@
+     '''
+     # XXX There ought to be a better discovery mechanism than an HTML table
+     s = '<html><body><table border=1><th>Possible commands:</th><th>Method</th><th>Description</th>'
+ 
+-    permmap = {'r':'GET', 'rw':'PUT'}
++    permmap = {'r':'GET', 'rw':'PUT', 'rx':'GET', 'rwx':'PUT'}
+     line = ''
+     for cmdsig in sorted(app.ceph_sigdict.itervalues(), cmp=descsort):
+         concise = concise_sig(cmdsig['sig'])
+         flavor = cmdsig.get('flavor', 'mon')
+--- a/src/rgw/rgw_json_enc.cc
++++ b/src/rgw/rgw_json_enc.cc
+@@ -45,8 +45,9 @@
+   encode_json("start_part_num", start_part_num, f);
+   encode_json("start_ofs", start_ofs, f);
+   encode_json("part_size", part_size, f);
+   encode_json("stripe_max_size", stripe_max_size, f);
++  encode_json("override_prefix", override_prefix, f);
+ }
+ 
+ void RGWObjManifest::dump(Formatter *f) const
+ {
+--- a/src/rgw/rgw_op.cc
++++ b/src/rgw/rgw_op.cc
+@@ -684,10 +684,13 @@
+     store->destroy_context(obj_ctx);
+   return ret;
+ }
+ 
+-int RGWGetObj::iterate_user_manifest_parts(rgw_bucket& bucket, string& obj_prefix, RGWAccessControlPolicy *bucket_policy,
+-                                           uint64_t *ptotal_len, bool read_data)
++static int iterate_user_manifest_parts(CephContext *cct, RGWRados *store, off_t ofs, off_t end,
++                                       rgw_bucket& bucket, string& obj_prefix, RGWAccessControlPolicy *bucket_policy,
++                                       uint64_t *ptotal_len,
++                                       int (*cb)(rgw_bucket& bucket, RGWObjEnt& ent, RGWAccessControlPolicy *bucket_policy,
++                                                 off_t start_ofs, off_t end_ofs, void *param), void *cb_param)
+ {
+   uint64_t obj_ofs = 0, len_count = 0;
+   bool found_start = false, found_end = false;
+   string delim;
+@@ -696,9 +699,9 @@
+   string no_ns;
+   map<string, bool> common_prefixes;
+   vector<RGWObjEnt> objs;
+ 
+-  utime_t start_time = ceph_clock_now(s->cct);
++  utime_t start_time = ceph_clock_now(cct);
+ 
+   do {
+ #define MAX_LIST_OBJS 100
+     int r = store->list_objects(bucket, MAX_LIST_OBJS, obj_prefix, delim, marker,
+@@ -726,22 +729,22 @@
+ 	found_end = true;
+       }
+ 
+       perfcounter->tinc(l_rgw_get_lat,
+-                       (ceph_clock_now(s->cct) - start_time));
++                       (ceph_clock_now(cct) - start_time));
+ 
+       if (found_start) {
+         len_count += end_ofs - start_ofs;
+ 
+-        if (read_data) {
+-          r = read_user_manifest_part(bucket, ent, bucket_policy, start_ofs, end_ofs);
++        if (cb) {
++          r = cb(bucket, ent, bucket_policy, start_ofs, end_ofs, cb_param);
+           if (r < 0)
+             return r;
+         }
+       }
+       marker = ent.name;
+ 
+-      start_time = ceph_clock_now(s->cct);
++      start_time = ceph_clock_now(cct);
+     }
+   } while (is_truncated && !found_end);
+ 
+   if (ptotal_len)
+@@ -749,8 +752,15 @@
+ 
+   return 0;
+ }
+ 
++static int get_obj_user_manifest_iterate_cb(rgw_bucket& bucket, RGWObjEnt& ent, RGWAccessControlPolicy *bucket_policy, off_t start_ofs, off_t end_ofs,
++                                       void *param)
++{
++  RGWGetObj *op = (RGWGetObj *)param;
++  return op->read_user_manifest_part(bucket, ent, bucket_policy, start_ofs, end_ofs);
++}
++
+ int RGWGetObj::handle_user_manifest(const char *prefix)
+ {
+   ldout(s->cct, 2) << "RGWGetObj::handle_user_manifest() prefix=" << prefix << dendl;
+ 
+@@ -788,15 +798,15 @@
+     bucket_policy = s->bucket_acl;
+   }
+ 
+   /* dry run to find out total length */
+-  int r = iterate_user_manifest_parts(bucket, obj_prefix, bucket_policy, &total_len, false);
++  int r = iterate_user_manifest_parts(s->cct, store, ofs, end, bucket, obj_prefix, bucket_policy, &total_len, NULL, NULL);
+   if (r < 0)
+     return r;
+ 
+   s->obj_size = total_len;
+ 
+-  r = iterate_user_manifest_parts(bucket, obj_prefix, bucket_policy, NULL, true);
++  r = iterate_user_manifest_parts(s->cct, store, ofs, end, bucket, obj_prefix, bucket_policy, NULL, get_obj_user_manifest_iterate_cb, (void *)this);
+   if (r < 0)
+     return r;
+ 
+   return 0;
+@@ -1356,24 +1366,28 @@
+   req_state *s;
+   string upload_id;
+ 
+ protected:
+-  bool immutable_head() { return true; }
+-  int prepare(RGWRados *store, void *obj_ctx);
++  int prepare(RGWRados *store, void *obj_ctx, string *oid_rand);
+   int do_complete(string& etag, time_t *mtime, time_t set_mtime, map<string, bufferlist>& attrs);
+ 
+ public:
++  bool immutable_head() { return true; }
+   RGWPutObjProcessor_Multipart(const string& bucket_owner, uint64_t _p, req_state *_s) :
+                    RGWPutObjProcessor_Atomic(bucket_owner, _s->bucket, _s->object_str, _p, _s->req_id), s(_s) {}
+ };
+ 
+-int RGWPutObjProcessor_Multipart::prepare(RGWRados *store, void *obj_ctx)
++int RGWPutObjProcessor_Multipart::prepare(RGWRados *store, void *obj_ctx, string *oid_rand)
+ {
+-  RGWPutObjProcessor::prepare(store, obj_ctx);
++  RGWPutObjProcessor::prepare(store, obj_ctx, NULL);
+ 
+   string oid = obj_str;
+   upload_id = s->info.args.get("uploadId");
+-  mp.init(oid, upload_id);
++  if (!oid_rand) {
++    mp.init(oid, upload_id);
++  } else {
++    mp.init(oid, upload_id, *oid_rand);
++  }
+ 
+   part_num = s->info.args.get("partNumber");
+   if (part_num.empty()) {
+     ldout(s->cct, 10) << "part number is empty" << dendl;
+@@ -1387,9 +1401,15 @@
+     ldout(s->cct, 10) << "bad part number: " << part_num << ": " << err << dendl;
+     return -EINVAL;
+   }
+ 
+-  string upload_prefix = oid + "." + upload_id;
++  string upload_prefix = oid + ".";
++
++  if (!oid_rand) {
++    upload_prefix.append(upload_id);
++  } else {
++    upload_prefix.append(*oid_rand);
++  }
+ 
+   rgw_obj target_obj;
+   target_obj.init(bucket, oid);
+ 
+@@ -1465,9 +1485,9 @@
+   return r;
+ }
+ 
+ 
+-RGWPutObjProcessor *RGWPutObj::select_processor()
++RGWPutObjProcessor *RGWPutObj::select_processor(bool *is_multipart)
+ {
+   RGWPutObjProcessor *processor;
+ 
+   bool multipart = s->info.args.exists("uploadId");
+@@ -1481,8 +1501,12 @@
+   } else {
+     processor = new RGWPutObjProcessor_Multipart(bucket_owner, part_size, s);
+   }
+ 
++  if (is_multipart) {
++    *is_multipart = multipart;
++  }
++
+   return processor;
+ }
+ 
+ void RGWPutObj::dispose_processor(RGWPutObjProcessor *processor)
+@@ -1494,8 +1518,47 @@
+ {
+   rgw_bucket_object_pre_exec(s);
+ }
+ 
++static int put_obj_user_manifest_iterate_cb(rgw_bucket& bucket, RGWObjEnt& ent, RGWAccessControlPolicy *bucket_policy, off_t start_ofs, off_t end_ofs,
++                                       void *param)
++{
++  RGWPutObj *op = (RGWPutObj *)param;
++  return op->user_manifest_iterate_cb(bucket, ent, bucket_policy, start_ofs, end_ofs);
++}
++
++int RGWPutObj::user_manifest_iterate_cb(rgw_bucket& bucket, RGWObjEnt& ent, RGWAccessControlPolicy *bucket_policy, off_t start_ofs, off_t end_ofs)
++{
++  rgw_obj part(bucket, ent.name);
++
++  map<string, bufferlist> attrs;
++
++  int ret = get_obj_attrs(store, s, part, attrs, NULL, NULL);
++  if (ret < 0) {
++    return ret;
++  }
++  map<string, bufferlist>::iterator iter = attrs.find(RGW_ATTR_ETAG);
++  if (iter == attrs.end()) {
++    return 0;
++  }
++  bufferlist& bl = iter->second;
++  const char *buf = bl.c_str();
++  int len = bl.length();
++  while (len > 0 && buf[len - 1] == '\0') {
++    len--;
++  }
++  if (len > 0) {
++    user_manifest_parts_hash->Update((const byte *)bl.c_str(), len);
++  }
++
++  if (s->cct->_conf->subsys.should_gather(ceph_subsys_rgw, 20)) {
++    string e(bl.c_str(), bl.length());
++    ldout(s->cct, 20) << __func__ << ": appending user manifest etag: " << e << dendl;
++  }
++
++  return 0;
++}
++
+ void RGWPutObj::execute()
+ {
+   RGWPutObjProcessor *processor = NULL;
+   char supplied_md5_bin[CEPH_CRYPTO_MD5_DIGESTSIZE + 1];
+@@ -1506,8 +1569,11 @@
+   bufferlist bl, aclbl;
+   map<string, bufferlist> attrs;
+   int len;
+   map<string, string>::iterator iter;
++  bool multipart;
++
++  bool need_calc_md5 = (obj_manifest == NULL);
+ 
+ 
+   perfcounter->inc(l_rgw_put);
+   ret = -EINVAL;
+@@ -1519,8 +1585,10 @@
+   if (ret < 0)
+     goto done;
+ 
+   if (supplied_md5_b64) {
++    need_calc_md5 = true;
++
+     ldout(s->cct, 15) << "supplied_md5_b64=" << supplied_md5_b64 << dendl;
+     ret = ceph_unarmor(supplied_md5_bin, &supplied_md5_bin[CEPH_CRYPTO_MD5_DIGESTSIZE + 1],
+                        supplied_md5_b64, supplied_md5_b64 + strlen(supplied_md5_b64));
+     ldout(s->cct, 15) << "ceph_armor ret=" << ret << dendl;
+@@ -1546,11 +1614,11 @@
+     strncpy(supplied_md5, supplied_etag, sizeof(supplied_md5) - 1);
+     supplied_md5[sizeof(supplied_md5) - 1] = '\0';
+   }
+ 
+-  processor = select_processor();
++  processor = select_processor(&multipart);
+ 
+-  ret = processor->prepare(store, s->obj_ctx);
++  ret = processor->prepare(store, s->obj_ctx, NULL);
+   if (ret < 0)
+     goto done;
+ 
+   do {
+@@ -1569,13 +1637,54 @@
+     ret = processor->handle_data(data, ofs, &handle);
+     if (ret < 0)
+       goto done;
+ 
+-    hash.Update(data_ptr, len);
++    if (need_calc_md5) {
++      hash.Update(data_ptr, len);
++    }
+ 
+-    ret = processor->throttle_data(handle);
+-    if (ret < 0)
+-      goto done;
++    /* do we need this operation to be synchronous? if we're dealing with an object with immutable
++     * head, e.g., multipart object we need to make sure we're the first one writing to this object
++     */
++    bool need_to_wait = (ofs == 0) && multipart;
++
++    ret = processor->throttle_data(handle, need_to_wait);
++    if (ret < 0) {
++      if (!need_to_wait || ret != -EEXIST) {
++        ldout(s->cct, 20) << "processor->thottle_data() returned ret=" << ret << dendl;
++        goto done;
++      }
++
++      ldout(s->cct, 5) << "NOTICE: processor->throttle_data() returned -EEXIST, need to restart write" << dendl;
++
++      /* restart processing with different oid suffix */
++
++      dispose_processor(processor);
++      processor = select_processor(&multipart);
++
++      string oid_rand;
++      char buf[33];
++      gen_rand_alphanumeric(store->ctx(), buf, sizeof(buf) - 1);
++      oid_rand.append(buf);
++
++      ret = processor->prepare(store, s->obj_ctx, &oid_rand);
++      if (ret < 0) {
++        ldout(s->cct, 0) << "ERROR: processor->prepare() returned " << ret << dendl;
++        goto done;
++      }
++
++      ret = processor->handle_data(data, ofs, &handle);
++      if (ret < 0) {
++        ldout(s->cct, 0) << "ERROR: processor->handle_data() returned " << ret << dendl;
++        goto done;
++      }
++
++      ret = processor->throttle_data(handle, false);
++      if (ret < 0) {
++        ldout(s->cct, 0) << "ERROR: processor->throttle_data() returned " << ret << dendl;
++        goto done;
++      }
++    }
+ 
+     ofs += len;
+   } while (len > 0);
+ 
+@@ -1591,32 +1700,68 @@
+   if (ret < 0) {
+     goto done;
+   }
+ 
+-  hash.Final(m);
++  if (need_calc_md5) {
++    hash.Final(m);
+ 
+-  buf_to_hex(m, CEPH_CRYPTO_MD5_DIGESTSIZE, calc_md5);
++    buf_to_hex(m, CEPH_CRYPTO_MD5_DIGESTSIZE, calc_md5);
++    etag = calc_md5;
+ 
+-  if (supplied_md5_b64 && strcmp(calc_md5, supplied_md5)) {
+-     ret = -ERR_BAD_DIGEST;
+-     goto done;
++    if (supplied_md5_b64 && strcmp(calc_md5, supplied_md5)) {
++      ret = -ERR_BAD_DIGEST;
++      goto done;
++    }
+   }
++
+   policy.encode(aclbl);
+ 
+-  etag = calc_md5;
++  attrs[RGW_ATTR_ACL] = aclbl;
++  if (obj_manifest) {
++    bufferlist manifest_bl;
++    string manifest_obj_prefix;
++    string manifest_bucket;
++    RGWBucketInfo bucket_info;
++
++    char etag_buf[CEPH_CRYPTO_MD5_DIGESTSIZE];
++    char etag_buf_str[CEPH_CRYPTO_MD5_DIGESTSIZE * 2 + 16];
++
++    manifest_bl.append(obj_manifest, strlen(obj_manifest) + 1);
++    attrs[RGW_ATTR_USER_MANIFEST] = manifest_bl;
++    user_manifest_parts_hash = &hash;
++    string prefix_str = obj_manifest;
++    int pos = prefix_str.find('/');
++    if (pos < 0) {
++      ldout(s->cct, 0) << "bad user manifest, missing slash separator: " << obj_manifest << dendl;
++      goto done;
++    }
++
++    manifest_bucket = prefix_str.substr(0, pos);
++    manifest_obj_prefix = prefix_str.substr(pos + 1);
++
++    ret = store->get_bucket_info(NULL, manifest_bucket, bucket_info, NULL, NULL);
++    if (ret < 0) {
++      ldout(s->cct, 0) << "could not get bucket info for bucket=" << manifest_bucket << dendl;
++    }
++    ret = iterate_user_manifest_parts(s->cct, store, 0, -1, bucket_info.bucket, manifest_obj_prefix,
++                                      NULL, NULL, put_obj_user_manifest_iterate_cb, (void *)this);
++    if (ret < 0) {
++      goto done;
++    }
++
++    hash.Final((byte *)etag_buf);
++    buf_to_hex((const unsigned char *)etag_buf, CEPH_CRYPTO_MD5_DIGESTSIZE, etag_buf_str);
+ 
++    ldout(s->cct, 0) << __func__ << ": calculated md5 for user manifest: " << etag_buf_str << dendl;
++
++    etag = etag_buf_str;
++  }
+   if (supplied_etag && etag.compare(supplied_etag) != 0) {
+     ret = -ERR_UNPROCESSABLE_ENTITY;
+     goto done;
+   }
+   bl.append(etag.c_str(), etag.size() + 1);
+   attrs[RGW_ATTR_ETAG] = bl;
+-  attrs[RGW_ATTR_ACL] = aclbl;
+-  if (obj_manifest) {
+-    bufferlist manifest_bl;
+-    manifest_bl.append(obj_manifest, strlen(obj_manifest) + 1);
+-    attrs[RGW_ATTR_USER_MANIFEST] = manifest_bl;
+-  }
+ 
+   for (iter = s->generic_attrs.begin(); iter != s->generic_attrs.end(); ++iter) {
+     bufferlist& attrbl = attrs[iter->first];
+     const string& val = iter->second;
+@@ -1682,9 +1827,9 @@
+   }
+ 
+   processor = select_processor();
+ 
+-  ret = processor->prepare(store, s->obj_ctx);
++  ret = processor->prepare(store, s->obj_ctx, NULL);
+   if (ret < 0)
+     goto done;
+ 
+   while (data_pending) {
+@@ -1707,9 +1852,9 @@
+        goto done;
+ 
+      hash.Update(data_ptr, len);
+ 
+-     ret = processor->throttle_data(handle);
++     ret = processor->throttle_data(handle, false);
+      if (ret < 0)
+        goto done;
+ 
+      ofs += len;
+@@ -1751,10 +1896,15 @@
+ 
+ 
+ int RGWPutMetadata::verify_permission()
+ {
+-  if (!verify_object_permission(s, RGW_PERM_WRITE))
+-    return -EACCES;
++  if (s->object) {
++    if (!verify_object_permission(s, RGW_PERM_WRITE))
++      return -EACCES;
++  } else {
++    if (!verify_bucket_permission(s, RGW_PERM_WRITE))
++      return -EACCES;
++  }
+ 
+   return 0;
+ }
+ 
+@@ -2596,8 +2746,17 @@
+   list<string> remove_objs; /* objects to be removed from index listing */
+ 
+   iter = parts->parts.begin();
+ 
++  meta_obj.init_ns(s->bucket, meta_oid, mp_ns);
++  meta_obj.set_in_extra_data(true);
++
++  ret = get_obj_attrs(store, s, meta_obj, attrs, NULL, NULL);
++  if (ret < 0) {
++    ldout(s->cct, 0) << "ERROR: failed to get obj attrs, obj=" << meta_obj << " ret=" << ret << dendl;
++    return;
++  }
++
+   do {
+     ret = list_multipart_parts(store, s, upload_id, meta_oid, max_parts, marker, obj_parts, &marker, &truncated);
+     if (ret == -ENOENT) {
+       ret = -ERR_NO_SUCH_UPLOAD;
+@@ -2685,10 +2844,8 @@
+   if (ret < 0)
+     return;
+ 
+   // remove the upload obj
+-  meta_obj.init_ns(s->bucket, meta_oid, mp_ns);
+-  meta_obj.set_in_extra_data(true);
+   store->delete_obj(s->obj_ctx, s->bucket_owner.get_id(), meta_obj);
+ }
+ 
+ int RGWAbortMultipart::verify_permission()
+--- a/src/rgw/rgw_op.h
++++ b/src/rgw/rgw_op.h
+@@ -131,10 +131,8 @@
+   int verify_permission();
+   void pre_exec();
+   void execute();
+   int read_user_manifest_part(rgw_bucket& bucket, RGWObjEnt& ent, RGWAccessControlPolicy *bucket_policy, off_t start_ofs, off_t end_ofs);
+-  int iterate_user_manifest_parts(rgw_bucket& bucket, string& obj_prefix, RGWAccessControlPolicy *bucket_policy,
+-                                  uint64_t *ptotal_len, bool read_data);
+   int handle_user_manifest(const char *prefix);
+ 
+   int get_data_cb(bufferlist& bl, off_t ofs, off_t len);
+ 
+@@ -323,8 +321,10 @@
+   RGWAccessControlPolicy policy;
+   const char *obj_manifest;
+   time_t mtime;
+ 
++  MD5 *user_manifest_parts_hash;
++
+ public:
+   RGWPutObj() {
+     ret = 0;
+     ofs = 0;
+@@ -332,18 +332,21 @@
+     supplied_etag = NULL;
+     chunked_upload = false;
+     obj_manifest = NULL;
+     mtime = 0;
++    user_manifest_parts_hash = NULL;
+   }
+ 
+   virtual void init(RGWRados *store, struct req_state *s, RGWHandler *h) {
+     RGWOp::init(store, s, h);
+     policy.set_ctx(s->cct);
+   }
+ 
+-  RGWPutObjProcessor *select_processor();
++  RGWPutObjProcessor *select_processor(bool *is_multipart);
+   void dispose_processor(RGWPutObjProcessor *processor);
+ 
++  int user_manifest_iterate_cb(rgw_bucket& bucket, RGWObjEnt& ent, RGWAccessControlPolicy *bucket_policy, off_t start_ofs, off_t end_ofs);
++
+   int verify_permission();
+   void pre_exec();
+   void execute();
+ 
+@@ -753,23 +756,24 @@
+   string meta;
+   string upload_id;
+ public:
+   RGWMPObj() {}
+-  RGWMPObj(string& _oid, string& _upload_id) {
+-    init(_oid, _upload_id);
++  RGWMPObj(const string& _oid, const string& _upload_id) {
++    init(_oid, _upload_id, _upload_id);
++  }
++  void init(const string& _oid, const string& _upload_id) {
++    init(_oid, _upload_id, _upload_id);
+   }
+-  void init(string& _oid, string& _upload_id) {
++  void init(const string& _oid, const string& _upload_id, const string& part_unique_str) {
+     if (_oid.empty()) {
+       clear();
+       return;
+     }
+     oid = _oid;
+     upload_id = _upload_id;
+-    prefix = oid;
+-    prefix.append(".");
+-    prefix.append(upload_id);
+-    meta = prefix;
+-    meta.append(MP_META_SUFFIX);
++    prefix = oid + ".";
++    meta = prefix + upload_id + MP_META_SUFFIX;
++    prefix.append(part_unique_str);
+   }
+   string& get_meta() { return meta; }
+   string get_part(int num) {
+     char buf[16];
+@@ -798,9 +802,9 @@
+     if (mid_pos < 0)
+       return false;
+     oid = meta.substr(0, mid_pos);
+     upload_id = meta.substr(mid_pos + 1, end_pos - mid_pos - 1);
+-    init(oid, upload_id);
++    init(oid, upload_id, upload_id);
+     return true;
+   }
+   void clear() {
+     oid = "";
+--- a/src/rgw/rgw_rados.cc
++++ b/src/rgw/rgw_rados.cc
+@@ -53,8 +53,9 @@
+ static string *notify_oids = NULL;
+ static string shadow_ns = "shadow";
+ static string dir_oid_prefix = ".dir.";
+ static string default_storage_pool = ".rgw.buckets";
++static string default_storage_extra_pool = ".rgw.buckets.extra";
+ static string avail_pools = ".pools.avail";
+ 
+ static string zone_info_oid_prefix = "zone_info.";
+ static string region_info_oid_prefix = "region_info.";
+@@ -307,8 +308,9 @@
+     /* a new system, let's set new placement info */
+     RGWZonePlacementInfo default_placement;
+     default_placement.index_pool = ".rgw.buckets.index";
+     default_placement.data_pool = ".rgw.buckets";
++    default_placement.data_extra_pool = ".rgw.buckets.extra";
+     placement_pools["default-placement"] = default_placement;
+   }
+ }
+ 
+@@ -560,9 +562,12 @@
+   if (o < manifest->get_head_size()) {
+     rule_iter = manifest->rules.begin();
+     stripe_ofs = 0;
+     stripe_size = manifest->get_head_size();
+-    cur_part_id = rule_iter->second.start_part_num;
++    if (rule_iter != manifest->rules.end()) {
++      cur_part_id = rule_iter->second.start_part_num;
++      cur_override_prefix = rule_iter->second.override_prefix;
++    }
+     update_location();
+     return;
+   }
+ 
+@@ -571,8 +576,13 @@
+   if (rule_iter != manifest->rules.begin()) {
+     --rule_iter;
+   }
+ 
++  if (rule_iter == manifest->rules.end()) {
++    update_location();
++    return;
++  }
++
+   RGWObjManifestRule& rule = rule_iter->second;
+ 
+   if (rule.part_size > 0) {
+     cur_part_id = rule.start_part_num + (ofs - rule.start_ofs) / rule.part_size;
+@@ -600,8 +610,10 @@
+     uint64_t next = MIN(stripe_ofs + rule.stripe_max_size, part_ofs + rule.part_size);
+     stripe_size = next - stripe_ofs;
+   }
+ 
++  cur_override_prefix = rule.override_prefix;
++
+   update_location();
+ }
+ 
+ void RGWObjManifest::obj_iterator::update_location()
+@@ -617,9 +629,9 @@
+     location = head;
+     return;
+   }
+ 
+-  manifest->get_implicit_location(cur_part_id, cur_stripe, ofs, &location);
++  manifest->get_implicit_location(cur_part_id, cur_stripe, ofs, &cur_override_prefix, &location);
+ }
+ 
+ void RGWObjManifest::obj_iterator::operator++()
+ {
+@@ -698,8 +710,10 @@
+ 
+     stripe_size = MIN(rule->part_size - (stripe_ofs - part_ofs), rule->stripe_max_size);
+   }
+ 
++  cur_override_prefix = rule->override_prefix;
++
+   ofs = stripe_ofs;
+   if (ofs > obj_size) {
+     ofs = obj_size;
+     stripe_ofs = ofs;
+@@ -718,12 +732,12 @@
+   manifest->set_tail_bucket(_b);
+   manifest->set_head(_h);
+   last_ofs = 0;
+ 
+-  char buf[33];
+-  gen_rand_alphanumeric(cct, buf, sizeof(buf) - 1);
+-
+   if (manifest->get_prefix().empty()) {
++    char buf[33];
++    gen_rand_alphanumeric(cct, buf, sizeof(buf) - 1);
++
+     string oid_prefix = ".";
+     oid_prefix.append(buf);
+     oid_prefix.append("_");
+ 
+@@ -745,9 +759,9 @@
+   }
+   
+   cur_part_id = rule.start_part_num;
+ 
+-  manifest->get_implicit_location(cur_part_id, cur_stripe, 0, &cur_obj);
++  manifest->get_implicit_location(cur_part_id, cur_stripe, 0, NULL, &cur_obj);
+ 
+   manifest->update_iterators();
+ 
+   return 0;
+@@ -779,9 +793,9 @@
+   last_ofs = ofs;
+   manifest->set_obj_size(ofs);
+ 
+ 
+-  manifest->get_implicit_location(cur_part_id, cur_stripe, ofs, &cur_obj);
++  manifest->get_implicit_location(cur_part_id, cur_stripe, ofs, NULL, &cur_obj);
+ 
+   manifest->update_iterators();
+ 
+   return 0;
+@@ -796,11 +810,16 @@
+ {
+   return end_iter;
+ }
+ 
+-void RGWObjManifest::get_implicit_location(uint64_t cur_part_id, uint64_t cur_stripe, uint64_t ofs, rgw_obj *location)
++void RGWObjManifest::get_implicit_location(uint64_t cur_part_id, uint64_t cur_stripe, uint64_t ofs, string *override_prefix, rgw_obj *location)
+ {
+-  string oid = prefix;
++  string oid;
++  if (!override_prefix || override_prefix->empty()) {
++    oid = prefix;
++  } else {
++    oid = *override_prefix;
++  }
+   string ns;
+ 
+   if (!cur_part_id) {
+     if (ofs < max_head_size) {
+@@ -856,12 +875,16 @@
+     *this = m;
+     return 0;
+   }
+ 
++  string override_prefix;
++
+   if (prefix.empty()) {
+     prefix = m.prefix;
+-  } else if (prefix != m.prefix) {
+-    return append_explicit(m);
++  }
++
++  if (prefix != m.prefix) {
++    override_prefix = m.prefix;
+   }
+ 
+   map<uint64_t, RGWObjManifestRule>::iterator miter = m.rules.begin();
+   if (miter == m.rules.end()) {
+@@ -881,11 +904,17 @@
+     if (!next_rule.part_size) {
+       next_rule.part_size = m.obj_size - next_rule.start_ofs;
+     }
+ 
++    if (override_prefix != rule.override_prefix) {
++      append_rules(m, miter, &override_prefix);
++      break;
++    }
++
+     if (rule.part_size != next_rule.part_size ||
+-        rule.stripe_max_size != next_rule.stripe_max_size) {
+-      append_rules(m, miter);
++        rule.stripe_max_size != next_rule.stripe_max_size ||
++        rule.override_prefix != next_rule.override_prefix) {
++      append_rules(m, miter, NULL);
+       break;
+     }
+ 
+     uint64_t expected_part_num = rule.start_part_num + 1;
+@@ -893,9 +922,9 @@
+       expected_part_num = rule.start_part_num + (obj_size + next_rule.start_ofs - rule.start_ofs) / rule.part_size;
+     }
+ 
+     if (expected_part_num != next_rule.start_part_num) {
+-      append_rules(m, miter);
++      append_rules(m, miter, NULL);
+       break;
+     }
+   }
+ 
+@@ -903,13 +932,16 @@
+ 
+   return 0;
+ }
+ 
+-void RGWObjManifest::append_rules(RGWObjManifest& m, map<uint64_t, RGWObjManifestRule>::iterator& miter)
++void RGWObjManifest::append_rules(RGWObjManifest& m, map<uint64_t, RGWObjManifestRule>::iterator& miter,
++                                  string *override_prefix)
+ {
+   for (; miter != m.rules.end(); ++miter) {
+     RGWObjManifestRule rule = miter->second;
+     rule.start_ofs += obj_size;
++    if (override_prefix)
++      rule.override_prefix = *override_prefix;
+     rules[rule.start_ofs] = rule;
+   }
+ }
+ 
+@@ -1005,11 +1037,11 @@
+     }
+   }
+ }
+ 
+-int RGWPutObjProcessor_Plain::prepare(RGWRados *store, void *obj_ctx)
++int RGWPutObjProcessor_Plain::prepare(RGWRados *store, void *obj_ctx, string *oid_rand)
+ {
+-  RGWPutObjProcessor::prepare(store, obj_ctx);
++  RGWPutObjProcessor::prepare(store, obj_ctx, oid_rand);
+ 
+   obj.init(bucket, obj_str);
+ 
+   return 0;
+@@ -1040,9 +1072,9 @@
+   return r;
+ }
+ 
+ 
+-int RGWPutObjProcessor_Aio::handle_obj_data(rgw_obj& obj, bufferlist& bl, off_t ofs, off_t abs_ofs, void **phandle)
++int RGWPutObjProcessor_Aio::handle_obj_data(rgw_obj& obj, bufferlist& bl, off_t ofs, off_t abs_ofs, void **phandle, bool exclusive)
+ {
+   if ((uint64_t)abs_ofs + bl.length() > obj_len)
+     obj_len = abs_ofs + bl.length();
+ 
+@@ -1050,9 +1082,9 @@
+   // do a write_full.
+   int r = store->aio_put_obj_data(NULL, obj,
+                                      bl,
+                                      ((ofs != 0) ? ofs : -1),
+-                                     false, phandle);
++                                     exclusive, phandle);
+ 
+   return r;
+ }
+ 
+@@ -1090,20 +1122,23 @@
+   }
+   return ret;
+ }
+ 
+-int RGWPutObjProcessor_Aio::throttle_data(void *handle)
++int RGWPutObjProcessor_Aio::throttle_data(void *handle, bool need_to_wait)
+ {
+   if (handle) {
+     struct put_obj_aio_info info;
+     info.handle = handle;
+     pending.push_back(info);
+   }
+   size_t orig_size = pending.size();
+-  while (pending_has_completed()) {
++  while (pending_has_completed()
++         || need_to_wait) {
+     int r = wait_pending_front();
+     if (r < 0)
+       return r;
++
++    need_to_wait = false;
+   }
+ 
+   /* resize window in case messages are draining too fast */
+   if (orig_size - pending.size() >= max_chunks) {
+@@ -1117,18 +1152,18 @@
+   }
+   return 0;
+ }
+ 
+-int RGWPutObjProcessor_Atomic::write_data(bufferlist& bl, off_t ofs, void **phandle)
++int RGWPutObjProcessor_Atomic::write_data(bufferlist& bl, off_t ofs, void **phandle, bool exclusive)
+ {
+   if (ofs >= next_part_ofs) {
+     int r = prepare_next_part(ofs);
+     if (r < 0) {
+       return r;
+     }
+   }
+ 
+-  return RGWPutObjProcessor_Aio::handle_obj_data(cur_obj, bl, ofs - cur_part_ofs, ofs, phandle);
++  return RGWPutObjProcessor_Aio::handle_obj_data(cur_obj, bl, ofs - cur_part_ofs, ofs, phandle, exclusive);
+ }
+ 
+ int RGWPutObjProcessor_Atomic::handle_data(bufferlist& bl, off_t ofs, void **phandle)
+ {
+@@ -1167,14 +1202,17 @@
+     return 0;
+   }
+   off_t write_ofs = data_ofs;
+   data_ofs = write_ofs + bl.length();
+-  return write_data(bl, write_ofs, phandle);
++  bool exclusive = (!write_ofs && immutable_head()); /* immutable head object, need to verify nothing exists there
++                                                        we could be racing with another upload, to the same
++                                                        object and cleanup can be messy */
++  return write_data(bl, write_ofs, phandle, exclusive);
+ }
+ 
+-int RGWPutObjProcessor_Atomic::prepare(RGWRados *store, void *obj_ctx)
++int RGWPutObjProcessor_Atomic::prepare(RGWRados *store, void *obj_ctx, string *oid_rand)
+ {
+-  RGWPutObjProcessor::prepare(store, obj_ctx);
++  RGWPutObjProcessor::prepare(store, obj_ctx, oid_rand);
+ 
+   head_obj.init(bucket, obj_str);
+ 
+   uint64_t max_chunk_size = store->get_max_chunk_size();
+@@ -1219,14 +1257,14 @@
+     obj_len = (uint64_t)first_chunk.length();
+   }
+   if (pending_data_bl.length()) {
+     void *handle;
+-    int r = write_data(pending_data_bl, data_ofs, &handle);
++    int r = write_data(pending_data_bl, data_ofs, &handle, false);
+     if (r < 0) {
+       ldout(store->ctx(), 0) << "ERROR: write_data() returned " << r << dendl;
+       return r;
+     }
+-    r = throttle_data(handle);
++    r = throttle_data(handle, false);
+     if (r < 0) {
+       ldout(store->ctx(), 0) << "ERROR: throttle_data() returned " << r << dendl;
+       return r;
+     }
+@@ -1654,9 +1692,10 @@
+ }
+ 
+ int RGWRados::open_bucket_data_extra_ctx(rgw_bucket& bucket, librados::IoCtx& data_ctx)
+ {
+-  int r = open_bucket_pool_ctx(bucket.name, bucket.data_extra_pool, data_ctx);
++  string& pool = (!bucket.data_extra_pool.empty() ? bucket.data_extra_pool : bucket.data_pool);
++  int r = open_bucket_pool_ctx(bucket.name, pool, data_ctx);
+   if (r < 0)
+     return r;
+ 
+   return 0;
+@@ -2344,9 +2383,9 @@
+ 
+     if (!pmaster_bucket) {
+       uint64_t iid = instance_id();
+       uint64_t bid = next_bucket_id();
+-      char buf[32];
++      char buf[zone.name.size() + 48];
+       snprintf(buf, sizeof(buf), "%s.%llu.%llu", zone.name.c_str(), (long long)iid, (long long)bid);
+       bucket.marker = buf;
+       bucket.bucket_id = bucket.marker;
+     } else {
+@@ -3013,9 +3052,9 @@
+         return ret;
+       }
+     }
+ 
+-    ret = processor->throttle_data(handle);
++    ret = processor->throttle_data(handle, false);
+     if (ret < 0)
+       return ret;
+ 
+     return 0;
+@@ -3138,9 +3177,9 @@
+     append_rand_alpha(cct, tag, tag, 32);
+ 
+     RGWPutObjProcessor_Atomic processor(dest_bucket_info.owner, dest_obj.bucket, dest_obj.object,
+                                         cct->_conf->rgw_obj_stripe_size, tag);
+-    ret = processor.prepare(this, ctx);
++    ret = processor.prepare(this, ctx, NULL);
+     if (ret < 0)
+       return ret;
+ 
+     RGWRESTConn *conn;
+--- a/src/rgw/rgw_rados.h
++++ b/src/rgw/rgw_rados.h
+@@ -138,28 +138,31 @@
+   uint32_t start_part_num;
+   uint64_t start_ofs;
+   uint64_t part_size; /* each part size, 0 if there's no part size, meaning it's unlimited */
+   uint64_t stripe_max_size; /* underlying obj max size */
++  string override_prefix;
+ 
+   RGWObjManifestRule() : start_part_num(0), start_ofs(0), part_size(0), stripe_max_size(0) {}
+   RGWObjManifestRule(uint32_t _start_part_num, uint64_t _start_ofs, uint64_t _part_size, uint64_t _stripe_max_size) :
+                        start_part_num(_start_part_num), start_ofs(_start_ofs), part_size(_part_size), stripe_max_size(_stripe_max_size) {}
+ 
+   void encode(bufferlist& bl) const {
+-    ENCODE_START(1, 1, bl);
++    ENCODE_START(2, 1, bl);
+     ::encode(start_part_num, bl);
+     ::encode(start_ofs, bl);
+     ::encode(part_size, bl);
+     ::encode(stripe_max_size, bl);
++    ::encode(override_prefix, bl);
+     ENCODE_FINISH(bl);
+   }
+ 
+   void decode(bufferlist::iterator& bl) {
+-    DECODE_START(1,  bl);
++    DECODE_START(2, bl);
+     ::decode(start_part_num, bl);
+     ::decode(start_ofs, bl);
+     ::decode(part_size, bl);
+     ::decode(stripe_max_size, bl);
++    ::decode(override_prefix, bl);
+     DECODE_FINISH(bl);
+   }
+   void dump(Formatter *f) const;
+ };
+@@ -182,9 +185,9 @@
+   map<uint64_t, RGWObjManifestRule> rules;
+ 
+   void convert_to_explicit();
+   int append_explicit(RGWObjManifest& m);
+-  void append_rules(RGWObjManifest& m, map<uint64_t, RGWObjManifestRule>::iterator& iter);
++  void append_rules(RGWObjManifest& m, map<uint64_t, RGWObjManifestRule>::iterator& iter, string *override_prefix);
+ 
+   void update_iterators() {
+     begin_iter.seek(0);
+     end_iter.seek(obj_size);
+@@ -222,9 +225,9 @@
+     obj_size = _size;
+     objs.swap(_objs);
+   }
+ 
+-  void get_implicit_location(uint64_t cur_part_id, uint64_t cur_stripe, uint64_t ofs, rgw_obj *location);
++  void get_implicit_location(uint64_t cur_part_id, uint64_t cur_stripe, uint64_t ofs, string *override_prefix, rgw_obj *location);
+ 
+   void set_trivial_rule(uint64_t tail_ofs, uint64_t stripe_max_size) {
+     RGWObjManifestRule rule(0, tail_ofs, 0, stripe_max_size);
+     rules[0] = rule;
+@@ -357,8 +360,9 @@
+     uint64_t stripe_size;      /* current part size */
+ 
+     int cur_part_id;
+     int cur_stripe;
++    string cur_override_prefix;
+ 
+     rgw_obj location;
+ 
+     map<uint64_t, RGWObjManifestRule>::iterator rule_iter;
+@@ -368,8 +372,9 @@
+ 
+     void init() {
+       part_ofs = 0;
+       stripe_ofs = 0;
++      ofs = 0;
+       stripe_size = 0;
+       cur_part_id = 0;
+       cur_stripe = 0;
+     }
+@@ -536,15 +541,15 @@
+   }
+ public:
+   RGWPutObjProcessor(const string& _bo) : store(NULL), obj_ctx(NULL), is_complete(false), bucket_owner(_bo) {}
+   virtual ~RGWPutObjProcessor();
+-  virtual int prepare(RGWRados *_store, void *_o) {
++  virtual int prepare(RGWRados *_store, void *_o, string *oid_rand) {
+     store = _store;
+     obj_ctx = _o;
+     return 0;
+   };
+   virtual int handle_data(bufferlist& bl, off_t ofs, void **phandle) = 0;
+-  virtual int throttle_data(void *handle) = 0;
++  virtual int throttle_data(void *handle, bool need_to_wait) = 0;
+   virtual int complete(string& etag, time_t *mtime, time_t set_mtime, map<string, bufferlist>& attrs);
+ };
+ 
+ class RGWPutObjProcessor_Plain : public RGWPutObjProcessor
+@@ -556,14 +561,14 @@
+   rgw_obj obj;
+   off_t ofs;
+ 
+ protected:
+-  int prepare(RGWRados *store, void *obj_ctx);
++  int prepare(RGWRados *store, void *obj_ctx, string *oid_rand);
+   int handle_data(bufferlist& bl, off_t ofs, void **phandle);
+   int do_complete(string& etag, time_t *mtime, time_t set_mtime, map<string, bufferlist>& attrs);
+ 
+ public:
+-  int throttle_data(void *handle) { return 0; }
++  int throttle_data(void *handle, bool need_to_wait) { return 0; }
+   RGWPutObjProcessor_Plain(const string& bucket_owner, rgw_bucket& b, const string& o) : RGWPutObjProcessor(bucket_owner),
+                                                                                          bucket(b), obj_str(o), ofs(0) {}
+ };
+ 
+@@ -583,12 +588,12 @@
+ protected:
+   uint64_t obj_len;
+ 
+   int drain_pending();
+-  int handle_obj_data(rgw_obj& obj, bufferlist& bl, off_t ofs, off_t abs_ofs, void **phandle);
++  int handle_obj_data(rgw_obj& obj, bufferlist& bl, off_t ofs, off_t abs_ofs, void **phandle, bool exclusive);
+ 
+ public:
+-  int throttle_data(void *handle);
++  int throttle_data(void *handle, bool need_to_wait);
+ 
+   RGWPutObjProcessor_Aio(const string& bucket_owner) : RGWPutObjProcessor(bucket_owner), max_chunks(RGW_MAX_PENDING_CHUNKS), obj_len(0) {}
+   virtual ~RGWPutObjProcessor_Aio() {
+     drain_pending();
+@@ -617,11 +622,9 @@
+   rgw_obj cur_obj;
+   RGWObjManifest manifest;
+   RGWObjManifest::generator manifest_gen;
+ 
+-  virtual bool immutable_head() { return false; }
+-
+-  int write_data(bufferlist& bl, off_t ofs, void **phandle);
++  int write_data(bufferlist& bl, off_t ofs, void **phandle, bool exclusive);
+   virtual int do_complete(string& etag, time_t *mtime, time_t set_mtime, map<string, bufferlist>& attrs);
+ 
+   int prepare_next_part(off_t ofs);
+   int complete_parts();
+@@ -639,13 +642,14 @@
+                                 extra_data_len(0),
+                                 bucket(_b),
+                                 obj_str(_o),
+                                 unique_tag(_t) {}
+-  int prepare(RGWRados *store, void *obj_ctx);
++  int prepare(RGWRados *store, void *obj_ctx, string *oid_rand);
++  virtual bool immutable_head() { return false; }
+   void set_extra_data_len(uint64_t len) {
+     extra_data_len = len;
+   }
+-  int handle_data(bufferlist& bl, off_t ofs, void **phandle);
++  virtual int handle_data(bufferlist& bl, off_t ofs, void **phandle);
+   bufferlist& get_extra_data() { return extra_data_bl; }
+ };
+ 
+ 
+--- a/src/test/cli/osdmaptool/clobber.t
++++ b/src/test/cli/osdmaptool/clobber.t
+@@ -19,11 +19,11 @@
+   created \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+ (re)
+   modified \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+ (re)
+   flags 
+   
+-  pool 0 'data' replicated size 3 min_size 2 crush_ruleset 0 object_hash rjenkins pg_num 192 pgp_num 192 last_change 0 owner 0 flags hashpspool crash_replay_interval 45 stripe_width 0
+-  pool 1 'metadata' replicated size 3 min_size 2 crush_ruleset 0 object_hash rjenkins pg_num 192 pgp_num 192 last_change 0 owner 0 flags hashpspool stripe_width 0
+-  pool 2 'rbd' replicated size 3 min_size 2 crush_ruleset 0 object_hash rjenkins pg_num 192 pgp_num 192 last_change 0 owner 0 flags hashpspool stripe_width 0
++  pool 0 'data' replicated size 3 min_size 2 crush_ruleset 0 object_hash rjenkins pg_num 192 pgp_num 192 last_change 0 flags hashpspool crash_replay_interval 45 stripe_width 0
++  pool 1 'metadata' replicated size 3 min_size 2 crush_ruleset 0 object_hash rjenkins pg_num 192 pgp_num 192 last_change 0 flags hashpspool stripe_width 0
++  pool 2 'rbd' replicated size 3 min_size 2 crush_ruleset 0 object_hash rjenkins pg_num 192 pgp_num 192 last_change 0 flags hashpspool stripe_width 0
+   
+   max_osd 3
+   
+ 
+@@ -42,11 +42,11 @@
+   created \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+ (re)
+   modified \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+ (re)
+   flags 
+   
+-  pool 0 'data' replicated size 3 min_size 2 crush_ruleset 0 object_hash rjenkins pg_num 64 pgp_num 64 last_change 0 owner 0 flags hashpspool crash_replay_interval 45 stripe_width 0
+-  pool 1 'metadata' replicated size 3 min_size 2 crush_ruleset 0 object_hash rjenkins pg_num 64 pgp_num 64 last_change 0 owner 0 flags hashpspool stripe_width 0
+-  pool 2 'rbd' replicated size 3 min_size 2 crush_ruleset 0 object_hash rjenkins pg_num 64 pgp_num 64 last_change 0 owner 0 flags hashpspool stripe_width 0
++  pool 0 'data' replicated size 3 min_size 2 crush_ruleset 0 object_hash rjenkins pg_num 64 pgp_num 64 last_change 0 flags hashpspool crash_replay_interval 45 stripe_width 0
++  pool 1 'metadata' replicated size 3 min_size 2 crush_ruleset 0 object_hash rjenkins pg_num 64 pgp_num 64 last_change 0 flags hashpspool stripe_width 0
++  pool 2 'rbd' replicated size 3 min_size 2 crush_ruleset 0 object_hash rjenkins pg_num 64 pgp_num 64 last_change 0 flags hashpspool stripe_width 0
+   
+   max_osd 1
+   
+ 
+--- a/src/test/cli/osdmaptool/create-print.t
++++ b/src/test/cli/osdmaptool/create-print.t
+@@ -74,39 +74,31 @@
+   created \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+ (re)
+   modified \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+ (re)
+   flags 
+   
+-  pool 0 'data' replicated size 3 min_size 2 crush_ruleset 0 object_hash rjenkins pg_num 192 pgp_num 192 last_change 0 owner 0 flags hashpspool crash_replay_interval 45 stripe_width 0
+-  pool 1 'metadata' replicated size 3 min_size 2 crush_ruleset 0 object_hash rjenkins pg_num 192 pgp_num 192 last_change 0 owner 0 flags hashpspool stripe_width 0
+-  pool 2 'rbd' replicated size 3 min_size 2 crush_ruleset 0 object_hash rjenkins pg_num 192 pgp_num 192 last_change 0 owner 0 flags hashpspool stripe_width 0
++  pool 0 'data' replicated size 3 min_size 2 crush_ruleset 0 object_hash rjenkins pg_num 192 pgp_num 192 last_change 0 flags hashpspool crash_replay_interval 45 stripe_width 0
++  pool 1 'metadata' replicated size 3 min_size 2 crush_ruleset 0 object_hash rjenkins pg_num 192 pgp_num 192 last_change 0 flags hashpspool stripe_width 0
++  pool 2 'rbd' replicated size 3 min_size 2 crush_ruleset 0 object_hash rjenkins pg_num 192 pgp_num 192 last_change 0 flags hashpspool stripe_width 0
+   
+   max_osd 3
+   
+   $ osdmaptool --clobber --createsimple 3 --osd_pool_default_crush_replicated_ruleset 66 myosdmap
+   osdmaptool: osdmap file 'myosdmap'
+   osdmaptool: writing epoch 1 to myosdmap
+   $ osdmaptool --print myosdmap | grep 'pool 0'
+   osdmaptool: osdmap file 'myosdmap'
+-  pool 0 'data' replicated size 3 min_size 2 crush_ruleset 66 object_hash rjenkins pg_num 192 pgp_num 192 last_change 0 owner 0 flags hashpspool crash_replay_interval 45 stripe_width 0
++  pool 0 'data' replicated size 3 min_size 2 crush_ruleset 66 object_hash rjenkins pg_num 192 pgp_num 192 last_change 0 flags hashpspool crash_replay_interval 45 stripe_width 0
+   $ osdmaptool --clobber --createsimple 3 --osd_pool_default_crush_rule 55 myosdmap 2>&1 >/dev/null | sed -e 's/^.* 0 osd_pool_//'
+   osdmaptool: osdmap file 'myosdmap'
+   default_crush_rule is deprecated use osd_pool_default_crush_replicated_ruleset instead
+   default_crush_rule = 55 overrides osd_pool_default_crush_replicated_ruleset = 0
+-  default_crush_rule is deprecated use osd_pool_default_crush_replicated_ruleset instead
+-  default_crush_rule = 55 overrides osd_pool_default_crush_replicated_ruleset = 0
+-  default_crush_rule is deprecated use osd_pool_default_crush_replicated_ruleset instead
+-  default_crush_rule = 55 overrides osd_pool_default_crush_replicated_ruleset = 0
+   $ osdmaptool --print myosdmap | grep 'pool 0'
+   osdmaptool: osdmap file 'myosdmap'
+-  pool 0 'data' replicated size 3 min_size 2 crush_ruleset 55 object_hash rjenkins pg_num 192 pgp_num 192 last_change 0 owner 0 flags hashpspool crash_replay_interval 45 stripe_width 0
++  pool 0 'data' replicated size 3 min_size 2 crush_ruleset 55 object_hash rjenkins pg_num 192 pgp_num 192 last_change 0 flags hashpspool crash_replay_interval 45 stripe_width 0
+   $ osdmaptool --clobber --createsimple 3 --osd_pool_default_crush_replicated_ruleset 66 --osd_pool_default_crush_rule 55 myosdmap 2>&1 >/dev/null | sed -e 's/^.* 0 osd_pool_//'
+   osdmaptool: osdmap file 'myosdmap'
+   default_crush_rule is deprecated use osd_pool_default_crush_replicated_ruleset instead
+   default_crush_rule = 55 overrides osd_pool_default_crush_replicated_ruleset = 66
+-  default_crush_rule is deprecated use osd_pool_default_crush_replicated_ruleset instead
+-  default_crush_rule = 55 overrides osd_pool_default_crush_replicated_ruleset = 66
+-  default_crush_rule is deprecated use osd_pool_default_crush_replicated_ruleset instead
+-  default_crush_rule = 55 overrides osd_pool_default_crush_replicated_ruleset = 66
+   $ osdmaptool --print myosdmap | grep 'pool 0'
+   osdmaptool: osdmap file 'myosdmap'
+-  pool 0 'data' replicated size 3 min_size 2 crush_ruleset 55 object_hash rjenkins pg_num 192 pgp_num 192 last_change 0 owner 0 flags hashpspool crash_replay_interval 45 stripe_width 0
++  pool 0 'data' replicated size 3 min_size 2 crush_ruleset 55 object_hash rjenkins pg_num 192 pgp_num 192 last_change 0 flags hashpspool crash_replay_interval 45 stripe_width 0
+   $ rm -f myosdmap
+--- a/src/test/cli/osdmaptool/create-racks.t
++++ b/src/test/cli/osdmaptool/create-racks.t
+@@ -787,11 +787,11 @@
+   created \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+ (re)
+   modified \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+ (re)
+   flags 
+   
+-  pool 0 'data' replicated size 3 min_size 2 crush_ruleset 0 object_hash rjenkins pg_num 15296 pgp_num 15296 last_change 0 owner 0 flags hashpspool crash_replay_interval 45 stripe_width 0
+-  pool 1 'metadata' replicated size 3 min_size 2 crush_ruleset 0 object_hash rjenkins pg_num 15296 pgp_num 15296 last_change 0 owner 0 flags hashpspool stripe_width 0
+-  pool 2 'rbd' replicated size 3 min_size 2 crush_ruleset 0 object_hash rjenkins pg_num 15296 pgp_num 15296 last_change 0 owner 0 flags hashpspool stripe_width 0
++  pool 0 'data' replicated size 3 min_size 2 crush_ruleset 0 object_hash rjenkins pg_num 15296 pgp_num 15296 last_change 0 flags hashpspool crash_replay_interval 45 stripe_width 0
++  pool 1 'metadata' replicated size 3 min_size 2 crush_ruleset 0 object_hash rjenkins pg_num 15296 pgp_num 15296 last_change 0 flags hashpspool stripe_width 0
++  pool 2 'rbd' replicated size 3 min_size 2 crush_ruleset 0 object_hash rjenkins pg_num 15296 pgp_num 15296 last_change 0 flags hashpspool stripe_width 0
+   
+   max_osd 239
+   
+ 
+@@ -799,28 +799,20 @@
+   osdmaptool: osdmap file 'om'
+   osdmaptool: writing epoch 1 to om
+   $ osdmaptool --print om | grep 'pool 0'
+   osdmaptool: osdmap file 'om'
+-  pool 0 'data' replicated size 3 min_size 2 crush_ruleset 55 object_hash rjenkins pg_num 15296 pgp_num 15296 last_change 0 owner 0 flags hashpspool crash_replay_interval 45 stripe_width 0
++  pool 0 'data' replicated size 3 min_size 2 crush_ruleset 55 object_hash rjenkins pg_num 15296 pgp_num 15296 last_change 0 flags hashpspool crash_replay_interval 45 stripe_width 0
+   $ osdmaptool --clobber --create-from-conf --osd_pool_default_crush_rule 55 om -c $TESTDIR/ceph.conf.withracks 2>&1 >/dev/null | sed -e 's/^.* 0 osd_pool_//'
+   osdmaptool: osdmap file 'om'
+   default_crush_rule is deprecated use osd_pool_default_crush_replicated_ruleset instead
+   default_crush_rule = 55 overrides osd_pool_default_crush_replicated_ruleset = 0
+-  default_crush_rule is deprecated use osd_pool_default_crush_replicated_ruleset instead
+-  default_crush_rule = 55 overrides osd_pool_default_crush_replicated_ruleset = 0
+-  default_crush_rule is deprecated use osd_pool_default_crush_replicated_ruleset instead
+-  default_crush_rule = 55 overrides osd_pool_default_crush_replicated_ruleset = 0
+   $ osdmaptool --print om | grep 'pool 0'
+   osdmaptool: osdmap file 'om'
+-  pool 0 'data' replicated size 3 min_size 2 crush_ruleset 55 object_hash rjenkins pg_num 15296 pgp_num 15296 last_change 0 owner 0 flags hashpspool crash_replay_interval 45 stripe_width 0
++  pool 0 'data' replicated size 3 min_size 2 crush_ruleset 55 object_hash rjenkins pg_num 15296 pgp_num 15296 last_change 0 flags hashpspool crash_replay_interval 45 stripe_width 0
+   $ osdmaptool --clobber --create-from-conf --osd_pool_default_crush_replicated_ruleset 66 --osd_pool_default_crush_rule 55 om -c $TESTDIR/ceph.conf.withracks 2>&1 >/dev/null | sed -e 's/^.* 0 osd_pool_//'
+   osdmaptool: osdmap file 'om'
+   default_crush_rule is deprecated use osd_pool_default_crush_replicated_ruleset instead
+   default_crush_rule = 55 overrides osd_pool_default_crush_replicated_ruleset = 66
+-  default_crush_rule is deprecated use osd_pool_default_crush_replicated_ruleset instead
+-  default_crush_rule = 55 overrides osd_pool_default_crush_replicated_ruleset = 66
+-  default_crush_rule is deprecated use osd_pool_default_crush_replicated_ruleset instead
+-  default_crush_rule = 55 overrides osd_pool_default_crush_replicated_ruleset = 66
+   $ osdmaptool --print om | grep 'pool 0'
+   osdmaptool: osdmap file 'om'
+-  pool 0 'data' replicated size 3 min_size 2 crush_ruleset 55 object_hash rjenkins pg_num 15296 pgp_num 15296 last_change 0 owner 0 flags hashpspool crash_replay_interval 45 stripe_width 0
++  pool 0 'data' replicated size 3 min_size 2 crush_ruleset 55 object_hash rjenkins pg_num 15296 pgp_num 15296 last_change 0 flags hashpspool crash_replay_interval 45 stripe_width 0
+   $ rm -f om
+--- a/src/test/librados/pool.cc
++++ b/src/test/librados/pool.cc
+@@ -7,10 +7,10 @@
+ 
+ #define POOL_LIST_BUF_SZ 32768
+ 
+ TEST(LibRadosPools, PoolList) {
+-  std::vector<char> pool_list_buf(POOL_LIST_BUF_SZ, '\0');
+-  char *buf = &pool_list_buf[0];
++  char pool_list_buf[POOL_LIST_BUF_SZ];
++  char *buf = pool_list_buf;
+   rados_t cluster;
+   std::string pool_name = get_temp_pool_name();
+   ASSERT_EQ("", create_one_pool(pool_name, &cluster));
+   ASSERT_LT(rados_pool_list(cluster, buf, POOL_LIST_BUF_SZ), POOL_LIST_BUF_SZ);
+@@ -22,8 +22,16 @@
+     }
+     buf += strlen(buf) + 1;
+   }
+   ASSERT_EQ(found_pool, true);
++
++  // make sure we honor the buffer size limit
++  buf = pool_list_buf;
++  memset(buf, 0, POOL_LIST_BUF_SZ);
++  ASSERT_LT(rados_pool_list(cluster, buf, 20), POOL_LIST_BUF_SZ);
++  ASSERT_NE(0, buf[0]);  // include at least one pool name
++  ASSERT_EQ(0, buf[20]);  // but don't touch the stopping point
++
+   ASSERT_EQ(0, destroy_one_pool(pool_name, &cluster));
+ }
+ 
+ int64_t rados_pool_lookup(rados_t cluster, const char *pool_name);
+--- a/src/tools/rados/rados.cc
++++ b/src/tools/rados/rados.cc
+@@ -1358,8 +1358,17 @@
+       cerr << "error opening pool " << pool_name << ": "
+ 	   << cpp_strerror(ret) << std::endl;
+       goto out;
+     }
++
++    // align op_size
++    if (io_ctx.pool_requires_alignment()) {
++      const uint64_t align = io_ctx.pool_required_alignment();
++      const bool wrn = (op_size != (1<<22));
++      op_size = uint64_t((op_size + align - 1) / align) * align;
++      if (wrn)
++	cerr << "INFO: op_size has been rounded to " << op_size << std::endl;
++    }
+   }
+ 
+   // snapname?
+   if (snapname) {

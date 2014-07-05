@@ -1,0 +1,268 @@
+commit f317684
+Merge: c339343 0985ae7
+Author: Sage Weil <sage@inktank.com>
+Date:   Tue Jun 24 02:09:49 2014
+
+    Merge pull request #1979 from ceph/wip-backfill-priority
+    
+    osd: improve backfill prioritization
+    
+    Reviewed-by: Samuel Just <sam.just@inktank.com>
+
+--- a/src/common/AsyncReserver.h
++++ b/src/common/AsyncReserver.h
+@@ -32,8 +32,9 @@
+ template <typename T>
+ class AsyncReserver {
+   Finisher *f;
+   unsigned max_allowed;
++  unsigned min_priority;
+   Mutex lock;
+ 
+   map<unsigned, list<pair<T, Context*> > > queues;
+   map<T, pair<unsigned, typename list<pair<T, Context*> >::iterator > > queue_pointers;
+@@ -41,9 +42,11 @@
+ 
+   void do_queues() {
+     typename map<unsigned, list<pair<T, Context*> > >::reverse_iterator it;
+     for (it = queues.rbegin();
+-         it != queues.rend() && in_progress.size() < max_allowed;
++         it != queues.rend() &&
++	   in_progress.size() < max_allowed &&
++	   it->first >= min_priority;
+          ++it) {
+       while (in_progress.size() < max_allowed &&
+              !it->second.empty()) {
+         pair<T, Context*> p = it->second.front();
+@@ -56,17 +59,27 @@
+   }
+ public:
+   AsyncReserver(
+     Finisher *f,
+-    unsigned max_allowed)
+-    : f(f), max_allowed(max_allowed), lock("AsyncReserver::lock") {}
++    unsigned max_allowed,
++    unsigned min_priority = 0)
++    : f(f),
++      max_allowed(max_allowed),
++      min_priority(min_priority),
++      lock("AsyncReserver::lock") {}
+ 
+   void set_max(unsigned max) {
+     Mutex::Locker l(lock);
+     max_allowed = max;
+     do_queues();
+   }
+ 
++  void set_min_priority(unsigned min) {
++    Mutex::Locker l(lock);
++    min_priority = min;
++    do_queues();
++  }
++
+   /**
+    * Requests a reservation
+    *
+    * Note, on_reserved may be called following cancel_reservation.  Thus,
+--- a/src/common/config_opts.h
++++ b/src/common/config_opts.h
+@@ -388,8 +388,11 @@
+ 
+ // Maximum number of backfills to or from a single osd
+ OPTION(osd_max_backfills, OPT_U64, 10)
+ 
++// Minimum recovery priority (255 = max, smaller = lower)
++OPTION(osd_min_recovery_priority, OPT_INT, 0)
++
+ // Refuse backfills when OSD full ratio is above this value
+ OPTION(osd_backfill_full_ratio, OPT_FLOAT, 0.85)
+ 
+ // Seconds to wait before retrying refused backfills
+--- a/src/messages/MBackfillReserve.h
++++ b/src/messages/MBackfillReserve.h
+@@ -27,10 +27,10 @@
+     REQUEST = 0,
+     GRANT = 1,
+     REJECT = 2,
+   };
+-  int type;
+-  unsigned priority;
++  uint32_t type;
++  uint32_t priority;
+ 
+   MBackfillReserve()
+     : Message(MSG_OSD_BACKFILL_RESERVE, HEAD_VERSION, COMPAT_VERSION),
+       query_epoch(0), type(-1), priority(-1) {}
+--- a/src/osd/OSD.cc
++++ b/src/osd/OSD.cc
+@@ -216,10 +216,12 @@
+   backfill_request_timer(cct, backfill_request_lock, false),
+   last_tid(0),
+   tid_lock("OSDService::tid_lock"),
+   reserver_finisher(cct),
+-  local_reserver(&reserver_finisher, cct->_conf->osd_max_backfills),
+-  remote_reserver(&reserver_finisher, cct->_conf->osd_max_backfills),
++  local_reserver(&reserver_finisher, cct->_conf->osd_max_backfills,
++		 cct->_conf->osd_min_recovery_priority),
++  remote_reserver(&reserver_finisher, cct->_conf->osd_max_backfills,
++		  cct->_conf->osd_min_recovery_priority),
+   pg_temp_lock("OSDService::pg_temp_lock"),
+   map_cache_lock("OSDService::map_lock"),
+   map_cache(cct->_conf->osd_map_cache_size),
+   map_bl_cache(cct->_conf->osd_map_cache_size),
+@@ -7798,8 +7800,9 @@
+ const char** OSD::get_tracked_conf_keys() const
+ {
+   static const char* KEYS[] = {
+     "osd_max_backfills",
++    "osd_min_recovery_priority",
+     "osd_op_complaint_time", "osd_op_log_threshold",
+     "osd_op_history_size", "osd_op_history_duration",
+     NULL
+   };
+@@ -7812,8 +7815,12 @@
+   if (changed.count("osd_max_backfills")) {
+     service.local_reserver.set_max(cct->_conf->osd_max_backfills);
+     service.remote_reserver.set_max(cct->_conf->osd_max_backfills);
+   }
++  if (changed.count("osd_min_recovery_priority")) {
++    service.local_reserver.set_min_priority(cct->_conf->osd_min_recovery_priority);
++    service.remote_reserver.set_min_priority(cct->_conf->osd_min_recovery_priority);
++  }
+   if (changed.count("osd_op_complaint_time") ||
+       changed.count("osd_op_log_threshold")) {
+     op_tracker.set_complaint_and_threshold(cct->_conf->osd_op_complaint_time,
+                                            cct->_conf->osd_op_log_threshold);
+--- a/src/osd/OSD.h
++++ b/src/osd/OSD.h
+@@ -593,13 +593,8 @@
+     return t;
+   }
+ 
+   // -- backfill_reservation --
+-  enum {
+-    BACKFILL_LOW = 0,   // backfill non-degraded PGs
+-    BACKFILL_HIGH = 1,	// backfill degraded PGs
+-    RECOVERY = AsyncReserver<spg_t>::MAX_PRIORITY  // log based recovery
+-  };
+   Finisher reserver_finisher;
+   AsyncReserver<spg_t> local_reserver;
+   AsyncReserver<spg_t> remote_reserver;
+ 
+--- a/src/osd/PG.cc
++++ b/src/osd/PG.cc
+@@ -1873,8 +1873,28 @@
+ 
+   dirty_info = true;
+ }
+ 
++unsigned PG::get_recovery_priority()
++{
++  // a higher value -> a higher priority
++  return OSD_RECOVERY_PRIORITY_MAX;
++}
++
++unsigned PG::get_backfill_priority()
++{
++  // a higher value -> a higher priority
++
++  // degraded: 200 + num missing replicas
++  if (is_degraded()) {
++    assert(pool.info.size > acting.size());
++    return 200 + (pool.info.size - acting.size());
++  }
++
++  // baseline
++  return 1;
++}
++
+ void PG::finish_recovery(list<Context*>& tfin)
+ {
+   dout(10) << "finish_recovery" << dendl;
+   assert(info.last_complete == info.last_update);
+@@ -5734,15 +5754,14 @@
+     ConnectionRef con = pg->osd->get_con_osd_cluster(
+       backfill_osd_it->osd, pg->get_osdmap()->get_epoch());
+     if (con) {
+       if (con->has_feature(CEPH_FEATURE_BACKFILL_RESERVATION)) {
+-        unsigned priority = pg->is_degraded() ? OSDService::BACKFILL_HIGH
+-	  : OSDService::BACKFILL_LOW;
+         pg->osd->send_message_osd_cluster(
+           new MBackfillReserve(
+ 	  MBackfillReserve::REQUEST,
+ 	  spg_t(pg->info.pgid.pgid, backfill_osd_it->shard),
+-	  pg->get_osdmap()->get_epoch(), priority),
++	  pg->get_osdmap()->get_epoch(),
++	  pg->get_backfill_priority()),
+ 	con.get());
+       } else {
+         post_event(RemoteBackfillReserved());
+       }
+@@ -5809,10 +5828,10 @@
+   pg->osd->local_reserver.request_reservation(
+     pg->info.pgid,
+     new QueuePeeringEvt<LocalBackfillReserved>(
+       pg, pg->get_osdmap()->get_epoch(),
+-      LocalBackfillReserved()), pg->is_degraded() ? OSDService::BACKFILL_HIGH
+-	 : OSDService::BACKFILL_LOW);
++      LocalBackfillReserved()),
++    pg->get_backfill_priority());
+ }
+ 
+ void PG::RecoveryState::WaitLocalBackfillReserved::exit()
+ {
+@@ -5865,9 +5884,10 @@
+   pg->osd->remote_reserver.request_reservation(
+     pg->info.pgid,
+     new QueuePeeringEvt<RemoteRecoveryReserved>(
+       pg, pg->get_osdmap()->get_epoch(),
+-      RemoteRecoveryReserved()), OSDService::RECOVERY);
++      RemoteRecoveryReserved()),
++    pg->get_recovery_priority());
+ }
+ 
+ boost::statechart::result
+ PG::RecoveryState::RepWaitRecoveryReserved::react(const RemoteRecoveryReserved &evt)
+@@ -6006,9 +6026,10 @@
+   pg->osd->local_reserver.request_reservation(
+     pg->info.pgid,
+     new QueuePeeringEvt<LocalRecoveryReserved>(
+       pg, pg->get_osdmap()->get_epoch(),
+-      LocalRecoveryReserved()), OSDService::RECOVERY);
++      LocalRecoveryReserved()),
++    pg->get_recovery_priority());
+ }
+ 
+ void PG::RecoveryState::WaitLocalRecoveryReserved::exit()
+ {
+--- a/src/osd/PG.h
++++ b/src/osd/PG.h
+@@ -709,8 +709,13 @@
+   
+   bool needs_recovery() const;
+   bool needs_backfill() const;
+ 
++  /// get log recovery reservation priority
++  unsigned get_recovery_priority();
++  /// get backfill reservation priority
++  unsigned get_backfill_priority();
++
+   void mark_clean();  ///< mark an active pg clean
+ 
+   bool _calc_past_interval_range(epoch_t *start, epoch_t *end);
+   void generate_past_intervals();
+--- a/src/osd/osd_types.h
++++ b/src/osd/osd_types.h
+@@ -55,8 +55,12 @@
+ #define CEPH_OSD_FEATURE_INCOMPAT_SNAPMAPPER CompatSet::Feature(10, "snapmapper")
+ #define CEPH_OSD_FEATURE_INCOMPAT_SHARDS CompatSet::Feature(11, "sharded objects")
+ 
+ 
++/// max recovery priority for MBackfillReserve
++#define OSD_RECOVERY_PRIORITY_MAX 255u
++
++
+ typedef hobject_t collection_list_handle_t;
+ 
+ typedef uint8_t shard_id_t;
+ 
