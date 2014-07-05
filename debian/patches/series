@@ -1,11 +1,11 @@
 ## Backported / Upstream
 firefly-post-release.patch
+bug-8342.patch
 client-sleep1.patch
 client-sleep2.patch
 client-sleep3.patch
 sleep-recover.patch
 backfill-prio.patch
-p1846.patch
 bash-completion.patch
 ceph-ao-require-cas.patch
 
