@@ -10,6 +10,7 @@ sleep-recover.patch
 backfill-prio.patch
 bash-completion.patch
 ceph-ao-require-cas.patch
+rbdmap-mount.patch
 
 ## Debian
 arch.patch
