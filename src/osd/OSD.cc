@@ -2505,24 +2505,31 @@ void OSD::calc_priors_during(
     oldmap->pg_to_acting_osds(pgid.pgid, acting);
     dout(20) << "  " << pgid << " in epoch " << e << " was " << acting << dendl;
     int up = 0;
-    for (unsigned i=0; i<acting.size(); i++)
-      if (osdmap->is_up(acting[i])) {
-	if (acting[i] != whoami) {
+    int actual_osds = 0;
+    for (unsigned i=0; i<acting.size(); i++) {
+      if (acting[i] != CRUSH_ITEM_NONE) {
+	if (osdmap->is_up(acting[i])) {
+	  if (acting[i] != whoami) {
+	    pset.insert(
+	      pg_shard_t(
+		acting[i],
+		osdmap->pg_is_ec(pgid.pgid) ? shard_id_t(i) : ghobject_t::NO_SHARD));
+	  }
+	  up++;
+	}
+	actual_osds++;
+      }
+    }
+    if (!up && actual_osds) {
+      // sucky.  add down osds, even tho we can't reach them right now.
+      for (unsigned i=0; i<acting.size(); i++) {
+	if (acting[i] != whoami && acting[i] != CRUSH_ITEM_NONE) {
 	  pset.insert(
 	    pg_shard_t(
 	      acting[i],
 	      osdmap->pg_is_ec(pgid.pgid) ? i : ghobject_t::NO_SHARD));
 	}
-	up++;
       }
-    if (!up && !acting.empty()) {
-      // sucky.  add down osds, even tho we can't reach them right now.
-      for (unsigned i=0; i<acting.size(); i++)
-	if (acting[i] != whoami)
-	  pset.insert(
-	    pg_shard_t(
-	      acting[i],
-	      osdmap->pg_is_ec(pgid.pgid) ? i : ghobject_t::NO_SHARD));
     }
   }
   dout(10) << "calc_priors_during " << pgid
@@ -3659,7 +3666,7 @@ void OSD::_maybe_boot(epoch_t oldest, epoch_t newest)
   }
   
   // get all the latest maps
-  if (osdmap->get_epoch() > oldest)
+  if (osdmap->get_epoch() + 1 >= oldest)
     osdmap_subscribe(osdmap->get_epoch() + 1, true);
   else
     osdmap_subscribe(oldest - 1, true);
@@ -3977,7 +3984,7 @@ void OSD::send_pg_stats(const utime_t &now)
   osd_stat_t cur_stat = osd_stat;
   stat_lock.Unlock();
 
-  osd_stat.fs_perf_stat = store->get_cur_stats();
+  cur_stat.fs_perf_stat = store->get_cur_stats();
    
   pg_stat_queue_lock.Lock();
 
@@ -5571,7 +5578,7 @@ void OSD::handle_osd_map(MOSDMap *m)
 	       (osdmap->get_hb_front_addr(whoami) != entity_addr_t() &&
                 !osdmap->get_hb_front_addr(whoami).probably_equals(hb_front_server_messenger->get_myaddr()))) {
       if (!osdmap->is_up(whoami)) {
-	if (service.is_preparing_to_stop()) {
+	if (service.is_preparing_to_stop() || service.is_stopping()) {
 	  service.got_stop_ack();
 	} else {
 	  clog.warn() << "map e" << osdmap->get_epoch()
@@ -5687,11 +5694,10 @@ void OSD::check_osdmap_features(ObjectStore *fs)
   // current memory location, and setting or clearing bits in integer
   // fields, and we are the only writer, this is not a problem.
 
-  uint64_t mask;
-  uint64_t features = osdmap->get_features(&mask);
-
   {
     Messenger::Policy p = client_messenger->get_default_policy();
+    uint64_t mask;
+    uint64_t features = osdmap->get_features(entity_name_t::TYPE_CLIENT, &mask);
     if ((p.features_required & mask) != features) {
       dout(0) << "crush map has features " << features
 	      << ", adjusting msgr requires for clients" << dendl;
@@ -5700,24 +5706,38 @@ void OSD::check_osdmap_features(ObjectStore *fs)
     }
   }
   {
+    Messenger::Policy p = cluster_messenger->get_policy(entity_name_t::TYPE_MON);
+    uint64_t mask;
+    uint64_t features = osdmap->get_features(entity_name_t::TYPE_MON, &mask);
+    if ((p.features_required & mask) != features) {
+      dout(0) << "crush map has features " << features
+	      << ", adjusting msgr requires for mons" << dendl;
+      p.features_required = (p.features_required & ~mask) | features;
+      client_messenger->set_policy(entity_name_t::TYPE_MON, p);
+    }
+  }
+  {
     Messenger::Policy p = cluster_messenger->get_policy(entity_name_t::TYPE_OSD);
+    uint64_t mask;
+    uint64_t features = osdmap->get_features(entity_name_t::TYPE_OSD, &mask);
+
     if ((p.features_required & mask) != features) {
       dout(0) << "crush map has features " << features
 	      << ", adjusting msgr requires for osds" << dendl;
       p.features_required = (p.features_required & ~mask) | features;
       cluster_messenger->set_policy(entity_name_t::TYPE_OSD, p);
     }
-  }
 
-  if ((features & CEPH_FEATURE_OSD_ERASURE_CODES) &&
+    if ((features & CEPH_FEATURE_OSD_ERASURE_CODES) &&
 	!fs->get_allow_sharded_objects()) {
-    dout(0) << __func__ << " enabling on-disk ERASURE CODES compat feature" << dendl;
-    superblock.compat_features.incompat.insert(CEPH_OSD_FEATURE_INCOMPAT_SHARDS);
-    ObjectStore::Transaction *t = new ObjectStore::Transaction;
-    write_superblock(*t);
-    int err = store->queue_transaction_and_cleanup(NULL, t);
-    assert(err == 0);
-    fs->set_allow_sharded_objects();
+      dout(0) << __func__ << " enabling on-disk ERASURE CODES compat feature" << dendl;
+      superblock.compat_features.incompat.insert(CEPH_OSD_FEATURE_INCOMPAT_SHARDS);
+      ObjectStore::Transaction *t = new ObjectStore::Transaction;
+      write_superblock(*t);
+      int err = store->queue_transaction_and_cleanup(NULL, t);
+      assert(err == 0);
+      fs->set_allow_sharded_objects();
+    }
   }
 }
 

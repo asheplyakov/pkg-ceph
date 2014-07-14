@@ -280,7 +280,7 @@ def command(arguments, **kwargs):
     process in a tuple: (output, returncode).
     """
     arguments = _get_command_executable(arguments)
-
+    LOG.info('Running command: %s' % ' '.join(arguments))
     process = subprocess.Popen(
         arguments,
         stdout=subprocess.PIPE,
@@ -300,6 +300,7 @@ def command_check_call(arguments):
     otherwise.
     """
     arguments = _get_command_executable(arguments)
+    LOG.info('Running command: %s' % ' '.join(arguments))
     return subprocess.check_call(arguments)
 
 
@@ -1182,6 +1183,9 @@ def prepare_dev(
         LOG.debug('OSD data device %s is a partition', data)
         rawdev = data
     else:
+        if journal_dmcrypt is not None:
+            dmcrypt_unmap(journal)
+
         LOG.debug('Creating osd partition on %s', data)
         try:
             command_check_call(
@@ -1197,6 +1201,12 @@ def prepare_dev(
                     data,
                 ],
             )
+            command(
+                [
+                    'partprobe',
+                    data,
+                    ],
+                )
             command(
                 [
                     # wait for udev event queue to clear
@@ -1257,6 +1267,8 @@ def prepare_dev(
     finally:
         if rawdev != dev:
             dmcrypt_unmap(osd_uuid)
+        if journal_dmcrypt is not None:
+            dmcrypt_unmap(journal)
 
     if not is_partition(data):
         try:

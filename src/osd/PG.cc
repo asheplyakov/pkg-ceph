@@ -397,7 +397,8 @@ bool PG::search_for_missing(
   if (found_missing && num_unfound_before != missing_loc.num_unfound())
     publish_stats_to_osd();
   if (found_missing &&
-    (get_osdmap()->get_features(NULL) & CEPH_FEATURE_OSD_ERASURE_CODES)) {
+      (get_osdmap()->get_features(CEPH_ENTITY_TYPE_OSD, NULL) &
+       CEPH_FEATURE_OSD_ERASURE_CODES)) {
     pg_info_t tinfo(oinfo);
     tinfo.pgid.shard = pg_whoami.shard;
     (*(ctx->info_map))[from.osd].push_back(
@@ -3880,6 +3881,7 @@ void PG::chunky_scrub(ThreadPool::TPHandle &handle)
         scrubber.received_maps.clear();
 
         {
+	  hobject_t candidate_end;
 
           // get the start and end of our scrub chunk
           //
@@ -3898,11 +3900,11 @@ void PG::chunky_scrub(ThreadPool::TPHandle &handle)
 	      cct->_conf->osd_scrub_chunk_max,
 	      0,
 	      &objects,
-	      &scrubber.end);
+	      &candidate_end);
             assert(ret >= 0);
 
             // in case we don't find a boundary: start again at the end
-            start = scrubber.end;
+            start = candidate_end;
 
             // special case: reached end of file store, implicitly a boundary
             if (objects.empty()) {
@@ -3910,19 +3912,28 @@ void PG::chunky_scrub(ThreadPool::TPHandle &handle)
             }
 
             // search backward from the end looking for a boundary
-            objects.push_back(scrubber.end);
+            objects.push_back(candidate_end);
             while (!boundary_found && objects.size() > 1) {
               hobject_t end = objects.back().get_boundary();
               objects.pop_back();
 
               if (objects.back().get_filestore_key() != end.get_filestore_key()) {
-                scrubber.end = end;
+                candidate_end = end;
                 boundary_found = true;
               }
             }
           }
-        }
 
+	  if (!_range_available_for_scrub(scrubber.start, candidate_end)) {
+	    // we'll be requeued by whatever made us unavailable for scrub
+	    dout(10) << __func__ << ": scrub blocked somewhere in range "
+		     << "[" << scrubber.start << ", " << candidate_end << ")"
+		     << dendl;
+	    done = true;
+	    break;
+	  }
+	  scrubber.end = candidate_end;
+        }
         scrubber.block_writes = true;
 
         // walk the log to find the latest update that affects our chunk
@@ -4935,6 +4946,13 @@ bool PG::can_discard_op(OpRequestRef op)
   if (m->get_map_epoch() < info.history.same_primary_since) {
     dout(7) << " changed after " << m->get_map_epoch()
 	    << ", dropping " << *m << dendl;
+    return true;
+  }
+
+  if (m->get_map_epoch() < pool.info.last_force_op_resend &&
+      m->get_connection()->has_feature(CEPH_FEATURE_OSD_POOLRESEND)) {
+    dout(7) << __func__ << " sent before last_force_op_resend "
+	    << pool.info.last_force_op_resend << ", dropping" << *m << dendl;
     return true;
   }
 
