@@ -8,7 +8,7 @@ AC_PREREQ(2.59)
 # VERSION define is not used by the code.  It gets a version string
 # from 'git describe'; see src/ceph_ver.[ch]
 
-AC_INIT([ceph], [0.80.1], [ceph-devel@vger.kernel.org])
+AC_INIT([ceph], [0.80.3], [ceph-devel@vger.kernel.org])
 
 # Create release string.  Used with VERSION for RPMs.
 RPM_RELEASE=0
@@ -392,7 +392,7 @@ if test "x$enable_cephfs_java" = "xyes"; then
 	# setup defaults for Debian default-jdk package (without --with-jdk-dir)
 	AS_IF([test -z "$with_jdk_dir"], [
 		   # This works with Debian's and CentOS' default-jdk package
-       for dir in '/usr/lib/jvm/default-java/' '/usr/lib/jvm/java/' ; do
+       for dir in '/usr/lib/jvm/default-java/' '/usr/lib/jvm/java/' '/usr/lib/jvm/java-gcj/'; do
           # only test if a suitable path has not yet been found
           AS_IF([test "$EXTRA_JDK_BIN_DIR" == ""], [
 		          AS_IF([test -x "$javac_prog"], [
