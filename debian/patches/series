@@ -10,9 +10,11 @@ sleep-recover.patch
 backfill-prio.patch
 bash-completion.patch
 ceph-ao-require-cas.patch
-rbdmap-mount.patch
+rbdmap1-mount.patch
+rbdmap2-hooks.patch
 
 ## Debian
+rbdmap3-lazyumount.patch
 arch.patch
 modules.patch
 sample.ceph.conf.patch

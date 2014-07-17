@@ -1,0 +1,103 @@
+Forwarded: yes
+Applied-Upstream: yes
+From: Dmitry Smirnov <onlyjob@member.fsf.org>
+Description: rbdmap: per-device post-map/pre-unmap hooks
+
+There are cases when automatic (un-)mounting of file system on RBD is not
+enough. Some services may need to be started when RBD device becomes
+available (mapped) as well as it may be desirable to stop services in order
+to release file system before unmapping RBD device.
+
+File system(s) on RBD is not the only use case scenario. RBD devices may be
+used as block devices in which case `/etc/fstab` is not sufficient to
+perform action upon mapping RBD device. A handler script (hook) can be
+useful to properly release RBD device before unmapping, etc.
+
+Pre-unmap hooks can be important for clean shut down and for re-exporting
+RBD device(s) as (iSCSI,AoE,DRBD) etc.
+
+This commit introduces support for per-device hooks to perform per-device
+post-map/pre-unmap actions. If hook named like "poolname/imagename" (same
+as in `/etc/ceph/rbdmap` file) is found in
+
+    /etc/ceph/rbd.d/poolname/imagename
+
+it is executed as
+
+    /etc/ceph/rbd.d/poolname/imagename map poolname/imagename
+
+following after attempt to mount file system (if relevant `fstab` entry
+exist) following mapping of corresponding RBD device.
+
+Before un-mounting file system and un-mapping RBD device hook is called as
+follows:
+
+    /etc/ceph/rbd.d/poolname/imagename unmap poolname/imagename
+
+Second argument is intentional to allow multiple RBD devices to share the
+same hook (symlinked under different names).
+
+Sample hook to use RBD device as "mdadm" hot spare may look like this:
+
+~~~~
+DEV="$2"
+case "$1" in
+    "map")
+        mdadm /dev/md2 --add --write-mostly "${DEV}"
+    ;;
+    "unmap")
+        mdadm /dev/md2 --fail "${DEV}"
+        sleep 2
+        mdadm /dev/md2 --remove "${DEV}"
+    ;;
+esac
+~~~~
+
+Signed-off-by: Dmitry Smirnov <onlyjob@member.fsf.org>
+---
+ src/init-rbdmap | 19 ++++++++++++++++++-
+ 1 file changed, 18 insertions(+), 1 deletion(-)
+
+--- a/src/init-rbdmap
++++ b/src/init-rbdmap
+@@ -63,13 +63,19 @@
+ 		fi
+ 		log_action_end_msg ${RET_OP} "${MAP_RV}"
+ 
+ 		if [ "$newrbd" ]; then
+-                        ## Mount new rbd
++			## Mount new rbd
+ 			MNT_RV=""
+ 			mount --fake /dev/rbd/$DEV >>/dev/null 2>&1 \
+ 			&& MNT_RV=$(mount -v /dev/rbd/$DEV 2>&1)
+ 			[ -n "${MNT_RV}" ] && log_action_msg "mount: ${MNT_RV}"
++
++			## post-mapping
++			if [ -x "/etc/ceph/rbd.d/${DEV}" ]; then
++			    log_action_msg "RBD Running post-map hook '/etc/ceph/rbd.d/${DEV}'"
++			    /etc/ceph/rbd.d/${DEV} map "/dev/rbd/${DEV}"
++			fi
+ 		fi
+ 	done < $RBDMAPFILE
+ 	exit ${RET}
+ 
+@@ -79,8 +85,19 @@
+ 	RET=0
+ 	## Unmount and unmap all rbd devices
+ 	if ls /dev/rbd[0-9]* >/dev/null 2>&1; then
+ 		for DEV in /dev/rbd[0-9]*; do
++			## pre-unmapping
++			for L in $(find /dev/rbd -type l); do
++			    LL="${L##/dev/rbd/}"
++			    if [ "$(readlink -f $L)" = "${DEV}" ] \
++			    && [ -x "/etc/ceph/rbd.d/${LL}" ]; then
++			        log_action_msg "RBD pre-unmap:  '${DEV}' hook '/etc/ceph/rbd.d/${LL}'"
++			        /etc/ceph/rbd.d/${LL} unmap "$L"
++			        break
++			    fi
++			done
++
+ 			log_action_begin_msg "RBD un-mapping: '${DEV}'"
+ 			UMNT_RV=""
+ 			UMAP_RV=""
+ 			RET_OP=0

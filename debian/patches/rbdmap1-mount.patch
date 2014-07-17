@@ -1,7 +1,7 @@
-From b844ec93c50453fa5dc70d367224f2286440d7dd Mon Sep 17 00:00:00 2001
-From: Dmitry Smirnov <onlyjob@member.fsf.org>
-Date: Fri, 11 Jul 2014 19:50:24 +1000
-Subject: [PATCH] rbdmap: per-device mount (Closes: #8538)
+Forwarded: yes
+Applied-Upstream: yes
+Author: Dmitry Smirnov <onlyjob@member.fsf.org>
+Description: rbdmap: per-device mount (Closes: #8538)
 
 `/etc/init.d/rbdmap start` was doing `mount -a`. Although (arguably)
 `mount -a -O _netdev` could be less disruptive, it's not RBD mapping job to
