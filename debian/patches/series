@@ -3,6 +3,7 @@ firefly-post-release.patch
 bug-8342.patch
 bug-8624a.patch
 bug-8624b.patch
+bug-8821.patch
 client-sleep1.patch
 client-sleep2.patch
 client-sleep3.patch
