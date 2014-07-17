@@ -9,7 +9,7 @@
 # common
 #################################################################################
 Name:		ceph
-Version:	0.80.3
+Version:	0.80.4
 Release:	0%{?dist}
 Summary:	User space components of the Ceph file system
 License:	GPL-2.0
