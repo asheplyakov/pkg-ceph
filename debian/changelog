@@ -1,3 +1,15 @@
+ceph (0.80.4-1) unstable; urgency=medium
+
+  * New upstream release [July 2014].
+  * New patches:
+    + rbdmap1-mount.patch
+    + rbdmap2-hooks.patch
+    + rbdmap3-lazyumount.patch
+    + bug-8821.patch
+  * radosgw: removed unused lintian overrides.
+
+ -- Dmitry Smirnov <onlyjob@debian.org>  Fri, 18 Jul 2014 02:33:39 +1000
+
 ceph (0.80.1-2) unstable; urgency=low
 
   * Megapatch from "firefly" branch with post-0.80.1 fixes.
