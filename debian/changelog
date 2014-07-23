@@ -1,3 +1,9 @@
+ceph (0.80.1-1~bpo70+1) wheezy-backports; urgency=low
+
+  * Rebuild for wheezy-backports.
+
+ -- Thomas Goirand <zigo@debian.org>  Wed, 14 May 2014 15:40:00 +0000
+
 ceph (0.80.1-1) unstable; urgency=low
 
   * New upstream release [May 2014].
