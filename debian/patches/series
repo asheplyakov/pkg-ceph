@@ -1,13 +1,22 @@
 ## Backported / Upstream
+firefly-post-release.patch
+bug-8342.patch
+bug-8624a.patch
+bug-8624b.patch
+bug-8821.patch
 client-sleep1.patch
 client-sleep2.patch
 client-sleep3.patch
 sleep-recover.patch
+backfill-prio.patch
+bash-completion.patch
+ceph-ao-require-cas.patch
+rbdmap1-mount.patch
+rbdmap2-hooks.patch
 
 ## Debian
+rbdmap3-lazyumount.patch
 arch.patch
-gcj.patch
-gcj_search_path.patch
 modules.patch
 sample.ceph.conf.patch
 virtualenv-never-download.patch

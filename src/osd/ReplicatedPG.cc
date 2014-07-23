@@ -1838,7 +1838,8 @@ void ReplicatedPG::execute_ctx(OpContext *ctx)
   calc_trim_to();
 
   // verify that we are doing this in order?
-  if (cct->_conf->osd_debug_op_order && m->get_source().is_client()) {
+  if (cct->_conf->osd_debug_op_order && m->get_source().is_client() &&
+      !pool.info.is_tier() && !pool.info.has_tiers()) {
     map<client_t,ceph_tid_t>& cm = debug_op_order[obc->obs.oi.soid];
     ceph_tid_t t = m->get_tid();
     client_t n = m->get_source().num();
@@ -6151,7 +6152,8 @@ int ReplicatedPG::start_flush(
       // nonblocking can join anything
       // blocking can only join a blocking flush
       dout(20) << __func__ << " piggybacking on existing flush " << dendl;
-      fop->dup_ops.push_back(op);
+      if (op)
+	fop->dup_ops.push_back(op);
       return -EAGAIN;   // clean up this ctx; op will retry later
     }
 
@@ -6169,6 +6171,7 @@ int ReplicatedPG::start_flush(
 
   // construct a SnapContext appropriate for this clone/head
   SnapContext dsnapc;
+  dsnapc.seq = 0;
   SnapContext snapc;
   if (soid.snap == CEPH_NOSNAP) {
     snapc.seq = snapset.seq;
@@ -6195,14 +6198,20 @@ int ReplicatedPG::start_flush(
       ++p;
     snapc.snaps = vector<snapid_t>(p, snapset.snaps.end());
 
+    while (p != snapset.snaps.end() && *p >= oi.snaps.back())
+      ++p;
+    vector<snapid_t>::iterator dnewest = p;
+
     // we may need to send a delete first
     while (p != snapset.snaps.end() && *p > prev_snapc)
       ++p;
     dsnapc.snaps = vector<snapid_t>(p, snapset.snaps.end());
 
-    if (dsnapc.snaps.empty()) {
+    if (p == dnewest) {
+      // no snaps between the oldest in this clone and prev_snapc
       snapc.seq = prev_snapc;
     } else {
+      // snaps between oldest in this clone and prev_snapc, send delete
       dsnapc.seq = prev_snapc;
       snapc.seq = oi.snaps.back() - 1;
     }
@@ -6211,7 +6220,7 @@ int ReplicatedPG::start_flush(
   object_locator_t base_oloc(soid);
   base_oloc.pool = pool.info.tier_of;
 
-  if (!dsnapc.snaps.empty()) {
+  if (dsnapc.seq > 0) {
     ObjectOperation o;
     o.remove();
     osd->objecter_lock.Lock();
@@ -7439,6 +7448,9 @@ void ReplicatedPG::kick_object_context_blocked(ObjectContextRef obc)
   dout(10) << __func__ << " " << soid << " requeuing " << ls.size() << " requests" << dendl;
   requeue_ops(ls);
   waiting_for_blocked_object.erase(p);
+
+  if (obc->requeue_scrub_on_unblock)
+    osd->queue_for_scrub(this);
 }
 
 SnapSetContext *ReplicatedPG::create_snapset_context(const hobject_t& oid)
@@ -11579,6 +11591,26 @@ void ReplicatedPG::agent_estimate_atime_temp(const hobject_t& oid,
 // ==========================================================================================
 // SCRUB
 
+
+bool ReplicatedPG::_range_available_for_scrub(
+  const hobject_t &begin, const hobject_t &end)
+{
+  pair<hobject_t, ObjectContextRef> next;
+  next.second = object_contexts.lookup(begin);
+  next.first = begin;
+  bool more = true;
+  while (more && next.first < end) {
+    if (next.second && next.second->is_blocked()) {
+      next.second->requeue_scrub_on_unblock = true;
+      dout(10) << __func__ << ": scrub delayed, "
+	       << next.first << " is blocked"
+	       << dendl;
+      return false;
+    }
+    more = object_contexts.get_next(next.first, &next);
+  }
+  return true;
+}
 
 void ReplicatedPG::_scrub(ScrubMap& scrubmap)
 {

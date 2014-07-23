@@ -283,15 +283,14 @@ void OSDMonitor::update_from_paxos(bool *need_bootstrap)
 
 void OSDMonitor::update_msgr_features()
 {
-  uint64_t mask;
-  uint64_t features = osdmap.get_features(&mask);
-
   set<int> types;
   types.insert((int)entity_name_t::TYPE_OSD);
   types.insert((int)entity_name_t::TYPE_CLIENT);
   types.insert((int)entity_name_t::TYPE_MDS);
   types.insert((int)entity_name_t::TYPE_MON);
   for (set<int>::iterator q = types.begin(); q != types.end(); ++q) {
+    uint64_t mask;
+    uint64_t features = osdmap.get_features(*q, &mask);
     if ((mon->messenger->get_policy(*q).features_required & mask) != features) {
       dout(0) << "crush map has features " << features << ", adjusting msgr requires" << dendl;
       Messenger::Policy p = mon->messenger->get_policy(*q);
@@ -1179,7 +1178,8 @@ bool OSDMonitor::preprocess_boot(MOSDBoot *m)
   assert(m->get_orig_source_inst().name.is_osd());
 
   // check if osd has required features to boot
-  if ((osdmap.get_features(NULL) & CEPH_FEATURE_OSD_ERASURE_CODES) &&
+  if ((osdmap.get_features(CEPH_ENTITY_TYPE_OSD, NULL) &
+       CEPH_FEATURE_OSD_ERASURE_CODES) &&
       !(m->get_connection()->get_features() & CEPH_FEATURE_OSD_ERASURE_CODES)) {
     dout(0) << __func__ << " osdmap requires Erasure Codes but osd at "
             << m->get_orig_source_inst()
@@ -2007,28 +2007,32 @@ void OSDMonitor::get_health(list<pair<health_status_t,string> >& summary,
 			    list<pair<health_status_t,string> > *detail) const
 {
   int num_osds = osdmap.get_num_osds();
-  int num_up_osds = osdmap.get_num_up_osds();
-  int num_in_osds = osdmap.get_num_in_osds();
 
   if (num_osds == 0) {
     summary.push_back(make_pair(HEALTH_ERR, "no osds"));
   } else {
-    if (num_up_osds < num_in_osds) {
-      ostringstream ss;
-      ss << (num_in_osds - num_up_osds) << "/" << num_in_osds << " in osds are down";
-      summary.push_back(make_pair(HEALTH_WARN, ss.str()));
-
-      if (detail) {
-	for (int i = 0; i < osdmap.get_max_osd(); i++) {
-	  if (osdmap.exists(i) && !osdmap.is_up(i)) {
-	    const osd_info_t& info = osdmap.get_info(i);
-	    ostringstream ss;
-	    ss << "osd." << i << " is down since epoch " << info.down_at
-	       << ", last address " << osdmap.get_addr(i);
-	    detail->push_back(make_pair(HEALTH_WARN, ss.str()));
-	  }
+    int num_in_osds = 0;
+    int num_down_in_osds = 0;
+    for (int i = 0; i < osdmap.get_max_osd(); i++) {
+      if (!osdmap.exists(i) || osdmap.is_out(i))
+	continue;
+      ++num_in_osds;
+      if (!osdmap.is_up(i)) {
+	++num_down_in_osds;
+	if (detail) {
+	  const osd_info_t& info = osdmap.get_info(i);
+	  ostringstream ss;
+	  ss << "osd." << i << " is down since epoch " << info.down_at
+	     << ", last address " << osdmap.get_addr(i);
+	  detail->push_back(make_pair(HEALTH_WARN, ss.str()));
 	}
       }
+    }
+    assert(num_down_in_osds <= num_in_osds);
+    if (num_down_in_osds > 0) {
+      ostringstream ss;
+      ss << num_down_in_osds << "/" << num_in_osds << " in osds are down";
+      summary.push_back(make_pair(HEALTH_WARN, ss.str()));
     }
 
     // warn about flags
@@ -2952,7 +2956,7 @@ int OSDMonitor::crush_ruleset_create_erasure(const string &name,
 
 int OSDMonitor::get_erasure_code(const string &erasure_code_profile,
 				 ErasureCodeInterfaceRef *erasure_code,
-				 stringstream &ss)
+				 stringstream &ss) const
 {
   if (pending_inc.has_erasure_code_profile(erasure_code_profile))
     return -EAGAIN;
@@ -2975,7 +2979,7 @@ int OSDMonitor::check_cluster_features(uint64_t features,
 {
   stringstream unsupported_ss;
   int unsupported_count = 0;
-  if (!(mon->get_quorum_features() & features)) {
+  if ((mon->get_quorum_features() & features) != features) {
     unsupported_ss << "the monitor cluster";
     ++unsupported_count;
   }
@@ -3012,6 +3016,27 @@ int OSDMonitor::check_cluster_features(uint64_t features,
   }
 
   return 0;
+}
+
+bool OSDMonitor::validate_crush_against_features(const CrushWrapper *newcrush,
+                                                 stringstream& ss)
+{
+  OSDMap::Incremental new_pending = pending_inc;
+  ::encode(*newcrush, new_pending.crush);
+  OSDMap newmap;
+  newmap.deepish_copy_from(osdmap);
+  newmap.apply_incremental(new_pending);
+  uint64_t features = newmap.get_features(CEPH_ENTITY_TYPE_MON, NULL);
+
+  stringstream features_ss;
+
+  int r = check_cluster_features(features, features_ss);
+
+  if (!r)
+    return true;
+
+  ss << "Could not change CRUSH: " << features_ss.str();
+  return false;
 }
 
 bool OSDMonitor::erasure_code_profile_in_use(const map<int64_t, pg_pool_t> &pools,
@@ -3126,8 +3151,12 @@ int OSDMonitor::prepare_pool_crush_ruleset(const unsigned pool_type,
   if (*crush_ruleset < 0) {
     switch (pool_type) {
     case pg_pool_t::TYPE_REPLICATED:
-      *crush_ruleset =
-	CrushWrapper::get_osd_pool_default_crush_replicated_ruleset(g_ceph_context);
+      *crush_ruleset = osdmap.crush->get_osd_pool_default_crush_replicated_ruleset(g_ceph_context);
+      if (*crush_ruleset < 0) {
+        // Errors may happen e.g. if no valid ruleset is available
+        ss << "No suitable CRUSH ruleset exists";
+        return *crush_ruleset;
+      }
       break;
     case pg_pool_t::TYPE_ERASURE:
       {
@@ -3154,6 +3183,11 @@ int OSDMonitor::prepare_pool_crush_ruleset(const unsigned pool_type,
 	 << " is not a known pool type";
       return -EINVAL;
       break;
+    }
+  } else {
+    if (!osdmap.crush->ruleset_exists(*crush_ruleset)) {
+      ss << "CRUSH ruleset " << *crush_ruleset << " not found";
+      return -ENOENT;
     }
   }
 
@@ -3411,7 +3445,7 @@ int OSDMonitor::prepare_command_pool_set(map<string,cmd_vartype> &cmdmap,
       ss << "error parsing integer value '" << val << "': " << interr;
       return -EINVAL;
     }
-    if (!osdmap.crush->rule_exists(n)) {
+    if (!osdmap.crush->ruleset_exists(n)) {
       ss << "crush ruleset " << n << " does not exist";
       return -ENOENT;
     }
@@ -3504,7 +3538,7 @@ int OSDMonitor::prepare_command_pool_set(map<string,cmd_vartype> &cmdmap,
       ss << "value must be in the range 0..1";
       return -ERANGE;
     }
-    p.cache_target_full_ratio_micro = n;
+    p.cache_target_full_ratio_micro = f * 1000000;
   } else if (var == "cache_min_flush_age") {
     if (interr.length()) {
       ss << "error parsing int '" << val << "': " << interr;
@@ -3613,6 +3647,11 @@ bool OSDMonitor::prepare_command_impl(MMonCommand *m,
     catch (const std::exception &e) {
       err = -EINVAL;
       ss << "Failed to parse crushmap: " << e.what();
+      goto reply;
+    }
+
+    if (!validate_crush_against_features(&crush, ss)) {
+      err = -EINVAL;
       goto reply;
     }
 
@@ -3997,6 +4036,12 @@ bool OSDMonitor::prepare_command_impl(MMonCommand *m,
       err = -EINVAL;
       goto reply;
     }
+
+    if (!validate_crush_against_features(&newcrush, ss)) {
+      err = -EINVAL;
+      goto reply;
+    }
+
     pending_inc.crush.clear();
     newcrush.encode(pending_inc.crush);
     ss << "adjusted tunables profile to " << profile;
@@ -4490,7 +4535,8 @@ bool OSDMonitor::prepare_command_impl(MMonCommand *m,
       pending_inc.new_primary_affinity[id] = ww;
       ss << "set osd." << id << " primary-affinity to " << w << " (" << ios::hex << ww << ios::dec << ")";
       getline(ss, rs);
-      wait_for_finished_proposal(new Monitor::C_Command(mon, m, 0, rs, get_last_committed()));
+      wait_for_finished_proposal(new Monitor::C_Command(mon, m, 0, rs,
+                                                get_last_committed() + 1));
       return true;
     }
   } else if (prefix == "osd reweight") {
@@ -5074,8 +5120,10 @@ done:
       goto reply;
     }
     // go
-    pending_inc.get_new_pool(pool_id, p)->read_tier = overlaypool_id;
-    pending_inc.get_new_pool(pool_id, p)->write_tier = overlaypool_id;
+    pg_pool_t *np = pending_inc.get_new_pool(pool_id, p);
+    np->read_tier = overlaypool_id;
+    np->write_tier = overlaypool_id;
+    np->last_force_op_resend = pending_inc.epoch;
     ss << "overlay for '" << poolstr << "' is now (or already was) '" << overlaypoolstr << "'";
     wait_for_finished_proposal(new Monitor::C_Command(mon, m, 0, ss.str(),
 					      get_last_committed() + 1));
@@ -5097,8 +5145,10 @@ done:
       goto reply;
     }
     // go
-    pending_inc.get_new_pool(pool_id, p)->clear_read_tier();
-    pending_inc.get_new_pool(pool_id, p)->clear_write_tier();
+    pg_pool_t *np = pending_inc.get_new_pool(pool_id, p);
+    np->clear_read_tier();
+    np->clear_write_tier();
+    np->last_force_op_resend = pending_inc.epoch;
     ss << "there is now (or already was) no overlay for '" << poolstr << "'";
     wait_for_finished_proposal(new Monitor::C_Command(mon, m, 0, ss.str(),
 					      get_last_committed() + 1));
@@ -5566,14 +5616,6 @@ int OSDMonitor::_check_remove_pool(int64_t pool, const pg_pool_t *p,
 				   ostream *ss)
 {
   string poolstr = osdmap.get_pool_name(pool);
-
-  // If the Pool is in use by CephFS, refuse to delete it
-  MDSMap const &pending_mdsmap = mon->mdsmon()->pending_mdsmap;
-  if (pending_mdsmap.is_data_pool(pool) ||
-      pending_mdsmap.get_metadata_pool() == pool) {
-    *ss << "pool '" << poolstr << "' is in use by CephFS";
-    return -EBUSY;
-  }
 
   if (p->tier_of >= 0) {
     *ss << "pool '" << poolstr << "' is a tier of '"

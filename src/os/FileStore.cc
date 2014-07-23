@@ -275,6 +275,14 @@ int FileStore::lfn_open(coll_t cid,
 	     << ") in index: " << cpp_strerror(-r) << dendl;
 	goto fail;
       }
+      r = chain_fsetxattr(fd, XATTR_SPILL_OUT_NAME,
+                          XATTR_NO_SPILL_OUT, sizeof(XATTR_NO_SPILL_OUT));
+      if (r < 0) {
+        VOID_TEMP_FAILURE_RETRY(::close(fd));
+        derr << "error setting spillout xattr for oid " << oid << " (" << (*path)->path()
+                       << "):" << cpp_strerror(-r) << dendl;
+        goto fail;
+      }
     }
   }
 
@@ -2905,8 +2913,20 @@ int FileStore::_clone(coll_t cid, const ghobject_t& oldoid, const ghobject_t& ne
   }
 
   {
+    char buf[2];
     map<string, bufferptr> aset;
     r = _fgetattrs(**o, aset, false);
+    if (r < 0)
+      goto out3;
+
+    r = chain_fgetxattr(**o, XATTR_SPILL_OUT_NAME, buf, sizeof(buf));
+    if (r >= 0 && !strncmp(buf, XATTR_NO_SPILL_OUT, sizeof(XATTR_NO_SPILL_OUT))) {
+      r = chain_fsetxattr(**n, XATTR_SPILL_OUT_NAME, XATTR_NO_SPILL_OUT,
+                          sizeof(XATTR_NO_SPILL_OUT));
+    } else {
+      r = chain_fsetxattr(**n, XATTR_SPILL_OUT_NAME, XATTR_SPILL_OUT,
+                          sizeof(XATTR_SPILL_OUT));
+    }
     if (r < 0)
       goto out3;
 

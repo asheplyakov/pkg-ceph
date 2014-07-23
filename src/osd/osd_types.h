@@ -882,6 +882,7 @@ public:
   map<string,string> properties;  ///< OBSOLETE
   string erasure_code_profile; ///< name of the erasure code profile in OSDMap
   epoch_t last_change;      ///< most recent epoch changed, exclusing snapshot changes
+  epoch_t last_force_op_resend; ///< last epoch that forced clients to resend
   snapid_t snap_seq;        ///< seq for per-pool snapshot
   epoch_t snap_epoch;       ///< osdmap epoch of last snap
   uint64_t auid;            ///< who owns the pg
@@ -914,6 +915,7 @@ public:
   cache_mode_t cache_mode;  ///< cache pool mode
 
   bool is_tier() const { return tier_of >= 0; }
+  bool has_tiers() const { return !tiers.empty(); }
   void clear_tier() { tier_of = -1; }
   bool has_read_tier() const { return read_tier >= 0; }
   void clear_read_tier() { read_tier = -1; }
@@ -940,6 +942,7 @@ public:
       crush_ruleset(0), object_hash(0),
       pg_num(0), pgp_num(0),
       last_change(0),
+      last_force_op_resend(0),
       snap_seq(0), snap_epoch(0),
       auid(0),
       crash_replay_interval(0),
@@ -979,6 +982,7 @@ public:
     return ceph_str_hash_name(get_object_hash());
   }
   epoch_t get_last_change() const { return last_change; }
+  epoch_t get_last_force_op_resend() const { return last_force_op_resend; }
   epoch_t get_snap_epoch() const { return snap_epoch; }
   snapid_t get_snap_seq() const { return snap_seq; }
   uint64_t get_auid() const { return auid; }
@@ -2690,6 +2694,7 @@ public:
   // set if writes for this object are blocked on another objects recovery
   ObjectContextRef blocked_by;      // object blocking our writes
   set<ObjectContextRef> blocking;   // objects whose writes we block
+  bool requeue_scrub_on_unblock;    // true if we need to requeue scrub on unblock
 
   // any entity in obs.oi.watchers MUST be in either watchers or unconnected_watchers.
   map<pair<uint64_t, entity_name_t>, WatchRef> watchers;
@@ -2862,7 +2867,7 @@ public:
       destructor_callback(0),
       lock("ReplicatedPG::ObjectContext::lock"),
       unstable_writes(0), readers(0), writers_waiting(0), readers_waiting(0),
-      blocked(false) {}
+      blocked(false), requeue_scrub_on_unblock(false) {}
 
   ~ObjectContext() {
     assert(rwstate.empty());

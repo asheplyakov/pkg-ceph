@@ -1,0 +1,38 @@
+Last-update: 2014-05-20
+Origin: upstream, https://github.com/ceph/ceph/pull/1846/
+Bug-Ceph: http://tracker.ceph.com/issues/8342
+Author: Sage Weil <sage@inktank.com>
+Description:  [Fixes:#8342]
+ * init-ceph: continue loop immediately on daemon start failure
+   If we fail to start the daemon, skip the post_start and other steps.
+ * if we fail to set an OSD's crush position, continue
+   If we fail to set the CRUSH position for one OSD, continue on to try
+   starting others, just as we do when we fail to start the daemon.
+
+--- a/src/init-ceph.in
++++ b/src/init-ceph.in
+@@ -338,9 +338,13 @@
+ 		    osd_location=`$osd_location_hook --cluster ceph --id $id --type osd`
+ 		    get_conf osd_weight "" "osd crush initial weight"
+ 		    defaultweight="$(df -P -k $osd_data/. | tail -1 | awk '{ print sprintf("%.2f",$2/1073741824) }')"
+ 		    get_conf osd_keyring "$osd_data/keyring" "keyring"
+-		    do_cmd "timeout 30 $BINDIR/ceph -c $conf --name=osd.$id --keyring=$osd_keyring osd crush create-or-move -- $id ${osd_weight:-${defaultweight:-1}} $osd_location"
++		    do_cmd_okfail "timeout 30 $BINDIR/ceph -c $conf --name=osd.$id --keyring=$osd_keyring osd crush create-or-move -- $id ${osd_weight:-${defaultweight:-1}} $osd_location"
++		    if [ "$ERR" != "0" ]; then
++			EXIT_STATUS=$ERR
++			continue
++		    fi
+ 		fi
+ 	    fi
+ 
+ 	    echo Starting Ceph $name on $host...
+@@ -352,8 +356,9 @@
+ 	    [ -n "$pre_start" ] && do_cmd "$pre_start"
+ 	    do_cmd_okfail "$cmd" $runarg
+ 	    if [ "$ERR" != "0" ]; then
+ 		EXIT_STATUS=$ERR
++		continue
+ 	    fi
+ 
+ 	    if [ "$type" = "mon" ]; then
+ 		# this will only work if we are using default paths

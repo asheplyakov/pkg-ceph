@@ -950,7 +950,7 @@ bool OSDMap::find_osd_on_ip(const entity_addr_t& ip) const
 }
 
 
-uint64_t OSDMap::get_features(uint64_t *pmask) const
+uint64_t OSDMap::get_features(int entity_type, uint64_t *pmask) const
 {
   uint64_t features = 0;  // things we actually have
   uint64_t mask = 0;      // things we could have
@@ -970,7 +970,8 @@ uint64_t OSDMap::get_features(uint64_t *pmask) const
     if (p->second.flags & pg_pool_t::FLAG_HASHPSPOOL) {
       features |= CEPH_FEATURE_OSDHASHPSPOOL;
     }
-    if (p->second.is_erasure()) {
+    if (p->second.is_erasure() &&
+	entity_type != CEPH_ENTITY_TYPE_CLIENT) { // not for clients
       features |= CEPH_FEATURE_OSD_ERASURE_CODES;
     }
     if (!p->second.tiers.empty() ||
@@ -978,8 +979,9 @@ uint64_t OSDMap::get_features(uint64_t *pmask) const
       features |= CEPH_FEATURE_OSD_CACHEPOOL;
     }
   }
-  mask |= CEPH_FEATURE_OSDHASHPSPOOL | CEPH_FEATURE_OSD_CACHEPOOL |
-          CEPH_FEATURE_OSD_ERASURE_CODES;
+  mask |= CEPH_FEATURE_OSDHASHPSPOOL | CEPH_FEATURE_OSD_CACHEPOOL;
+  if (entity_type != CEPH_ENTITY_TYPE_CLIENT)
+    mask |= CEPH_FEATURE_OSD_ERASURE_CODES;
 
   if (osd_primary_affinity) {
     for (int i = 0; i < max_osd; ++i) {
@@ -2509,7 +2511,17 @@ int OSDMap::build_simple(CephContext *cct, epoch_t e, uuid_d &fsid,
   pool_names.push_back("metadata");
   pool_names.push_back("rbd");
 
+  stringstream ss;
+  int r;
+  if (nosd >= 0)
+    r = build_simple_crush_map(cct, *crush, nosd, &ss);
+  else
+    r = build_simple_crush_map_from_conf(cct, *crush, &ss);
+
   int poolbase = get_max_osd() ? get_max_osd() : 1;
+
+  int const default_replicated_ruleset = crush->get_osd_pool_default_crush_replicated_ruleset(cct);
+  assert(default_replicated_ruleset >= 0);
 
   for (vector<string>::iterator p = pool_names.begin();
        p != pool_names.end(); ++p) {
@@ -2520,8 +2532,7 @@ int OSDMap::build_simple(CephContext *cct, epoch_t e, uuid_d &fsid,
       pools[pool].flags |= pg_pool_t::FLAG_HASHPSPOOL;
     pools[pool].size = cct->_conf->osd_pool_default_size;
     pools[pool].min_size = cct->_conf->get_osd_pool_default_min_size();
-    pools[pool].crush_ruleset =
-      CrushWrapper::get_osd_pool_default_crush_replicated_ruleset(cct);
+    pools[pool].crush_ruleset = default_replicated_ruleset;
     pools[pool].object_hash = CEPH_STR_HASH_RJENKINS;
     pools[pool].set_pg_num(poolbase << pg_bits);
     pools[pool].set_pgp_num(poolbase << pgp_bits);
@@ -2531,13 +2542,6 @@ int OSDMap::build_simple(CephContext *cct, epoch_t e, uuid_d &fsid,
     pool_name[pool] = *p;
     name_pool[*p] = pool;
   }
-
-  stringstream ss;
-  int r;
-  if (nosd >= 0)
-    r = build_simple_crush_map(cct, *crush, nosd, &ss);
-  else
-    r = build_simple_crush_map_from_conf(cct, *crush, &ss);
 
   if (r < 0)
     lderr(cct) << ss.str() << dendl;

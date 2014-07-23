@@ -543,11 +543,11 @@ uninstall-am: uninstall-javaDATA
 
 @ENABLE_CEPHFS_JAVA_TRUE@$(CEPH_PROXY): $(JAVA_SRC)
 @ENABLE_CEPHFS_JAVA_TRUE@	export CLASSPATH=java/ ; \
-@ENABLE_CEPHFS_JAVA_TRUE@	$(JAVAC) -source 1.5 -target 1.5 -Xlint:-options java/com/ceph/fs/*.java
+@ENABLE_CEPHFS_JAVA_TRUE@	$(JAVAC) -classpath java -source 1.5 -target 1.5 -Xlint:-options java/com/ceph/fs/*.java
 
 @ENABLE_CEPHFS_JAVA_TRUE@$(JAVA_H): $(CEPH_PROXY)
 @ENABLE_CEPHFS_JAVA_TRUE@	export CLASSPATH=java/ ; \
-@ENABLE_CEPHFS_JAVA_TRUE@	$(JAVAH) -jni -o $@ com.ceph.fs.CephMount
+@ENABLE_CEPHFS_JAVA_TRUE@	$(JAVAH) -classpath java -jni -o $@ com.ceph.fs.CephMount
 
 @ENABLE_CEPHFS_JAVA_TRUE@libcephfs.jar: $(CEPH_PROXY)
 @ENABLE_CEPHFS_JAVA_TRUE@	$(JAR) cf $@ $(JAVA_CLASSES:%=-C java %) 
