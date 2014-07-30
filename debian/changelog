@@ -2,6 +2,7 @@ ceph (0.80.5-1) unstable; urgency=medium
 
   * New upstream stable release:
     - d/p/firefly-post-release.patch: Dropped, no longer required.
+    - d/lib{rados2,cephfs1}.symbols: Update with new symbols.
 
  -- James Page <jamespage@debian.org>  Wed, 30 Jul 2014 10:15:40 +0100
 
