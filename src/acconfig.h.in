@@ -105,14 +105,8 @@
 /* Define if you have fuse */
 #undef HAVE_LIBFUSE
 
-/* Define to 1 if you have the `leveldb' library (-lleveldb). */
-#undef HAVE_LIBLEVELDB
-
 /* Define to 1 if you have the `profiler' library (-lprofiler). */
 #undef HAVE_LIBPROFILER
-
-/* Define to 1 if you have the `snappy' library (-lsnappy). */
-#undef HAVE_LIBSNAPPY
 
 /* Define if you have tcmalloc */
 #undef HAVE_LIBTCMALLOC
