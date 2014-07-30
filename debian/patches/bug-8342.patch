@@ -11,8 +11,7 @@ Description:  [Fixes:#8342]
 
 --- a/src/init-ceph.in
 +++ b/src/init-ceph.in
-@@ -338,9 +338,13 @@
- 		    osd_location=`$osd_location_hook --cluster ceph --id $id --type osd`
+@@ -339,7 +339,11 @@ for name in $what; do
  		    get_conf osd_weight "" "osd crush initial weight"
  		    defaultweight="$(df -P -k $osd_data/. | tail -1 | awk '{ print sprintf("%.2f",$2/1073741824) }')"
  		    get_conf osd_keyring "$osd_data/keyring" "keyring"
@@ -25,9 +24,7 @@ Description:  [Fixes:#8342]
  		fi
  	    fi
  
- 	    echo Starting Ceph $name on $host...
-@@ -352,8 +356,9 @@
- 	    [ -n "$pre_start" ] && do_cmd "$pre_start"
+@@ -353,6 +357,7 @@ for name in $what; do
  	    do_cmd_okfail "$cmd" $runarg
  	    if [ "$ERR" != "0" ]; then
  		EXIT_STATUS=$ERR
@@ -35,4 +32,3 @@ Description:  [Fixes:#8342]
  	    fi
  
  	    if [ "$type" = "mon" ]; then
- 		# this will only work if we are using default paths

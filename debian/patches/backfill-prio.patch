@@ -11,8 +11,7 @@ Date:   Tue Jun 24 02:09:49 2014
 
 --- a/src/common/AsyncReserver.h
 +++ b/src/common/AsyncReserver.h
-@@ -32,8 +32,9 @@
- template <typename T>
+@@ -33,6 +33,7 @@ template <typename T>
  class AsyncReserver {
    Finisher *f;
    unsigned max_allowed;
@@ -20,9 +19,7 @@ Date:   Tue Jun 24 02:09:49 2014
    Mutex lock;
  
    map<unsigned, list<pair<T, Context*> > > queues;
-   map<T, pair<unsigned, typename list<pair<T, Context*> >::iterator > > queue_pointers;
-@@ -41,9 +42,11 @@
- 
+@@ -42,7 +43,9 @@ class AsyncReserver {
    void do_queues() {
      typename map<unsigned, list<pair<T, Context*> > >::reverse_iterator it;
      for (it = queues.rbegin();
@@ -33,9 +30,7 @@ Date:   Tue Jun 24 02:09:49 2014
           ++it) {
        while (in_progress.size() < max_allowed &&
               !it->second.empty()) {
-         pair<T, Context*> p = it->second.front();
-@@ -56,17 +59,27 @@
-   }
+@@ -57,8 +60,12 @@ class AsyncReserver {
  public:
    AsyncReserver(
      Finisher *f,
@@ -50,7 +45,7 @@ Date:   Tue Jun 24 02:09:49 2014
  
    void set_max(unsigned max) {
      Mutex::Locker l(lock);
-     max_allowed = max;
+@@ -66,6 +73,12 @@ public:
      do_queues();
    }
  
@@ -63,11 +58,9 @@ Date:   Tue Jun 24 02:09:49 2014
    /**
     * Requests a reservation
     *
-    * Note, on_reserved may be called following cancel_reservation.  Thus,
 --- a/src/common/config_opts.h
 +++ b/src/common/config_opts.h
-@@ -388,8 +388,11 @@
- 
+@@ -389,6 +389,9 @@ OPTION(osd_compact_leveldb_on_mount, OPT
  // Maximum number of backfills to or from a single osd
  OPTION(osd_max_backfills, OPT_U64, 10)
  
@@ -77,11 +70,9 @@ Date:   Tue Jun 24 02:09:49 2014
  // Refuse backfills when OSD full ratio is above this value
  OPTION(osd_backfill_full_ratio, OPT_FLOAT, 0.85)
  
- // Seconds to wait before retrying refused backfills
 --- a/src/messages/MBackfillReserve.h
 +++ b/src/messages/MBackfillReserve.h
-@@ -27,10 +27,10 @@
-     REQUEST = 0,
+@@ -28,8 +28,8 @@ public:
      GRANT = 1,
      REJECT = 2,
    };
@@ -92,11 +83,9 @@ Date:   Tue Jun 24 02:09:49 2014
  
    MBackfillReserve()
      : Message(MSG_OSD_BACKFILL_RESERVE, HEAD_VERSION, COMPAT_VERSION),
-       query_epoch(0), type(-1), priority(-1) {}
 --- a/src/osd/OSD.cc
 +++ b/src/osd/OSD.cc
-@@ -216,10 +216,12 @@
-   backfill_request_timer(cct, backfill_request_lock, false),
+@@ -217,8 +217,10 @@ OSDService::OSDService(OSD *osd) :
    last_tid(0),
    tid_lock("OSDService::tid_lock"),
    reserver_finisher(cct),
@@ -109,9 +98,7 @@ Date:   Tue Jun 24 02:09:49 2014
    pg_temp_lock("OSDService::pg_temp_lock"),
    map_cache_lock("OSDService::map_lock"),
    map_cache(cct->_conf->osd_map_cache_size),
-   map_bl_cache(cct->_conf->osd_map_cache_size),
-@@ -7798,8 +7800,9 @@
- const char** OSD::get_tracked_conf_keys() const
+@@ -7806,6 +7808,7 @@ const char** OSD::get_tracked_conf_keys(
  {
    static const char* KEYS[] = {
      "osd_max_backfills",
@@ -119,9 +106,7 @@ Date:   Tue Jun 24 02:09:49 2014
      "osd_op_complaint_time", "osd_op_log_threshold",
      "osd_op_history_size", "osd_op_history_duration",
      NULL
-   };
-@@ -7812,8 +7815,12 @@
-   if (changed.count("osd_max_backfills")) {
+@@ -7820,6 +7823,10 @@ void OSD::handle_conf_change(const struc
      service.local_reserver.set_max(cct->_conf->osd_max_backfills);
      service.remote_reserver.set_max(cct->_conf->osd_max_backfills);
    }
@@ -132,11 +117,9 @@ Date:   Tue Jun 24 02:09:49 2014
    if (changed.count("osd_op_complaint_time") ||
        changed.count("osd_op_log_threshold")) {
      op_tracker.set_complaint_and_threshold(cct->_conf->osd_op_complaint_time,
-                                            cct->_conf->osd_op_log_threshold);
 --- a/src/osd/OSD.h
 +++ b/src/osd/OSD.h
-@@ -593,13 +593,8 @@
-     return t;
+@@ -594,11 +594,6 @@ public:
    }
  
    // -- backfill_reservation --
@@ -148,11 +131,9 @@ Date:   Tue Jun 24 02:09:49 2014
    Finisher reserver_finisher;
    AsyncReserver<spg_t> local_reserver;
    AsyncReserver<spg_t> remote_reserver;
- 
 --- a/src/osd/PG.cc
 +++ b/src/osd/PG.cc
-@@ -1873,8 +1873,28 @@
- 
+@@ -1874,6 +1874,26 @@ void PG::mark_clean()
    dirty_info = true;
  }
  
@@ -179,9 +160,7 @@ Date:   Tue Jun 24 02:09:49 2014
  void PG::finish_recovery(list<Context*>& tfin)
  {
    dout(10) << "finish_recovery" << dendl;
-   assert(info.last_complete == info.last_update);
-@@ -5734,15 +5754,14 @@
-     ConnectionRef con = pg->osd->get_con_osd_cluster(
+@@ -5735,13 +5755,12 @@ PG::RecoveryState::WaitRemoteBackfillRes
        backfill_osd_it->osd, pg->get_osdmap()->get_epoch());
      if (con) {
        if (con->has_feature(CEPH_FEATURE_BACKFILL_RESERVATION)) {
@@ -197,9 +176,7 @@ Date:   Tue Jun 24 02:09:49 2014
  	con.get());
        } else {
          post_event(RemoteBackfillReserved());
-       }
-@@ -5809,10 +5828,10 @@
-   pg->osd->local_reserver.request_reservation(
+@@ -5810,8 +5829,8 @@ PG::RecoveryState::WaitLocalBackfillRese
      pg->info.pgid,
      new QueuePeeringEvt<LocalBackfillReserved>(
        pg, pg->get_osdmap()->get_epoch(),
@@ -210,9 +187,7 @@ Date:   Tue Jun 24 02:09:49 2014
  }
  
  void PG::RecoveryState::WaitLocalBackfillReserved::exit()
- {
-@@ -5865,9 +5884,10 @@
-   pg->osd->remote_reserver.request_reservation(
+@@ -5866,7 +5885,8 @@ PG::RecoveryState::RepWaitRecoveryReserv
      pg->info.pgid,
      new QueuePeeringEvt<RemoteRecoveryReserved>(
        pg, pg->get_osdmap()->get_epoch(),
@@ -222,9 +197,7 @@ Date:   Tue Jun 24 02:09:49 2014
  }
  
  boost::statechart::result
- PG::RecoveryState::RepWaitRecoveryReserved::react(const RemoteRecoveryReserved &evt)
-@@ -6006,9 +6026,10 @@
-   pg->osd->local_reserver.request_reservation(
+@@ -6007,7 +6027,8 @@ PG::RecoveryState::WaitLocalRecoveryRese
      pg->info.pgid,
      new QueuePeeringEvt<LocalRecoveryReserved>(
        pg, pg->get_osdmap()->get_epoch(),
@@ -234,11 +207,9 @@ Date:   Tue Jun 24 02:09:49 2014
  }
  
  void PG::RecoveryState::WaitLocalRecoveryReserved::exit()
- {
 --- a/src/osd/PG.h
 +++ b/src/osd/PG.h
-@@ -709,8 +709,13 @@
-   
+@@ -710,6 +710,11 @@ public:
    bool needs_recovery() const;
    bool needs_backfill() const;
  
@@ -250,11 +221,9 @@ Date:   Tue Jun 24 02:09:49 2014
    void mark_clean();  ///< mark an active pg clean
  
    bool _calc_past_interval_range(epoch_t *start, epoch_t *end);
-   void generate_past_intervals();
 --- a/src/osd/osd_types.h
 +++ b/src/osd/osd_types.h
-@@ -55,8 +55,12 @@
- #define CEPH_OSD_FEATURE_INCOMPAT_SNAPMAPPER CompatSet::Feature(10, "snapmapper")
+@@ -56,6 +56,10 @@
  #define CEPH_OSD_FEATURE_INCOMPAT_SHARDS CompatSet::Feature(11, "sharded objects")
  
  
@@ -265,4 +234,3 @@ Date:   Tue Jun 24 02:09:49 2014
  typedef hobject_t collection_list_handle_t;
  
  typedef uint8_t shard_id_t;
- 

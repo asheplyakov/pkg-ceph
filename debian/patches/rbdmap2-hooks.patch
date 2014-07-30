@@ -60,8 +60,7 @@ Signed-off-by: Dmitry Smirnov <onlyjob@member.fsf.org>
 
 --- a/src/init-rbdmap
 +++ b/src/init-rbdmap
-@@ -63,13 +63,19 @@
- 		fi
+@@ -64,11 +64,17 @@ do_map() {
  		log_action_end_msg ${RET_OP} "${MAP_RV}"
  
  		if [ "$newrbd" ]; then
@@ -80,9 +79,7 @@ Signed-off-by: Dmitry Smirnov <onlyjob@member.fsf.org>
  		fi
  	done < $RBDMAPFILE
  	exit ${RET}
- 
-@@ -79,8 +85,19 @@
- 	RET=0
+@@ -80,6 +86,17 @@ do_unmap() {
  	## Unmount and unmap all rbd devices
  	if ls /dev/rbd[0-9]* >/dev/null 2>&1; then
  		for DEV in /dev/rbd[0-9]*; do
@@ -100,4 +97,3 @@ Signed-off-by: Dmitry Smirnov <onlyjob@member.fsf.org>
  			log_action_begin_msg "RBD un-mapping: '${DEV}'"
  			UMNT_RV=""
  			UMAP_RV=""
- 			RET_OP=0

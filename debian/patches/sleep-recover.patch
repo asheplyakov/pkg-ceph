@@ -6,8 +6,7 @@ Description: fix fuse-client hang after wake-up from suspend.
 
 --- a/src/client/Client.cc
 +++ b/src/client/Client.cc
-@@ -9014,8 +9014,9 @@
- 
+@@ -9015,6 +9015,7 @@ void Client::ms_handle_remote_reset(Conn
  	case MetaSession::STATE_OPEN:
  	  ldout(cct, 1) << "reset from mds we were open; mark session as stale" << dendl;
  	  s->state = MetaSession::STATE_STALE;
@@ -15,4 +14,3 @@ Description: fix fuse-client hang after wake-up from suspend.
  	  break;
  
  	case MetaSession::STATE_NEW:
- 	case MetaSession::STATE_CLOSED:

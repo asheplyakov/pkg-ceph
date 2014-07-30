@@ -27,8 +27,6 @@ Signed-off-by: Dmitry Smirnov <onlyjob@member.fsf.org>
  src/init-rbdmap | 13 ++++++++++++-
  1 file changed, 12 insertions(+), 1 deletion(-)
 
-diff --git a/src/init-rbdmap b/src/init-rbdmap
-index a4e9863..70f0be8 100755
 --- a/src/init-rbdmap
 +++ b/src/init-rbdmap
 @@ -104,7 +104,18 @@ do_unmap() {
@@ -51,6 +49,3 @@ index a4e9863..70f0be8 100755
  			fi
  			if mountpoint -q "${MNT}"; then
  			    ## Un-mounting failed.
--- 
-2.0.0
-
