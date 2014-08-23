@@ -19,3 +19,4 @@ arch.patch
 modules.patch
 sample.ceph.conf.patch
 virtualenv-never-download.patch
+fix-blkdev-BLKGETSIZE-check.patch
