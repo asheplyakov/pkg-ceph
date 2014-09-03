@@ -40,7 +40,7 @@ Build-Depends: debhelper (>= 9~),
                uuid-dev,
                uuid-runtime,
                xfslibs-dev,
-               yasm
+               yasm [amd64]
 Build-Conflicts: libcrypto++-dev
 Standards-Version: 3.9.5
 X-Python-Version: >= 2.6
