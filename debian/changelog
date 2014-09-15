@@ -6,6 +6,7 @@ ceph (0.80.5-2) unstable; urgency=low
     + new "p2139.patch".
     + new patch with fixes from Firefly HEAD;
       includes patch to fix FTBFS on alpha (Closes: #756892).
+      updated "librbd1.symbols";
   * Build-Depends: mark "yasm" as [amd64] (Closes: #760383).
   * Recommends: + "time-daemon | chrony".
 
