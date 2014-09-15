@@ -10,7 +10,8 @@ Signed-off-by: Yan, Zheng <zheng.z.yan@intel.com>
 
 --- a/src/client/Client.cc
 +++ b/src/client/Client.cc
-@@ -2090,15 +2090,21 @@ void Client::kick_requests_closed(MetaSe
+@@ -2123,17 +2123,23 @@
+ void Client::kick_requests_closed(MetaSession *session)
  {
    ldout(cct, 10) << "kick_requests_closed for mds." << session->mds_num << dendl;
    for (map<ceph_tid_t, MetaRequest*>::iterator p = mds_requests.begin();
@@ -40,3 +41,4 @@ Signed-off-by: Yan, Zheng <zheng.z.yan@intel.com>
      }
    }
    assert(session->requests.empty());
+   assert(session->unsafe_requests.empty());

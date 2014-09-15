@@ -1,4 +1,5 @@
 ## Backported / Upstream
+firefly-latest.patch
 bug-8342.patch
 bug-8624a.patch
 bug-8624b.patch
@@ -9,7 +10,6 @@ client-sleep3.patch
 sleep-recover.patch
 backfill-prio.patch
 bash-completion.patch
-ceph-ao-require-cas.patch
 rbdmap1-mount.patch
 rbdmap2-hooks.patch
 
@@ -19,4 +19,3 @@ arch.patch
 modules.patch
 sample.ceph.conf.patch
 virtualenv-never-download.patch
-fix-blkdev-BLKGETSIZE-check.patch

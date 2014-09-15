@@ -11,7 +11,8 @@ Signed-off-by: Yan, Zheng <zheng.z.yan@intel.com>
 
 --- a/src/client/Client.cc
 +++ b/src/client/Client.cc
-@@ -3075,12 +3075,27 @@ void Client::remove_all_caps(Inode *in)
+@@ -3108,14 +3108,29 @@
+   while (!in->caps.empty())
      remove_cap(in->caps.begin()->second, true);
  }
  
@@ -42,3 +43,4 @@ Signed-off-by: Yan, Zheng <zheng.z.yan@intel.com>
  }
  
  void Client::trim_caps(MetaSession *s, int max)
+ {
