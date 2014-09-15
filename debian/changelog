@@ -1,3 +1,16 @@
+ceph (0.80.5-2) unstable; urgency=low
+
+  * Patchworks:
+    + new patch for Ceph#9341 to dramatically (e.g seconds instead of
+      hours) reduce rejoin (i.e. MDS restart) time (fuse clients).
+    + new "p2139.patch".
+    + new patch with fixes from Firefly HEAD;
+      includes patch to fix FTBFS on alpha (Closes: #756892).
+  * Build-Depends: mark "yasm" as [amd64] (Closes: #760383).
+  * Recommends: + "time-daemon | chrony".
+
+ -- Dmitry Smirnov <onlyjob@debian.org>  Tue, 16 Sep 2014 03:54:15 +1000
+
 ceph (0.80.5-1) unstable; urgency=medium
 
   * New upstream stable release:
