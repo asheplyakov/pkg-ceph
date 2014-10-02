@@ -151,7 +151,7 @@ Date:   Tue Jun 24 02:09:49 2014
  
 --- a/src/osd/PG.cc
 +++ b/src/osd/PG.cc
-@@ -1873,8 +1873,28 @@
+@@ -1885,8 +1885,28 @@
  
    dirty_info = true;
  }
@@ -180,7 +180,7 @@ Date:   Tue Jun 24 02:09:49 2014
  {
    dout(10) << "finish_recovery" << dendl;
    assert(info.last_complete == info.last_update);
-@@ -5839,15 +5859,14 @@
+@@ -5852,15 +5872,14 @@
      ConnectionRef con = pg->osd->get_con_osd_cluster(
        backfill_osd_it->osd, pg->get_osdmap()->get_epoch());
      if (con) {
@@ -198,7 +198,7 @@ Date:   Tue Jun 24 02:09:49 2014
        } else {
          post_event(RemoteBackfillReserved());
        }
-@@ -5914,10 +5933,10 @@
+@@ -5927,10 +5946,10 @@
    pg->osd->local_reserver.request_reservation(
      pg->info.pgid,
      new QueuePeeringEvt<LocalBackfillReserved>(
@@ -211,7 +211,7 @@ Date:   Tue Jun 24 02:09:49 2014
  
  void PG::RecoveryState::WaitLocalBackfillReserved::exit()
  {
-@@ -5982,9 +6001,10 @@
+@@ -5995,9 +6014,10 @@
    pg->osd->remote_reserver.request_reservation(
      pg->info.pgid,
      new QueuePeeringEvt<RemoteRecoveryReserved>(
@@ -223,7 +223,7 @@ Date:   Tue Jun 24 02:09:49 2014
  
  boost::statechart::result
  PG::RecoveryState::RepWaitRecoveryReserved::react(const RemoteRecoveryReserved &evt)
-@@ -6123,9 +6143,10 @@
+@@ -6136,9 +6156,10 @@
    pg->osd->local_reserver.request_reservation(
      pg->info.pgid,
      new QueuePeeringEvt<LocalRecoveryReserved>(
