@@ -185,10 +185,14 @@ namespace librbd {
 
     // size object cache appropriately
     if (object_cacher) {
-      uint64_t obj = cct->_conf->rbd_cache_size / (1ull << order);
+      uint64_t obj = cct->_conf->rbd_cache_max_dirty_object;
+      if (!obj) {
+        obj = cct->_conf->rbd_cache_size / (1ull << order);
+        obj = obj * 4 + 10;
+      }
       ldout(cct, 10) << " cache bytes " << cct->_conf->rbd_cache_size << " order " << (int)order
 		     << " -> about " << obj << " objects" << dendl;
-      object_cacher->set_max_objects(obj * 4 + 10);
+      object_cacher->set_max_objects(obj);
     }
 
     ldout(cct, 10) << "init_layout stripe_unit " << stripe_unit
@@ -573,9 +577,9 @@ namespace librbd {
     object_cacher->stop();
   }
 
-  void ImageCtx::invalidate_cache() {
+  int ImageCtx::invalidate_cache() {
     if (!object_cacher)
-      return;
+      return 0;
     cache_lock.Lock();
     object_cacher->release_set(object_set);
     cache_lock.Unlock();
@@ -585,8 +589,12 @@ namespace librbd {
     cache_lock.Lock();
     bool unclean = object_cacher->release_set(object_set);
     cache_lock.Unlock();
-    if (unclean)
-      lderr(cct) << "could not release all objects from cache" << dendl;
+    if (unclean) {
+      lderr(cct) << "could not release all objects from cache: "
+                 << unclean << " bytes remain" << dendl;
+      return -EBUSY;
+    }
+    return r;
   }
 
   void ImageCtx::clear_nonexistence_cache() {

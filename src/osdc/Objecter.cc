@@ -1364,6 +1364,11 @@ int Objecter::op_cancel(ceph_tid_t tid, int r)
 
   ldout(cct, 10) << __func__ << " tid " << tid << dendl;
   Op *op = p->second;
+  if (op->con) {
+    ldout(cct, 20) << " revoking rx buffer for " << tid
+		   << " on " << op->con << dendl;
+    op->con->revoke_rx_buffer(tid);
+  }
   if (op->onack) {
     op->onack->complete(r);
     op->onack = NULL;
@@ -1434,7 +1439,7 @@ int64_t Objecter::get_object_pg_hash_position(int64_t pool, const string& key,
   return p->raw_hash_to_pg(p->hash_key(key, ns));
 }
 
-int Objecter::calc_target(op_target_t *t)
+int Objecter::calc_target(op_target_t *t, bool any_change)
 {
   bool is_read = t->flags & CEPH_OSD_FLAG_READ;
   bool is_write = t->flags & CEPH_OSD_FLAG_WRITE;
@@ -1491,7 +1496,8 @@ int Objecter::calc_target(op_target_t *t)
   }
 
   if (t->pgid != pgid ||
-      is_pg_changed(t->primary, t->acting, primary, acting, t->used_replica) ||
+      is_pg_changed(
+	t->primary, t->acting, primary, acting, t->used_replica || any_change) ||
       force_resend) {
     t->pgid = pgid;
     t->acting = acting;
@@ -1570,7 +1576,7 @@ int Objecter::recalc_op_target(Op *op)
 
 bool Objecter::recalc_linger_op_target(LingerOp *linger_op)
 {
-  int r = calc_target(&linger_op->target);
+  int r = calc_target(&linger_op->target, true);
   if (r == RECALC_OP_TARGET_NEED_RESEND) {
     ldout(cct, 10) << "recalc_linger_op_target tid " << linger_op->linger_id
 		   << " pgid " << linger_op->target.pgid

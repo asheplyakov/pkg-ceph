@@ -552,7 +552,7 @@ COMMAND("osd pool rename " \
 	"rename <srcpool> to <destpool>", "osd", "rw", "cli,rest")
 COMMAND("osd pool get " \
 	"name=pool,type=CephPoolname " \
-	"name=var,type=CephChoices,strings=size|min_size|crash_replay_interval|pg_num|pgp_num|crush_ruleset|hit_set_type|hit_set_period|hit_set_count|hit_set_fpp|auid", \
+	"name=var,type=CephChoices,strings=size|min_size|crash_replay_interval|pg_num|pgp_num|crush_ruleset|hit_set_type|hit_set_period|hit_set_count|hit_set_fpp|auid|target_max_objects|target_max_bytes|cache_target_dirty_ratio|cache_target_full_ratio|cache_min_flush_age|cache_min_evict_age|erasure_code_profile", \
 	"get pool parameter <var>", "osd", "r", "cli,rest")
 COMMAND("osd pool set " \
 	"name=pool,type=CephPoolname " \
@@ -568,6 +568,10 @@ COMMAND("osd pool set-quota " \
 	"name=field,type=CephChoices,strings=max_objects|max_bytes " \
 	"name=val,type=CephString",
 	"set object or byte limit on pool", "osd", "rw", "cli,rest")
+COMMAND("osd pool get-quota " \
+        "name=pool,type=CephPoolname ",
+        "obtain object or byte limits for pool",
+        "osd", "r", "cli,rest")
 COMMAND("osd pool stats " \
         "name=name,type=CephString,req=false",
         "obtain stats from all pools, or from specified pool",

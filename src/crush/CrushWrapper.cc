@@ -10,17 +10,28 @@
 
 bool CrushWrapper::has_v2_rules() const
 {
-  // check rules for use of indep or new SET_* rule steps
   for (unsigned i=0; i<crush->max_rules; i++) {
-    crush_rule *r = crush->rules[i];
-    if (!r)
-      continue;
-    for (unsigned j=0; j<r->len; j++) {
-      if (r->steps[j].op == CRUSH_RULE_CHOOSE_INDEP ||
-	  r->steps[j].op == CRUSH_RULE_CHOOSELEAF_INDEP ||
-	  r->steps[j].op == CRUSH_RULE_SET_CHOOSE_TRIES ||
-	  r->steps[j].op == CRUSH_RULE_SET_CHOOSELEAF_TRIES)
-	return true;
+    if (is_v2_rule(i)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool CrushWrapper::is_v2_rule(unsigned ruleid) const
+{
+  // check rule for use of indep or new SET_* rule steps
+  if (ruleid >= crush->max_rules)
+    return false;
+  crush_rule *r = crush->rules[ruleid];
+  if (!r)
+    return false;
+  for (unsigned j=0; j<r->len; j++) {
+    if (r->steps[j].op == CRUSH_RULE_CHOOSE_INDEP ||
+	r->steps[j].op == CRUSH_RULE_CHOOSELEAF_INDEP ||
+	r->steps[j].op == CRUSH_RULE_SET_CHOOSE_TRIES ||
+	r->steps[j].op == CRUSH_RULE_SET_CHOOSELEAF_TRIES) {
+      return true;
     }
   }
   return false;
@@ -28,14 +39,25 @@ bool CrushWrapper::has_v2_rules() const
 
 bool CrushWrapper::has_v3_rules() const
 {
-  // check rules for use of SET_CHOOSELEAF_VARY_R step
   for (unsigned i=0; i<crush->max_rules; i++) {
-    crush_rule *r = crush->rules[i];
-    if (!r)
-      continue;
-    for (unsigned j=0; j<r->len; j++) {
-      if (r->steps[j].op == CRUSH_RULE_SET_CHOOSELEAF_VARY_R)
-	return true;
+    if (is_v3_rule(i)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool CrushWrapper::is_v3_rule(unsigned ruleid) const
+{
+  // check rule for use of SET_CHOOSELEAF_VARY_R step
+  if (ruleid >= crush->max_rules)
+    return false;
+  crush_rule *r = crush->rules[ruleid];
+  if (!r)
+    return false;
+  for (unsigned j=0; j<r->len; j++) {
+    if (r->steps[j].op == CRUSH_RULE_SET_CHOOSELEAF_VARY_R) {
+      return true;
     }
   }
   return false;
@@ -792,6 +814,59 @@ int CrushWrapper::add_simple_ruleset(string name, string root_name,
   set_rule_name(rno, name);
   have_rmaps = false;
   return rno;
+}
+
+int CrushWrapper::get_rule_weight_osd_map(unsigned ruleno, map<int,float> *pmap)
+{
+  if (ruleno >= crush->max_rules)
+    return -ENOENT;
+  if (crush->rules[ruleno] == NULL)
+    return -ENOENT;
+  crush_rule *rule = crush->rules[ruleno];
+
+  // build a weight map for each TAKE in the rule, and then merge them
+  for (unsigned i=0; i<rule->len; ++i) {
+    map<int,float> m;
+    float sum = 0;
+    if (rule->steps[i].op == CRUSH_RULE_TAKE) {
+      int n = rule->steps[i].arg1;
+      if (n >= 0) {
+	m[n] = 1.0;
+	sum = 1.0;
+      } else {
+	list<int> q;
+	q.push_back(n);
+	//breadth first iterate the OSD tree
+	while (!q.empty()) {
+	  int bno = q.front();
+	  q.pop_front();
+	  crush_bucket *b = crush->buckets[-1-bno];
+	  assert(b);
+	  for (unsigned j=0; j<b->size; ++j) {
+	    int item_id = b->items[j];
+	    if (item_id >= 0) //it's an OSD
+	    {
+	      float w = crush_get_bucket_item_weight(b, j);
+	      m[item_id] = w;
+	      sum += w;
+	    }
+	    else //not an OSD, expand the child later
+	      q.push_back(item_id);
+	  }
+	}
+      }
+    }
+    for (map<int,float>::iterator p = m.begin(); p != m.end(); ++p) {
+      map<int,float>::iterator q = pmap->find(p->first);
+      if (q == pmap->end()) {
+	(*pmap)[p->first] = p->second / sum;
+      } else {
+	q->second += p->second / sum;
+      }
+    }
+  }
+
+  return 0;
 }
 
 int CrushWrapper::remove_rule(int ruleno)
