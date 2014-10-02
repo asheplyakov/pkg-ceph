@@ -950,7 +950,12 @@ void MemStore::_do_transaction(Transaction& t)
       break;
 
     case Transaction::OP_SETALLOCHINT:
-      // nop
+      {
+        coll_t cid(i.get_cid());
+        ghobject_t oid = i.get_oid();
+        (void)i.get_length();  // discard result
+        (void)i.get_length();  // discard result
+      }
       break;
 
     default:

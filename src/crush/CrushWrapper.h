@@ -216,6 +216,8 @@ public:
   bool has_v2_rules() const;
   bool has_v3_rules() const;
 
+  bool is_v2_rule(unsigned ruleid) const;
+  bool is_v3_rule(unsigned ruleid) const;
 
   // bucket types
   int get_num_type_names() const {
@@ -630,6 +632,18 @@ public:
     if (IS_ERR(s)) return PTR_ERR(s);
     return s->arg2;
   }
+
+  /**
+   * calculate a map of osds to weights for a given rule
+   *
+   * Generate a map of which OSDs get how much relative weight for a
+   * given rule.
+   *
+   * @param ruleno [in] rule id
+   * @param pmap [out] map of osd to weight
+   * @return 0 for success, or negative error code
+   */
+  int get_rule_weight_osd_map(unsigned ruleno, map<int,float> *pmap);
 
   /* modifiers */
   int add_rule(int len, int ruleset, int type, int minsize, int maxsize, int ruleno) {

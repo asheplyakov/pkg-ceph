@@ -959,10 +959,7 @@ uint64_t OSDMap::get_features(int entity_type, uint64_t *pmask) const
     features |= CEPH_FEATURE_CRUSH_TUNABLES;
   if (crush->has_nondefault_tunables2())
     features |= CEPH_FEATURE_CRUSH_TUNABLES2;
-  if (crush->has_v2_rules())
-    features |= CEPH_FEATURE_CRUSH_V2;
-  if (crush->has_nondefault_tunables3() ||
-      crush->has_v3_rules())
+  if (crush->has_nondefault_tunables3())
     features |= CEPH_FEATURE_CRUSH_TUNABLES3;
   mask |= CEPH_FEATURES_CRUSH;
 
@@ -977,6 +974,15 @@ uint64_t OSDMap::get_features(int entity_type, uint64_t *pmask) const
     if (!p->second.tiers.empty() ||
 	p->second.is_tier()) {
       features |= CEPH_FEATURE_OSD_CACHEPOOL;
+    }
+    int ruleid = crush->find_rule(p->second.get_crush_ruleset(),
+				  p->second.get_type(),
+				  p->second.get_size());
+    if (ruleid >= 0) {
+      if (crush->is_v2_rule(ruleid))
+	features |= CEPH_FEATURE_CRUSH_V2;
+      if (crush->is_v3_rule(ruleid))
+	features |= CEPH_FEATURE_CRUSH_TUNABLES3;
     }
   }
   mask |= CEPH_FEATURE_OSDHASHPSPOOL | CEPH_FEATURE_OSD_CACHEPOOL;
@@ -1801,7 +1807,15 @@ void OSDMap::encode(bufferlist& bl, uint64_t features) const
     ENCODE_START(1, 1, bl); // extended, osd-only data
     ::encode(osd_addrs->hb_back_addr, bl);
     ::encode(osd_info, bl);
-    ::encode(blacklist, bl);
+    {
+      // put this in a sorted, ordered map<> so that we encode in a
+      // deterministic order.
+      map<entity_addr_t,utime_t> blacklist_map;
+      for (ceph::unordered_map<entity_addr_t,utime_t>::const_iterator p =
+	     blacklist.begin(); p != blacklist.end(); ++p)
+	blacklist_map.insert(make_pair(p->first, p->second));
+      ::encode(blacklist_map, bl);
+    }
     ::encode(osd_addrs->cluster_addr, bl);
     ::encode(cluster_snapshot_epoch, bl);
     ::encode(cluster_snapshot, bl);
@@ -2159,6 +2173,7 @@ void OSDMap::generate_test_instances(list<OSDMap*>& o)
   uuid_d fsid;
   o.back()->build_simple(cct, 1, fsid, 16, 7, 8);
   o.back()->created = o.back()->modified = utime_t(1, 2);  // fix timestamp
+  o.back()->blacklist[entity_addr_t()] = utime_t(5, 6);
   cct->put();
 }
 
@@ -2551,13 +2566,25 @@ int OSDMap::build_simple(CephContext *cct, epoch_t e, uuid_d &fsid,
     set_weight(i, CEPH_OSD_OUT);
   }
 
-  map<string,string> erasure_code_profile_map;
-  r = get_str_map(cct->_conf->osd_pool_default_erasure_code_profile,
-		  ss,
-		  &erasure_code_profile_map);
-  erasure_code_profile_map["directory"] =
+  map<string,string> profile_map;
+  r = get_erasure_code_profile_default(cct, profile_map, &ss);
+  if (r < 0) {
+    lderr(cct) << ss.str() << dendl;
+    return r;
+  }
+  set_erasure_code_profile("default", profile_map);
+  return 0;
+}
+
+int OSDMap::get_erasure_code_profile_default(CephContext *cct,
+					     map<string,string> &profile_map,
+					     ostream *ss)
+{
+  int r = get_str_map(cct->_conf->osd_pool_default_erasure_code_profile,
+		      *ss,
+		      &profile_map);
+  profile_map["directory"] =
     cct->_conf->osd_pool_default_erasure_code_directory;
-  set_erasure_code_profile("default", erasure_code_profile_map);
   return r;
 }
 

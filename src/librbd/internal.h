@@ -114,6 +114,7 @@ namespace librbd {
 			bool *is_protected);
   int add_snap(ImageCtx *ictx, const char *snap_name);
   int rm_snap(ImageCtx *ictx, const char *snap_name);
+  int refresh_parent(ImageCtx *ictx);
   int ictx_check(ImageCtx *ictx);
   int ictx_refresh(ImageCtx *ictx);
   int copy(ImageCtx *ictx, IoCtx& dest_md_ctx, const char *destname,
@@ -188,6 +189,7 @@ namespace librbd {
   int aio_flush(ImageCtx *ictx, AioCompletion *c);
   int flush(ImageCtx *ictx);
   int _flush(ImageCtx *ictx);
+  int invalidate_cache(ImageCtx *ictx);
 
   ssize_t handle_sparse_read(CephContext *cct,
 			     ceph::bufferlist data_bl,

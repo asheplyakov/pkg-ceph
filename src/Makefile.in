@@ -487,11 +487,11 @@ am_libcommon_la_OBJECTS = ceph_ver.lo common/DecayCounter.lo \
 	common/BackTrace.lo common/perf_counters.lo common/Mutex.lo \
 	common/OutputDataSocket.lo common/admin_socket.lo \
 	common/admin_socket_client.lo common/cmdparse.lo \
-	common/escape.lo common/Clock.lo common/Throttle.lo \
-	common/Timer.lo common/Finisher.lo common/environment.lo \
-	common/assert.lo common/run_cmd.lo common/WorkQueue.lo \
-	common/ConfUtils.lo common/MemoryModel.lo common/armor.lo \
-	common/fd.lo common/xattr.lo common/safe_io.lo \
+	common/escape.lo common/io_priority.lo common/Clock.lo \
+	common/Throttle.lo common/Timer.lo common/Finisher.lo \
+	common/environment.lo common/assert.lo common/run_cmd.lo \
+	common/WorkQueue.lo common/ConfUtils.lo common/MemoryModel.lo \
+	common/armor.lo common/fd.lo common/xattr.lo common/safe_io.lo \
 	common/snap_types.lo common/str_list.lo common/str_map.lo \
 	common/errno.lo common/RefCountedObj.lo common/blkdev.lo \
 	common/common_init.lo common/pipe.lo common/ceph_argparse.lo \
@@ -1854,11 +1854,11 @@ am__test_build_libcommon_SOURCES_DIST = test/buildtest_skeleton.cc \
 	common/perf_counters.cc common/Mutex.cc \
 	common/OutputDataSocket.cc common/admin_socket.cc \
 	common/admin_socket_client.cc common/cmdparse.cc \
-	common/escape.c common/Clock.cc common/Throttle.cc \
-	common/Timer.cc common/Finisher.cc common/environment.cc \
-	common/assert.cc common/run_cmd.cc common/WorkQueue.cc \
-	common/ConfUtils.cc common/MemoryModel.cc common/armor.c \
-	common/fd.cc common/xattr.c common/safe_io.c \
+	common/escape.c common/io_priority.cc common/Clock.cc \
+	common/Throttle.cc common/Timer.cc common/Finisher.cc \
+	common/environment.cc common/assert.cc common/run_cmd.cc \
+	common/WorkQueue.cc common/ConfUtils.cc common/MemoryModel.cc \
+	common/armor.c common/fd.cc common/xattr.c common/safe_io.c \
 	common/snap_types.cc common/str_list.cc common/str_map.cc \
 	common/errno.cc common/RefCountedObj.cc common/blkdev.cc \
 	common/common_init.cc common/pipe.c common/ceph_argparse.cc \
@@ -1891,6 +1891,7 @@ am__objects_15 = test_build_libcommon-ceph_ver.$(OBJEXT) \
 	common/test_build_libcommon-admin_socket_client.$(OBJEXT) \
 	common/test_build_libcommon-cmdparse.$(OBJEXT) \
 	common/test_build_libcommon-escape.$(OBJEXT) \
+	common/test_build_libcommon-io_priority.$(OBJEXT) \
 	common/test_build_libcommon-Clock.$(OBJEXT) \
 	common/test_build_libcommon-Throttle.$(OBJEXT) \
 	common/test_build_libcommon-Timer.$(OBJEXT) \
@@ -3098,18 +3099,18 @@ am__noinst_HEADERS_DIST = arch/intel.h arch/neon.h arch/probe.h \
 	common/Cond.h common/ConfUtils.h common/DecayCounter.h \
 	common/Finisher.h common/Formatter.h common/perf_counters.h \
 	common/OutputDataSocket.h common/admin_socket.h \
-	common/admin_socket_client.h common/shared_cache.hpp \
-	common/tracked_int_ptr.hpp common/simple_cache.hpp \
-	common/sharedptr_registry.hpp common/map_cacher.hpp \
-	common/MemoryModel.h common/Mutex.h \
+	common/admin_socket_client.h common/random_cache.hpp \
+	common/shared_cache.hpp common/tracked_int_ptr.hpp \
+	common/simple_cache.hpp common/sharedptr_registry.hpp \
+	common/map_cacher.hpp common/MemoryModel.h common/Mutex.h \
 	common/PrebufferedStreambuf.h common/RWLock.h \
 	common/Semaphore.h common/SimpleRNG.h common/TextTable.h \
 	common/Thread.h common/Throttle.h common/Timer.h \
 	common/TrackedOp.h common/arch.h common/armor.h \
-	common/common_init.h common/pipe.h common/code_environment.h \
-	common/signal.h common/simple_spin.h common/run_cmd.h \
-	common/safe_io.h common/config.h common/config_obs.h \
-	common/config_opts.h common/ceph_crypto.h \
+	common/common_init.h common/io_priority.h common/pipe.h \
+	common/code_environment.h common/signal.h common/simple_spin.h \
+	common/run_cmd.h common/safe_io.h common/config.h \
+	common/config_obs.h common/config_opts.h common/ceph_crypto.h \
 	common/ceph_crypto_cms.h common/ceph_json.h common/lru_map.h \
 	common/utf8.h common/mime.h common/pick_address.h \
 	common/secret.h common/strtol.h common/static_assert.h \
@@ -3642,18 +3643,18 @@ noinst_HEADERS = arch/intel.h arch/neon.h arch/probe.h \
 	common/Cond.h common/ConfUtils.h common/DecayCounter.h \
 	common/Finisher.h common/Formatter.h common/perf_counters.h \
 	common/OutputDataSocket.h common/admin_socket.h \
-	common/admin_socket_client.h common/shared_cache.hpp \
-	common/tracked_int_ptr.hpp common/simple_cache.hpp \
-	common/sharedptr_registry.hpp common/map_cacher.hpp \
-	common/MemoryModel.h common/Mutex.h \
+	common/admin_socket_client.h common/random_cache.hpp \
+	common/shared_cache.hpp common/tracked_int_ptr.hpp \
+	common/simple_cache.hpp common/sharedptr_registry.hpp \
+	common/map_cacher.hpp common/MemoryModel.h common/Mutex.h \
 	common/PrebufferedStreambuf.h common/RWLock.h \
 	common/Semaphore.h common/SimpleRNG.h common/TextTable.h \
 	common/Thread.h common/Throttle.h common/Timer.h \
 	common/TrackedOp.h common/arch.h common/armor.h \
-	common/common_init.h common/pipe.h common/code_environment.h \
-	common/signal.h common/simple_spin.h common/run_cmd.h \
-	common/safe_io.h common/config.h common/config_obs.h \
-	common/config_opts.h common/ceph_crypto.h \
+	common/common_init.h common/io_priority.h common/pipe.h \
+	common/code_environment.h common/signal.h common/simple_spin.h \
+	common/run_cmd.h common/safe_io.h common/config.h \
+	common/config_obs.h common/config_opts.h common/ceph_crypto.h \
 	common/ceph_crypto_cms.h common/ceph_json.h common/lru_map.h \
 	common/utf8.h common/mime.h common/pick_address.h \
 	common/secret.h common/strtol.h common/static_assert.h \
@@ -4242,11 +4243,11 @@ libcommon_la_SOURCES = ceph_ver.c common/DecayCounter.cc \
 	common/BackTrace.cc common/perf_counters.cc common/Mutex.cc \
 	common/OutputDataSocket.cc common/admin_socket.cc \
 	common/admin_socket_client.cc common/cmdparse.cc \
-	common/escape.c common/Clock.cc common/Throttle.cc \
-	common/Timer.cc common/Finisher.cc common/environment.cc \
-	common/assert.cc common/run_cmd.cc common/WorkQueue.cc \
-	common/ConfUtils.cc common/MemoryModel.cc common/armor.c \
-	common/fd.cc common/xattr.c common/safe_io.c \
+	common/escape.c common/io_priority.cc common/Clock.cc \
+	common/Throttle.cc common/Timer.cc common/Finisher.cc \
+	common/environment.cc common/assert.cc common/run_cmd.cc \
+	common/WorkQueue.cc common/ConfUtils.cc common/MemoryModel.cc \
+	common/armor.c common/fd.cc common/xattr.c common/safe_io.c \
 	common/snap_types.cc common/str_list.cc common/str_map.cc \
 	common/errno.cc common/RefCountedObj.cc common/blkdev.cc \
 	common/common_init.cc common/pipe.c common/ceph_argparse.cc \
@@ -5764,6 +5765,8 @@ common/admin_socket_client.lo: common/$(am__dirstamp) \
 common/cmdparse.lo: common/$(am__dirstamp) \
 	common/$(DEPDIR)/$(am__dirstamp)
 common/escape.lo: common/$(am__dirstamp) \
+	common/$(DEPDIR)/$(am__dirstamp)
+common/io_priority.lo: common/$(am__dirstamp) \
 	common/$(DEPDIR)/$(am__dirstamp)
 common/Clock.lo: common/$(am__dirstamp) \
 	common/$(DEPDIR)/$(am__dirstamp)
@@ -7614,6 +7617,8 @@ common/test_build_libcommon-cmdparse.$(OBJEXT):  \
 	common/$(am__dirstamp) common/$(DEPDIR)/$(am__dirstamp)
 common/test_build_libcommon-escape.$(OBJEXT): common/$(am__dirstamp) \
 	common/$(DEPDIR)/$(am__dirstamp)
+common/test_build_libcommon-io_priority.$(OBJEXT):  \
+	common/$(am__dirstamp) common/$(DEPDIR)/$(am__dirstamp)
 common/test_build_libcommon-Clock.$(OBJEXT): common/$(am__dirstamp) \
 	common/$(DEPDIR)/$(am__dirstamp)
 common/test_build_libcommon-Throttle.$(OBJEXT):  \
@@ -8634,6 +8639,8 @@ mostlyclean-compile:
 	-rm -f common/histogram.lo
 	-rm -f common/hobject.$(OBJEXT)
 	-rm -f common/hobject.lo
+	-rm -f common/io_priority.$(OBJEXT)
+	-rm -f common/io_priority.lo
 	-rm -f common/ipaddr.$(OBJEXT)
 	-rm -f common/ipaddr.lo
 	-rm -f common/libcommon_crc_la-crc32c.$(OBJEXT)
@@ -8735,6 +8742,7 @@ mostlyclean-compile:
 	-rm -f common/test_build_libcommon-hex.$(OBJEXT)
 	-rm -f common/test_build_libcommon-histogram.$(OBJEXT)
 	-rm -f common/test_build_libcommon-hobject.$(OBJEXT)
+	-rm -f common/test_build_libcommon-io_priority.$(OBJEXT)
 	-rm -f common/test_build_libcommon-ipaddr.$(OBJEXT)
 	-rm -f common/test_build_libcommon-linux_version.$(OBJEXT)
 	-rm -f common/test_build_libcommon-lockdep.$(OBJEXT)
@@ -9666,6 +9674,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/hex.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/histogram.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/hobject.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/io_priority.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/ipaddr.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/libcommon_crc_la-crc32c.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/libcommon_crc_la-crc32c_intel_baseline.Plo@am__quote@
@@ -9743,6 +9752,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/test_build_libcommon-hex.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/test_build_libcommon-histogram.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/test_build_libcommon-hobject.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/test_build_libcommon-io_priority.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/test_build_libcommon-ipaddr.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/test_build_libcommon-linux_version.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/test_build_libcommon-lockdep.Po@am__quote@
@@ -12854,6 +12864,20 @@ common/test_build_libcommon-cmdparse.obj: common/cmdparse.cc
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='common/cmdparse.cc' object='common/test_build_libcommon-cmdparse.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(test_build_libcommon_CXXFLAGS) $(CXXFLAGS) -c -o common/test_build_libcommon-cmdparse.obj `if test -f 'common/cmdparse.cc'; then $(CYGPATH_W) 'common/cmdparse.cc'; else $(CYGPATH_W) '$(srcdir)/common/cmdparse.cc'; fi`
+
+common/test_build_libcommon-io_priority.o: common/io_priority.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(test_build_libcommon_CXXFLAGS) $(CXXFLAGS) -MT common/test_build_libcommon-io_priority.o -MD -MP -MF common/$(DEPDIR)/test_build_libcommon-io_priority.Tpo -c -o common/test_build_libcommon-io_priority.o `test -f 'common/io_priority.cc' || echo '$(srcdir)/'`common/io_priority.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) common/$(DEPDIR)/test_build_libcommon-io_priority.Tpo common/$(DEPDIR)/test_build_libcommon-io_priority.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='common/io_priority.cc' object='common/test_build_libcommon-io_priority.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(test_build_libcommon_CXXFLAGS) $(CXXFLAGS) -c -o common/test_build_libcommon-io_priority.o `test -f 'common/io_priority.cc' || echo '$(srcdir)/'`common/io_priority.cc
+
+common/test_build_libcommon-io_priority.obj: common/io_priority.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(test_build_libcommon_CXXFLAGS) $(CXXFLAGS) -MT common/test_build_libcommon-io_priority.obj -MD -MP -MF common/$(DEPDIR)/test_build_libcommon-io_priority.Tpo -c -o common/test_build_libcommon-io_priority.obj `if test -f 'common/io_priority.cc'; then $(CYGPATH_W) 'common/io_priority.cc'; else $(CYGPATH_W) '$(srcdir)/common/io_priority.cc'; fi`
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) common/$(DEPDIR)/test_build_libcommon-io_priority.Tpo common/$(DEPDIR)/test_build_libcommon-io_priority.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='common/io_priority.cc' object='common/test_build_libcommon-io_priority.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(test_build_libcommon_CXXFLAGS) $(CXXFLAGS) -c -o common/test_build_libcommon-io_priority.obj `if test -f 'common/io_priority.cc'; then $(CYGPATH_W) 'common/io_priority.cc'; else $(CYGPATH_W) '$(srcdir)/common/io_priority.cc'; fi`
 
 common/test_build_libcommon-Clock.o: common/Clock.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(test_build_libcommon_CXXFLAGS) $(CXXFLAGS) -MT common/test_build_libcommon-Clock.o -MD -MP -MF common/$(DEPDIR)/test_build_libcommon-Clock.Tpo -c -o common/test_build_libcommon-Clock.o `test -f 'common/Clock.cc' || echo '$(srcdir)/'`common/Clock.cc

@@ -1120,6 +1120,12 @@ void ReplicatedPG::do_request(
       waiting_for_active.push_back(op);
       return;
     }
+    // verify client features
+    if ((pool.info.has_tiers() || pool.info.is_tier()) &&
+	!op->has_feature(CEPH_FEATURE_OSD_CACHEPOOL)) {
+      osd->reply_op_error(op, -EOPNOTSUPP);
+      return;
+    }
     do_op(op); // do it now
     break;
 
@@ -1352,9 +1358,10 @@ void ReplicatedPG::do_op(OpRequestRef op)
 	hit_set_start_stamp + pool.info.hit_set_period <= m->get_recv_stamp()) {
       hit_set_persist();
     }
+  }
 
-    if (agent_state)
-      agent_choose_mode();
+  if (agent_state) {
+    agent_choose_mode();
   }
 
   if ((m->get_flags() & CEPH_OSD_FLAG_IGNORE_CACHE) == 0 &&
@@ -4854,8 +4861,9 @@ void ReplicatedPG::make_writeable(OpContext *ctx)
       if (pool.info.require_rollback())
 	ctx->clone_obc->attr_cache = ctx->obc->attr_cache;
       snap_oi = &ctx->clone_obc->obs.oi;
-      bool got = ctx->clone_obc->get_write(ctx->op);
+      bool got = ctx->clone_obc->get_write_greedy(ctx->op);
       assert(got);
+      dout(20) << " got greedy write on clone_obc " << *ctx->clone_obc << dendl;
     } else {
       snap_oi = &static_snap_oi;
     }
@@ -5160,8 +5168,9 @@ void ReplicatedPG::finish_ctx(OpContext *ctx, int log_op_type, bool maintain_ssc
 					0, osd_reqid_t(), ctx->mtime));
 
       ctx->snapset_obc = get_object_context(snapoid, true);
-      bool got = ctx->snapset_obc->get_write(ctx->op);
+      bool got = ctx->snapset_obc->get_write_greedy(ctx->op);
       assert(got);
+      dout(20) << " got greedy write on snapset_obc " << *ctx->snapset_obc << dendl;
       ctx->release_snapset_obc = true;
       if (pool.info.require_rollback() && !ctx->snapset_obc->obs.exists) {
 	ctx->log.back().mod_desc.create();
@@ -6026,6 +6035,11 @@ void ReplicatedPG::cancel_copy(CopyOpRef cop, bool requeue)
   cop->results.should_requeue = requeue;
   CopyCallbackResults result(-ECANCELED, &cop->results);
   cop->cb->complete(result);
+
+  // There may still be an objecter callback referencing this copy op.
+  // That callback will not need the obc since it's been canceled, and
+  // we need the obc reference to go away prior to flush.
+  cop->obc = ObjectContextRef();
 }
 
 void ReplicatedPG::cancel_copy_ops(bool requeue)
@@ -6169,58 +6183,53 @@ int ReplicatedPG::start_flush(
     cancel_flush(fop, false);
   }
 
-  // construct a SnapContext appropriate for this clone/head
-  SnapContext dsnapc;
-  dsnapc.seq = 0;
-  SnapContext snapc;
-  if (soid.snap == CEPH_NOSNAP) {
-    snapc.seq = snapset.seq;
-    snapc.snaps = snapset.snaps;
+  /**
+   * In general, we need to send two deletes and a copyfrom.
+   * Consider snapc 10:[10, 9, 8, 4, 3, 2]:[10(10, 9), 4(4,3,2)]
+   * where 4 is marked as clean.  To flush 10, we have to:
+   * 1) delete 4:[4,3,2] -- ensure head is created at cloneid 4
+   * 2) delete (8-1):[4,3,2] -- ensure that the object does not exist at 8
+   * 3) copyfrom 8:[8,4,3,2] -- flush object excluding snap 8
+   *
+   * The second delete is required in case at some point in the past
+   * there had been a clone 7(7,6), which we had flushed.  Without
+   * the second delete, the object would appear in the base pool to
+   * have existed.
+   */
 
-    if (!snapset.clones.empty() && snapset.clones.back() != snapset.seq) {
-      dsnapc.seq = snapset.clones.back();
-      vector<snapid_t>::iterator p = snapset.snaps.begin();
-      while (p != snapset.snaps.end() && *p > dsnapc.seq)
-	++p;
-      dsnapc.snaps = vector<snapid_t>(p, snapset.snaps.end());
-    }
-  } else {
-    vector<snapid_t>::iterator citer = std::find(
-      snapset.clones.begin(),
-      snapset.clones.end(),
-      soid.snap);
-    assert(citer != snapset.clones.end());
-    snapid_t prev_snapc = (citer == snapset.clones.begin()) ?
-      snapid_t(0) : *(citer - 1);
-
-    vector<snapid_t>::iterator p = snapset.snaps.begin();
-    while (p != snapset.snaps.end() && *p >= oi.snaps.back())
-      ++p;
-    snapc.snaps = vector<snapid_t>(p, snapset.snaps.end());
-
-    while (p != snapset.snaps.end() && *p >= oi.snaps.back())
-      ++p;
-    vector<snapid_t>::iterator dnewest = p;
-
-    // we may need to send a delete first
-    while (p != snapset.snaps.end() && *p > prev_snapc)
-      ++p;
-    dsnapc.snaps = vector<snapid_t>(p, snapset.snaps.end());
-
-    if (p == dnewest) {
-      // no snaps between the oldest in this clone and prev_snapc
-      snapc.seq = prev_snapc;
+  SnapContext snapc, dsnapc, dsnapc2;
+  if (snapset.seq != 0) {
+    if (soid.snap == CEPH_NOSNAP) {
+      snapc.seq = snapset.seq;
+      snapc.snaps = snapset.snaps;
     } else {
-      // snaps between oldest in this clone and prev_snapc, send delete
-      dsnapc.seq = prev_snapc;
-      snapc.seq = oi.snaps.back() - 1;
+      snapid_t min_included_snap = oi.snaps.back();
+      snapc = snapset.get_ssc_as_of(min_included_snap - 1);
+    }
+
+    snapid_t prev_snapc = 0;
+    for (vector<snapid_t>::reverse_iterator citer = snapset.clones.rbegin();
+	 citer != snapset.clones.rend();
+	 ++citer) {
+      if (*citer < soid.snap) {
+	prev_snapc = *citer;
+	break;
+      }
+    }
+
+    if (prev_snapc != snapc.seq) {
+      dsnapc = snapset.get_ssc_as_of(prev_snapc);
+      snapid_t first_snap_after_prev_snapc =
+	snapset.get_first_snap_after(prev_snapc, snapc.seq);
+      dsnapc2 = snapset.get_ssc_as_of(
+	first_snap_after_prev_snapc - 1);
     }
   }
 
   object_locator_t base_oloc(soid);
   base_oloc.pool = pool.info.tier_of;
 
-  if (dsnapc.seq > 0) {
+  if (dsnapc.seq > 0 && dsnapc.seq < snapc.seq) {
     ObjectOperation o;
     o.remove();
     osd->objecter_lock.Lock();
@@ -6229,6 +6238,24 @@ int ReplicatedPG::start_flush(
       base_oloc,
       o,
       dsnapc,
+      oi.mtime,
+      (CEPH_OSD_FLAG_IGNORE_OVERLAY |
+       CEPH_OSD_FLAG_ORDERSNAP |
+       CEPH_OSD_FLAG_ENFORCE_SNAPC),
+      NULL,
+      NULL /* no callback, we'll rely on the ordering w.r.t the next op */);
+    osd->objecter_lock.Unlock();
+  }
+
+  if (dsnapc2.seq > dsnapc.seq && dsnapc2.seq < snapc.seq) {
+    ObjectOperation o;
+    o.remove();
+    osd->objecter_lock.Lock();
+    osd->objecter->mutate(
+      soid.oid,
+      base_oloc,
+      o,
+      dsnapc2,
       oi.mtime,
       (CEPH_OSD_FLAG_IGNORE_OVERLAY |
        CEPH_OSD_FLAG_ORDERSNAP |
@@ -6442,7 +6469,7 @@ void ReplicatedPG::cancel_flush_ops(bool requeue)
 
 bool ReplicatedPG::is_present_clone(hobject_t coid)
 {
-  if (pool.info.cache_mode == pg_pool_t::CACHEMODE_NONE)
+  if (!pool.info.allow_incomplete_clones())
     return true;
   if (is_missing_object(coid))
     return true;
@@ -6735,6 +6762,7 @@ void ReplicatedPG::issue_repop(RepGather *repop, utime_t now)
     repop->ctx->at_version,
     repop->ctx->op_t,
     pg_trim_to,
+    min_last_complete_ondisk,
     repop->ctx->log,
     repop->ctx->updated_hset_history,
     onapplied_sync,
@@ -6752,6 +6780,7 @@ void ReplicatedBackend::issue_op(
   ceph_tid_t tid,
   osd_reqid_t reqid,
   eversion_t pg_trim_to,
+  eversion_t pg_trim_rollback_to,
   hobject_t new_temp_oid,
   hobject_t discard_temp_oid,
   vector<pg_log_entry_t> &log_entries,
@@ -6807,6 +6836,7 @@ void ReplicatedBackend::issue_op(
       wr->pg_stats = get_info().stats;
     
     wr->pg_trim_to = pg_trim_to;
+    wr->pg_trim_rollback_to = pg_trim_rollback_to;
 
     wr->new_temp_oid = new_temp_oid;
     wr->discard_temp_oid = discard_temp_oid;
@@ -6841,6 +6871,12 @@ ReplicatedPG::RepGather *ReplicatedPG::new_repop(OpContext *ctx, ObjectContextRe
 void ReplicatedPG::remove_repop(RepGather *repop)
 {
   dout(20) << __func__ << " " << *repop << dendl;
+  if (repop->ctx->obc)
+    dout(20) << " obc " << *repop->ctx->obc << dendl;
+  if (repop->ctx->clone_obc)
+    dout(20) << " clone_obc " << *repop->ctx->clone_obc << dendl;
+  if (repop->ctx->snapset_obc)
+    dout(20) << " snapset_obc " << *repop->ctx->snapset_obc << dendl;
   release_op_ctx_locks(repop->ctx);
   repop->ctx->finish(0);  // FIXME: return value here is sloppy
   repop_map.erase(repop->rep_tid);
@@ -7607,6 +7643,7 @@ void ReplicatedBackend::sub_op_modify(OpRequestRef op)
       log,
       m->updated_hit_set_history,
       m->pg_trim_to,
+      m->pg_trim_rollback_to,
       update_snaps,
       &(rm->localt));
       
@@ -7702,8 +7739,8 @@ void ReplicatedBackend::calc_head_subsets(
   if (size)
     data_subset.insert(0, size);
 
-  if (get_parent()->get_pool().cache_mode != pg_pool_t::CACHEMODE_NONE) {
-    dout(10) << __func__ << ": caching enabled, skipping clone subsets" << dendl;
+  if (get_parent()->get_pool().allow_incomplete_clones()) {
+    dout(10) << __func__ << ": caching (was) enabled, skipping clone subsets" << dendl;
     return;
   }
 
@@ -7762,8 +7799,8 @@ void ReplicatedBackend::calc_clone_subsets(
   if (size)
     data_subset.insert(0, size);
 
-  if (get_parent()->get_pool().cache_mode != pg_pool_t::CACHEMODE_NONE) {
-    dout(10) << __func__ << ": caching enabled, skipping clone subsets" << dendl;
+  if (get_parent()->get_pool().allow_incomplete_clones()) {
+    dout(10) << __func__ << ": caching (was) enabled, skipping clone subsets" << dendl;
     return;
   }
 
@@ -9465,6 +9502,17 @@ void ReplicatedPG::on_role_change()
 void ReplicatedPG::on_pool_change()
 {
   dout(10) << __func__ << dendl;
+  // requeue cache full waiters just in case the cache_mode is
+  // changing away from writeback mode.  note that if we are not
+  // active the normal requeuing machinery is sufficient (and properly
+  // ordered).
+  if (is_active() &&
+      pool.info.cache_mode != pg_pool_t::CACHEMODE_WRITEBACK &&
+      !waiting_for_cache_not_full.empty()) {
+    dout(10) << __func__ << " requeuing full waiters (not in writeback) "
+	     << dendl;
+    requeue_ops(waiting_for_cache_not_full);
+  }
   hit_set_setup();
   agent_setup();
 }
@@ -10701,6 +10749,9 @@ void ReplicatedPG::hit_set_create()
     if (p->target_size < static_cast<uint64_t>(g_conf->osd_hit_set_min_size))
       p->target_size = g_conf->osd_hit_set_min_size;
 
+    if (p->target_size > static_cast<uint64_t>(g_conf->osd_hit_set_max_size))
+      p->target_size = g_conf->osd_hit_set_max_size;
+
     p->seed = now.sec();
 
     dout(10) << __func__ << " target_size " << p->target_size
@@ -11289,7 +11340,8 @@ bool ReplicatedPG::agent_maybe_evict(ObjectContextRef& obc)
     }
   }
 
-  if (agent_state->evict_mode != TierAgentState::EVICT_MODE_FULL) {
+  if (agent_state->evict_mode != TierAgentState::EVICT_MODE_FULL &&
+      hit_set) {
     // is this object old and/or cold enough?
     int atime = -1, temp = 0;
     agent_estimate_atime_temp(soid, &atime, NULL /*FIXME &temp*/);
@@ -11421,7 +11473,11 @@ void ReplicatedPG::agent_choose_mode(bool restart)
       num_dirty = 0;
   }
 
-  dout(10) << __func__ << ": "
+  dout(10) << __func__
+	   << " flush_mode: "
+	   << TierAgentState::get_flush_mode_name(agent_state->flush_mode)
+	   << " evict_mode: "
+	   << TierAgentState::get_evict_mode_name(agent_state->evict_mode)
 	   << " num_objects: " << info.stats.stats.sum.num_objects
 	   << " num_bytes: " << info.stats.stats.sum.num_bytes
 	   << " num_objects_dirty: " << info.stats.stats.sum.num_objects_dirty
@@ -11435,7 +11491,7 @@ void ReplicatedPG::agent_choose_mode(bool restart)
   // get dirty, full ratios
   uint64_t dirty_micro = 0;
   uint64_t full_micro = 0;
-  if (pool.info.target_max_bytes && info.stats.stats.sum.num_objects) {
+  if (pool.info.target_max_bytes && info.stats.stats.sum.num_objects > 0) {
     uint64_t avg_size = info.stats.stats.sum.num_bytes /
       info.stats.stats.sum.num_objects;
     dirty_micro =
@@ -11445,7 +11501,7 @@ void ReplicatedPG::agent_choose_mode(bool restart)
       num_user_objects * avg_size * 1000000 /
       MAX(pool.info.target_max_bytes / divisor, 1);
   }
-  if (pool.info.target_max_objects) {
+  if (pool.info.target_max_objects > 0) {
     uint64_t dirty_objects_micro =
       num_dirty * 1000000 /
       MAX(pool.info.target_max_objects / divisor, 1);
@@ -11531,8 +11587,10 @@ void ReplicatedPG::agent_choose_mode(bool restart)
 	    << " -> "
 	    << TierAgentState::get_evict_mode_name(evict_mode)
 	    << dendl;
-    if (agent_state->evict_mode == TierAgentState::EVICT_MODE_FULL) {
+    if (agent_state->evict_mode == TierAgentState::EVICT_MODE_FULL &&
+	is_active()) {
       requeue_ops(waiting_for_cache_not_full);
+      requeue_ops(waiting_for_active);
     }
     agent_state->evict_mode = evict_mode;
   }
@@ -11660,7 +11718,7 @@ void ReplicatedPG::_scrub(ScrubMap& scrubmap)
 
       // did we finish the last oid?
       if (head != hobject_t() &&
-	  pool.info.cache_mode == pg_pool_t::CACHEMODE_NONE) {
+	  !pool.info.allow_incomplete_clones()) {
 	osd->clog.error() << mode << " " << info.pgid << " " << head
 			  << " missing clones";
         ++scrubber.shallow_errors;
@@ -11721,7 +11779,7 @@ void ReplicatedPG::_scrub(ScrubMap& scrubmap)
     //
 
     if (!next_clone.is_min() && next_clone != soid &&
-	pool.info.cache_mode != pg_pool_t::CACHEMODE_NONE) {
+	pool.info.allow_incomplete_clones()) {
       // it is okay to be missing one or more clones in a cache tier.
       // skip higher-numbered clones in the list.
       while (curclone != snapset.clones.rend() &&
@@ -11809,7 +11867,7 @@ void ReplicatedPG::_scrub(ScrubMap& scrubmap)
   }
 
   if (!next_clone.is_min() &&
-      pool.info.cache_mode == pg_pool_t::CACHEMODE_NONE) {
+      !pool.info.allow_incomplete_clones()) {
     osd->clog.error() << mode << " " << info.pgid
 		      << " expected clone " << next_clone;
     ++scrubber.shallow_errors;
