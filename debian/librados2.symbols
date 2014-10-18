@@ -1,6 +1,9 @@
 librados.so.2 librados2 #MINVER#
- (regex)"^ceph_ver__[0-9a-f]{40}@Base$" 0.80
- (regex|c++)"^_.*" 0.80
+ (regex)"^ceph_ver__[0-9a-f]{40}@Base$" 0.87
+ (regex|c++)"^_.*" 0.87
+# (regex)"^__event_desc___.*" 0.87
+# (regex)"^__tp_event_signature___.*" 0.87
+# (regex)"^__tracepoint_.*" 0.87
  CEPH_CONF_FILE_DEFAULT@Base 0.72.2
  ceph_arch_intel_pclmul@Base 0.79
  ceph_arch_intel_probe@Base 0.72.2
@@ -107,9 +110,12 @@ librados.so.2 librados2 #MINVER#
 #MISSING: 0.79# is_kernel_secret@Base 0.72.2
  mime_decode_from_qp@Base 0.72.2
  mime_encode_as_qp@Base 0.72.2
+ module_has_param@Base 0.87
+ module_load@Base 0.87
  pem_key@Base 0.72.2
  pipe_cloexec@Base 0.72.2
  rados_aio_append@Base 0.72.2
+ rados_aio_cancel@Base 0.87
  rados_aio_create_completion@Base 0.72.2
  rados_aio_flush@Base 0.72.2
  rados_aio_flush_async@Base 0.72.2
@@ -171,7 +177,7 @@ librados.so.2 librados2 #MINVER#
  rados_ioctx_pool_stat@Base 0.72.2
  rados_ioctx_selfmanaged_snap_create@Base 0.72.2
  rados_ioctx_selfmanaged_snap_remove@Base 0.72.2
- rados_ioctx_snap_rollback@Base 0.80~rc1
+#MISSING: 0.87# rados_ioctx_snap_rollback@Base 0.80~rc1
  rados_ioctx_selfmanaged_snap_rollback@Base 0.72.2
  rados_ioctx_selfmanaged_snap_set_write_ctx@Base 0.72.2
  rados_ioctx_set_namespace@Base 0.72.2
@@ -181,6 +187,7 @@ librados.so.2 librados2 #MINVER#
  rados_ioctx_snap_list@Base 0.72.2
  rados_ioctx_snap_lookup@Base 0.72.2
  rados_ioctx_snap_remove@Base 0.72.2
+ rados_ioctx_snap_rollback@Base 0.80~rc1
  rados_ioctx_snap_set_read@Base 0.72.2
  rados_list_lockers@Base 0.72.2
  rados_lock_exclusive@Base 0.72.2

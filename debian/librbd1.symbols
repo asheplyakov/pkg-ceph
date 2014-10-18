@@ -1,5 +1,8 @@
 librbd.so.1 librbd1 #MINVER#
- (regex|c++)"^_.*" 0.80
+ (regex|c++)"^_.*" 0.87
+# (regex)"^__event_desc___.*" 0.87
+# (regex)"^__tp_event_signature___.*" 0.87
+# (regex)"^__tracepoint_.*" 0.87
  rbd_aio_create_completion@Base 0.72.2
  rbd_aio_discard@Base 0.72.2
  rbd_aio_flush@Base 0.72.2

@@ -1,3 +1,17 @@
+ceph (0.87-1) UNRELEASED; urgency=medium
+
+  * New major upstream release [October 2014].
+    + new "libradosstriper*" binary packages.
+  * Patchworks (removed old patches, refreshed remaining ones).
+  * Build-Depends:
+    + libbabeltrace-dev
+    + libbabeltrace-ctf-dev
+    + libbz2-dev
+    + libudev-dev
+  * Build with "--with-babeltrace".
+
+ -- Dmitry Smirnov <onlyjob@debian.org>  Sat, 18 Oct 2014 15:59:17 +1100
+
 ceph (0.80.7-1) unstable; urgency=medium
 
   * New upstream release [October 2014].

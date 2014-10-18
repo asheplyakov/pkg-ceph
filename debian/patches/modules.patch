@@ -9,7 +9,8 @@ Description: Mark modules as actually being modules
 
 --- a/src/cls/Makefile.am
 +++ b/src/cls/Makefile.am
-@@ -45,7 +45,7 @@ radoslib_LTLIBRARIES += libcls_replica_l
+@@ -44,9 +44,9 @@
+ radoslib_LTLIBRARIES += libcls_replica_log.la
  
  libcls_user_la_SOURCES = cls/user/cls_user.cc
  libcls_user_la_LIBADD = $(PTHREAD_LIBS) $(EXTRALIBS)
@@ -18,37 +19,45 @@ Description: Mark modules as actually being modules
  radoslib_LTLIBRARIES += libcls_user.la
  
  libcls_rgw_la_SOURCES = \
+ 	cls/rgw/cls_rgw.cc \
 --- a/src/erasure-code/jerasure/Makefile.am
 +++ b/src/erasure-code/jerasure/Makefile.am
-@@ -40,7 +40,7 @@ libec_jerasure_generic_la_CXXFLAGS= ${AM
- 	-Ierasure-code/jerasure/gf-complete/include \
- 	-Ierasure-code/jerasure/jerasure/include
+@@ -42,9 +42,9 @@
+ libec_jerasure_generic_la_CXXFLAGS= ${AM_CXXFLAGS} \
+ 	-I$(srcdir)/erasure-code/jerasure/gf-complete/include \
+ 	-I$(srcdir)/erasure-code/jerasure/jerasure/include
  libec_jerasure_generic_la_LIBADD = $(LIBCRUSH) $(PTHREAD_LIBS) $(EXTRALIBS)
 -libec_jerasure_generic_la_LDFLAGS = ${AM_LDFLAGS} -version-info 2:0:0
 +libec_jerasure_generic_la_LDFLAGS = ${AM_LDFLAGS} -module -avoid-version -shared
  if LINUX
  libec_jerasure_generic_la_LDFLAGS += -export-symbols-regex '.*__erasure_code_.*'
  endif
-@@ -63,7 +63,7 @@ libec_jerasure_sse3_la_CXXFLAGS= ${AM_CX
- 	-Ierasure-code/jerasure/gf-complete/include \
- 	-Ierasure-code/jerasure/jerasure/include
+ 
+@@ -65,9 +65,9 @@
+ 	${INTEL_SSSE3_FLAGS} \
+ 	-I$(srcdir)/erasure-code/jerasure/gf-complete/include \
+ 	-I$(srcdir)/erasure-code/jerasure/jerasure/include
  libec_jerasure_sse3_la_LIBADD = $(LIBCRUSH) $(PTHREAD_LIBS) $(EXTRALIBS)
 -libec_jerasure_sse3_la_LDFLAGS = ${AM_LDFLAGS} -version-info 2:0:0
 +libec_jerasure_sse3_la_LDFLAGS = ${AM_LDFLAGS} -module -avoid-version -shared
  if LINUX
  libec_jerasure_sse3_la_LDFLAGS += -export-symbols-regex '.*__erasure_code_.*'
  endif
-@@ -90,7 +90,7 @@ libec_jerasure_sse4_la_CXXFLAGS= ${AM_CX
- 	-Ierasure-code/jerasure/gf-complete/include \
- 	-Ierasure-code/jerasure/jerasure/include
+ 
+@@ -92,9 +92,9 @@
+ 	${INTEL_SSE4_2_FLAGS} \
+ 	-I$(srcdir)/erasure-code/jerasure/gf-complete/include \
+ 	-I$(srcdir)/erasure-code/jerasure/jerasure/include
  libec_jerasure_sse4_la_LIBADD = $(LIBCRUSH) $(PTHREAD_LIBS) $(EXTRALIBS)
 -libec_jerasure_sse4_la_LDFLAGS = ${AM_LDFLAGS} -version-info 2:0:0
 +libec_jerasure_sse4_la_LDFLAGS = ${AM_LDFLAGS} -module -avoid-version -shared
  if LINUX
  libec_jerasure_sse4_la_LDFLAGS += -export-symbols-regex '.*__erasure_code_.*'
  endif
-@@ -102,7 +102,7 @@ libec_jerasure_la_SOURCES = \
- libec_jerasure_la_CFLAGS = ${AM_CFLAGS} 
+ 
+@@ -104,9 +104,9 @@
+ 	erasure-code/jerasure/ErasureCodePluginSelectJerasure.cc
+ libec_jerasure_la_CFLAGS = ${AM_CFLAGS}
  libec_jerasure_la_CXXFLAGS= ${AM_CXXFLAGS}
  libec_jerasure_la_LIBADD = $(LIBCRUSH) $(PTHREAD_LIBS) $(EXTRALIBS)
 -libec_jerasure_la_LDFLAGS = ${AM_LDFLAGS} -version-info 2:0:0
@@ -56,3 +65,4 @@ Description: Mark modules as actually being modules
  if LINUX
  libec_jerasure_la_LDFLAGS += -export-symbols-regex '.*__erasure_code_.*'
  endif
+ 

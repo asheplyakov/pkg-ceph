@@ -1,4 +1,4 @@
-Last-Update: 2014-04-19
+Last-Update: 2014-10-19
 Forwarded: not-needed
 Author: Dmitry Smirnov <onlyjob@member.fsf.org>
 Description: use `dpkg-architecture` instead of `arch` to get build architecture
@@ -6,12 +6,14 @@ Description: use `dpkg-architecture` instead of `arch` to get build architecture
 
 --- a/configure.ac
 +++ b/configure.ac
-@@ -87,7 +87,7 @@ AM_CXXFLAGS="${AM_CXXFLAGS}"
+@@ -86,9 +86,9 @@
+ 
  # Check for yasm
  if yasm -f elf64 src/common/crc32c_intel_fast_asm.S -o /dev/null; then
     echo 'we have a modern and working yasm'
--   if test `arch` = "x86_64"; then
-+   if test `dpkg-architecture -qDEB_BUILD_GNU_CPU` = "x86_64"; then
+-   if test `arch` = "x86_64" ; then
++   if test `dpkg-architecture -qDEB_BUILD_GNU_CPU` = "x86_64" ; then
        echo 'we are x86_64'
-       AC_DEFINE([HAVE_GOOD_YASM_ELF64], [1], [we have a recent yasm and are x86_64])
-       with_good_yasm=yes
+       arch_x32=0
+       AC_COMPILE_IFELSE([AC_LANG_PROGRAM([], [[
+         #if defined(__x86_64__) && defined(__ILP32__)

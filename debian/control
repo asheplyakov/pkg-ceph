@@ -21,6 +21,9 @@ Build-Depends: debhelper (>= 9~),
                libboost-program-options-dev,
                libboost-system-dev,
                libboost-thread-dev,
+               libbabeltrace-dev,
+               libbabeltrace-ctf-dev,
+               libbz2-dev,
                libcurl4-gnutls-dev,
                libedit-dev,
                libexpat1-dev,
@@ -33,6 +36,8 @@ Build-Depends: debhelper (>= 9~),
                libs3-dev,
                libsnappy-dev,
                libtool,
+#               liblttng-ust-dev (>= 2.5.0) [amd64 armel armhf i386 mips mipsel powerpc s390x],
+               libudev-dev,
                libxml2-dev,
                pkg-config,
                python-all (>= 2.6.6-3~),
@@ -236,6 +241,8 @@ Section: libs
 Conflicts: libcrush, libcrush1, librados, librados1
 Replaces: libcrush, libcrush1, librados, librados1
 Depends: ${misc:Depends}, ${shlibs:Depends}
+# undefined symbol: lttng_probe_register
+#        ,liblttng-ust0 (>= 2.5.0)
 Pre-Depends: ${misc:Pre-Depends}
 Description: RADOS distributed object store client library
  RADOS is a reliable, autonomic distributed object storage cluster
@@ -272,6 +279,39 @@ Description: RADOS distributed object store client library (development files)
  .
  This package contains development files needed for building applications that
  link against librados2.
+
+Package: libradosstriper1
+Architecture: linux-any
+Section: libs
+Depends: librados2 (= ${binary:Version}), ${misc:Depends}, ${shlibs:Depends}
+Description: RADOS striping interface
+ Striping interface built on top of the rados library, allowing
+ to stripe bigger objects onto several standard rados objects using
+ an interface very similar to the rados one.
+
+Package: libradosstriper1-dbg
+Architecture: linux-any
+Section: debug
+Priority: extra
+Depends: libradosstriper1 (= ${binary:Version}), ${misc:Depends}
+Description: debugging symbols for libradosstriper
+ libradosstriper is a striping interface built on top of the rados
+ library, allowing to stripe bigger objects onto several standard
+ rados objects using an interface very similar to the rados one.
+ .
+ This package contains debugging symbols for libradosstriper.
+
+Package: libradosstriper-dev
+Architecture: linux-any
+Section: libdevel
+Depends: libradosstriper1 (= ${binary:Version}), ${misc:Depends}
+Description: RADOS striping interface (development files)
+ libradosstriper is a striping interface built on top of the rados
+ library, allowing to stripe bigger objects onto several standard
+ rados objects using an interface very similar to the rados one.
+ .
+ This package contains development files needed for building applications that
+ link against libradosstriper.
 
 Package: librbd1
 Architecture: linux-any

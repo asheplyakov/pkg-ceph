@@ -18,6 +18,9 @@ extraopts += --disable-silent-rules
 extraopts += --with-ocf --with-rest-bench --with-nss
 extraopts += --with-debug
 extraopts += --enable-cephfs-java
+extraopts += --with-babeltrace
+## do not build with lttng just yet, see #765842.
+#extraopts += --with-lttng
 
 ifeq ($(DEB_HOST_ARCH), armel)
   # armel supports ARMv4t or above instructions sets.
@@ -87,6 +90,7 @@ override_dh_strip:
 	dh_strip -pceph-common --dbg-package=ceph-common-dbg
 	dh_strip -pceph-fs-common --dbg-package=ceph-fs-common-dbg
 	dh_strip -plibrados2 --dbg-package=librados2-dbg
+	dh_strip -plibradosstriper1 --dbg-package=libradosstriper1-dbg
 	dh_strip -plibrbd1 --dbg-package=librbd1-dbg
 	dh_strip -plibcephfs1 --dbg-package=libcephfs1-dbg
 	dh_strip -pradosgw --dbg-package=radosgw-dbg
