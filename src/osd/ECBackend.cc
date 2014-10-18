@@ -470,6 +470,7 @@ void ECBackend::continue_recovery_op(
       assert(!op.recovery_progress.data_complete);
       set<int> want(op.missing_on_shards.begin(), op.missing_on_shards.end());
       set<pg_shard_t> to_read;
+      uint64_t recovery_max_chunk = get_recovery_chunk_size();
       int r = get_min_avail_to_read_shards(
 	op.hoid, want, true, &to_read);
       if (r != 0) {
@@ -481,16 +482,15 @@ void ECBackend::continue_recovery_op(
 	recovery_ops.erase(op.hoid);
 	return;
       }
-      assert(r == 0);
       m->read(
 	this,
 	op.hoid,
 	op.recovery_progress.data_recovered_to,
-	get_recovery_chunk_size(),
+	recovery_max_chunk,
 	to_read,
 	op.recovery_progress.first);
       op.extent_requested = make_pair(op.recovery_progress.data_recovered_to,
-				      get_recovery_chunk_size());
+				      recovery_max_chunk);
       dout(10) << __func__ << ": IDLE return " << op << dendl;
       return;
     }
@@ -500,7 +500,7 @@ void ECBackend::continue_recovery_op(
       assert(op.returned_data.size());
       op.state = RecoveryOp::WRITING;
       ObjectRecoveryProgress after_progress = op.recovery_progress;
-      after_progress.data_recovered_to += get_recovery_chunk_size();
+      after_progress.data_recovered_to += op.extent_requested.second;
       after_progress.first = false;
       if (after_progress.data_recovered_to >= op.obc->obs.oi.size) {
 	after_progress.data_recovered_to =
@@ -1092,11 +1092,11 @@ void ECBackend::filter_read_op(
   }
 
   if (op.in_progress.empty()) {
-    get_parent()->schedule_work(
+    get_parent()->schedule_recovery_work(
       get_parent()->bless_gencontext(
 	new FinishReadOp(this, op.tid)));
   }
-};
+}
 
 void ECBackend::check_recovery_sources(const OSDMapRef osdmap)
 {
@@ -1350,8 +1350,8 @@ int ECBackend::get_min_avail_to_read_shards(
   for (set<int>::iterator i = need.begin();
        i != need.end();
        ++i) {
-    assert(shards.count(*i));
-    to_read->insert(shards[*i]);
+    assert(shards.count(shard_id_t(*i)));
+    to_read->insert(shards[shard_id_t(*i)]);
   }
   return 0;
 }
@@ -1456,7 +1456,7 @@ ECUtil::HashInfoRef ECBackend::get_hash_info(
       if (r >= 0) {
 	bufferlist::iterator bp = bl.begin();
 	::decode(hinfo, bp);
-	assert(hinfo.get_total_chunk_size() == (unsigned)st.st_size);
+	assert(hinfo.get_total_chunk_size() == (uint64_t)st.st_size);
       } else {
 	assert(0 == "missing hash attr");
       }
@@ -1656,9 +1656,11 @@ void ECBackend::objects_read_async(
       sinfo.offset_len_to_stripe_bounds(i->first));
   }
 
+  const vector<int> &chunk_mapping = ec_impl->get_chunk_mapping();
   set<int> want_to_read;
   for (int i = 0; i < (int)ec_impl->get_data_chunk_count(); ++i) {
-    want_to_read.insert(i);
+    int chunk = (int)chunk_mapping.size() > i ? chunk_mapping[i] : i;
+    want_to_read.insert(chunk);
   }
   set<pg_shard_t> shards;
   int r = get_min_avail_to_read_shards(

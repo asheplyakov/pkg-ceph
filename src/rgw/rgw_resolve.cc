@@ -1,3 +1,6 @@
+// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
+// vim: ts=8 sw=2 smarttab
+
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <arpa/nameser.h>
@@ -167,7 +170,7 @@ RGWResolver::RGWResolver() {
 
 int RGWResolver::resolve_cname(const string& hostname, string& cname, bool *found) {
   return resolver->resolve_cname(hostname, cname, found);
-};
+}
 
 RGWResolver *rgw_resolver;
 

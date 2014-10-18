@@ -118,6 +118,7 @@ e 12v
 #include "include/Context.h"
 
 #include "common/Timer.h"
+#include "common/perf_counters.h"
 #include <errno.h>
 
 #include "MonitorDBStore.h"
@@ -125,6 +126,43 @@ e 12v
 class Monitor;
 class MMonPaxos;
 class Paxos;
+
+enum {
+  l_paxos_first = 45800,
+  l_paxos_start_leader,
+  l_paxos_start_peon,
+  l_paxos_restart,
+  l_paxos_refresh,
+  l_paxos_refresh_latency,
+  l_paxos_begin,
+  l_paxos_begin_keys,
+  l_paxos_begin_bytes,
+  l_paxos_begin_latency,
+  l_paxos_commit,
+  l_paxos_commit_keys,
+  l_paxos_commit_bytes,
+  l_paxos_commit_latency,
+  l_paxos_collect,
+  l_paxos_collect_keys,
+  l_paxos_collect_bytes,
+  l_paxos_collect_latency,
+  l_paxos_collect_uncommitted,
+  l_paxos_collect_timeout,
+  l_paxos_accept_timeout,
+  l_paxos_lease_ack_timeout,
+  l_paxos_lease_timeout,
+  l_paxos_store_state,
+  l_paxos_store_state_keys,
+  l_paxos_store_state_bytes,
+  l_paxos_store_state_latency,
+  l_paxos_share_state,
+  l_paxos_share_state_keys,
+  l_paxos_share_state_bytes,
+  l_paxos_new_pn,
+  l_paxos_new_pn_latency,
+  l_paxos_last,
+};
+
 
 // i am one state machine.
 /**
@@ -146,6 +184,11 @@ class Paxos {
    * The Monitor to which this Paxos class is associated with.
    */
   Monitor *mon;
+
+  /// perf counter for internal instrumentations
+  PerfCounters *logger;
+
+  void init_logger();
 
   // my state machine info
   const string paxos_name;
@@ -180,6 +223,17 @@ public:
      * Leader proposing an old value
      */
     STATE_UPDATING_PREVIOUS,
+    /*
+     * Leader/Peon is writing a new commit.  readable, but not
+     * writeable.
+     */
+    STATE_WRITING,
+    /*
+     * Leader/Peon is writing a new commit from a previous round.
+     */
+    STATE_WRITING_PREVIOUS,
+    // leader: refresh following a commit
+    STATE_REFRESH,
   };
 
   /**
@@ -201,6 +255,12 @@ public:
       return "updating";
     case STATE_UPDATING_PREVIOUS:
       return "updating-previous";
+    case STATE_WRITING:
+      return "writing";
+    case STATE_WRITING_PREVIOUS:
+      return "writing-previous";
+    case STATE_REFRESH:
+      return "refresh";
     default:
       return "UNKNOWN";
     }
@@ -241,6 +301,15 @@ public:
    */
   bool is_updating_previous() const { return state == STATE_UPDATING_PREVIOUS; }
 
+  /// @return 'true' if we are writing an update to disk
+  bool is_writing() const { return state == STATE_WRITING; }
+
+  /// @return 'true' if we are writing an update-previous to disk
+  bool is_writing_previous() const { return state == STATE_WRITING_PREVIOUS; }
+
+  /// @return 'true' if we are refreshing an update just committed
+  bool is_refresh() const { return state == STATE_REFRESH; }
+
 private:
   /**
    * @defgroup Paxos_h_recovery_vars Common recovery-related member variables
@@ -277,7 +346,7 @@ private:
   /**
    * Last committed value's time.
    *
-   * When the commit happened.
+   * When the commit finished.
    */
   utime_t last_commit_time;
   /**
@@ -827,6 +896,10 @@ private:
    * @}
    */
 
+
+  utime_t commit_start_stamp;
+  friend struct C_Committed;
+
   /**
    * Commit a value throughout the system.
    *
@@ -840,7 +913,8 @@ private:
    * @post Value locally stored
    * @post Quorum members instructed to commit the new value.
    */
-  void commit();
+  void commit_start();
+  void commit_finish();   ///< finish a commit after txn becomes durable
   /**
    * Commit the new value to stable storage as being the latest available
    * version.
@@ -1004,6 +1078,7 @@ public:
    */
   Paxos(Monitor *m, const string &name) 
 		 : mon(m),
+		   logger(NULL),
 		   paxos_name(name),
 		   state(STATE_RECOVERING),
 		   first_committed(0),
@@ -1027,7 +1102,8 @@ public:
 
   void dispatch(PaxosServiceMessage *m);
 
-  void read_and_prepare_transactions(MonitorDBStore::Transaction *tx, version_t from, version_t last);
+  void read_and_prepare_transactions(MonitorDBStore::TransactionRef tx,
+				     version_t from, version_t last);
 
   void init();
 
@@ -1115,12 +1191,12 @@ public:
    * @param t The transaction to which we will append the operations
    * @param bl A bufferlist containing an encoded transaction
    */
-  static void decode_append_transaction(MonitorDBStore::Transaction& t,
-				 bufferlist& bl) {
-    MonitorDBStore::Transaction vt;
+  static void decode_append_transaction(MonitorDBStore::TransactionRef t,
+					bufferlist& bl) {
+    MonitorDBStore::TransactionRef vt(new MonitorDBStore::Transaction);
     bufferlist::iterator it = bl.begin();
-    vt.decode(it);
-    t.append(vt);
+    vt->decode(it);
+    t->append(vt);
   }
 
   /**
@@ -1309,11 +1385,11 @@ inline ostream& operator<<(ostream& out, Paxos::C_Proposal& p)
   out << " " << proposed
       << " queued " << (ceph_clock_now(NULL) - p.proposal_time)
       << " tx dump:\n";
-  MonitorDBStore::Transaction t;
+  MonitorDBStore::TransactionRef t(new MonitorDBStore::Transaction);
   bufferlist::iterator p_it = p.bl.begin();
-  t.decode(p_it);
+  t->decode(p_it);
   JSONFormatter f(true);
-  t.dump(&f);
+  t->dump(&f);
   f.flush(out);
   return out;
 }

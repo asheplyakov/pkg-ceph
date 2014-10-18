@@ -13,6 +13,7 @@ noinst_HEADERS += \
   erasure-code/jerasure/ErasureCodeJerasure.h
 
 jerasure_sources = \
+  erasure-code/ErasureCode.cc \
   erasure-code/jerasure/jerasure/src/cauchy.c \
   erasure-code/jerasure/jerasure/src/galois.c \
   erasure-code/jerasure/jerasure/src/jerasure.c \
@@ -32,13 +33,15 @@ jerasure_sources = \
   erasure-code/jerasure/ErasureCodePluginJerasure.cc \
   erasure-code/jerasure/ErasureCodeJerasure.cc
 
+erasure-code/jerasure/ErasureCodePluginJerasure.cc: ./ceph_ver.h
+
 libec_jerasure_generic_la_SOURCES = ${jerasure_sources}
 libec_jerasure_generic_la_CFLAGS = ${AM_CFLAGS}  \
-	-Ierasure-code/jerasure/gf-complete/include \
-	-Ierasure-code/jerasure/jerasure/include
+	-I$(srcdir)/erasure-code/jerasure/gf-complete/include \
+	-I$(srcdir)/erasure-code/jerasure/jerasure/include
 libec_jerasure_generic_la_CXXFLAGS= ${AM_CXXFLAGS} \
-	-Ierasure-code/jerasure/gf-complete/include \
-	-Ierasure-code/jerasure/jerasure/include
+	-I$(srcdir)/erasure-code/jerasure/gf-complete/include \
+	-I$(srcdir)/erasure-code/jerasure/jerasure/include
 libec_jerasure_generic_la_LIBADD = $(LIBCRUSH) $(PTHREAD_LIBS) $(EXTRALIBS)
 libec_jerasure_generic_la_LDFLAGS = ${AM_LDFLAGS} -version-info 2:0:0
 if LINUX
@@ -53,15 +56,15 @@ libec_jerasure_sse3_la_CFLAGS = ${AM_CFLAGS}  \
 	${INTEL_SSE2_FLAGS} \
 	${INTEL_SSE3_FLAGS} \
 	${INTEL_SSSE3_FLAGS} \
-	-Ierasure-code/jerasure/gf-complete/include \
-	-Ierasure-code/jerasure/jerasure/include
+	-I$(srcdir)/erasure-code/jerasure/gf-complete/include \
+	-I$(srcdir)/erasure-code/jerasure/jerasure/include
 libec_jerasure_sse3_la_CXXFLAGS= ${AM_CXXFLAGS} \
 	${INTEL_SSE_FLAGS} \
 	${INTEL_SSE2_FLAGS} \
 	${INTEL_SSE3_FLAGS} \
 	${INTEL_SSSE3_FLAGS} \
-	-Ierasure-code/jerasure/gf-complete/include \
-	-Ierasure-code/jerasure/jerasure/include
+	-I$(srcdir)/erasure-code/jerasure/gf-complete/include \
+	-I$(srcdir)/erasure-code/jerasure/jerasure/include
 libec_jerasure_sse3_la_LIBADD = $(LIBCRUSH) $(PTHREAD_LIBS) $(EXTRALIBS)
 libec_jerasure_sse3_la_LDFLAGS = ${AM_LDFLAGS} -version-info 2:0:0
 if LINUX
@@ -78,8 +81,8 @@ libec_jerasure_sse4_la_CFLAGS = ${AM_CFLAGS}  \
 	${INTEL_SSSE3_FLAGS} \
 	${INTEL_SSE4_1_FLAGS} \
 	${INTEL_SSE4_2_FLAGS} \
-	-Ierasure-code/jerasure/gf-complete/include \
-	-Ierasure-code/jerasure/jerasure/include
+	-I$(srcdir)/erasure-code/jerasure/gf-complete/include \
+	-I$(srcdir)/erasure-code/jerasure/jerasure/include
 libec_jerasure_sse4_la_CXXFLAGS= ${AM_CXXFLAGS} \
 	${INTEL_SSE_FLAGS} \
 	${INTEL_SSE2_FLAGS} \
@@ -87,8 +90,8 @@ libec_jerasure_sse4_la_CXXFLAGS= ${AM_CXXFLAGS} \
 	${INTEL_SSSE3_FLAGS} \
 	${INTEL_SSE4_1_FLAGS} \
 	${INTEL_SSE4_2_FLAGS} \
-	-Ierasure-code/jerasure/gf-complete/include \
-	-Ierasure-code/jerasure/jerasure/include
+	-I$(srcdir)/erasure-code/jerasure/gf-complete/include \
+	-I$(srcdir)/erasure-code/jerasure/jerasure/include
 libec_jerasure_sse4_la_LIBADD = $(LIBCRUSH) $(PTHREAD_LIBS) $(EXTRALIBS)
 libec_jerasure_sse4_la_LDFLAGS = ${AM_LDFLAGS} -version-info 2:0:0
 if LINUX
@@ -99,12 +102,14 @@ erasure_codelib_LTLIBRARIES += libec_jerasure_sse4.la
 
 libec_jerasure_la_SOURCES = \
 	erasure-code/jerasure/ErasureCodePluginSelectJerasure.cc
-libec_jerasure_la_CFLAGS = ${AM_CFLAGS} 
+libec_jerasure_la_CFLAGS = ${AM_CFLAGS}
 libec_jerasure_la_CXXFLAGS= ${AM_CXXFLAGS}
 libec_jerasure_la_LIBADD = $(LIBCRUSH) $(PTHREAD_LIBS) $(EXTRALIBS)
 libec_jerasure_la_LDFLAGS = ${AM_LDFLAGS} -version-info 2:0:0
 if LINUX
 libec_jerasure_la_LDFLAGS += -export-symbols-regex '.*__erasure_code_.*'
 endif
+
+erasure-code/jerasure/ErasureCodePluginSelectJerasure.cc: ./ceph_ver.h
 
 erasure_codelib_LTLIBRARIES += libec_jerasure.la

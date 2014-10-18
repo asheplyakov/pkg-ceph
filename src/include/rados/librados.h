@@ -1713,6 +1713,15 @@ int rados_aio_stat(rados_ioctx_t io, const char *o,
 		   rados_completion_t completion,
 		   uint64_t *psize, time_t *pmtime);
 
+/**
+ * Cancel async operation
+ *
+ * @param io ioctx
+ * @param completion completion handle
+ * @returns 0 on success, negative error code on failure
+ */
+int rados_aio_cancel(rados_ioctx_t io, rados_completion_t completion);
+
 /** @} Asynchronous I/O */
 
 /**
@@ -1876,7 +1885,9 @@ void rados_write_op_set_flags(rados_write_op_t write_op, int flags);
 void rados_write_op_assert_exists(rados_write_op_t write_op);
 
 /**
- * Ensure that given xattr satisfies comparison
+ * Ensure that given xattr satisfies comparison.
+ * If the comparison is not satisfied, the return code of the
+ * operation will be -ECANCELED
  * @param write_op operation to add this action to
  * @param name name of the xattr to look up
  * @param comparison_operator currently undocumented, look for
@@ -2059,10 +2070,10 @@ void rados_write_op_set_alloc_hint(rados_write_op_t write_op,
 /**
  * Perform a write operation synchronously
  * @param write_op operation to perform
- * @io the ioctx that the object is in
- * @oid the object id
- * @mtime the time to set the mtime to, NULL for the current time
- * @flags flags to apply to the entire operation (LIBRADOS_OPERATION_*)
+ * @param io the ioctx that the object is in
+ * @param oid the object id
+ * @param mtime the time to set the mtime to, NULL for the current time
+ * @param flags flags to apply to the entire operation (LIBRADOS_OPERATION_*)
  */
 int rados_write_op_operate(rados_write_op_t write_op,
 			   rados_ioctx_t io,
@@ -2072,11 +2083,11 @@ int rados_write_op_operate(rados_write_op_t write_op,
 /**
  * Perform a write operation asynchronously
  * @param write_op operation to perform
- * @io the ioctx that the object is in
+ * @param io the ioctx that the object is in
  * @param completion what to do when operation has been attempted
- * @oid the object id
- * @mtime the time to set the mtime to, NULL for the current time
- * @flags flags to apply to the entire operation (LIBRADOS_OPERATION_*)
+ * @param oid the object id
+ * @param mtime the time to set the mtime to, NULL for the current time
+ * @param flags flags to apply to the entire operation (LIBRADOS_OPERATION_*)
  */
 int rados_aio_write_op_operate(rados_write_op_t write_op,
                                rados_ioctx_t io,
@@ -2116,6 +2127,8 @@ void rados_read_op_assert_exists(rados_read_op_t read_op);
 
 /**
  * Ensure that the an xattr satisfies a comparison
+ * If the comparison is not satisfied, the return code of the
+ * operation will be -ECANCELED
  * @param read_op operation to add this action to
  * @param name name of the xattr to look up
  * @param comparison_operator currently undocumented, look for

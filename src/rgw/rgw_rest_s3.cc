@@ -1,3 +1,6 @@
+// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
+// vim: ts=8 sw=2 smarttab
+
 #include <errno.h>
 #include <string.h>
 
@@ -296,6 +299,23 @@ void RGWGetBucketLogging_ObjStore_S3::send_response()
   s->formatter->open_object_section_in_ns("BucketLoggingStatus",
 					  "http://doc.s3.amazonaws.com/doc/2006-03-01/");
   s->formatter->close_section();
+  rgw_flush_formatter_and_reset(s, s->formatter);
+}
+
+void RGWGetBucketLocation_ObjStore_S3::send_response()
+{
+  dump_errno(s);
+  end_header(s, this);
+  dump_start(s);
+
+  string location_constraint(s->bucket_info.region);
+  if (s->bucket_info.region == "default")
+    location_constraint.clear();
+
+  s->formatter->dump_format_ns("LocationConstraint",
+			       "http://doc.s3.amazonaws.com/doc/2006-03-01/",
+			       "%s",location_constraint.c_str());
+
   rgw_flush_formatter_and_reset(s, s->formatter);
 }
 
@@ -1713,6 +1733,8 @@ RGWOp *RGWHandler_ObjStore_Bucket_S3::op_get()
 {
   if (s->info.args.sub_resource_exists("logging"))
     return new RGWGetBucketLogging_ObjStore_S3;
+  else if (s->info.args.sub_resource_exists("location"))
+    return new RGWGetBucketLocation_ObjStore_S3;
   if (is_acl_op()) {
     return new RGWGetACLs_ObjStore_S3;
   } else if (is_cors_op()) {
@@ -2047,6 +2069,12 @@ int RGW_Auth_S3_Keystone_ValidateToken::validate_s3token(const string& auth_id, 
   return 0;
 }
 
+static void init_anon_user(struct req_state *s)
+{
+  rgw_get_anon_user(s->user);
+  s->perm_mask = RGW_PERM_FULL_CONTROL;
+}
+
 /*
  * verify that a signed request comes from the keyholder
  * by checking the signature against our locally-computed version
@@ -2067,6 +2095,11 @@ int RGW_Auth_S3::authorize(RGWRados *store, struct req_state *s)
     return -EPERM;
   }
 
+  if (s->op == OP_OPTIONS) {
+    init_anon_user(s);
+    return 0;
+  }
+
   if (!s->http_auth || !(*s->http_auth)) {
     auth_id = s->info.args.get("AWSAccessKeyId");
     if (auth_id.size()) {
@@ -2080,15 +2113,14 @@ int RGW_Auth_S3::authorize(RGWRados *store, struct req_state *s)
       qsr = true;
     } else {
       /* anonymous access */
-      rgw_get_anon_user(s->user);
-      s->perm_mask = RGW_PERM_FULL_CONTROL;
+      init_anon_user(s);
       return 0;
     }
   } else {
     if (strncmp(s->http_auth, "AWS ", 4))
       return -EINVAL;
     string auth_str(s->http_auth + 4);
-    int pos = auth_str.find(':');
+    int pos = auth_str.rfind(':');
     if (pos < 0)
       return -EINVAL;
 

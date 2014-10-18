@@ -12,19 +12,11 @@
  *
  */
 
-#include <fcntl.h>
-#include <iostream>
 #include <string>
-#include <sys/stat.h>
-#include <sys/types.h>
 
-#include "mon/AuthMonitor.h"
-#include "common/ConfUtils.h"
-#include "global/global_init.h"
-#include "common/entity_name.h"
 #include "common/ceph_argparse.h"
-#include "common/config.h"
-#include "include/str_list.h"
+#include "global/global_init.h"
+#include "mon/AuthMonitor.h"
 
 using std::deque;
 using std::string;
@@ -214,6 +206,7 @@ int main(int argc, const char **argv)
     }
   }
 
+  g_ceph_context->_log->flush();
   if (action == "help") {
     usage();
     exit(0);

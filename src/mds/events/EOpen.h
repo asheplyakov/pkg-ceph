@@ -31,6 +31,8 @@ public:
     out << "EOpen " << metablob << ", " << inos.size() << " open files";
   }
 
+  EMetaBlob *get_metablob() { return &metablob; }
+
   void add_clean_inode(CInode *in) {
     if (!in->is_base()) {
       metablob.add_dir_context(in->get_projected_parent_dn()->get_dir());

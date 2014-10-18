@@ -16,6 +16,8 @@
 #ifndef CEPH_SIMPLELOCK_H
 #define CEPH_SIMPLELOCK_H
 
+#include "MDSContext.h"
+
 // -- lock types --
 // see CEPH_LOCK_*
 
@@ -197,13 +199,6 @@ private:
       _unstable = new unstable_bits_t;
     return _unstable;
   }
-  void clear_more() {
-    if (_unstable) {
-      assert(_unstable->empty());
-      delete _unstable;
-      _unstable = NULL;
-    }
-  }
   void try_clear_more() {
     if (_unstable && _unstable->empty()) {
       delete _unstable;
@@ -284,8 +279,8 @@ public:
   struct ptr_lt {
     bool operator()(const SimpleLock* l, const SimpleLock* r) const {
       // first sort by object type (dn < inode)
-      if ((l->type->type>CEPH_LOCK_DN) <  (r->type->type>CEPH_LOCK_DN)) return true;
-      if ((l->type->type>CEPH_LOCK_DN) == (r->type->type>CEPH_LOCK_DN)) {
+      if (!(l->type->type > CEPH_LOCK_DN) && (r->type->type > CEPH_LOCK_DN)) return true;
+      if ((l->type->type > CEPH_LOCK_DN) == (r->type->type > CEPH_LOCK_DN)) {
 	// then sort by object
 	if (l->parent->is_lt(r->parent)) return true;
 	if (l->parent == r->parent) {
@@ -306,10 +301,10 @@ public:
   void finish_waiters(uint64_t mask, int r=0) {
     parent->finish_waiting(mask << get_wait_shift(), r);
   }
-  void take_waiting(uint64_t mask, list<Context*>& ls) {
+  void take_waiting(uint64_t mask, list<MDSInternalContextBase*>& ls) {
     parent->take_waiting(mask << get_wait_shift(), ls);
   }
-  void add_waiter(uint64_t mask, Context *c) {
+  void add_waiter(uint64_t mask, MDSInternalContextBase *c) {
     parent->add_waiter(mask << get_wait_shift(), c);
   }
   bool is_waiter_for(uint64_t mask) const {
@@ -325,7 +320,7 @@ public:
     //assert(!is_stable() || gather_set.size() == 0);  // gather should be empty in stable states.
     return s;
   }
-  void set_state_rejoin(int s, list<Context*>& waiters) {
+  void set_state_rejoin(int s, list<MDSInternalContextBase*>& waiters) {
     if (!is_stable() && get_parent()->is_auth()) {
       state = s;
       get_parent()->auth_unpin(this);
@@ -479,7 +474,7 @@ public:
 
   // xlock
   void get_xlock(MutationRef who, client_t client) { 
-    assert(get_xlock_by() == 0);
+    assert(get_xlock_by() == MutationRef());
     assert(state == LOCK_XLOCK || is_locallock() ||
 	   state == LOCK_LOCK /* if we are a slave */);
     parent->get(MDSCacheObject::PIN_LOCK);
@@ -573,7 +568,7 @@ public:
     if (is_new)
       state = s;
   }
-  void decode_state_rejoin(bufferlist::iterator& p, list<Context*>& waiters) {
+  void decode_state_rejoin(bufferlist::iterator& p, list<MDSInternalContextBase*>& waiters) {
     __s16 s;
     ::decode(s, p);
     set_state_rejoin(s, waiters);

@@ -80,6 +80,11 @@ static inline void encode(const map<string,bufferptr> *attrset, bufferlist &bl) 
   ::encode(*attrset, bl);
 }
 
+// Flag bits
+typedef uint32_t osflagbits_t;
+const int SKIP_JOURNAL_REPLAY = 1 << 0;
+const int SKIP_MOUNT_OMAP = 1 << 1;
+
 class ObjectStore {
 protected:
   string path;
@@ -93,11 +98,13 @@ public:
    * @param type type of store. This is a string from the configuration file.
    * @param data path (or other descriptor) for data
    * @param journal path (or other descriptor) for journal (optional)
+   * @param flags which filestores should check if applicable
    */
   static ObjectStore *create(CephContext *cct,
 			     const string& type,
 			     const string& data,
-			     const string& journal);
+			     const string& journal,
+			     osflagbits_t flag = 0);
 
   Logger *logger;
 
@@ -368,6 +375,12 @@ public:
       OP_COLL_MOVE_RENAME = 38,   // oldcid, oldoid, newcid, newoid
 
       OP_SETALLOCHINT = 39,  // cid, oid, object_size, write_size
+      OP_COLL_HINT = 40, // cid, type, bl
+    };
+
+    // Transaction hint type
+    enum {
+      COLL_HINT_EXPECTED_NUM_OBJECTS = 1,
     };
 
   private:
@@ -380,6 +393,7 @@ public:
     bool use_pool_override;
     bool replica;
     bool tolerate_collection_add_enoent;
+    void *osr; // NULL on replay
 
     list<Context *> on_applied;
     list<Context *> on_commit;
@@ -522,6 +536,14 @@ public:
       return ops;
     }
 
+    void set_osr(void *s) {
+      osr = s;
+    }
+
+    void *get_osr() {
+      return osr;
+    }
+
     /**
      * iterator
      *
@@ -563,16 +585,16 @@ public:
        * stream. There is no checking that the encoded data is of the
        * correct type.
        */
-      int get_op() {
+      int decode_op() {
 	__u32 op;
 	::decode(op, p);
 	return op;
       }
-      void get_bl(bufferlist& bl) {
+      void decode_bl(bufferlist& bl) {
 	::decode(bl, p);
       }
       /// Get an oid, recognize various legacy forms and update them.
-      ghobject_t get_oid() {
+      ghobject_t decode_oid() {
 	ghobject_t oid;
 	if (sobject_encoding) {
 	  sobject_t soid;
@@ -580,7 +602,7 @@ public:
 	  oid.hobj.snap = soid.snap;
 	  oid.hobj.oid = soid.oid;
 	  oid.generation = ghobject_t::NO_GEN;
-	  oid.shard_id = ghobject_t::NO_SHARD;
+	  oid.shard_id = shard_id_t::NO_SHARD;
 	} else {
 	  ::decode(oid, p);
 	  if (use_pool_override && pool_override != -1 &&
@@ -590,36 +612,36 @@ public:
 	}
 	return oid;
       }
-      coll_t get_cid() {
+      coll_t decode_cid() {
 	coll_t c;
 	::decode(c, p);
 	return c;
       }
-      uint64_t get_length() {
+      uint64_t decode_length() {
 	uint64_t len;
 	::decode(len, p);
 	return len;
       }
-      string get_attrname() {
+      string decode_attrname() {
 	string s;
 	::decode(s, p);
 	return s;
       }
-      string get_key() {
+      string decode_key() {
 	string s;
 	::decode(s, p);
 	return s;
       }
-      void get_attrset(map<string,bufferptr>& aset) {
+      void decode_attrset(map<string,bufferptr>& aset) {
 	::decode(aset, p);
       }
-      void get_attrset(map<string,bufferlist>& aset) {
+      void decode_attrset(map<string,bufferlist>& aset) {
 	::decode(aset, p);
       }
-      void get_keyset(set<string> &keys) {
+      void decode_keyset(set<string> &keys) {
 	::decode(keys, p);
       }
-      uint32_t get_u32() {
+      uint32_t decode_u32() {
 	uint32_t bits;
 	::decode(bits, p);
 	return bits;
@@ -823,6 +845,24 @@ public:
       ::encode(cid, tbl);
       ops++;
     }
+
+    /**
+     * Give the collection a hint.
+     *
+     * @param cid  - collection id.
+     * @param type - hint type.
+     * @param hint - the hint payload, which contains the customized
+     *               data along with the hint type.
+     */
+     void collection_hint(coll_t cid, uint32_t type, const bufferlist& hint) {
+       __u32 op = OP_COLL_HINT;
+       ::encode(op, tbl);
+       ::encode(cid, tbl);
+       ::encode(type, tbl);
+       ::encode(hint, tbl);
+       ops++;
+     }
+
     /// remove the collection, the collection must be empty
     void remove_collection(coll_t cid) {
       __u32 op = OP_RMCOLL;
@@ -1027,13 +1067,13 @@ public:
       ops(0), pad_unused_bytes(0), largest_data_len(0), largest_data_off(0), largest_data_off_in_tbl(0),
       sobject_encoding(false), pool_override(-1), use_pool_override(false),
       replica(false),
-      tolerate_collection_add_enoent(false) {}
+      tolerate_collection_add_enoent(false), osr(NULL) {}
 
     Transaction(bufferlist::iterator &dp) :
       ops(0), pad_unused_bytes(0), largest_data_len(0), largest_data_off(0), largest_data_off_in_tbl(0),
       sobject_encoding(false), pool_override(-1), use_pool_override(false),
       replica(false),
-      tolerate_collection_add_enoent(false) {
+      tolerate_collection_add_enoent(false), osr(NULL) {
       decode(dp);
     }
 
@@ -1041,7 +1081,7 @@ public:
       ops(0), pad_unused_bytes(0), largest_data_len(0), largest_data_off(0), largest_data_off_in_tbl(0),
       sobject_encoding(false), pool_override(-1), use_pool_override(false),
       replica(false),
-      tolerate_collection_add_enoent(false) {
+      tolerate_collection_add_enoent(false), osr(NULL) {
       bufferlist::iterator dp = nbl.begin();
       decode(dp);
     }
@@ -1192,13 +1232,16 @@ public:
   virtual bool test_mount_in_use() = 0;
   virtual int mount() = 0;
   virtual int umount() = 0;
-  virtual int get_max_object_name_length() = 0;
+  virtual unsigned get_max_object_name_length() = 0;
+  virtual unsigned get_max_attr_name_length() = 0;
   virtual int mkfs() = 0;  // wipe
   virtual int mkjournal() = 0; // journal only
   virtual void set_allow_sharded_objects() = 0;
   virtual bool get_allow_sharded_objects() = 0;
 
   virtual int statfs(struct statfs *buf) = 0;
+
+  virtual void collect_metadata(map<string,string> *pm) { }
 
   /**
    * get the most recent "on-disk format version" supported
@@ -1353,7 +1396,7 @@ public:
   }
   int getattr(
     coll_t cid, const ghobject_t& oid,
-    const string name, bufferlist& value) {
+    const string& name, bufferlist& value) {
     bufferptr bp;
     int r = getattr(cid, oid, name.c_str(), bp);
     value.push_back(bp);
@@ -1366,10 +1409,9 @@ public:
    * @param cid collection for object
    * @param oid oid of object
    * @param aset place to put output result.
-   * @param user_only true -> only user attributes are return else all attributes are returned
    * @returns 0 on success, negative error code on failure.
    */
-  virtual int getattrs(coll_t cid, const ghobject_t& oid, map<string,bufferptr>& aset, bool user_only = false) = 0;
+  virtual int getattrs(coll_t cid, const ghobject_t& oid, map<string,bufferptr>& aset) = 0;
 
   /**
    * getattrs -- get all of the xattrs of an object
@@ -1377,12 +1419,11 @@ public:
    * @param cid collection for object
    * @param oid oid of object
    * @param aset place to put output result.
-   * @param user_only true -> only user attributes are return else all attributes are returned
    * @returns 0 on success, negative error code on failure.
    */
-  int getattrs(coll_t cid, const ghobject_t& oid, map<string,bufferlist>& aset, bool user_only = false) {
+  int getattrs(coll_t cid, const ghobject_t& oid, map<string,bufferlist>& aset) {
     map<string,bufferptr> bmap;
-    int r = getattrs(cid, oid, bmap, user_only);
+    int r = getattrs(cid, oid, bmap);
     for (map<string,bufferptr>::iterator i = bmap.begin();
 	i != bmap.end();
 	++i) {

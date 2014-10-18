@@ -191,7 +191,7 @@ public:
 
   public:
     /// Provide the final size of the copied object to the CopyCallback
-    virtual ~CopyCallback() {};
+    virtual ~CopyCallback() {}
   };
 
   friend class CopyFromCallback;
@@ -389,7 +389,7 @@ public:
     info.stats = stat;
   }
 
-  void schedule_work(
+  void schedule_recovery_work(
     GenContext<ThreadPool::TPHandle&> *c);
 
   pg_shard_t whoami_shard() const {
@@ -417,7 +417,7 @@ public:
 
   ceph_tid_t get_tid() { return osd->get_tid(); }
 
-  LogClientTemp clog_error() { return osd->clog.error(); }
+  LogClientTemp clog_error() { return osd->clog->error(); }
 
   /*
    * Capture all object state associated with an in-progress read or write.
@@ -438,6 +438,7 @@ public:
     bool modify;          // (force) modification (even if op_t is empty)
     bool user_modify;     // user-visible modification
     bool undirty;         // user explicitly un-dirtying this object
+    bool cache_evict;     ///< true if this is a cache eviction
 
     // side effects
     list<watch_info_t> watch_connects;
@@ -539,7 +540,7 @@ public:
 	      ReplicatedPG *_pg) :
       op(_op), reqid(_reqid), ops(_ops), obs(_obs), snapset(0),
       new_obs(_obs->oi, _obs->exists),
-      modify(false), user_modify(false), undirty(false),
+      modify(false), user_modify(false), undirty(false), cache_evict(false),
       bytes_written(0), bytes_read(0), user_at_version(0),
       current_osd_subop_num(0),
       op_t(NULL),
@@ -618,6 +619,7 @@ public:
     bool queue_snap_trimmer;
 
     Context *on_applied;
+    bool log_op_stat;
     
     RepGather(OpContext *c, ObjectContextRef pi, ceph_tid_t rt,
 	      eversion_t lc) :
@@ -631,7 +633,8 @@ public:
       sent_disk(false),
       pg_local_last_complete(lc),
       queue_snap_trimmer(false),
-      on_applied(NULL) { }
+      on_applied(NULL),
+      log_op_stat(false) { }
 
     RepGather *get() {
       nref++;
@@ -799,6 +802,7 @@ protected:
   void hit_set_persist();   ///< persist hit info
   bool hit_set_apply_log(); ///< apply log entries to update in-memory HitSet
   void hit_set_trim(RepGather *repop, unsigned max); ///< discard old HitSets
+  void hit_set_in_memory_trim();                     ///< discard old in memory HitSets
 
   hobject_t get_hit_set_current_object(utime_t stamp);
   hobject_t get_hit_set_archive_object(utime_t start, utime_t end);
@@ -806,8 +810,8 @@ protected:
   // agent
   boost::scoped_ptr<TierAgentState> agent_state;
 
-  friend class C_AgentFlushStartStop;
-  friend class C_HitSetFlushing;
+  friend struct C_AgentFlushStartStop;
+  friend struct C_HitSetFlushing;
 
   void agent_setup();       ///< initialize agent state
   bool agent_work(int max); ///< entry point to do some agent work
@@ -1053,7 +1057,8 @@ protected:
 				 bool write_ordered,
 				 ObjectContextRef obc, int r,
 				 const hobject_t& missing_oid,
-				 bool must_promote);
+				 bool must_promote,
+				 bool in_hit_set = false);
   /**
    * This helper function tells the client to redirect their request elsewhere.
    */
@@ -1271,9 +1276,9 @@ public:
 		 bufferlist& odata);
 
   void do_request(
-    OpRequestRef op,
+    OpRequestRef& op,
     ThreadPool::TPHandle &handle);
-  void do_op(OpRequestRef op);
+  void do_op(OpRequestRef& op);
   bool pg_op_must_wait(MOSDOp *op);
   void do_pg_op(OpRequestRef op);
   void do_sub_op(OpRequestRef op);
@@ -1331,8 +1336,7 @@ private:
     set<RepGather *> repops;
     snapid_t snap_to_trim;
     bool need_share_pg_info;
-    bool requeue;
-    SnapTrimmer(ReplicatedPG *pg) : pg(pg), need_share_pg_info(false), requeue(false) {}
+    SnapTrimmer(ReplicatedPG *pg) : pg(pg), need_share_pg_info(false) {}
     ~SnapTrimmer();
     void log_enter(const char *state_name);
     void log_exit(const char *state_name, utime_t duration);

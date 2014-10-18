@@ -33,7 +33,7 @@
 namespace ceph {
 
 #ifdef BUFFER_DEBUG
-static uint32_t simple_spinlock_t buffer_debug_lock = SIMPLE_SPINLOCK_INITIALIZER;
+static simple_spinlock_t buffer_debug_lock = SIMPLE_SPINLOCK_INITIALIZER;
 # define bdout { simple_spin_lock(&buffer_debug_lock); std::cout
 # define bendl std::endl; simple_spin_unlock(&buffer_debug_lock); }
 #else
@@ -134,7 +134,7 @@ static uint32_t simple_spinlock_t buffer_debug_lock = SIMPLE_SPINLOCK_INITIALIZE
       : data(c), len(l), nref(0),
 	crc_lock("buffer::raw::crc_lock", false, false)
     { }
-    virtual ~raw() {};
+    virtual ~raw() {}
 
     // no copying.
     raw(const raw &other);
@@ -1133,8 +1133,10 @@ void buffer::list::rebuild_page_aligned()
 	     (!p->is_page_aligned() ||
 	      !p->is_n_page_sized() ||
 	      (offset & ~CEPH_PAGE_MASK)));
-    ptr nb(buffer::create_page_aligned(unaligned._len));
-    unaligned.rebuild(nb);
+    if (!(unaligned.is_contiguous() && unaligned._buffers.front().is_page_aligned())) {
+      ptr nb(buffer::create_page_aligned(unaligned._len));
+      unaligned.rebuild(nb);
+    }
     _buffers.insert(p, unaligned._buffers.front());
   }
 }
@@ -1433,7 +1435,7 @@ void buffer::list::rebuild_page_aligned()
     // splice in *replace (implement me later?)
     
     last_p = begin();  // just in case we were in the removed region.
-  };
+  }
 
   void buffer::list::write(int off, int len, std::ostream& out) const
   {
@@ -1539,7 +1541,7 @@ int buffer::list::read_fd_zero_copy(int fd, size_t len)
   try {
     bufferptr bp = buffer::create_zero_copy(len, fd, NULL);
     append(bp);
-  } catch (buffer::error_code e) {
+  } catch (buffer::error_code &e) {
     return e.code;
   } catch (buffer::malformed_input) {
     return -EIO;
@@ -1691,6 +1693,20 @@ __u32 buffer::list::crc32c(__u32 crc) const
   }
   return crc;
 }
+
+
+/**
+ * Binary write all contents to a C++ stream
+ */
+void buffer::list::write_stream(std::ostream &out) const
+{
+  for (std::list<ptr>::const_iterator p = _buffers.begin(); p != _buffers.end(); ++p) {
+    if (p->length() > 0) {
+      out.write(p->c_str(), p->length());
+    }
+  }
+}
+
 
 void buffer::list::hexdump(std::ostream &out) const
 {

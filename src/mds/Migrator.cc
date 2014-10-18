@@ -81,6 +81,20 @@
 #undef dout_prefix
 #define dout_prefix *_dout << "mds." << mds->get_nodeid() << ".migrator "
 
+
+class MigratorContext : public MDSInternalContextBase {
+protected:
+  Migrator *mig;
+  MDS *get_mds() {
+    return mig->mds;
+  }
+public:
+  MigratorContext(Migrator *mig_) : mig(mig_) {
+    assert(mig != NULL);
+  }
+};
+
+
 /* This function DOES put the passed message before returning*/
 void Migrator::dispatch(Message *m)
 {
@@ -132,11 +146,10 @@ void Migrator::dispatch(Message *m)
 }
 
 
-class C_MDC_EmptyImport : public Context {
-  Migrator *mig;
+class C_MDC_EmptyImport : public MigratorContext {
   CDir *dir;
 public:
-  C_MDC_EmptyImport(Migrator *m, CDir *d) : mig(m), dir(d) {}
+  C_MDC_EmptyImport(Migrator *m, CDir *d) : MigratorContext(m), dir(d) {}
   void finish(int r) {
     mig->export_empty_import(dir);
   }
@@ -245,14 +258,12 @@ void Migrator::export_try_cancel(CDir *dir, bool notify_peer)
     dout(10) << "export state=locking : dropping locks and removing auth_pin" << dendl;
     it->second.state = EXPORT_CANCELLED;
     dir->auth_unpin(this);
-    dir->state_clear(CDir::STATE_EXPORTING);
     break;
   case EXPORT_DISCOVERING:
     dout(10) << "export state=discovering : canceling freeze and removing auth_pin" << dendl;
     it->second.state = EXPORT_CANCELLED;
     dir->unfreeze_tree();  // cancel the freeze
     dir->auth_unpin(this);
-    dir->state_clear(CDir::STATE_EXPORTING);
     if (notify_peer && mds->mdsmap->is_clientreplay_or_active_or_stopping(it->second.peer)) // tell them.
       mds->send_message_mds(new MExportDirCancel(dir->dirfrag(), it->second.tid), it->second.peer);
     break;
@@ -261,7 +272,6 @@ void Migrator::export_try_cancel(CDir *dir, bool notify_peer)
     dout(10) << "export state=freezing : canceling freeze" << dendl;
     it->second.state = EXPORT_CANCELLED;
     dir->unfreeze_tree();  // cancel the freeze
-    dir->state_clear(CDir::STATE_EXPORTING);
     if (notify_peer && mds->mdsmap->is_clientreplay_or_active_or_stopping(it->second.peer)) // tell them.
       mds->send_message_mds(new MExportDirCancel(dir->dirfrag(), it->second.tid), it->second.peer);
     break;
@@ -297,7 +307,6 @@ void Migrator::export_try_cancel(CDir *dir, bool notify_peer)
     dir->unfreeze_tree();
     cache->adjust_subtree_auth(dir, mds->get_nodeid());
     cache->try_subtree_merge(dir);  // NOTE: this may journal subtree_map as side effect
-    dir->state_clear(CDir::STATE_EXPORTING);
     if (notify_peer && mds->mdsmap->is_clientreplay_or_active_or_stopping(it->second.peer)) // tell them.
       mds->send_message_mds(new MExportDirCancel(dir->dirfrag(), it->second.tid), it->second.peer);
     break;
@@ -306,7 +315,6 @@ void Migrator::export_try_cancel(CDir *dir, bool notify_peer)
     dout(10) << "export state=exporting : reversing, and unfreezing" << dendl;
     it->second.state = EXPORT_CANCELLED;
     export_reverse(dir);
-    dir->state_clear(CDir::STATE_EXPORTING);
     break;
 
   case EXPORT_LOGGINGFINISH:
@@ -323,22 +331,25 @@ void Migrator::export_try_cancel(CDir *dir, bool notify_peer)
   if (it->second.state == EXPORT_CANCELLED) {
     // wake up any waiters
     mds->queue_waiters(it->second.waiting_for_finish);
+
+    MutationRef mut = it->second.mut;
+
+    export_state.erase(it);
+    dir->state_clear(CDir::STATE_EXPORTING);
+
+    // send pending import_maps?  (these need to go out when all exports have finished.)
+    cache->maybe_send_pending_resolves();
+
     // drop locks
     if (state == EXPORT_LOCKING || state == EXPORT_DISCOVERING) {
-      MDRequestRef mdr = ceph::static_pointer_cast<MDRequestImpl,
-						   MutationImpl>(it->second.mut);
+      MDRequestRef mdr = ceph::static_pointer_cast<MDRequestImpl, MutationImpl>(mut);
       assert(mdr);
       if (mdr->more()->waiting_on_slave.empty())
 	mds->mdcache->request_finish(mdr);
-    } else if (it->second.mut) {
-      MutationRef& mut = it->second.mut;
+    } else if (mut) {
       mds->locker->drop_locks(mut.get());
       mut->cleanup();
     }
-
-    export_state.erase(it);
-    // send pending import_maps?  (these need to go out when all exports have finished.)
-    cache->maybe_send_pending_resolves();
 
     cache->show_subtrees();
 
@@ -663,16 +674,17 @@ void Migrator::maybe_do_queued_export()
 
 
 
-class C_MDC_ExportFreeze : public Context {
-  Migrator *mig;
+class C_MDC_ExportFreeze : public MigratorContext {
   CDir *ex;   // dir i'm exporting
-
+  uint64_t tid;
 public:
-  C_MDC_ExportFreeze(Migrator *m, CDir *e) :
-	mig(m), ex(e) {}
+  C_MDC_ExportFreeze(Migrator *m, CDir *e, uint64_t t) :
+	MigratorContext(m), ex(e), tid(t) {
+          assert(ex != NULL);
+        }
   virtual void finish(int r) {
     if (r >= 0)
-      mig->export_frozen(ex);
+      mig->export_frozen(ex, tid);
   }
 };
 
@@ -820,7 +832,7 @@ void Migrator::dispatch_export_dir(MDRequestRef& mdr)
   // start the freeze, but hold it up with an auth_pin.
   dir->freeze_tree();
   assert(dir->is_freezing_tree());
-  dir->add_waiter(CDir::WAIT_FROZEN, new C_MDC_ExportFreeze(this, dir));
+  dir->add_waiter(CDir::WAIT_FROZEN, new C_MDC_ExportFreeze(this, dir, it->second.tid));
 }
 
 /*
@@ -859,15 +871,16 @@ void Migrator::handle_export_discover_ack(MExportDirDiscoverAck *m)
   m->put();  // done
 }
 
-class C_M_ExportSessionsFlushed : public Context {
-  Migrator *migrator;
+class C_M_ExportSessionsFlushed : public MigratorContext {
   CDir *dir;
   uint64_t tid;
 public:
-  C_M_ExportSessionsFlushed(Migrator *m, CDir *d, uint64_t t) :
-    migrator(m), dir(d), tid(t) {}
+  C_M_ExportSessionsFlushed(Migrator *m, CDir *d, uint64_t t)
+   : MigratorContext(m), dir(d), tid(t) {
+    assert(dir != NULL);
+  }
   void finish(int r) {
-    migrator->export_sessions_flushed(dir, tid);
+    mig->export_sessions_flushed(dir, tid);
   }
 };
 
@@ -889,15 +902,19 @@ void Migrator::export_sessions_flushed(CDir *dir, uint64_t tid)
     export_go(dir);     // start export.
 }
 
-void Migrator::export_frozen(CDir *dir)
+void Migrator::export_frozen(CDir *dir, uint64_t tid)
 {
   dout(7) << "export_frozen on " << *dir << dendl;
-  assert(dir->is_frozen());
-  assert(dir->get_cum_auth_pins() == 0);
 
   map<CDir*,export_state_t>::iterator it = export_state.find(dir);
-  assert(it != export_state.end());
+  if (it == export_state.end() || it->second.tid != tid) {
+    dout(7) << "export must have aborted" << dendl;
+    return;
+  }
+
   assert(it->second.state == EXPORT_FREEZING);
+  assert(dir->is_frozen());
+  assert(dir->get_cum_auth_pins() == 0);
 
   CInode *diri = dir->get_inode();
 
@@ -1036,7 +1053,7 @@ void Migrator::export_frozen(CDir *dir)
   set<client_t> export_client_set;
   get_export_client_set(dir, export_client_set);
 
-  C_GatherBuilder gather(g_ceph_context);
+  MDSGatherBuilder gather(g_ceph_context);
   mds->server->flush_client_sessions(export_client_set, gather);
   if (gather.has_subs()) {
     it->second.warning_ack_waiting.insert(-1);
@@ -1151,15 +1168,16 @@ void Migrator::handle_export_prep_ack(MExportDirPrepAck *m)
 }
 
 
-class C_M_ExportGo : public Context {
-  Migrator *migrator;
+class C_M_ExportGo : public MigratorContext {
   CDir *dir;
   uint64_t tid;
 public:
   C_M_ExportGo(Migrator *m, CDir *d, uint64_t t) :
-    migrator(m), dir(d), tid(t) {}
+    MigratorContext(m), dir(d), tid(t) {
+      assert(dir != NULL);
+    }
   void finish(int r) {
-    migrator->export_go_synced(dir, tid);
+    mig->export_go_synced(dir, tid);
   }
 };
 
@@ -1223,8 +1241,8 @@ void Migrator::export_go_synced(CDir *dir, uint64_t tid)
   assert(g_conf->mds_kill_export_at != 8);
 
   // stats
-  if (mds->logger) mds->logger->inc(l_mds_ex);
-  if (mds->logger) mds->logger->inc(l_mds_iexp, num_exported_inodes);
+  if (mds->logger) mds->logger->inc(l_mds_exported);
+  if (mds->logger) mds->logger->inc(l_mds_exported_inodes, num_exported_inodes);
 
   cache->show_subtrees();
 }
@@ -1310,7 +1328,7 @@ void Migrator::finish_export_inode_caps(CInode *in, int peer,
 
 void Migrator::finish_export_inode(CInode *in, utime_t now, int peer,
 				   map<client_t,Capability::Import>& peer_imported,
-				   list<Context*>& finished)
+				   list<MDSInternalContextBase*>& finished)
 {
   dout(12) << "finish_export_inode " << *in << dendl;
 
@@ -1457,7 +1475,7 @@ int Migrator::encode_export_dir(bufferlist& exportbl,
 
 void Migrator::finish_export_dir(CDir *dir, utime_t now, int peer,
 				 map<inodeno_t,map<client_t,Capability::Import> >& peer_imported,
-				 list<Context*>& finished)
+				 list<MDSInternalContextBase*>& finished, int *num_dentries)
 {
   dout(10) << "finish_export_dir " << *dir << dendl;
 
@@ -1496,20 +1514,22 @@ void Migrator::finish_export_dir(CDir *dir, utime_t now, int peer,
       // subdirs?
       in->get_nested_dirfrags(subdirs);
     }
+
+    cache->touch_dentry_bottom(dn); // move dentry to tail of LRU
+    ++(*num_dentries);
   }
 
   // subdirs
   for (list<CDir*>::iterator it = subdirs.begin(); it != subdirs.end(); ++it) 
-    finish_export_dir(*it, now, peer, peer_imported, finished);
+    finish_export_dir(*it, now, peer, peer_imported, finished, num_dentries);
 }
 
-class C_MDS_ExportFinishLogged : public Context {
-  Migrator *migrator;
+class C_MDS_ExportFinishLogged : public MigratorContext {
   CDir *dir;
 public:
-  C_MDS_ExportFinishLogged(Migrator *m, CDir *d) : migrator(m), dir(d) {}
+  C_MDS_ExportFinishLogged(Migrator *m, CDir *d) : MigratorContext(m), dir(d) {}
   void finish(int r) {
-    migrator->export_logged_finish(dir);
+    mig->export_logged_finish(dir);
   }
 };
 
@@ -1562,8 +1582,7 @@ void Migrator::handle_export_ack(MExportDirAck *m)
   }
 
   // log export completion, then finish (unfreeze, trigger finish context, etc.)
-  mds->mdlog->submit_entry(le);
-  mds->mdlog->wait_for_safe(new C_MDS_ExportFinishLogged(this, dir));
+  mds->mdlog->submit_entry(le, new C_MDS_ExportFinishLogged(this, dir));
   mds->mdlog->flush();
   assert (g_conf->mds_kill_export_at != 10);
   
@@ -1761,9 +1780,10 @@ void Migrator::export_finish(CDir *dir)
   assert(g_conf->mds_kill_export_at != 13);
   
   // finish export (adjust local cache state)
-  C_Contexts *fin = new C_Contexts(g_ceph_context);
-  finish_export_dir(dir, ceph_clock_now(g_ceph_context),
-		    it->second.peer, it->second.peer_imported, fin->contexts);
+  int num_dentries = 0;
+  C_ContextsBase<MDSInternalContextBase, MDSInternalContextGather> *fin = new C_ContextsBase<MDSInternalContextBase, MDSInternalContextGather>(g_ceph_context);
+  finish_export_dir(dir, ceph_clock_now(g_ceph_context), it->second.peer,
+		    it->second.peer_imported, fin->contexts, &num_dentries);
   dir->add_waiter(CDir::WAIT_UNFREEZE, fin);
 
   // unfreeze
@@ -1794,26 +1814,27 @@ void Migrator::export_finish(CDir *dir)
   // discard delayed expires
   cache->discard_delayed_expire(dir);
 
-  // remove from exporting list, clean up state
-  dir->state_clear(CDir::STATE_EXPORTING);
-
   // queue finishers
   mds->queue_waiters(it->second.waiting_for_finish);
 
-  // unpin path
-  MutationRef& mut = it->second.mut;
-  if (mut) {
-    mds->locker->drop_locks(mut.get());
-    mut->cleanup();
-  }
-
+  MutationRef mut = it->second.mut;
+  // remove from exporting list, clean up state
   export_state.erase(it);
+  dir->state_clear(CDir::STATE_EXPORTING);
 
   cache->show_subtrees();
   audit();
 
+  cache->trim(-1, num_dentries); // try trimming exported dentries
+
   // send pending import_maps?
   mds->mdcache->maybe_send_pending_resolves();
+
+  // drop locks, unpin path
+  if (mut) {
+    mds->locker->drop_locks(mut.get());
+    mut->cleanup();
+  }
   
   maybe_do_queued_export();
 }
@@ -1960,7 +1981,7 @@ void Migrator::handle_export_prep(MExportDirPrep *m)
 
   CDir *dir;
   CInode *diri;
-  list<Context*> finished;
+  list<MDSInternalContextBase*> finished;
 
   // assimilate root dir.
   map<dirfrag_t,import_state_t>::iterator it = import_state.find(m->get_dirfrag());
@@ -2150,8 +2171,7 @@ void Migrator::handle_export_prep(MExportDirPrep *m)
 
 
 
-class C_MDS_ImportDirLoggedStart : public Context {
-  Migrator *migrator;
+class C_MDS_ImportDirLoggedStart : public MigratorContext {
   dirfrag_t df;
   CDir *dir;
   int from;
@@ -2160,10 +2180,10 @@ public:
   map<client_t,uint64_t> sseqmap;
 
   C_MDS_ImportDirLoggedStart(Migrator *m, CDir *d, int f) :
-    migrator(m), df(d->dirfrag()), dir(d), from(f) {
+    MigratorContext(m), df(d->dirfrag()), dir(d), from(f) {
   }
   void finish(int r) {
-    migrator->import_logged_start(df, dir, from, imported_client_map, sseqmap);
+    mig->import_logged_start(df, dir, from, imported_client_map, sseqmap);
   }
 };
 
@@ -2225,11 +2245,15 @@ void Migrator::handle_export_dir(MExportDir *m)
   
   // include bounds in EImportStart
   set<CDir*> import_bounds;
-  cache->get_subtree_bounds(dir, import_bounds);
-  for (set<CDir*>::iterator it = import_bounds.begin();
-       it != import_bounds.end();
-       ++it) 
-    le->metablob.add_dir(*it, false);  // note that parent metadata is already in the event
+  for (vector<dirfrag_t>::iterator p = m->bounds.begin();
+       p != m->bounds.end();
+       ++p) {
+    CDir *bd = cache->get_dirfrag(*p);
+    assert(bd);
+    le->metablob.add_dir(bd, false);  // note that parent metadata is already in the event
+    import_bounds.insert(bd);
+  }
+  cache->verify_subtree_bounds(dir, import_bounds);
 
   // adjust popularity
   mds->balancer->add_import(dir, now);
@@ -2241,14 +2265,13 @@ void Migrator::handle_export_dir(MExportDir *m)
   assert (g_conf->mds_kill_import_at != 6);
 
   // log it
-  mds->mdlog->submit_entry(le);
-  mds->mdlog->wait_for_safe(onlogged);
+  mds->mdlog->submit_entry(le, onlogged);
   mds->mdlog->flush();
 
   // some stats
   if (mds->logger) {
-    mds->logger->inc(l_mds_im);
-    mds->logger->inc(l_mds_iim, num_imported_inodes);
+    mds->logger->inc(l_mds_imported);
+    mds->logger->inc(l_mds_imported_inodes, num_imported_inodes);
   }
 
   m->put();
@@ -2321,6 +2344,7 @@ void Migrator::import_reverse(CDir *dir)
       !dir->get_inode()->has_subtree_root_dirfrag(mds->get_nodeid()))
     dir->get_inode()->clear_scatter_dirty();
 
+  int num_dentries = 0;
   // adjust auth bits.
   list<CDir*> q;
   q.push_back(dir);
@@ -2373,6 +2397,9 @@ void Migrator::import_reverse(CDir *dir)
 	  if (bounds.count(*p) == 0)
 	    q.push_back(*p);
       }
+
+      cache->touch_dentry_bottom(dn); // move dentry to tail of LRU
+      ++num_dentries;
     }
   }
 
@@ -2405,6 +2432,8 @@ void Migrator::import_reverse(CDir *dir)
   mds->mdlog->start_submit_entry(new EImportFinish(dir, false));	// log failure
 
   cache->try_subtree_merge(dir);  // NOTE: this may journal subtree map as side effect
+
+  cache->trim(-1, num_dentries); // try trimming dentries
 
   // bystanders?
   if (stat.bystanders.empty()) {
@@ -2460,7 +2489,7 @@ void Migrator::import_reverse_unfreeze(CDir *dir)
   assert(dir);
   dout(7) << "import_reverse_unfreeze " << *dir << dendl;
   dir->unfreeze_tree();
-  list<Context*> ls;
+  list<MDSInternalContextBase*> ls;
   mds->queue_waiters(ls);
   cache->discard_delayed_expire(dir);
   import_reverse_final(dir);
@@ -2472,14 +2501,18 @@ void Migrator::import_reverse_final(CDir *dir)
 
   // clean up
   map<dirfrag_t, import_state_t>::iterator it = import_state.find(dir->dirfrag());
-  if (it->second.mut) {
-    mds->locker->drop_locks(it->second.mut.get());
-    it->second.mut->cleanup();
-  }
+  assert(it != import_state.end());
+
+  MutationRef mut = it->second.mut;
   import_state.erase(it);
 
   // send pending import_maps?
   mds->mdcache->maybe_send_pending_resolves();
+
+  if (mut) {
+    mds->locker->drop_locks(mut.get());
+    mut->cleanup();
+  }
 
   cache->show_subtrees();
   //audit();  // this fails, bc we munge up the subtree map during handle_import_map (resolve phase)
@@ -2620,10 +2653,11 @@ void Migrator::import_finish(CDir *dir, bool notify, bool last)
   MutationRef mut = it->second.mut;
   import_state.erase(it);
 
-  mds->mdlog->start_submit_entry(new EImportFinish(dir, true));
-
   // adjust auth, with possible subtree merge.
   cache->adjust_subtree_auth(dir, mds->get_nodeid());
+
+  mds->mdlog->start_submit_entry(new EImportFinish(dir, true));
+
   cache->try_subtree_merge(dir);   // NOTE: this may journal subtree_map as sideffect
 
   // process delayed expires
@@ -2824,10 +2858,10 @@ int Migrator::decode_import_dir(bufferlist::iterator& blp,
   // take all waiters on this dir
   // NOTE: a pass of imported data is guaranteed to get all of my waiters because
   // a replica's presense in my cache implies/forces it's presense in authority's.
-  list<Context*> waiters;
+  list<MDSInternalContextBase*> waiters;
   
   dir->take_waiting(CDir::WAIT_ANY_MASK, waiters);
-  for (list<Context*>::iterator it = waiters.begin();
+  for (list<MDSInternalContextBase*>::iterator it = waiters.begin();
        it != waiters.end();
        ++it) 
     import_root->add_waiter(CDir::WAIT_UNFREEZE, *it);  // UNFREEZE will get kicked both on success or failure
@@ -2969,8 +3003,7 @@ void Migrator::export_caps(CInode *in)
   mds->send_message_mds(ex, dest);
 }
 
-class C_M_LoggedImportCaps : public Context {
-  Migrator *migrator;
+class C_M_LoggedImportCaps : public MigratorContext {
   CInode *in;
   int from;
 public:
@@ -2978,9 +3011,9 @@ public:
   map<client_t,entity_inst_t> client_map;
   map<client_t,uint64_t> sseqmap;
 
-  C_M_LoggedImportCaps(Migrator *m, CInode *i, int f) : migrator(m), in(i), from(f) {}
+  C_M_LoggedImportCaps(Migrator *m, CInode *i, int f) : MigratorContext(m), in(i), from(f) {}
   void finish(int r) {
-    migrator->logged_import_caps(in, from, peer_exports, client_map, sseqmap);
+    mig->logged_import_caps(in, from, peer_exports, client_map, sseqmap);
   }  
 };
 
@@ -3009,9 +3042,7 @@ void Migrator::handle_export_caps(MExportCaps *ex)
   version_t pv = mds->server->prepare_force_open_sessions(finish->client_map, finish->sseqmap);
   
   ESessions *le = new ESessions(pv, ex->client_map);
-  mds->mdlog->start_entry(le);
-  mds->mdlog->submit_entry(le);
-  mds->mdlog->wait_for_safe(finish);
+  mds->mdlog->start_submit_entry(le, finish);
   mds->mdlog->flush();
 
   ex->put();

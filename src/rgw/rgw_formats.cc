@@ -97,12 +97,12 @@ void RGWFormatter_Plain::close_section()
 
 void RGWFormatter_Plain::dump_unsigned(const char *name, uint64_t u)
 {
-  dump_value_int(name, "%"PRIu64, u);
+  dump_value_int(name, "%" PRIu64, u);
 }
 
 void RGWFormatter_Plain::dump_int(const char *name, int64_t u)
 {
-  dump_value_int(name, "%"PRId64, u);
+  dump_value_int(name, "%" PRId64, u);
 }
 
 void RGWFormatter_Plain::dump_float(const char *name, double d)
@@ -121,10 +121,9 @@ std::ostream& RGWFormatter_Plain::dump_stream(const char *name)
   assert(0);
 }
 
-void RGWFormatter_Plain::dump_format(const char *name, const char *fmt, ...)
+void RGWFormatter_Plain::dump_format_va(const char *name, const char *ns, bool quoted, const char *fmt, va_list ap)
 {
   char buf[LARGE_SIZE];
-  va_list ap;
   const char *format;
 
   struct plain_stack_entry& entry = stack.back();
@@ -139,9 +138,7 @@ void RGWFormatter_Plain::dump_format(const char *name, const char *fmt, ...)
   if (!should_print)
     return;
 
-  va_start(ap, fmt);
   vsnprintf(buf, LARGE_SIZE, fmt, ap);
-  va_end(ap);
   if (len)
     format = "\n%s";
   else

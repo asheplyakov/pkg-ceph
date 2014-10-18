@@ -30,6 +30,7 @@ function run_osd() {
 
     touch $dir/ceph.conf
 
+    mkdir -p $osd_data
     ./ceph-disk $ceph_disk_args \
         prepare $osd_data || return 1
 
@@ -44,6 +45,7 @@ function run_osd() {
     ceph_args+=" --pid-file=$dir/osd-\$id.pidfile"
     ceph_args+=" "
     ceph_args+="$@"
+    mkdir -p $osd_data
     CEPH_ARGS="$ceph_args" ./ceph-disk $ceph_disk_args \
         activate \
         --mark-init=none \
@@ -52,4 +54,33 @@ function run_osd() {
     [ "$id" = "$(cat $osd_data/whoami)" ] || return 1
 
     ./ceph osd crush create-or-move "$id" 1 root=default host=localhost
+
+    status=1
+    # Workaround for http://tracker.ceph.com/issues/8630
+    for ((i=0; i < 60; i++)); do
+        if ! ceph osd dump | grep "osd.$id up"; then
+            sleep 1
+        else
+            status=0
+            break
+        fi
+    done
+
+    return $status
+}
+
+function get_osds() {
+    local poolname=$1
+    local objectname=$2
+
+    ./ceph osd map $poolname $objectname | \
+       perl -p -e 's/.*up \(\[(.*?)\].*/$1/; s/,/ /g'
+}
+
+function get_pg() {
+    local poolname=$1
+    local objectname=$2
+
+    ./ceph osd map $poolname $objectname | \
+       perl -p -e 's/.*\((.*?)\) -> up.*/$1/'
 }

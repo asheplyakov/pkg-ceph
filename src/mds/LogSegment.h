@@ -15,7 +15,6 @@
 #ifndef CEPH_LOGSEGMENT_H
 #define CEPH_LOGSEGMENT_H
 
-#include "include/dlist.h"
 #include "include/elist.h"
 #include "include/interval_set.h"
 #include "include/Context.h"
@@ -23,6 +22,7 @@
 #include "CInode.h"
 #include "CDentry.h"
 #include "CDir.h"
+#include "MDSContext.h"
 
 #include "include/unordered_set.h"
 using ceph::unordered_set;
@@ -33,11 +33,13 @@ class CDentry;
 class MDS;
 struct MDSlaveUpdate;
 
+typedef uint64_t log_segment_seq_t;
+
 class LogSegment {
  public:
+  const log_segment_seq_t seq;
   uint64_t offset, end;
   int num_events;
-  uint64_t trimmable_at;
 
   // dirty items
   elist<CDir*>    dirty_dirfrags, new_dirfrags;
@@ -67,11 +69,11 @@ class LogSegment {
   map<int,version_t> tablev;
 
   // try to expire
-  void try_to_expire(MDS *mds, C_GatherBuilder &gather_bld, int op_prio);
+  void try_to_expire(MDS *mds, MDSGatherBuilder &gather_bld, int op_prio);
 
   // cons
-  LogSegment(loff_t off) :
-    offset(off), end(off), num_events(0), trimmable_at(0),
+  LogSegment(uint64_t _seq, loff_t off=-1) :
+    seq(_seq), offset(off), end(off), num_events(0),
     dirty_dirfrags(member_offset(CDir, item_dirty)),
     new_dirfrags(member_offset(CDir, item_new)),
     dirty_inodes(member_offset(CInode, item_dirty)),

@@ -14,6 +14,11 @@
 #include "librados.h"
 #include "rados_types.hpp"
 
+namespace libradosstriper
+{
+  class RadosStriper;
+}
+
 namespace librados
 {
   using ceph::bufferlist;
@@ -777,6 +782,14 @@ namespace librados
 
     int aio_stat(const std::string& oid, AioCompletion *c, uint64_t *psize, time_t *pmtime);
 
+    /**
+     * Cancel aio operation
+     *
+     * @param c completion handle
+     * @returns 0 on success, negative error code on failure
+     */
+    int aio_cancel(AioCompletion *c);
+
     int aio_exec(const std::string& oid, AioCompletion *c, const char *cls, const char *method,
 	         bufferlist& inbl, bufferlist *outbl);
 
@@ -860,6 +873,7 @@ namespace librados
     IoCtx(IoCtxImpl *io_ctx_impl_);
 
     friend class Rados; // Only Rados can use our private constructor to create IoCtxes.
+    friend class libradosstriper::RadosStriper; // Striper needs to see our IoCtxImpl
     friend class ObjectWriteOperation;  // copy_from needs to see our IoCtxImpl
 
     IoCtxImpl *io_ctx_impl;
@@ -935,7 +949,7 @@ namespace librados
     static AioCompletion *aio_create_completion();
     static AioCompletion *aio_create_completion(void *cb_arg, callback_t cb_complete,
 						callback_t cb_safe);
-
+    
     friend std::ostream& operator<<(std::ostream &oss, const Rados& r);
   private:
     // We don't allow assignment or copying
