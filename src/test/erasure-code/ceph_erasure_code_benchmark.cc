@@ -1,7 +1,7 @@
 // -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
 // vim: ts=8 sw=2 smarttab
 /*
- * Ceph - scalable distributed file system
+ * Ceph distributed storage system
  *
  * Copyright (C) 2013,2014 Cloudwatt <libre.licensing@cloudwatt.com>
  *
@@ -124,11 +124,23 @@ int ErasureCodeBench::encode()
 {
   ErasureCodePluginRegistry &instance = ErasureCodePluginRegistry::instance();
   ErasureCodeInterfaceRef erasure_code;
-  int code = instance.factory(plugin, parameters, &erasure_code, cerr);
-  if (code)
+  stringstream messages;
+  int code = instance.factory(plugin, parameters, &erasure_code, messages);
+  if (code) {
+    cerr << messages.str() << endl;
     return code;
+  }
   int k = atoi(parameters["k"].c_str());
   int m = atoi(parameters["m"].c_str());
+
+  if (erasure_code->get_data_chunk_count() != (unsigned int)k ||
+      (erasure_code->get_chunk_count() - erasure_code->get_data_chunk_count()
+       != (unsigned int)m)) {
+    cout << "paramter k is " << k << "/m is " << m << ". But data chunk count is "
+      << erasure_code->get_data_chunk_count() <<"/parity chunk count is "
+      << erasure_code->get_chunk_count() - erasure_code->get_data_chunk_count() << endl;
+    return -EINVAL;
+  }
 
   bufferlist in;
   in.append(string(in_size, 'X'));
@@ -152,12 +164,23 @@ int ErasureCodeBench::decode()
 {
   ErasureCodePluginRegistry &instance = ErasureCodePluginRegistry::instance();
   ErasureCodeInterfaceRef erasure_code;
-  int code = instance.factory(plugin, parameters, &erasure_code, cerr);
-  if (code)
+  stringstream messages;
+  int code = instance.factory(plugin, parameters, &erasure_code, messages);
+  if (code) {
+    cerr << messages.str() << endl;
     return code;
+  }
   int k = atoi(parameters["k"].c_str());
   int m = atoi(parameters["m"].c_str());
 
+  if (erasure_code->get_data_chunk_count() != (unsigned int)k ||
+      (erasure_code->get_chunk_count() - erasure_code->get_data_chunk_count()
+       != (unsigned int)m)) {
+    cout << "paramter k is " << k << "/m is " << m << ". But data chunk count is "
+      << erasure_code->get_data_chunk_count() <<"/parity chunk count is "
+      << erasure_code->get_chunk_count() - erasure_code->get_data_chunk_count() << endl;
+    return -EINVAL;
+  }
   bufferlist in;
   in.append(string(in_size, 'X'));
 

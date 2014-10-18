@@ -23,8 +23,12 @@ libosd_la_SOURCES = \
 	common/TrackedOp.cc \
 	osd/SnapMapper.cc \
 	objclass/class_api.cc
+
 libosd_la_CXXFLAGS = ${AM_CXXFLAGS}
 libosd_la_LIBADD = $(LIBOSDC) $(LIBOS) $(LIBOSD_TYPES) $(LIBOS_TYPES)
+if WITH_LTTNG
+libosd_la_LIBADD += $(LIBOSD_TP)
+endif
 noinst_LTLIBRARIES += libosd.la
 
 noinst_HEADERS += \
@@ -50,3 +54,6 @@ noinst_HEADERS += \
 	osd/Watch.h \
 	osd/osd_types.h
 
+if WITH_KINETIC
+libosd_la_CXXFLAGS += -std=gnu++11
+endif

@@ -1,3 +1,6 @@
+// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
+// vim: ts=8 sw=2 smarttab
+
 #include "rgw_op.h"
 #include "rgw_usage.h"
 #include "rgw_rest_usage.h"
@@ -86,11 +89,11 @@ void RGWOp_Usage_Delete::execute() {
 RGWOp *RGWHandler_Usage::op_get()
 {
   return new RGWOp_Usage_Get;
-};
+}
 
 RGWOp *RGWHandler_Usage::op_delete()
 {
   return new RGWOp_Usage_Delete;
-};
+}
 
 

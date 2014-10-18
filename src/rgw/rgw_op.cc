@@ -1,3 +1,5 @@
+// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
+// vim: ts=8 sw=2 smarttab
 
 #include <errno.h>
 #include <stdlib.h>
@@ -657,7 +659,7 @@ int RGWGetObj::read_user_manifest_part(rgw_bucket& bucket, RGWObjEnt& ent, RGWAc
   perfcounter->inc(l_rgw_get_b, cur_end - cur_ofs);
   while (cur_ofs <= cur_end) {
     bufferlist bl;
-    ret = store->get_obj(obj_ctx, NULL, &handle, part, bl, cur_ofs, cur_end);
+    ret = store->get_obj(obj_ctx, NULL, &handle, part, bl, cur_ofs, cur_end, NULL);
     if (ret < 0)
       goto done_err;
 
@@ -756,7 +758,7 @@ static int iterate_user_manifest_parts(CephContext *cct, RGWRados *store, off_t 
 static int get_obj_user_manifest_iterate_cb(rgw_bucket& bucket, RGWObjEnt& ent, RGWAccessControlPolicy *bucket_policy, off_t start_ofs, off_t end_ofs,
                                        void *param)
 {
-  RGWGetObj *op = (RGWGetObj *)param;
+  RGWGetObj *op = static_cast<RGWGetObj *>(param);
   return op->read_user_manifest_part(bucket, ent, bucket_policy, start_ofs, end_ofs);
 }
 
@@ -1116,6 +1118,14 @@ int RGWGetBucketLogging::verify_permission()
   return 0;
 }
 
+int RGWGetBucketLocation::verify_permission()
+{
+  if (s->user.user_id.compare(s->bucket_owner.get_id()) != 0)
+    return -EACCES;
+
+  return 0;
+}
+
 int RGWCreateBucket::verify_permission()
 {
   if (!rgw_user_is_authenticated(s->user))
@@ -1172,7 +1182,6 @@ void RGWCreateBucket::execute()
   bufferlist aclbl;
   bufferlist corsbl;
   bool existed;
-  int r;
   rgw_obj obj(store->zone.domain_root, s->bucket_name_str);
   obj_version objv, *pobjv = NULL;
 
@@ -1196,8 +1205,8 @@ void RGWCreateBucket::execute()
   s->bucket_owner.set_id(s->user.user_id);
   s->bucket_owner.set_name(s->user.display_name);
   if (s->bucket_exists) {
-    r = get_policy_from_attr(s->cct, store, s->obj_ctx, s->bucket_info, s->bucket_attrs,
-                             &old_policy, obj);
+    int r = get_policy_from_attr(s->cct, store, s->obj_ctx, s->bucket_info, s->bucket_attrs,
+                                 &old_policy, obj);
     if (r >= 0)  {
       if (old_policy.get_owner().get_id().compare(s->user.user_id) != 0) {
         ret = -EEXIST;
@@ -1527,7 +1536,7 @@ void RGWPutObj::pre_exec()
 static int put_obj_user_manifest_iterate_cb(rgw_bucket& bucket, RGWObjEnt& ent, RGWAccessControlPolicy *bucket_policy, off_t start_ofs, off_t end_ofs,
                                        void *param)
 {
-  RGWPutObj *op = (RGWPutObj *)param;
+  RGWPutObj *op = static_cast<RGWPutObj *>(param);
   return op->user_manifest_iterate_cb(bucket, ent, bucket_policy, start_ofs, end_ofs);
 }
 
@@ -1566,21 +1575,14 @@ int RGWPutObj::user_manifest_iterate_cb(rgw_bucket& bucket, RGWObjEnt& ent, RGWA
 static int put_data_and_throttle(RGWPutObjProcessor *processor, bufferlist& data, off_t ofs,
                                  MD5 *hash, bool need_to_wait)
 {
-  const unsigned char *data_ptr = (hash ? (const unsigned char *)data.c_str() : NULL);
   bool again;
-  uint64_t len = data.length();
 
   do {
     void *handle;
 
-    int ret = processor->handle_data(data, ofs, &handle, &again);
+    int ret = processor->handle_data(data, ofs, hash, &handle, &again);
     if (ret < 0)
       return ret;
-
-    if (hash) {
-      hash->Update(data_ptr, len);
-      hash = NULL; /* only calculate hash once */
-    }
 
     ret = processor->throttle_data(handle, need_to_wait);
     if (ret < 0)
@@ -1705,7 +1707,7 @@ void RGWPutObj::execute()
     ofs += len;
   } while (len > 0);
 
-  if (!chunked_upload && (uint64_t)ofs != s->content_length) {
+  if (!chunked_upload && ofs != s->content_length) {
     ret = -ERR_REQUEST_TIMEOUT;
     goto done;
   }
@@ -1719,6 +1721,7 @@ void RGWPutObj::execute()
   }
 
   if (need_calc_md5) {
+    processor->complete_hash(&hash);
     hash.Final(m);
 
     buf_to_hex(m, CEPH_CRYPTO_MD5_DIGESTSIZE, calc_md5);
@@ -2553,7 +2556,6 @@ void RGWInitMultipart::execute()
 static int get_multipart_info(RGWRados *store, struct req_state *s, string& meta_oid,
                               RGWAccessControlPolicy *policy, map<string, bufferlist>& attrs)
 {
-  map<string, bufferlist> parts_map;
   map<string, bufferlist>::iterator iter;
   bufferlist header;
 

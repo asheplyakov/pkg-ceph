@@ -54,11 +54,14 @@
 #define CEPH_OSD_FEATURE_INCOMPAT_LEVELDBLOG CompatSet::Feature(9, "leveldblog")
 #define CEPH_OSD_FEATURE_INCOMPAT_SNAPMAPPER CompatSet::Feature(10, "snapmapper")
 #define CEPH_OSD_FEATURE_INCOMPAT_SHARDS CompatSet::Feature(11, "sharded objects")
+#define CEPH_OSD_FEATURE_INCOMPAT_HINTS CompatSet::Feature(12, "transaction hints")
+
+
+/// max recovery priority for MBackfillReserve
+#define OSD_RECOVERY_PRIORITY_MAX 255u
 
 
 typedef hobject_t collection_list_handle_t;
-
-typedef uint8_t shard_id_t;
 
 /// convert a single CPEH_OSD_FLAG_* to a string
 const char *ceph_osd_flag_name(unsigned flag);
@@ -67,13 +70,13 @@ const char *ceph_osd_flag_name(unsigned flag);
 string ceph_osd_flag_string(unsigned flags);
 
 struct pg_shard_t {
-  int osd;
+  int32_t osd;
   shard_id_t shard;
-  pg_shard_t() : osd(-1), shard(ghobject_t::NO_SHARD) {}
-  explicit pg_shard_t(int osd) : osd(osd), shard(ghobject_t::NO_SHARD) {}
+  pg_shard_t() : osd(-1), shard(shard_id_t::NO_SHARD) {}
+  explicit pg_shard_t(int osd) : osd(osd), shard(shard_id_t::NO_SHARD) {}
   pg_shard_t(int osd, shard_id_t shard) : osd(osd), shard(shard) {}
   static pg_shard_t undefined_shard() {
-    return pg_shard_t(-1, ghobject_t::NO_SHARD);
+    return pg_shard_t(-1, shard_id_t::NO_SHARD);
   }
   bool is_undefined() const {
     return osd == -1;
@@ -395,9 +398,9 @@ CEPH_HASH_NAMESPACE_END
 struct spg_t {
   pg_t pgid;
   shard_id_t shard;
-  spg_t() : shard(ghobject_t::NO_SHARD) {}
+  spg_t() : shard(shard_id_t::NO_SHARD) {}
   spg_t(pg_t pgid, shard_id_t shard) : pgid(pgid), shard(shard) {}
-  explicit spg_t(pg_t pgid) : pgid(pgid), shard(ghobject_t::NO_SHARD) {}
+  explicit spg_t(pg_t pgid) : pgid(pgid), shard(shard_id_t::NO_SHARD) {}
   unsigned get_split_bits(unsigned pg_num) const {
     return pgid.get_split_bits(pg_num);
   }
@@ -429,7 +432,7 @@ struct spg_t {
     return is_split;
   }
   bool is_no_shard() const {
-    return shard == ghobject_t::NO_SHARD;
+    return shard == shard_id_t::NO_SHARD;
   }
   void encode(bufferlist &bl) const {
     ENCODE_START(1, 1, bl);
@@ -465,8 +468,6 @@ ostream& operator<<(ostream& out, const spg_t &pg);
 
 class coll_t {
 public:
-  const static coll_t META_COLL;
-
   coll_t()
     : str("meta")
   { }
@@ -637,7 +638,7 @@ inline bool operator>(const eversion_t& l, const eversion_t& r) {
 inline bool operator>=(const eversion_t& l, const eversion_t& r) {
   return (l.epoch == r.epoch) ? (l.version >= r.version):(l.epoch >= r.epoch);
 }
-inline ostream& operator<<(ostream& out, const eversion_t e) {
+inline ostream& operator<<(ostream& out, const eversion_t& e) {
   return out << e.epoch << "'" << e.version;
 }
 
@@ -747,7 +748,7 @@ inline ostream& operator<<(ostream& out, const osd_stat_t& s) {
 #define PG_STATE_SPLITTING    (1<<7)  // i am splitting
 #define PG_STATE_SCRUBBING    (1<<8)  // scrubbing
 #define PG_STATE_SCRUBQ       (1<<9)  // queued for scrub
-#define PG_STATE_DEGRADED     (1<<10) // pg membership not complete
+#define PG_STATE_DEGRADED     (1<<10) // pg contains objects with reduced redundancy
 #define PG_STATE_INCONSISTENT (1<<11) // pg replicas are inconsistent (but shouldn't be)
 #define PG_STATE_PEERING      (1<<12) // pg is (re)peering
 #define PG_STATE_REPAIR       (1<<13) // pg should repair on next scrub
@@ -760,6 +761,7 @@ inline ostream& operator<<(ostream& out, const osd_stat_t& s) {
 #define PG_STATE_BACKFILL  (1<<20) // [active] backfilling pg content
 #define PG_STATE_BACKFILL_TOOFULL (1<<21) // backfill can't proceed: too full
 #define PG_STATE_RECOVERY_WAIT (1<<22) // waiting for recovery reservations
+#define PG_STATE_UNDERSIZED    (1<<23) // pg acting < pool size
 
 std::string pg_state_string(int state);
 
@@ -846,6 +848,7 @@ struct pg_pool_t {
     CACHEMODE_WRITEBACK = 1,             ///< write to cache, flush later
     CACHEMODE_FORWARD = 2,               ///< forward if not in cache
     CACHEMODE_READONLY = 3,              ///< handle reads, forward writes [not strongly consistent]
+    CACHEMODE_READFORWARD = 4            ///< forward reads, write to cache flush later
   } cache_mode_t;
   static const char *get_cache_mode_name(cache_mode_t m) {
     switch (m) {
@@ -853,6 +856,7 @@ struct pg_pool_t {
     case CACHEMODE_WRITEBACK: return "writeback";
     case CACHEMODE_FORWARD: return "forward";
     case CACHEMODE_READONLY: return "readonly";
+    case CACHEMODE_READFORWARD: return "readforward";
     default: return "unknown";
     }
   }
@@ -865,6 +869,8 @@ struct pg_pool_t {
       return CACHEMODE_FORWARD;
     if (s == "readonly")
       return CACHEMODE_READONLY;
+    if (s == "readforward")
+      return CACHEMODE_READFORWARD;
     return (cache_mode_t)-1;
   }
   const char *get_cache_mode_name() const {
@@ -877,6 +883,7 @@ struct pg_pool_t {
     case CACHEMODE_READONLY:
       return false;
     case CACHEMODE_WRITEBACK:
+    case CACHEMODE_READFORWARD:
       return true;
     default:
       assert(0 == "implement me");
@@ -966,8 +973,12 @@ public:
   HitSet::Params hit_set_params; ///< The HitSet params to use on this pool
   uint32_t hit_set_period;      ///< periodicity of HitSet segments (seconds)
   uint32_t hit_set_count;       ///< number of periods to retain
+  uint32_t min_read_recency_for_promote;   ///< minimum number of HitSet to check before promote
 
   uint32_t stripe_width;        ///< erasure coded stripe size in bytes
+
+  uint64_t expected_num_objects; ///< expected number of objects on this pool, a value of 0 indicates
+                                 ///< user does not specify any expected value
 
   pg_pool_t()
     : flags(0), type(0), size(0), min_size(0),
@@ -990,7 +1001,9 @@ public:
       hit_set_params(),
       hit_set_period(0),
       hit_set_count(0),
-      stripe_width(0)
+      min_read_recency_for_promote(0),
+      stripe_width(0),
+      expected_num_objects(0)
   { }
 
   void dump(Formatter *f) const;
@@ -1156,6 +1169,7 @@ struct object_stat_sum_t {
   int64_t num_object_copies;  // num_objects * num_replicas
   int64_t num_objects_missing_on_primary;
   int64_t num_objects_degraded;
+  int64_t num_objects_misplaced;
   int64_t num_objects_unfound;
   int64_t num_rd, num_rd_kb;
   int64_t num_wr, num_wr_kb;
@@ -1169,11 +1183,14 @@ struct object_stat_sum_t {
   int64_t num_whiteouts;
   int64_t num_objects_omap;
   int64_t num_objects_hit_set_archive;
+  int64_t num_bytes_hit_set_archive;
 
   object_stat_sum_t()
     : num_bytes(0),
       num_objects(0), num_object_clones(0), num_object_copies(0),
-      num_objects_missing_on_primary(0), num_objects_degraded(0), num_objects_unfound(0),
+      num_objects_missing_on_primary(0), num_objects_degraded(0),
+      num_objects_misplaced(0),
+      num_objects_unfound(0),
       num_rd(0), num_rd_kb(0), num_wr(0), num_wr_kb(0),
       num_scrub_errors(0), num_shallow_scrub_errors(0),
       num_deep_scrub_errors(0),
@@ -1183,7 +1200,8 @@ struct object_stat_sum_t {
       num_objects_dirty(0),
       num_whiteouts(0),
       num_objects_omap(0),
-      num_objects_hit_set_archive(0)
+      num_objects_hit_set_archive(0),
+      num_bytes_hit_set_archive(0)
   {}
 
   void floor(int64_t f) {
@@ -1194,6 +1212,7 @@ struct object_stat_sum_t {
     FLOOR(num_object_copies);
     FLOOR(num_objects_missing_on_primary);
     FLOOR(num_objects_degraded);
+    FLOOR(num_objects_misplaced);
     FLOOR(num_objects_unfound);
     FLOOR(num_rd);
     FLOOR(num_rd_kb);
@@ -1209,6 +1228,7 @@ struct object_stat_sum_t {
     FLOOR(num_whiteouts);
     FLOOR(num_objects_omap);
     FLOOR(num_objects_hit_set_archive);
+    FLOOR(num_bytes_hit_set_archive);
 #undef FLOOR
   }
 
@@ -1227,6 +1247,7 @@ struct object_stat_sum_t {
     SPLIT(num_object_copies);
     SPLIT(num_objects_missing_on_primary);
     SPLIT(num_objects_degraded);
+    SPLIT(num_objects_misplaced);
     SPLIT(num_objects_unfound);
     SPLIT(num_rd);
     SPLIT(num_rd_kb);
@@ -1242,6 +1263,7 @@ struct object_stat_sum_t {
     SPLIT(num_whiteouts);
     SPLIT(num_objects_omap);
     SPLIT(num_objects_hit_set_archive);
+    SPLIT(num_bytes_hit_set_archive);
 #undef SPLIT
   }
 
@@ -1343,6 +1365,8 @@ struct pg_stat_t {
   utime_t last_active;  // state & PG_STATE_ACTIVE
   utime_t last_clean;   // state & PG_STATE_CLEAN
   utime_t last_unstale; // (state & PG_STATE_STALE) == 0
+  utime_t last_undegraded; // (state & PG_STATE_DEGRADED) == 0
+  utime_t last_fullsized; // (state & PG_STATE_UNDERSIZED) == 0
 
   eversion_t log_start;         // (log_start,version]
   eversion_t ondisk_log_start;  // there may be more on disk
@@ -1364,8 +1388,10 @@ struct pg_stat_t {
   int64_t log_size;
   int64_t ondisk_log_size;    // >= active_log_size
 
-  vector<int> up, acting;
+  vector<int32_t> up, acting;
   epoch_t mapping_epoch;
+
+  vector<int32_t> blocked_by;  ///< osds on which the pg is blocked
 
   utime_t last_became_active;
 
@@ -1374,10 +1400,11 @@ struct pg_stat_t {
   bool dirty_stats_invalid;
   bool omap_stats_invalid;
   bool hitset_stats_invalid;
+  bool hitset_bytes_stats_invalid;
 
   /// up, acting primaries
-  int up_primary;
-  int acting_primary;
+  int32_t up_primary;
+  int32_t acting_primary;
 
   pg_stat_t()
     : reported_seq(0),
@@ -1391,6 +1418,7 @@ struct pg_stat_t {
       dirty_stats_invalid(false),
       omap_stats_invalid(false),
       hitset_stats_invalid(false),
+      hitset_bytes_stats_invalid(false),
       up_primary(-1),
       acting_primary(-1)
   { }
@@ -1700,8 +1728,8 @@ struct pg_notify_t {
   shard_id_t to;
   shard_id_t from;
   pg_notify_t() :
-    query_epoch(0), epoch_sent(0), to(ghobject_t::no_shard()),
-    from(ghobject_t::no_shard()) {}
+    query_epoch(0), epoch_sent(0), to(shard_id_t::NO_SHARD),
+    from(shard_id_t::NO_SHARD) {}
   pg_notify_t(
     shard_id_t to,
     shard_id_t from,
@@ -1727,11 +1755,11 @@ ostream &operator<<(ostream &lhs, const pg_notify_t &notify);
  */
 class OSDMap;
 struct pg_interval_t {
-  vector<int> up, acting;
+  vector<int32_t> up, acting;
   epoch_t first, last;
   bool maybe_went_rw;
-  int primary;
-  int up_primary;
+  int32_t primary;
+  int32_t up_primary;
 
   pg_interval_t()
     : first(0), last(0),
@@ -1746,12 +1774,29 @@ struct pg_interval_t {
   static void generate_test_instances(list<pg_interval_t*>& o);
 
   /**
+   * Determines whether there is an interval change
+   */
+  static bool is_new_interval(
+    int old_acting_primary,                     ///< [in] primary as of lastmap
+    int new_acting_primary,                     ///< [in] primary as of lastmap
+    const vector<int> &old_acting,              ///< [in] acting as of lastmap
+    const vector<int> &new_acting,              ///< [in] acting as of osdmap
+    int old_up_primary,                         ///< [in] up primary of lastmap
+    int new_up_primary,                         ///< [in] up primary of osdmap
+    const vector<int> &old_up,                  ///< [in] up as of lastmap
+    const vector<int> &new_up,                  ///< [in] up as of osdmap
+    ceph::shared_ptr<const OSDMap> osdmap,  ///< [in] current map
+    ceph::shared_ptr<const OSDMap> lastmap, ///< [in] last map
+    pg_t pgid                                   ///< [in] pgid for pg
+    );
+
+  /**
    * Integrates a new map into *past_intervals, returns true
    * if an interval was closed out.
    */
   static bool check_new_interval(
     int old_acting_primary,                     ///< [in] primary as of lastmap
-    int new_acting_primary,                     ///< [in] primary as of lastmap
+    int new_acting_primary,                     ///< [in] primary as of osdmap
     const vector<int> &old_acting,              ///< [in] acting as of lastmap
     const vector<int> &new_acting,              ///< [in] acting as of osdmap
     int old_up_primary,                         ///< [in] up primary of lastmap
@@ -1762,7 +1807,6 @@ struct pg_interval_t {
     epoch_t last_epoch_clean,                   ///< [in] current
     ceph::shared_ptr<const OSDMap> osdmap,  ///< [in] current map
     ceph::shared_ptr<const OSDMap> lastmap, ///< [in] last map
-    int64_t poolid,                             ///< [in] pool for pg
     pg_t pgid,                                  ///< [in] pgid for pg
     map<epoch_t, pg_interval_t> *past_intervals,///< [out] intervals
     ostream *out = 0                            ///< [out] debug ostream
@@ -1804,8 +1848,8 @@ struct pg_query_t {
   shard_id_t to;
   shard_id_t from;
 
-  pg_query_t() : type(-1), epoch_sent(0), to(ghobject_t::NO_SHARD),
-		 from(ghobject_t::NO_SHARD) {}
+  pg_query_t() : type(-1), epoch_sent(0), to(shard_id_t::NO_SHARD),
+		 from(shard_id_t::NO_SHARD) {}
   pg_query_t(
     int t,
     shard_id_t to,
@@ -2614,6 +2658,7 @@ struct object_info_t {
 
   uint64_t size;
   utime_t mtime;
+  utime_t local_mtime; // local mtime
 
   // note: these are currently encoded into a total 16 bits; see
   // encode()/decode() for the weirdness.
@@ -2931,6 +2976,9 @@ public:
       rwstate.snaptrimmer_write_marker = false;
       *requeue_snaptrimmer = true;
     }
+  }
+  bool is_request_pending() {
+    return (rwstate.count > 0);
   }
 
   ObjectContext()

@@ -11,6 +11,7 @@ ostream& operator<<(ostream &out, Inode &in)
 {
   out << in.vino() << "("
       << "ref=" << in._ref
+      << " ll_ref=" << in.ll_ref
       << " cap_refs=" << in.cap_refs
       << " open=" << in.open_by_mode
       << " mode=" << oct << in.mode << dec
@@ -137,7 +138,7 @@ int Inode::put_cap_ref(int cap)
 
 bool Inode::is_any_caps()
 {
-  return caps.size();
+  return !caps.empty() || snap_caps;
 }
 
 bool Inode::cap_is_valid(Cap* cap)

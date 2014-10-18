@@ -39,6 +39,7 @@ Notify::Notify(
     in_progress_watchers(num_watchers),
     complete(false),
     discarded(false),
+    timed_out(false),
     payload(payload),
     timeout(timeout),
     cookie(cookie),
@@ -97,7 +98,8 @@ void Notify::do_timeout()
     return;
   }
 
-  in_progress_watchers = 0; // we give up TODO: we should return an error code
+  in_progress_watchers = 0; // we give up
+  timed_out = true;         // we will send the client and error code
   maybe_complete_notify();
   assert(complete);
   set<WatchRef> _watchers;
@@ -170,6 +172,8 @@ void Notify::maybe_complete_notify()
   if (!in_progress_watchers) {
     MWatchNotify *reply(new MWatchNotify(cookie, version, notify_id,
 					 WATCH_NOTIFY, payload));
+    if (timed_out)
+      reply->return_code = -ETIMEDOUT;
     osd->send_message_osd_client(reply, client.get());
     unregister_cb();
     complete = true;
@@ -281,7 +285,7 @@ Watch::~Watch() {
   assert(!conn);
 }
 
-bool Watch::connected() { return conn; }
+bool Watch::connected() { return !!conn; }
 
 Context *Watch::get_delayed_cb()
 {
@@ -319,12 +323,14 @@ void Watch::connect(ConnectionRef con)
   dout(10) << "connecting" << dendl;
   conn = con;
   OSD::Session* sessionref(static_cast<OSD::Session*>(con->get_priv()));
-  sessionref->wstate.addWatch(self.lock());
-  sessionref->put();
-  for (map<uint64_t, NotifyRef>::iterator i = in_progress_notifies.begin();
-       i != in_progress_notifies.end();
-       ++i) {
-    send_notify(i->second);
+  if (sessionref) {
+    sessionref->wstate.addWatch(self.lock());
+    sessionref->put();
+    for (map<uint64_t, NotifyRef>::iterator i = in_progress_notifies.begin();
+	 i != in_progress_notifies.end();
+	 ++i) {
+      send_notify(i->second);
+    }
   }
   unregister_cb();
 }
@@ -357,8 +363,10 @@ void Watch::discard_state()
   discarded = true;
   if (conn) {
     OSD::Session* sessionref(static_cast<OSD::Session*>(conn->get_priv()));
-    sessionref->wstate.removeWatch(self.lock());
-    sessionref->put();
+    if (sessionref) {
+      sessionref->wstate.removeWatch(self.lock());
+      sessionref->put();
+    }
     conn = ConnectionRef();
   }
   obc = ObjectContextRef();

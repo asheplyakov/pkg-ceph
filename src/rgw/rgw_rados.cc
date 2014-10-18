@@ -1,3 +1,6 @@
+// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
+// vim: ts=8 sw=2 smarttab
+
 #include <errno.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -669,8 +672,6 @@ int RGWObjManifest::generator::create_next(uint64_t ofs)
   if (ofs < last_ofs) /* only going forward */
     return -EINVAL;
 
-  string obj_name = manifest->prefix;
-
   uint64_t max_head_size = manifest->get_max_head_size();
 
   if (ofs <= max_head_size) {
@@ -689,7 +690,6 @@ int RGWObjManifest::generator::create_next(uint64_t ofs)
 
   last_ofs = ofs;
   manifest->set_obj_size(ofs);
-
 
   manifest->get_implicit_location(cur_part_id, cur_stripe, ofs, NULL, &cur_obj);
 
@@ -876,6 +876,11 @@ int RGWPutObjProcessor::complete(string& etag, time_t *mtime, time_t set_mtime, 
   return 0;
 }
 
+CephContext *RGWPutObjProcessor::ctx()
+{
+  return store->ctx();
+}
+
 RGWPutObjProcessor::~RGWPutObjProcessor()
 {
   if (is_complete)
@@ -898,10 +903,12 @@ int RGWPutObjProcessor_Plain::prepare(RGWRados *store, void *obj_ctx, string *oi
   obj.init(bucket, obj_str);
 
   return 0;
-};
+}
 
-int RGWPutObjProcessor_Plain::handle_data(bufferlist& bl, off_t _ofs, void **phandle, bool *again)
+int RGWPutObjProcessor_Plain::handle_data(bufferlist& bl, off_t _ofs, MD5 *hash, void **phandle, bool *again)
 {
+  assert(!hash);
+
   *again = false;
 
   if (ofs != _ofs)
@@ -1028,7 +1035,7 @@ int RGWPutObjProcessor_Atomic::write_data(bufferlist& bl, off_t ofs, void **phan
   return RGWPutObjProcessor_Aio::handle_obj_data(cur_obj, bl, ofs - cur_part_ofs, ofs, phandle, exclusive);
 }
 
-int RGWPutObjProcessor_Atomic::handle_data(bufferlist& bl, off_t ofs, void **phandle, bool *again)
+int RGWPutObjProcessor_Atomic::handle_data(bufferlist& bl, off_t ofs, MD5 *hash, void **phandle, bool *again)
 {
   *again = false;
 
@@ -1062,7 +1069,10 @@ int RGWPutObjProcessor_Atomic::handle_data(bufferlist& bl, off_t ofs, void **pha
   if (!data_ofs && !immutable_head()) {
     first_chunk.claim(bl);
     obj_len = (uint64_t)first_chunk.length();
-    int r = prepare_next_part(first_chunk.length());
+    if (hash) {
+      hash->Update((const byte *)first_chunk.c_str(), obj_len);
+    }
+    int r = prepare_next_part(obj_len);
     if (r < 0) {
       return r;
     }
@@ -1074,7 +1084,19 @@ int RGWPutObjProcessor_Atomic::handle_data(bufferlist& bl, off_t ofs, void **pha
   bool exclusive = (!write_ofs && immutable_head()); /* immutable head object, need to verify nothing exists there
                                                         we could be racing with another upload, to the same
                                                         object and cleanup can be messy */
-  return write_data(bl, write_ofs, phandle, exclusive);
+  int ret = write_data(bl, write_ofs, phandle, exclusive);
+  if (ret >= 0) { /* we might return, need to clear bl as it was already sent */
+    if (hash) {
+      hash->Update((const byte *)bl.c_str(), bl.length());
+    }
+    bl.clear();
+  }
+  return ret;
+}
+
+void RGWPutObjProcessor_Atomic::complete_hash(MD5 *hash)
+{
+  hash->Update((const byte *)pending_data_bl.c_str(), pending_data_bl.length());
 }
 
 
@@ -1121,7 +1143,7 @@ int RGWPutObjProcessor_Atomic::prepare_next_part(off_t ofs) {
   add_obj(cur_obj);
 
   return 0;
-};
+}
 
 int RGWPutObjProcessor_Atomic::complete_parts()
 {
@@ -1312,6 +1334,24 @@ int RGWRados::init_rados()
   return ret;
 }
 
+/**
+ * Add new connection to connections map
+ * @param region_conn_map map which new connection will be added to 
+ * @param region region which new connection will connect to
+ * @param new_connection pointer to new connection instance
+ */
+static void add_new_connection_to_map(map<string, RGWRESTConn *> &region_conn_map, RGWRegion &region, RGWRESTConn *new_connection) 
+{
+  // Delete if connection is already exists
+  map<string, RGWRESTConn *>::iterator iterRegion = region_conn_map.find(region.name);
+  if (iterRegion != region_conn_map.end()) {
+    delete iterRegion->second;
+  }
+    
+  // Add new connection to connections map
+  region_conn_map[region.name] = new_connection;
+}
+
 /** 
  * Initialize the RADOS instance and prepare to do other ops
  * Returns 0 on success, -ERR# on failure.
@@ -1354,8 +1394,7 @@ int RGWRados::init_complete()
 
     for (iter = region_map.regions.begin(); iter != region_map.regions.end(); ++iter) {
       RGWRegion& region = iter->second;
-
-      region_conn_map[region.name] = new RGWRESTConn(cct, this, region.endpoints);
+      add_new_connection_to_map(region_conn_map, region, new RGWRESTConn(cct, this, region.endpoints));
     }
   }
 
@@ -3019,7 +3058,7 @@ public:
 
     do {
       void *handle;
-      int ret = processor->handle_data(bl, ofs, &handle, &again);
+      int ret = processor->handle_data(bl, ofs, NULL, &handle, &again);
       if (ret < 0)
         return ret;
 
@@ -3029,6 +3068,11 @@ public:
          */
         ret = opstate->renew_state();
         if (ret < 0) {
+          ldout(processor->ctx(), 0) << "ERROR: RGWRadosPutObj::handle_data(): failed to renew op state ret=" << ret << dendl;
+          int r = processor->throttle_data(handle, false);
+          if (r < 0) {
+            ldout(processor->ctx(), 0) << "ERROR: RGWRadosPutObj::handle_data(): processor->throttle_data() returned " << r << dendl;
+          }
           /* could not renew state! might have been marked as cancelled */
           return ret;
         }
@@ -3086,6 +3130,36 @@ public:
       handle = _h;
     }
 };
+
+int RGWRados::rewrite_obj(const string& bucket_owner, rgw_obj& obj)
+{
+  map<string, bufferlist> attrset;
+  off_t ofs = 0;
+  off_t end = -1;
+  void *handle = NULL;
+
+  time_t mtime;
+  uint64_t total_len;
+  uint64_t obj_size;
+  RGWRadosCtx rctx(this);
+  int ret = prepare_get_obj((void *)&rctx, obj, &ofs, &end, &attrset,
+                            NULL, NULL, &mtime, NULL, NULL, &total_len,
+                            &obj_size, NULL, &handle, NULL);
+  if (ret < 0)
+    return ret;
+
+  attrset.erase(RGW_ATTR_ID_TAG);
+
+  uint64_t max_chunk_size;
+
+  ret = get_max_chunk_size(obj.bucket, &max_chunk_size);
+  if (ret < 0) {
+    ldout(cct, 0) << "ERROR: failed to get max_chunk_size() for bucket " << obj.bucket << dendl;
+    return ret;
+  }
+
+  return copy_obj_data((void *)&rctx, bucket_owner, &handle, end, obj, obj, max_chunk_size, NULL, mtime, attrset, RGW_OBJ_CATEGORY_MAIN, NULL, NULL);
+}
 
 /**
  * Copy an object.
@@ -3286,7 +3360,7 @@ set_err_state:
     return ret;
   }
 
-  bool copy_data = !astate->has_manifest;
+  bool copy_data = !astate->has_manifest || (src_obj.bucket.data_pool != dest_obj.bucket.data_pool);
   bool copy_first = false;
   if (astate->has_manifest) {
     if (!astate->manifest.has_tail()) {
@@ -3304,7 +3378,7 @@ set_err_state:
   }
 
   if (copy_data) { /* refcounting tail wouldn't work here, just copy the data */
-    return copy_obj_data(ctx, dest_bucket_info.owner, &handle, end, dest_obj, src_obj, max_chunk_size, mtime, src_attrs, category, ptag, err);
+    return copy_obj_data(ctx, dest_bucket_info.owner, &handle, end, dest_obj, src_obj, max_chunk_size, mtime, 0, src_attrs, category, ptag, err);
   }
 
   RGWObjManifest::obj_iterator miter = astate->manifest.obj_begin();
@@ -3365,7 +3439,7 @@ set_err_state:
   }
 
   if (copy_first) {
-    ret = get_obj(ctx, NULL, &handle, src_obj, first_chunk, 0, max_chunk_size);
+    ret = get_obj(ctx, NULL, &handle, src_obj, first_chunk, 0, max_chunk_size, NULL);
     if (ret < 0)
       goto done_ret;
 
@@ -3416,6 +3490,7 @@ int RGWRados::copy_obj_data(void *ctx,
                rgw_obj& src_obj,
                uint64_t max_chunk_size,
 	       time_t *mtime,
+	       time_t set_mtime,
                map<string, bufferlist>& attrs,
                RGWObjCategory category,
                string *ptag,
@@ -3424,74 +3499,52 @@ int RGWRados::copy_obj_data(void *ctx,
   bufferlist first_chunk;
   RGWObjManifest manifest;
   map<uint64_t, RGWObjManifestPart> objs;
-  RGWObjManifestPart *first_part;
-  map<string, bufferlist>::iterator iter;
 
-  rgw_obj shadow_obj = dest_obj;
-  string shadow_oid;
+  string tag;
+  append_rand_alpha(cct, tag, tag, 32);
 
-  append_rand_alpha(cct, dest_obj.object, shadow_oid, 32);
-  shadow_obj.init_ns(dest_obj.bucket, shadow_oid, shadow_ns);
+  RGWPutObjProcessor_Atomic processor(owner, dest_obj.bucket, dest_obj.object,
+                                      cct->_conf->rgw_obj_stripe_size, tag);
+  int ret = processor.prepare(this, ctx, NULL);
+  if (ret < 0)
+    return ret;
 
-  int ret, r;
   off_t ofs = 0;
-  PutObjMetaExtraParams ep;
 
   do {
     bufferlist bl;
-    ret = get_obj(ctx, NULL, handle, src_obj, bl, ofs, end);
+    ret = get_obj(ctx, NULL, handle, src_obj, bl, ofs, end, NULL);
     if (ret < 0)
       return ret;
 
-    const char *data = bl.c_str();
+    uint64_t read_len = ret;
+    bool again;
 
-    if ((uint64_t)ofs < max_chunk_size) {
-      uint64_t len = min(max_chunk_size - ofs, (uint64_t)ret);
-      first_chunk.append(data, len);
-      ofs += len;
-      ret -= len;
-      data += len;
-    }
+    do {
+      void *handle;
 
-    // In the first call to put_obj_data, we pass ofs == -1 so that it will do
-    // a write_full, wiping out whatever was in the object before this
-    r = 0;
-    if (ret > 0) {
-      r = put_obj_data(ctx, shadow_obj, data, ((ofs == 0) ? -1 : ofs), ret, false);
-    }
-    if (r < 0)
-      goto done_err;
+      ret = processor.handle_data(bl, ofs, NULL, &handle, &again);
+      if (ret < 0) {
+        return ret;
+      }
+      ret = processor.throttle_data(handle, false);
+      if (ret < 0)
+        return ret;
+    } while (again);
 
-    ofs += ret;
+    ofs += read_len;
   } while (ofs <= end);
 
-  first_part = &objs[0];
-  first_part->loc = dest_obj;
-  first_part->loc_ofs = 0;
-  first_part->size = first_chunk.length();
-
-  if ((uint64_t)ofs > max_chunk_size) {
-    RGWObjManifestPart& tail = objs[max_chunk_size];
-    tail.loc = shadow_obj;
-    tail.loc_ofs = max_chunk_size;
-    tail.size = ofs - max_chunk_size;
+  string etag;
+  map<string, bufferlist>::iterator iter = attrs.find(RGW_ATTR_ETAG);
+  if (iter != attrs.end()) {
+    bufferlist& bl = iter->second;
+    etag = string(bl.c_str(), bl.length());
   }
 
-  manifest.set_explicit(ofs, objs);
-
-  ep.data = &first_chunk;
-  ep.manifest = &manifest;
-  ep.ptag = ptag;
-  ep.owner = owner;
-
-  ret = put_obj_meta(ctx, dest_obj, end + 1, attrs, category, PUT_OBJ_CREATE, ep);
-  if (mtime)
-    obj_stat(ctx, dest_obj, NULL, mtime, NULL, NULL, NULL, NULL);
+  ret = processor.complete(etag, mtime, set_mtime, attrs);
 
   return ret;
-done_err:
-  delete_obj(ctx, owner, shadow_obj);
-  return r;
 }
 
 /**
@@ -4529,7 +4582,7 @@ int RGWRados::clone_objs(void *ctx, rgw_obj& dst_obj,
 
 
 int RGWRados::get_obj(void *ctx, RGWObjVersionTracker *objv_tracker, void **handle, rgw_obj& obj,
-                      bufferlist& bl, off_t ofs, off_t end)
+                      bufferlist& bl, off_t ofs, off_t end, rgw_cache_entry_info *cache_info)
 {
   rgw_bucket bucket;
   std::string oid, key;
@@ -5352,13 +5405,14 @@ int RGWRados::get_bucket_instance_info(void *ctx, rgw_bucket& bucket, RGWBucketI
 }
 
 int RGWRados::get_bucket_instance_from_oid(void *ctx, string& oid, RGWBucketInfo& info,
-                                           time_t *pmtime, map<string, bufferlist> *pattrs)
+                                           time_t *pmtime, map<string, bufferlist> *pattrs,
+                                           rgw_cache_entry_info *cache_info)
 {
   ldout(cct, 20) << "reading from " << zone.domain_root << ":" << oid << dendl;
 
   bufferlist epbl;
 
-  int ret = rgw_get_system_obj(this, ctx, zone.domain_root, oid, epbl, &info.objv_tracker, pmtime, pattrs);
+  int ret = rgw_get_system_obj(this, ctx, zone.domain_root, oid, epbl, &info.objv_tracker, pmtime, pattrs, cache_info);
   if (ret < 0) {
     return ret;
   }
@@ -5378,11 +5432,12 @@ int RGWRados::get_bucket_entrypoint_info(void *ctx, const string& bucket_name,
                                          RGWBucketEntryPoint& entry_point,
                                          RGWObjVersionTracker *objv_tracker,
                                          time_t *pmtime,
-                                         map<string, bufferlist> *pattrs)
+                                         map<string, bufferlist> *pattrs,
+                                         rgw_cache_entry_info *cache_info)
 {
   bufferlist bl;
 
-  int ret = rgw_get_system_obj(this, ctx, zone.domain_root, bucket_name, bl, objv_tracker, pmtime, pattrs);
+  int ret = rgw_get_system_obj(this, ctx, zone.domain_root, bucket_name, bl, objv_tracker, pmtime, pattrs, cache_info);
   if (ret < 0) {
     return ret;
   }
@@ -5432,15 +5487,34 @@ int RGWRados::convert_old_bucket_info(void *ctx, string& bucket_name)
   return 0;
 }
 
+struct bucket_info_entry {
+  RGWBucketInfo info;
+  time_t mtime;
+  map<string, bufferlist> attrs;
+};
+
+static RGWChainedCacheImpl<bucket_info_entry> binfo_cache;
+
 int RGWRados::get_bucket_info(void *ctx, const string& bucket_name, RGWBucketInfo& info,
                               time_t *pmtime, map<string, bufferlist> *pattrs)
 {
+  bucket_info_entry e;
+  if (binfo_cache.find(bucket_name, &e)) {
+    info = e.info;
+    if (pattrs)
+      *pattrs = e.attrs;
+    if (pmtime)
+      *pmtime = e.mtime;
+    return 0;
+  }
+
   bufferlist bl;
 
   RGWBucketEntryPoint entry_point;
   time_t ep_mtime;
   RGWObjVersionTracker ot;
-  int ret = get_bucket_entrypoint_info(ctx, bucket_name, entry_point, &ot, &ep_mtime, pattrs);
+  rgw_cache_entry_info entry_cache_info;
+  int ret = get_bucket_entrypoint_info(ctx, bucket_name, entry_point, &ot, &ep_mtime, pattrs, &entry_cache_info);
   if (ret < 0) {
     info.bucket.name = bucket_name; /* only init this field */
     return ret;
@@ -5471,12 +5545,31 @@ int RGWRados::get_bucket_info(void *ctx, const string& bucket_name, RGWBucketInf
   string oid;
   get_bucket_meta_oid(entry_point.bucket, oid);
 
-  ret = get_bucket_instance_from_oid(ctx, oid, info, pmtime, pattrs);
-  info.ep_objv = ot.read_version;
+  rgw_cache_entry_info cache_info;
+
+  ret = get_bucket_instance_from_oid(ctx, oid, e.info, &e.mtime, &e.attrs, &cache_info);
+  e.info.ep_objv = ot.read_version;
+  info = e.info;
   if (ret < 0) {
     info.bucket.name = bucket_name;
     return ret;
   }
+
+  if (pmtime)
+    *pmtime = e.mtime;
+  if (pattrs)
+    *pattrs = e.attrs;
+
+  list<rgw_cache_entry_info *> cache_info_entries;
+  cache_info_entries.push_back(&entry_cache_info);
+  cache_info_entries.push_back(&cache_info);
+
+
+  /* chain to both bucket entry point and bucket instance */
+  if (!binfo_cache.put(this, bucket_name, &e, cache_info_entries)) {
+    ldout(cct, 20) << "couldn't put binfo cache entry, might have raced with data changes" << dendl;
+  }
+
   return 0;
 }
 

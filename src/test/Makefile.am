@@ -239,13 +239,17 @@ check_SCRIPTS += \
 	test/mon/osd-crush.sh \
 	test/mon/osd-erasure-code-profile.sh \
 	test/mon/mkfs.sh \
+	test/osd/osd-config.sh \
+	test/osd/osd-bench.sh \
 	test/ceph-disk.sh \
 	test/mon/mon-handle-forward.sh \
 	test/vstart_wrapped_tests.sh
 
 EXTRA_DIST += \
 	$(srcdir)/test/mon/mon-test-helpers.sh \
-	$(srcdir)/test/osd/osd-test-helpers.sh
+	$(srcdir)/test/osd/osd-test-helpers.sh \
+        $(srcdir)/test/coverage.sh \
+	$(patsubst %,$(srcdir)/%,$(check_SCRIPTS))
 
 # target to build but not run the unit tests
 unittests:: $(check_PROGRAMS)
@@ -368,6 +372,9 @@ unittest_pglog_SOURCES = test/osd/TestPGLog.cc
 unittest_pglog_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 unittest_pglog_LDADD = $(LIBOSD) $(UNITTEST_LDADD) $(CEPH_GLOBAL)
 check_PROGRAMS += unittest_pglog
+if LINUX
+unittest_pglog_LDADD += -ldl
+endif # LINUX
 
 unittest_ecbackend_SOURCES = test/osd/TestECBackend.cc
 unittest_ecbackend_CXXFLAGS = $(UNITTEST_CXXFLAGS)
@@ -379,9 +386,15 @@ unittest_hitset_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 unittest_hitset_LDADD = $(LIBOSD) $(UNITTEST_LDADD) $(CEPH_GLOBAL)
 check_PROGRAMS += unittest_hitset
 
-if LINUX
-unittest_pglog_LDADD += -ldl
-endif # LINUX
+unittest_lru_SOURCES = test/common/test_lru.cc
+unittest_lru_CXXFLAGS = $(UNITTEST_CXXFLAGS)
+unittest_lru_LDADD = $(UNITTEST_LDADD) $(CEPH_GLOBAL)
+check_PROGRAMS += unittest_lru
+
+unittest_io_priority_SOURCES = test/common/test_io_priority.cc
+unittest_io_priority_CXXFLAGS = $(UNITTEST_CXXFLAGS)
+unittest_io_priority_LDADD = $(UNITTEST_LDADD) $(CEPH_GLOBAL)
+check_PROGRAMS += unittest_io_priority
 
 unittest_gather_SOURCES = test/gather.cc
 unittest_gather_LDADD = $(UNITTEST_LDADD) $(CEPH_GLOBAL)
@@ -569,6 +582,17 @@ unittest_on_exit_SOURCES = test/on_exit.cc
 unittest_on_exit_LDADD = $(PTHREAD_LIBS)
 check_PROGRAMS += unittest_on_exit
 
+unittest_rbd_replay_SOURCES = test/test_rbd_replay.cc
+unittest_rbd_replay_LDADD = $(LIBRBD) \
+	$(LIBRADOS) \
+	$(CEPH_GLOBAL) \
+	librbd_replay.la \
+	librbd_replay_ios.la \
+	$(UNITTEST_LDADD)
+unittest_rbd_replay_CXXFLAGS = $(UNITTEST_CXXFLAGS)
+check_PROGRAMS += unittest_rbd_replay
+
+
 check_SCRIPTS += test/pybind/test_ceph_argparse.py
 
 if WITH_RADOSGW
@@ -630,6 +654,12 @@ noinst_LTLIBRARIES += libradostest.la
 libradostest_la_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 RADOS_TEST_LDADD = libradostest.la
 
+libradosstripertest_la_SOURCES = test/libradosstriper/TestCase.cc
+noinst_LTLIBRARIES += libradosstripertest.la
+libradosstripertest_la_LIBADD = $(RADOS_TEST_LDADD)
+libradosstripertest_la_CXXFLAGS = $(UNITTEST_CXXFLAGS)
+RADOS_STRIPER_TEST_LDADD = libradosstripertest.la
+
 ceph_multi_stress_watch_SOURCES = test/multi_stress_watch.cc
 ceph_multi_stress_watch_LDADD = $(LIBRADOS) $(CEPH_GLOBAL) $(RADOS_TEST_LDADD)
 bin_DEBUGPROGRAMS += ceph_multi_stress_watch
@@ -640,9 +670,10 @@ ceph_test_librbd_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 bin_DEBUGPROGRAMS += ceph_test_librbd
 
 if LINUX
-ceph_test_librbd_fsx_SOURCES = test/librbd/fsx.c
-ceph_test_librbd_fsx_LDADD = $(LIBRBD) $(LIBRADOS) -lm
-ceph_test_librbd_fsx_CFLAGS = ${AM_CFLAGS} -Wno-format
+# Force use of C++ linker with dummy.cc - LIBKRBD is a C++ library
+ceph_test_librbd_fsx_SOURCES = test/librbd/fsx.c common/dummy.cc
+ceph_test_librbd_fsx_LDADD = $(LIBKRBD) $(LIBRBD) $(LIBRADOS)
+ceph_test_librbd_fsx_CFLAGS = ${AM_CFLAGS}
 bin_DEBUGPROGRAMS += ceph_test_librbd_fsx
 endif
 
@@ -700,6 +731,11 @@ endif # WITH_RADOSGW
 ceph_test_mon_workloadgen_SOURCES = test/mon/test_mon_workloadgen.cc
 ceph_test_mon_workloadgen_LDADD = $(LIBOS) $(LIBOSDC) $(CEPH_GLOBAL)
 bin_DEBUGPROGRAMS += ceph_test_mon_workloadgen
+
+ceph_test_mon_msg_SOURCES = test/mon/test-mon-msg.cc
+ceph_test_mon_msg_LDADD = $(LIBOS) $(LIBOSDC) $(CEPH_GLOBAL) $(UNITTEST_LDADD)
+ceph_test_mon_msg_CXXFLAGS = $(UNITTEST_CXXFLAGS)
+bin_DEBUGPROGRAMS += ceph_test_mon_msg
 
 ceph_test_rados_api_cmd_SOURCES = test/librados/cmd.cc
 ceph_test_rados_api_cmd_LDADD = $(LIBRADOS) $(UNITTEST_LDADD) $(RADOS_TEST_LDADD)
@@ -775,6 +811,21 @@ ceph_test_rados_api_lock_LDADD = $(LIBRADOS) $(UNITTEST_LDADD) $(RADOS_TEST_LDAD
 ceph_test_rados_api_lock_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 bin_DEBUGPROGRAMS += ceph_test_rados_api_lock
 
+ceph_test_rados_striper_api_io_SOURCES = test/libradosstriper/io.cc
+ceph_test_rados_striper_api_io_LDADD = $(LIBRADOS) $(LIBRADOSSTRIPER) $(UNITTEST_LDADD) $(RADOS_STRIPER_TEST_LDADD)
+ceph_test_rados_striper_api_io_CXXFLAGS = $(UNITTEST_CXXFLAGS)
+bin_DEBUGPROGRAMS += ceph_test_rados_striper_api_io
+
+ceph_test_rados_striper_api_aio_SOURCES = test/libradosstriper/aio.cc
+ceph_test_rados_striper_api_aio_LDADD = $(LIBRADOS) $(LIBRADOSSTRIPER) $(UNITTEST_LDADD) $(RADOS_STRIPER_TEST_LDADD)
+ceph_test_rados_striper_api_aio_CXXFLAGS = $(UNITTEST_CXXFLAGS)
+bin_DEBUGPROGRAMS += ceph_test_rados_striper_api_aio
+
+ceph_test_rados_striper_api_striping_SOURCES = test/libradosstriper/striping.cc
+ceph_test_rados_striper_api_striping_LDADD = $(LIBRADOS) $(LIBRADOSSTRIPER) $(UNITTEST_LDADD) $(RADOS_STRIPER_TEST_LDADD)
+ceph_test_rados_striper_api_striping_CXXFLAGS = $(UNITTEST_CXXFLAGS)
+bin_DEBUGPROGRAMS += ceph_test_rados_striper_api_striping
+
 ceph_test_libcephfs_SOURCES = \
 	test/libcephfs/test.cc \
 	test/libcephfs/readdir_r_cb.cc \
@@ -789,6 +840,11 @@ ceph_test_objectstore_SOURCES = test/objectstore/store_test.cc
 ceph_test_objectstore_LDADD = $(LIBOS) $(UNITTEST_LDADD) $(CEPH_GLOBAL)
 ceph_test_objectstore_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 bin_DEBUGPROGRAMS += ceph_test_objectstore
+
+ceph_test_filestore_SOURCES = test/filestore/TestFileStore.cc
+ceph_test_filestore_LDADD = $(LIBOS) $(UNITTEST_LDADD) $(CEPH_GLOBAL)
+ceph_test_filestore_CXXFLAGS = $(UNITTEST_CXXFLAGS)
+bin_DEBUGPROGRAMS += ceph_test_filestore
 endif
 
 ceph_test_objectstore_workloadgen_SOURCES = \
@@ -888,6 +944,7 @@ noinst_HEADERS += \
 	test/kv_store_bench.h \
 	test/librados/test.h \
 	test/librados/TestCase.h \
+	test/libradosstriper/TestCase.h \
 	test/ObjectMap/KeyValueDBMemory.h \
 	test/omap_bench.h \
 	test/osdc/FakeWriteback.h \

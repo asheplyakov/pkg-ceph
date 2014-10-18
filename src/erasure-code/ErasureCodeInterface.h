@@ -1,7 +1,7 @@
 // -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*- 
 // vim: ts=8 sw=2 smarttab
 /*
- * Ceph - scalable distributed file system
+ * Ceph distributed storage system
  *
  * Copyright (C) 2013 Cloudwatt <libre.licensing@cloudwatt.com>
  *
@@ -142,6 +142,7 @@
 
 #include <map>
 #include <set>
+#include <vector>
 #include "include/memory.h"
 #include "include/buffer.h"
 
@@ -195,6 +196,18 @@ namespace ceph {
      * @return the number of data chunks created by encode()
      */
     virtual unsigned int get_data_chunk_count() const = 0;
+
+    /**
+     * Return the number of coding chunks created by a call to the
+     * **encode** method. The coding chunks are used to recover from
+     * the loss of one or more chunks. If there is one coding chunk,
+     * it is possible to recover from the loss of exactly one
+     * chunk. If there are two coding chunks, it is possible to
+     * recover from the loss of at most two chunks, etc.
+     *
+     * @return the number of coding chunks created by encode()
+     */
+    virtual unsigned int get_coding_chunk_count() const = 0;
 
     /**
      * Return the size (in bytes) of a single chunk created by a call
@@ -302,6 +315,10 @@ namespace ceph {
                        const bufferlist &in,
                        map<int, bufferlist> *encoded) = 0;
 
+
+    virtual int encode_chunks(const set<int> &want_to_encode,
+                              map<int, bufferlist> *encoded) = 0;
+
     /**
      * Decode the **chunks** and store at least **want_to_read**
      * chunks in **decoded**.
@@ -339,6 +356,45 @@ namespace ceph {
                        const map<int, bufferlist> &chunks,
                        map<int, bufferlist> *decoded) = 0;
 
+    virtual int decode_chunks(const set<int> &want_to_read,
+                              const map<int, bufferlist> &chunks,
+                              map<int, bufferlist> *decoded) = 0;
+
+    /**
+     * Return the ordered list of chunks or an empty vector
+     * if no remapping is necessary.
+     *
+     * By default encoding an object with K=2,M=1 will create three
+     * chunks, the first two are data and the last one coding. For
+     * a 10MB object, it would be:
+     *
+     *   chunk 0 for the first 5MB
+     *   chunk 1 for the last 5MB
+     *   chunk 2 for the 5MB coding chunk
+     *
+     * The plugin may, however, decide to remap them in a different
+     * order, such as:
+     *
+     *   chunk 0 for the last 5MB
+     *   chunk 1 for the 5MB coding chunk
+     *   chunk 2 for the first 5MB
+     *
+     * The vector<int> remaps the chunks so that the first chunks are
+     * data, in sequential order, and the last chunks contain parity
+     * in the same order as they were output by the encoding function.
+     *
+     * In the example above the mapping would be:
+     *
+     *   [ 1, 2, 0 ]
+     *
+     * The returned vector<int> only contains information for chunks
+     * that need remapping. If no remapping is necessary, the
+     * vector<int> is empty.
+     *
+     * @return vector<int> list of indices of chunks to be remapped
+     */
+    virtual const vector<int> &get_chunk_mapping() const = 0;
+
     /**
      * Decode the first **get_data_chunk_count()** **chunks** and
      * concatenate them them into **decoded**.
@@ -349,18 +405,8 @@ namespace ceph {
      * @param [out] decoded concatenante of the data chunks
      * @return **0** on success or a negative errno on error.
      */
-    int decode_concat(const map<int, bufferlist> &chunks,
-		      bufferlist *decoded) {
-      set<int> want_to_read;
-      for (unsigned int i = 0; i < get_data_chunk_count(); i++)
-	want_to_read.insert(i);
-      map<int, bufferlist> decoded_map;
-      int r = decode(want_to_read, chunks, &decoded_map);
-      if (r == 0)
-	for (unsigned int i = 0; i < get_data_chunk_count(); i++)
-	  decoded->claim_append(decoded_map[i]);
-      return r;
-    }
+    virtual int decode_concat(const map<int, bufferlist> &chunks,
+			      bufferlist *decoded) = 0;
   };
 
   typedef ceph::shared_ptr<ErasureCodeInterface> ErasureCodeInterfaceRef;

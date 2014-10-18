@@ -131,8 +131,11 @@ int MonClient::get_monmap_privately()
   while (monmap.fsid.is_zero()) {
     cur_mon = _pick_random_mon();
     cur_con = messenger->get_connection(monmap.get_inst(cur_mon));
-    ldout(cct, 10) << "querying mon." << cur_mon << " " << cur_con->get_peer_addr() << dendl;
-    messenger->send_message(new MMonGetMap, cur_con);
+    if (cur_con) {
+      ldout(cct, 10) << "querying mon." << cur_mon << " "
+		     << cur_con->get_peer_addr() << dendl;
+      cur_con->send_message(new MMonGetMap);
+    }
 
     if (--attempt == 0)
       break;
@@ -141,14 +144,17 @@ int MonClient::get_monmap_privately()
     interval.set_from_double(cct->_conf->mon_client_hunt_interval);
     map_cond.WaitInterval(cct, monc_lock, interval);
 
-    if (monmap.fsid.is_zero()) {
-      messenger->mark_down(cur_con);  // nope, clean that connection up
+    if (monmap.fsid.is_zero() && cur_con) {
+      cur_con->mark_down();  // nope, clean that connection up
     }
   }
 
   if (temp_msgr) {
-    messenger->mark_down(cur_con);
-    cur_con.reset(NULL);
+    if (cur_con) {
+      cur_con->mark_down();
+      cur_con.reset(NULL);
+      cur_mon.clear();
+    }
     monc_lock.Unlock();
     messenger->shutdown();
     if (smessenger)
@@ -160,7 +166,6 @@ int MonClient::get_monmap_privately()
 
   hunting = true;  // reset this to true!
   cur_mon.clear();
-
   cur_con.reset(NULL);
 
   if (!monmap.fsid.is_zero())
@@ -222,7 +227,7 @@ int MonClient::ping_monitor(const string &mon_id, string *result_reply)
   ConnectionRef con = smsgr->get_connection(monmap.get_inst(mon_id));
   ldout(cct, 10) << __func__ << " ping mon." << mon_id
                  << " " << con->get_peer_addr() << dendl;
-  smsgr->send_message(new MPing, con);
+  con->send_message(new MPing);
 
   pinger->lock.Lock();
   int ret = pinger->wait_for_reply(cct->_conf->client_mount_timeout);
@@ -233,7 +238,7 @@ int MonClient::ping_monitor(const string &mon_id, string *result_reply)
   }
   pinger->lock.Unlock();
 
-  smsgr->mark_down(con);
+  con->mark_down();
   smsgr->shutdown();
   smsgr->wait();
   delete smsgr;
@@ -287,6 +292,7 @@ bool MonClient::ms_dispatch(Message *m)
   case MSG_LOGACK:
     if (log_client) {
       log_client->handle_log_ack(static_cast<MLogAck*>(m));
+      m->put();
       if (more_log_pending) {
 	send_log();
       }
@@ -392,7 +398,7 @@ int MonClient::init()
 
 void MonClient::shutdown()
 {
-  ldout(cct, 10) << __func__ << "shutdown" << dendl;
+  ldout(cct, 10) << __func__ << dendl;
   monc_lock.Lock();
   while (!version_requests.empty()) {
     version_requests.begin()->second->context->complete(-ECANCELED);
@@ -416,8 +422,10 @@ void MonClient::shutdown()
   monc_lock.Lock();
   timer.shutdown();
 
-  messenger->mark_down(cur_con);
+  if (cur_con)
+    cur_con->mark_down();
   cur_con.reset(NULL);
+  cur_mon.clear();
 
   monc_lock.Unlock();
 }
@@ -427,7 +435,7 @@ int MonClient::authenticate(double timeout)
   Mutex::Locker lock(monc_lock);
 
   if (state == MC_STATE_HAVE_SESSION) {
-    ldout(cct, 5) << "already authenticated" << dendl;;
+    ldout(cct, 5) << "already authenticated" << dendl;
     return 0;
   }
 
@@ -552,7 +560,7 @@ void MonClient::_send_mon_message(Message *m, bool force)
     assert(cur_con);
     ldout(cct, 10) << "_send_mon_message to mon." << cur_mon
 		   << " at " << cur_con->get_peer_addr() << dendl;
-    messenger->send_message(m, cur_con);
+    cur_con->send_message(m);
   } else {
     waiting_for_session.push_back(m);
   }
@@ -593,7 +601,7 @@ void MonClient::_reopen_session(int rank, string name)
   }
 
   if (cur_con) {
-    messenger->mark_down(cur_con);
+    cur_con->mark_down();
   }
   cur_con = messenger->get_connection(monmap.get_inst(cur_mon));
 	
@@ -630,7 +638,7 @@ void MonClient::_reopen_session(int rank, string name)
   // send an initial keepalive to ensure our timestamp is valid by the
   // time we are in an OPENED state (by sequencing this before
   // authentication).
-  messenger->send_keepalive(cur_con.get());
+  cur_con->send_keepalive();
 
   MAuth *m = new MAuth;
   m->protocol = 0;
@@ -699,7 +707,7 @@ void MonClient::tick()
     if (now > sub_renew_after)
       _renew_subs();
 
-    messenger->send_keepalive(cur_con.get());
+    cur_con->send_keepalive();
 
     if (state == MC_STATE_HAVE_SESSION) {
       send_log();

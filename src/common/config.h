@@ -130,7 +130,10 @@ public:
 
   // Set a configuration value.
   // Metavariables will be expanded.
-  int set_val(const char *key, const char *val, bool meta=true);
+  int set_val(const char *key, const char *val, bool meta=true, bool safe=true);
+  int set_val(const char *key, const string& s, bool meta=true, bool safe=true) {
+    return set_val(key, s.c_str(), meta, safe);
+  }
 
   // Get a configuration value.
   // No metavariables will be returned (they will have already been expanded)
@@ -152,6 +155,10 @@ public:
   void show_config(std::ostream& out);
   /// dump all config values to a formatter
   void show_config(Formatter *f);
+
+  /// obtain a diff between our config values and another md_config_t values
+  void diff(const md_config_t *other,
+            map<string,pair<string,string> > *diff, set<string> *unknown);
 
 private:
   void _show_config(std::ostream *out, Formatter *f);
