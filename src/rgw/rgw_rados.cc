@@ -3,6 +3,7 @@
 #include <sys/types.h>
 
 #include "common/ceph_json.h"
+#include "common/utf8.h"
 
 #include "common/errno.h"
 #include "common/Formatter.h"
@@ -529,110 +530,6 @@ void RGWObjVersionTracker::prepare_op_for_write(ObjectWriteOperation *op)
   }
 }
 
-void RGWObjManifest::obj_iterator::update_explicit_pos()
-{
-  ofs = explicit_iter->first;
-  stripe_ofs = ofs;
-
-  map<uint64_t, RGWObjManifestPart>::iterator next_iter = explicit_iter;
-  ++next_iter;
-  if (next_iter != manifest->objs.end()) {
-    stripe_size = next_iter->first - ofs;
-  } else {
-    stripe_size = manifest->obj_size - ofs;
-  }
-}
-
-void RGWObjManifest::obj_iterator::seek(uint64_t o)
-{
-  ofs = o;
-  if (manifest->explicit_objs) {
-    explicit_iter = manifest->objs.upper_bound(ofs);
-    if (explicit_iter != manifest->objs.begin()) {
-      --explicit_iter;
-    }
-    if (ofs >= manifest->obj_size) {
-      ofs = manifest->obj_size;
-      return;
-    }
-    update_explicit_pos();
-    update_location();
-    return;
-  }
-  if (o < manifest->get_head_size()) {
-    rule_iter = manifest->rules.begin();
-    stripe_ofs = 0;
-    stripe_size = manifest->get_head_size();
-    if (rule_iter != manifest->rules.end()) {
-      cur_part_id = rule_iter->second.start_part_num;
-      cur_override_prefix = rule_iter->second.override_prefix;
-    }
-    update_location();
-    return;
-  }
-
-  rule_iter = manifest->rules.upper_bound(ofs);
-  next_rule_iter = rule_iter;
-  if (rule_iter != manifest->rules.begin()) {
-    --rule_iter;
-  }
-
-  if (rule_iter == manifest->rules.end()) {
-    update_location();
-    return;
-  }
-
-  RGWObjManifestRule& rule = rule_iter->second;
-
-  if (rule.part_size > 0) {
-    cur_part_id = rule.start_part_num + (ofs - rule.start_ofs) / rule.part_size;
-  } else {
-    cur_part_id = rule.start_part_num;
-  }
-  part_ofs = rule.start_ofs + (cur_part_id - rule.start_part_num) * rule.part_size;
-
-  if (rule.stripe_max_size > 0) {
-    cur_stripe = (ofs - part_ofs) / rule.stripe_max_size;
-
-    stripe_ofs = part_ofs + cur_stripe * rule.stripe_max_size;
-    if (!cur_part_id && manifest->get_head_size() > 0) {
-      cur_stripe++;
-    }
-  } else {
-    cur_stripe = 0;
-    stripe_ofs = part_ofs;
-  }
-
-  if (!rule.part_size) {
-    stripe_size = rule.stripe_max_size;
-    stripe_size = MIN(manifest->get_obj_size() - stripe_ofs, stripe_size);
-  } else {
-    uint64_t next = MIN(stripe_ofs + rule.stripe_max_size, part_ofs + rule.part_size);
-    stripe_size = next - stripe_ofs;
-  }
-
-  cur_override_prefix = rule.override_prefix;
-
-  update_location();
-}
-
-void RGWObjManifest::obj_iterator::update_location()
-{
-  if (manifest->explicit_objs) {
-    location = explicit_iter->second.loc;
-    return;
-  }
-
-  const rgw_obj& head = manifest->get_head();
-
-  if (ofs < manifest->get_head_size()) {
-    location = head;
-    return;
-  }
-
-  manifest->get_implicit_location(cur_part_id, cur_stripe, ofs, &cur_override_prefix, &location);
-}
-
 void RGWObjManifest::obj_iterator::operator++()
 {
   if (manifest->explicit_objs) {
@@ -809,50 +706,6 @@ const RGWObjManifest::obj_iterator& RGWObjManifest::obj_begin()
 const RGWObjManifest::obj_iterator& RGWObjManifest::obj_end()
 {
   return end_iter;
-}
-
-void RGWObjManifest::get_implicit_location(uint64_t cur_part_id, uint64_t cur_stripe, uint64_t ofs, string *override_prefix, rgw_obj *location)
-{
-  string oid;
-  if (!override_prefix || override_prefix->empty()) {
-    oid = prefix;
-  } else {
-    oid = *override_prefix;
-  }
-  string ns;
-
-  if (!cur_part_id) {
-    if (ofs < max_head_size) {
-      *location = head_obj;
-      return;
-    } else {
-      char buf[16];
-      snprintf(buf, sizeof(buf), "%d", (int)cur_stripe);
-      oid += buf;
-      ns = shadow_ns;
-    }
-  } else {
-    char buf[32];
-    if (cur_stripe == 0) {
-      snprintf(buf, sizeof(buf), ".%d", (int)cur_part_id);
-      oid += buf;
-      ns= RGW_OBJ_NS_MULTIPART;
-    } else {
-      snprintf(buf, sizeof(buf), ".%d_%d", (int)cur_part_id, (int)cur_stripe);
-      oid += buf;
-      ns = shadow_ns;
-    }
-  }
-
-  rgw_bucket *bucket;
-
-  if (!tail_bucket.name.empty()) {
-    bucket = &tail_bucket;
-  } else {
-    bucket = &head_obj.bucket;
-  }
-
-  location->init_ns(*bucket, oid, ns);
 }
 
 RGWObjManifest::obj_iterator RGWObjManifest::obj_find(uint64_t ofs)
@@ -1098,6 +951,9 @@ struct put_obj_aio_info RGWPutObjProcessor_Aio::pop_pending()
 
 int RGWPutObjProcessor_Aio::wait_pending_front()
 {
+  if (pending.empty()) {
+    return 0;
+  }
   struct put_obj_aio_info info = pop_pending();
   int ret = store->aio_wait(info.handle);
   return ret;
@@ -1131,8 +987,9 @@ int RGWPutObjProcessor_Aio::throttle_data(void *handle, bool need_to_wait)
     pending.push_back(info);
   }
   size_t orig_size = pending.size();
-  while (pending_has_completed()
-         || need_to_wait) {
+
+  /* first drain complete IOs */
+  while (pending_has_completed()) {
     int r = wait_pending_front();
     if (r < 0)
       return r;
@@ -1145,10 +1002,14 @@ int RGWPutObjProcessor_Aio::throttle_data(void *handle, bool need_to_wait)
     max_chunks++;
   }
 
-  if (pending.size() > max_chunks) {
+  /* now throttle. Note that need_to_wait should only affect the first IO operation */
+  if (pending.size() > max_chunks ||
+      need_to_wait) {
     int r = wait_pending_front();
     if (r < 0)
       return r;
+
+    need_to_wait = false;
   }
   return 0;
 }
@@ -2225,12 +2086,13 @@ int rgw_policy_from_attrset(CephContext *cct, map<string, bufferlist>& attrset, 
  *     here.
  */
 int RGWRados::list_objects(rgw_bucket& bucket, int max, string& prefix, string& delim,
-			   string& marker, vector<RGWObjEnt>& result, map<string, bool>& common_prefixes,
+			   string& marker, string *next_marker, vector<RGWObjEnt>& result,
+                           map<string, bool>& common_prefixes,
 			   bool get_content_type, string& ns, bool enforce_ns,
                            bool *is_truncated, RGWAccessListFilter *filter)
 {
   int count = 0;
-  bool truncated;
+  bool truncated = true;
 
   if (bucket_is_system(bucket)) {
     return -EINVAL;
@@ -2246,9 +2108,39 @@ int RGWRados::list_objects(rgw_bucket& bucket, int max, string& prefix, string& 
   prefix_obj.set_obj(prefix);
   string cur_prefix = prefix_obj.object;
 
-  do {
+  string bigger_than_delim;
+
+  if (!delim.empty()) {
+    unsigned long val = decode_utf8((unsigned char *)delim.c_str(), delim.size());
+    char buf[delim.size() + 16];
+    int r = encode_utf8(val + 1, (unsigned char *)buf);
+    if (r < 0) {
+      ldout(cct,0) << "ERROR: encode_utf8() failed" << dendl;
+      return -EINVAL;
+    }
+    buf[r] = '\0';
+
+    bigger_than_delim = buf;
+  }
+
+  string skip_after_delim;
+
+  /* if marker points at a common prefix, fast forward it into its upperbound string */
+  if (!delim.empty()) {
+    int delim_pos = cur_marker.find(delim, prefix.size());
+    if (delim_pos >= 0) {
+      cur_marker = cur_marker.substr(0, delim_pos);
+      cur_marker.append(bigger_than_delim);
+    }
+  }
+
+  while (truncated && count <= max) {
+    if (skip_after_delim > cur_marker) {
+      cur_marker = skip_after_delim;
+      ldout(cct, 20) << "setting cur_marker=" << cur_marker << dendl;
+    }
     std::map<string, RGWObjEnt> ent_map;
-    int r = cls_bucket_list(bucket, cur_marker, cur_prefix, max - count, ent_map,
+    int r = cls_bucket_list(bucket, cur_marker, cur_prefix, max + 1 - count, ent_map,
                             &truncated, &cur_marker);
     if (r < 0)
       return r;
@@ -2271,6 +2163,10 @@ int RGWRados::list_objects(rgw_bucket& bucket, int max, string& prefix, string& 
         continue;
       }
 
+      if (next_marker && count < max) {
+        *next_marker = obj;
+      }
+
       if (filter && !filter->filter(obj, key))
         continue;
 
@@ -2281,9 +2177,33 @@ int RGWRados::list_objects(rgw_bucket& bucket, int max, string& prefix, string& 
         int delim_pos = obj.find(delim, prefix.size());
 
         if (delim_pos >= 0) {
-          common_prefixes[obj.substr(0, delim_pos + 1)] = true;
+          string prefix_key = obj.substr(0, delim_pos + 1);
+
+          if (common_prefixes.find(prefix_key) == common_prefixes.end()) {
+            if (count >= max) {
+              truncated = true;
+              goto done;
+            }
+            if (next_marker) {
+              *next_marker = prefix_key;
+            }
+            common_prefixes[prefix_key] = true;
+
+            skip_after_delim = obj.substr(0, delim_pos);
+            skip_after_delim.append(bigger_than_delim);
+
+            ldout(cct, 20) << "skip_after_delim=" << skip_after_delim << dendl;
+
+            count++;
+          }
+
           continue;
         }
+      }
+
+      if (count >= max) {
+        truncated = true;
+        goto done;
       }
 
       RGWObjEnt ent = eiter->second;
@@ -2292,7 +2212,7 @@ int RGWRados::list_objects(rgw_bucket& bucket, int max, string& prefix, string& 
       result.push_back(ent);
       count++;
     }
-  } while (truncated && count < max);
+  }
 
 done:
   if (is_truncated)

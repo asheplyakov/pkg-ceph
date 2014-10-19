@@ -5,8 +5,7 @@ Forwarded: no
 ---
 --- a/src/test/run-cli-tests
 +++ b/src/test/run-cli-tests
-@@ -29,9 +29,9 @@
-     # With "make distcheck", the source directory must be read-only. I
+@@ -30,7 +30,7 @@ if [ ! -e "$CRAM_BIN" ]; then
      # patched cram to support that. See upstream ticket at
      # https://bitbucket.org/brodie/cram/issue/9/allow-read-only-directories-for-t
      # -- tv@inktank.com
@@ -15,4 +14,3 @@ Forwarded: no
  fi
  
  SRCDIR_ABS="$(readlink -f "$SRCDIR")"
- BUILDDIR_ABS="$(readlink -f "$BUILDDIR")"

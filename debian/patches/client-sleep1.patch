@@ -11,7 +11,7 @@ Signed-off-by: Yan, Zheng <zheng.z.yan@intel.com>
 
 --- a/src/client/Client.cc
 +++ b/src/client/Client.cc
-@@ -3074,14 +3074,29 @@
+@@ -3108,14 +3108,29 @@
    while (!in->caps.empty())
      remove_cap(in->caps.begin()->second, true);
  }

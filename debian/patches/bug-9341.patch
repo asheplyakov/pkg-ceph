@@ -1,0 +1,106 @@
+Last-update: 2014-05-20
+Forwarded: not-needed
+Origin: upstream, http://tracker.ceph.com/attachments/download/1388/0001-client-trim-unused-inodes-before-reconnecting-to-rec.patch
+Bug-Ceph: http://tracker.ceph.com/issues/9341
+From: Yan, Zheng <zyan@redhat.com>
+Description: dramatically (e.g seconds instead of hours) reduce rejoin (i.e. MDS restart) time.
+
+--- a/src/client/Client.cc
++++ b/src/client/Client.cc
+@@ -466,16 +466,21 @@
+ 
+ // ===================
+ // metadata cache stuff
+ 
+-void Client::trim_cache()
++void Client::trim_cache(unsigned max)
+ {
+-  ldout(cct, 20) << "trim_cache size " << lru.lru_get_size() << " max " << lru.lru_get_max() << dendl;
++  if (max > lru.lru_get_max())
++    max = lru.lru_get_max();
++
++  ldout(cct, 20) << "trim_cache size " << lru.lru_get_size() << " max " << max << dendl;
++
+   unsigned last = 0;
+   while (lru.lru_get_size() != last) {
+     last = lru.lru_get_size();
+ 
+-    if (lru.lru_get_size() <= lru.lru_get_max())  break;
++    if (lru.lru_get_size() <= max)
++      break;
+ 
+     // trim!
+     Dentry *dn = static_cast<Dentry*>(lru.lru_expire());
+     if (!dn)
+@@ -483,8 +488,24 @@
+     
+     trim_dentry(dn);
+   }
+ 
++  // notify kernel to invalidate top level directory entries. As a side effect,
++  // unused inodes underneath these entries get pruned.
++  if (dentry_invalidate_cb && lru.lru_get_size() > max) {
++    if (root->dir) {
++      for (ceph::unordered_map<string, Dentry*>::iterator p = root->dir->dentries.begin();
++	  p != root->dir->dentries.end();
++	  ++p) {
++	if (p->second->inode)
++	  _schedule_invalidate_dentry_callback(p->second, false);
++      }
++    } else {
++      // This seems unnatural, as long as we are holding caps they must be on
++      // some descendent of the root, so why don't we have the root open?`
++    }
++  }
++
+   // hose root?
+   if (lru.lru_get_size() == 0 && root && root->get_num_ref() == 0 && inode_map.size() == 1) {
+     ldout(cct, 15) << "trim_cache trimmed root " << root << dendl;
+     delete root;
+@@ -1977,10 +1998,15 @@
+     int newstate = mdsmap->get_state(p->first);
+     if (!mdsmap->is_up(p->first) ||
+ 	mdsmap->get_inst(p->first) != p->second->inst) {
+       messenger->mark_down(p->second->con);
+-      if (mdsmap->is_up(p->first))
++      if (mdsmap->is_up(p->first)) {
+ 	p->second->inst = mdsmap->get_inst(p->first);
++	// When new MDS starts to take over, notify kernel to trim unused entries
++	// in its dcache/icache. Hopefully, the kernel will release some unused
++	// inodes before the new MDS enters reconnect state.
++	trim_cache(1);
++      }
+     } else if (oldstate == newstate)
+       continue;  // no change
+     
+     if (newstate == MDSMap::STATE_RECONNECT &&
+@@ -2016,8 +2042,16 @@
+ {
+   int mds = session->mds_num;
+   ldout(cct, 10) << "send_reconnect to mds." << mds << dendl;
+ 
++  // trim unused caps to reduce MDS's cache rejoin time
++  trim_cache(1);
++
++  if (session->release) {
++    session->release->put();
++    session->release = NULL;
++  }
++
+   MClientReconnect *m = new MClientReconnect;
+ 
+   // i have an open session.
+   ceph::unordered_set<inodeno_t> did_snaprealm;
+--- a/src/client/Client.h
++++ b/src/client/Client.h
+@@ -392,9 +392,9 @@
+   int fill_stat(Inode *in, struct stat *st, frag_info_t *dirstat=0, nest_info_t *rstat=0);
+   void touch_dn(Dentry *dn);
+ 
+   // trim cache.
+-  void trim_cache();
++  void trim_cache(unsigned max=-1U);
+   void trim_dentry(Dentry *dn);
+   void trim_caps(MetaSession *s, int max);
+   
+   void dump_inode(Formatter *f, Inode *in, set<Inode*>& did, bool disconnected);

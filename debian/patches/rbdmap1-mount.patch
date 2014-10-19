@@ -27,8 +27,7 @@ Signed-off-by: Dmitry Smirnov <onlyjob@member.fsf.org>
 
 --- a/src/init-rbdmap
 +++ b/src/init-rbdmap
-@@ -17,9 +17,9 @@
- # Short-Description: Ceph RBD Mapping
+@@ -18,7 +18,7 @@
  # Description:       Ceph RBD Mapping
  ### END INIT INFO
  
@@ -37,9 +36,7 @@ Signed-off-by: Dmitry Smirnov <onlyjob@member.fsf.org>
  RBDMAPFILE="/etc/ceph/rbdmap"
  
  . /lib/lsb/init-functions
- 
-@@ -28,11 +28,9 @@
- 		log_warning_msg "$DESC : No $RBDMAPFILE found."
+@@ -29,9 +29,7 @@ do_map() {
  		exit 0
  	fi
  
@@ -49,9 +46,7 @@ Signed-off-by: Dmitry Smirnov <onlyjob@member.fsf.org>
  	RET=0
  	while read DEV PARAMS; do
  		case "$DEV" in
- 		  ""|\#*)
-@@ -43,48 +41,72 @@
- 		  *)
+@@ -44,6 +42,10 @@ do_map() {
  			DEV=rbd/$DEV
  			;;
  		esac
@@ -62,7 +57,7 @@ Signed-off-by: Dmitry Smirnov <onlyjob@member.fsf.org>
  		OIFS=$IFS
  		IFS=','
  		for PARAM in ${PARAMS[@]}; do
- 			CMDPARAMS="$CMDPARAMS --$(echo $PARAM | tr '=' ' ')"
+@@ -51,39 +53,59 @@ do_map() {
  		done
  		IFS=$OIFS
  		if [ ! -b /dev/rbd/$DEV ]; then
@@ -144,9 +139,7 @@ Signed-off-by: Dmitry Smirnov <onlyjob@member.fsf.org>
  }
  
  
- case "$1" in
-@@ -113,6 +135,4 @@
- 	log_success_msg "Usage: rbdmap {start|stop|restart|force-reload|reload|status}"
+@@ -114,5 +136,3 @@ case "$1" in
  	exit 1
  	;;
  esac

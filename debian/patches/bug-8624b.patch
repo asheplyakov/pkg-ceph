@@ -11,8 +11,7 @@ Signed-off-by: Joao Eduardo Luis <joao.luis@inktank.com>
 
 --- a/src/mon/MDSMonitor.cc
 +++ b/src/mon/MDSMonitor.cc
-@@ -1130,9 +1130,12 @@
-       ss << "pool id '" << data << "' does not exist";
+@@ -1131,7 +1131,10 @@ bool MDSMonitor::prepare_command(MMonCom
        r = -ENOENT;
        goto out;
      } else if (p->is_erasure()) {
@@ -24,9 +23,7 @@ Signed-off-by: Joao Eduardo Luis <joao.luis@inktank.com>
        r = -EINVAL;
        goto out;
      }
- 
-@@ -1141,9 +1144,12 @@
-       ss << "pool id '" << metadata << "' does not exist";
+@@ -1142,7 +1145,10 @@ bool MDSMonitor::prepare_command(MMonCom
        r = -ENOENT;
        goto out;
      } else if (p->is_erasure()) {
@@ -38,4 +35,3 @@ Signed-off-by: Joao Eduardo Luis <joao.luis@inktank.com>
        r = -EINVAL;
        goto out;
      }
- 

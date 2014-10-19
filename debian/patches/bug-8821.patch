@@ -30,7 +30,7 @@ Subject: [PATCH 3/3] rbd: respect rbd_default_* parameters
 
 --- a/src/common/config_opts.h
 +++ b/src/common/config_opts.h
-@@ -737,10 +737,10 @@
+@@ -748,10 +748,10 @@
   * affected by rbd_default_order.
   */
  OPTION(rbd_default_format, OPT_INT, 1)

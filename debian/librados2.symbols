@@ -91,6 +91,8 @@ librados.so.2 librados2 #MINVER#
  crush_remove_uniform_bucket_item@Base 0.72.2
  crush_reweight_bucket@Base 0.72.2
  crush_rule_set_step@Base 0.72.2
+ decode_utf8@Base 0.80.5
+ encode_utf8@Base 0.80.5
  escape_json_attr@Base 0.72.2
  escape_json_attr_len@Base 0.72.2
  escape_xml_attr@Base 0.72.2

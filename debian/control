@@ -40,7 +40,7 @@ Build-Depends: debhelper (>= 9~),
                uuid-dev,
                uuid-runtime,
                xfslibs-dev,
-               yasm
+               yasm [amd64]
 Build-Conflicts: libcrypto++-dev
 Standards-Version: 3.9.5
 X-Python-Version: >= 2.6
@@ -62,7 +62,7 @@ Depends: binutils,
 Pre-Depends: ${misc:Pre-Depends}
 Conflicts: gceph, librgw-dev, librgw1, librgw1-dbg, obsync
 Replaces: gceph, librgw-dev, librgw1, librgw1-dbg, obsync
-Recommends: libcephfs1, librados2, librbd1
+Recommends: libcephfs1, librados2, librbd1, time-daemon | chrony
 Suggests: logrotate
 Description: distributed storage and file system
  Ceph is a distributed storage system designed to provide excellent

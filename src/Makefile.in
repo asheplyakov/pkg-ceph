@@ -177,37 +177,36 @@ check_PROGRAMS = unittest_erasure_code_plugin$(EXEEXT) \
 @LINUX_TRUE@am__append_43 = -ldl
 @LINUX_TRUE@am__append_44 = -ldl
 @LINUX_TRUE@am__append_45 = -ldl
-@WITH_RADOSGW_TRUE@am__append_46 = $(LIBRGW) $(LIBRGW_DEPS)
+@COMPILER_HAS_VTA_TRUE@am__append_46 = -fno-var-tracking-assignments
 @COMPILER_HAS_VTA_TRUE@am__append_47 = -fno-var-tracking-assignments
-@COMPILER_HAS_VTA_TRUE@am__append_48 = -fno-var-tracking-assignments
-@WITH_BUILD_TESTS_TRUE@am__append_49 = test_build_libcommon \
+@WITH_BUILD_TESTS_TRUE@am__append_48 = test_build_libcommon \
 @WITH_BUILD_TESTS_TRUE@	test_build_librados test_build_librgw \
 @WITH_BUILD_TESTS_TRUE@	test_build_libcephfs
-@LINUX_TRUE@am__append_50 = ceph_kvstorebench \
+@LINUX_TRUE@am__append_49 = ceph_kvstorebench \
 @LINUX_TRUE@	ceph_test_rados_list_parallel \
 @LINUX_TRUE@	ceph_test_rados_open_pools_parallel \
 @LINUX_TRUE@	ceph_test_rados_delete_pools_parallel \
 @LINUX_TRUE@	ceph_test_rados_watch_notify
-@LINUX_TRUE@am__append_51 = libsystest.la
-@LINUX_TRUE@am__append_52 = -ldl
-@WITH_RADOSGW_TRUE@am__append_53 = ceph_test_cors \
+@LINUX_TRUE@am__append_50 = libsystest.la
+@LINUX_TRUE@am__append_51 = -ldl
+@WITH_RADOSGW_TRUE@am__append_52 = ceph_test_cors \
 @WITH_RADOSGW_TRUE@	ceph_test_rgw_manifest \
 @WITH_RADOSGW_TRUE@	ceph_test_cls_rgw_meta \
 @WITH_RADOSGW_TRUE@	ceph_test_cls_rgw_log \
 @WITH_RADOSGW_TRUE@	ceph_test_cls_rgw_opstate
-@LINUX_TRUE@am__append_54 = ceph_test_librbd_fsx
-@WITH_RADOSGW_TRUE@am__append_55 = ceph_test_cls_rgw
-@LINUX_TRUE@am__append_56 = ceph_test_objectstore
+@LINUX_TRUE@am__append_53 = ceph_test_librbd_fsx
+@WITH_RADOSGW_TRUE@am__append_54 = ceph_test_cls_rgw
+@LINUX_TRUE@am__append_55 = ceph_test_objectstore
+@LINUX_TRUE@am__append_56 = -ldl
 @LINUX_TRUE@am__append_57 = -ldl
-@LINUX_TRUE@am__append_58 = -ldl
-@WITH_REST_BENCH_TRUE@am__append_59 = rest-bench
-@WITH_REST_BENCH_TRUE@@WITH_SYSTEM_LIBS3_TRUE@am__append_60 = -ls3
-@WITH_REST_BENCH_TRUE@@WITH_SYSTEM_LIBS3_FALSE@am__append_61 = libs3/build/lib/libs3.a -lcurl -lxml2
-@WITH_REST_BENCH_TRUE@@WITH_SYSTEM_LIBS3_FALSE@am__append_62 = libs3
-@LINUX_TRUE@am__append_63 = mount.ceph
-@LINUX_TRUE@am__append_64 = rbd
-@WITH_FUSE_TRUE@am__append_65 = ceph-fuse rbd-fuse
-@ENABLE_CEPHFS_JAVA_TRUE@am__append_66 = libcephfs_jni.la
+@WITH_REST_BENCH_TRUE@am__append_58 = rest-bench
+@WITH_REST_BENCH_TRUE@@WITH_SYSTEM_LIBS3_TRUE@am__append_59 = -ls3
+@WITH_REST_BENCH_TRUE@@WITH_SYSTEM_LIBS3_FALSE@am__append_60 = libs3/build/lib/libs3.a -lcurl -lxml2
+@WITH_REST_BENCH_TRUE@@WITH_SYSTEM_LIBS3_FALSE@am__append_61 = libs3
+@LINUX_TRUE@am__append_62 = mount.ceph
+@LINUX_TRUE@am__append_63 = rbd
+@WITH_FUSE_TRUE@am__append_64 = ceph-fuse rbd-fuse
+@ENABLE_CEPHFS_JAVA_TRUE@am__append_65 = libcephfs_jni.la
 subdir = src
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/ac_check_classpath.m4 \
@@ -720,20 +719,23 @@ libmds_la_OBJECTS = $(am_libmds_la_OBJECTS)
 @WITH_LIBZFS_TRUE@am__DEPENDENCIES_4 = libos_zfs.a
 am__DEPENDENCIES_5 = libos.la $(am__DEPENDENCIES_1) \
 	$(am__DEPENDENCIES_4)
-libmon_la_DEPENDENCIES = $(LIBAUTH) $(LIBCOMMON) $(am__DEPENDENCIES_5)
+libmon_la_DEPENDENCIES = $(LIBAUTH) $(LIBCOMMON) $(am__DEPENDENCIES_5) \
+	$(LIBMON_TYPES)
 am_libmon_la_OBJECTS = mon/Monitor.lo mon/Paxos.lo mon/PaxosService.lo \
 	mon/OSDMonitor.lo mon/MDSMonitor.lo mon/MonmapMonitor.lo \
-	mon/PGMonitor.lo mon/PGMap.lo mon/LogMonitor.lo \
-	mon/AuthMonitor.lo mon/Elector.lo mon/MonitorStore.lo \
-	mon/HealthMonitor.lo mon/DataHealthService.lo \
-	mon/ConfigKeyService.lo
+	mon/PGMonitor.lo mon/LogMonitor.lo mon/AuthMonitor.lo \
+	mon/Elector.lo mon/MonitorStore.lo mon/HealthMonitor.lo \
+	mon/DataHealthService.lo mon/ConfigKeyService.lo
 libmon_la_OBJECTS = $(am_libmon_la_OBJECTS)
+libmon_types_la_LIBADD =
+am_libmon_types_la_OBJECTS = mon/PGMap.lo
+libmon_types_la_OBJECTS = $(am_libmon_types_la_OBJECTS)
 libmsg_la_LIBADD =
 am_libmsg_la_OBJECTS = msg/Accepter.lo msg/DispatchQueue.lo \
 	msg/Message.lo msg/Messenger.lo msg/Pipe.lo \
 	msg/SimpleMessenger.lo msg/msg_types.lo
 libmsg_la_OBJECTS = $(am_libmsg_la_OBJECTS)
-libos_la_LIBADD =
+libos_la_DEPENDENCIES = $(LIBOS_TYPES)
 am__libos_la_SOURCES_DIST = os/chain_xattr.cc os/DBObjectMap.cc \
 	os/GenericObjectMap.cc os/FileJournal.cc os/FileStore.cc \
 	os/FlatIndex.cc os/GenericFileStoreBackend.cc os/HashIndex.cc \
@@ -742,27 +744,56 @@ am__libos_la_SOURCES_DIST = os/chain_xattr.cc os/DBObjectMap.cc \
 	os/KeyValueStore.cc os/ObjectStore.cc os/WBThrottle.cc \
 	common/TrackedOp.cc os/BtrfsFileStoreBackend.cc \
 	os/XfsFileStoreBackend.cc os/ZFSFileStoreBackend.cc
-@LINUX_TRUE@am__objects_5 = os/BtrfsFileStoreBackend.lo
-@WITH_LIBXFS_TRUE@am__objects_6 = os/XfsFileStoreBackend.lo
-@WITH_LIBZFS_TRUE@am__objects_7 = os/ZFSFileStoreBackend.lo
-am_libos_la_OBJECTS = os/chain_xattr.lo os/DBObjectMap.lo \
-	os/GenericObjectMap.lo os/FileJournal.lo os/FileStore.lo \
-	os/FlatIndex.lo os/GenericFileStoreBackend.lo os/HashIndex.lo \
-	os/IndexManager.lo os/JournalingObjectStore.lo \
-	os/LevelDBStore.lo os/LFNIndex.lo os/MemStore.lo \
-	os/KeyValueStore.lo os/ObjectStore.lo os/WBThrottle.lo \
-	common/TrackedOp.lo $(am__objects_5) $(am__objects_6) \
+@LINUX_TRUE@am__objects_5 = os/libos_la-BtrfsFileStoreBackend.lo
+@WITH_LIBXFS_TRUE@am__objects_6 = os/libos_la-XfsFileStoreBackend.lo
+@WITH_LIBZFS_TRUE@am__objects_7 = os/libos_la-ZFSFileStoreBackend.lo
+am_libos_la_OBJECTS = os/libos_la-chain_xattr.lo \
+	os/libos_la-DBObjectMap.lo os/libos_la-GenericObjectMap.lo \
+	os/libos_la-FileJournal.lo os/libos_la-FileStore.lo \
+	os/libos_la-FlatIndex.lo \
+	os/libos_la-GenericFileStoreBackend.lo \
+	os/libos_la-HashIndex.lo os/libos_la-IndexManager.lo \
+	os/libos_la-JournalingObjectStore.lo \
+	os/libos_la-LevelDBStore.lo os/libos_la-LFNIndex.lo \
+	os/libos_la-MemStore.lo os/libos_la-KeyValueStore.lo \
+	os/libos_la-ObjectStore.lo os/libos_la-WBThrottle.lo \
+	common/libos_la-TrackedOp.lo $(am__objects_5) $(am__objects_6) \
 	$(am__objects_7)
 libos_la_OBJECTS = $(am_libos_la_OBJECTS)
-libosd_la_DEPENDENCIES = $(LIBOSDC) $(am__DEPENDENCIES_5)
-am_libosd_la_OBJECTS = osd/PG.lo osd/PGLog.lo osd/ReplicatedPG.lo \
-	osd/ReplicatedBackend.lo osd/ECBackend.lo osd/ECMsgTypes.lo \
-	osd/ECTransaction.lo osd/PGBackend.lo osd/Ager.lo \
-	osd/HitSet.lo osd/OSD.lo osd/OSDCap.lo osd/Watch.lo \
-	osd/ClassHandler.lo osd/OpRequest.lo common/TrackedOp.lo \
-	osd/SnapMapper.lo osd/osd_types.lo osd/ECUtil.lo \
-	objclass/class_api.lo
+libos_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) \
+	$(LIBTOOLFLAGS) --mode=link $(CXXLD) $(libos_la_CXXFLAGS) \
+	$(CXXFLAGS) $(AM_LDFLAGS) $(LDFLAGS) -o $@
+libos_types_la_LIBADD =
+am_libos_types_la_OBJECTS = os/libos_types_la-Transaction.lo
+libos_types_la_OBJECTS = $(am_libos_types_la_OBJECTS)
+libos_types_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
+	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
+	$(libos_types_la_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
+	$(LDFLAGS) -o $@
+libosd_la_DEPENDENCIES = $(LIBOSDC) $(am__DEPENDENCIES_5) \
+	$(LIBOSD_TYPES) $(LIBOS_TYPES)
+am_libosd_la_OBJECTS = osd/libosd_la-PG.lo \
+	osd/libosd_la-ReplicatedPG.lo \
+	osd/libosd_la-ReplicatedBackend.lo osd/libosd_la-ECBackend.lo \
+	osd/libosd_la-ECMsgTypes.lo osd/libosd_la-ECTransaction.lo \
+	osd/libosd_la-PGBackend.lo osd/libosd_la-Ager.lo \
+	osd/libosd_la-HitSet.lo osd/libosd_la-OSD.lo \
+	osd/libosd_la-OSDCap.lo osd/libosd_la-Watch.lo \
+	osd/libosd_la-ClassHandler.lo osd/libosd_la-OpRequest.lo \
+	common/libosd_la-TrackedOp.lo osd/libosd_la-SnapMapper.lo \
+	objclass/libosd_la-class_api.lo
 libosd_la_OBJECTS = $(am_libosd_la_OBJECTS)
+libosd_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) \
+	$(LIBTOOLFLAGS) --mode=link $(CXXLD) $(libosd_la_CXXFLAGS) \
+	$(CXXFLAGS) $(AM_LDFLAGS) $(LDFLAGS) -o $@
+libosd_types_la_LIBADD =
+am_libosd_types_la_OBJECTS = osd/libosd_types_la-PGLog.lo \
+	osd/libosd_types_la-osd_types.lo osd/libosd_types_la-ECUtil.lo
+libosd_types_la_OBJECTS = $(am_libosd_types_la_OBJECTS)
+libosd_types_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
+	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
+	$(libosd_types_la_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
+	$(LDFLAGS) -o $@
 libosdc_la_LIBADD =
 am_libosdc_la_OBJECTS = osdc/Objecter.lo osdc/ObjectCacher.lo \
 	osdc/Filer.lo osdc/Striper.lo osdc/Journaler.lo
@@ -819,7 +850,7 @@ am__librgw_la_SOURCES_DIST = rgw/librgw.cc rgw/rgw_acl.cc \
 	rgw/rgw_gc.cc rgw/rgw_multi_del.cc rgw/rgw_env.cc \
 	rgw/rgw_cors.cc rgw/rgw_cors_s3.cc rgw/rgw_auth_s3.cc \
 	rgw/rgw_metadata.cc rgw/rgw_replica_log.cc rgw/rgw_keystone.cc \
-	rgw/rgw_quota.cc
+	rgw/rgw_quota.cc rgw/rgw_dencoder.cc
 @WITH_RADOSGW_TRUE@am_librgw_la_OBJECTS = rgw/librgw_la-librgw.lo \
 @WITH_RADOSGW_TRUE@	rgw/librgw_la-rgw_acl.lo \
 @WITH_RADOSGW_TRUE@	rgw/librgw_la-rgw_acl_s3.lo \
@@ -852,7 +883,8 @@ am__librgw_la_SOURCES_DIST = rgw/librgw.cc rgw/rgw_acl.cc \
 @WITH_RADOSGW_TRUE@	rgw/librgw_la-rgw_metadata.lo \
 @WITH_RADOSGW_TRUE@	rgw/librgw_la-rgw_replica_log.lo \
 @WITH_RADOSGW_TRUE@	rgw/librgw_la-rgw_keystone.lo \
-@WITH_RADOSGW_TRUE@	rgw/librgw_la-rgw_quota.lo
+@WITH_RADOSGW_TRUE@	rgw/librgw_la-rgw_quota.lo \
+@WITH_RADOSGW_TRUE@	rgw/librgw_la-rgw_dencoder.lo
 librgw_la_OBJECTS = $(am_librgw_la_OBJECTS)
 librgw_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) \
 	$(LIBTOOLFLAGS) --mode=link $(CXXLD) $(librgw_la_CXXFLAGS) \
@@ -972,24 +1004,10 @@ am_ceph_dencoder_OBJECTS =  \
 	$(am__objects_13)
 ceph_dencoder_OBJECTS = $(am_ceph_dencoder_OBJECTS)
 am__DEPENDENCIES_7 = libperfglue.la $(am__DEPENDENCIES_1)
-am__DEPENDENCIES_8 = libosd.la $(LIBOSDC) $(am__DEPENDENCIES_5) \
-	$(am__DEPENDENCIES_7)
-am__DEPENDENCIES_9 = libmds.la $(am__DEPENDENCIES_7)
-am__DEPENDENCIES_10 = libmon.la $(am__DEPENDENCIES_7)
-@WITH_RADOSGW_TRUE@am__DEPENDENCIES_11 = $(LIBRADOS) \
-@WITH_RADOSGW_TRUE@	libcls_rgw_client.la libcls_log_client.a \
-@WITH_RADOSGW_TRUE@	libcls_statelog_client.a \
-@WITH_RADOSGW_TRUE@	libcls_user_client.a \
-@WITH_RADOSGW_TRUE@	libcls_replica_log_client.a \
-@WITH_RADOSGW_TRUE@	libcls_lock_client.la \
-@WITH_RADOSGW_TRUE@	libcls_refcount_client.la \
-@WITH_RADOSGW_TRUE@	libcls_version_client.a
-am__DEPENDENCIES_12 = $(am__DEPENDENCIES_11)
-@WITH_RADOSGW_TRUE@am__DEPENDENCIES_13 = $(LIBRGW) \
-@WITH_RADOSGW_TRUE@	$(am__DEPENDENCIES_12)
-ceph_dencoder_DEPENDENCIES = $(am__DEPENDENCIES_8) \
-	$(am__DEPENDENCIES_9) $(am__DEPENDENCIES_10) $(DENCODER_DEPS) \
-	$(am__DEPENDENCIES_6) $(am__DEPENDENCIES_13)
+am__DEPENDENCIES_8 = libmds.la $(am__DEPENDENCIES_7)
+ceph_dencoder_DEPENDENCIES = $(LIBOSD_TYPES) $(LIBOS_TYPES) \
+	$(am__DEPENDENCIES_8) $(LIBMON_TYPES) $(DENCODER_DEPS) \
+	$(am__DEPENDENCIES_6)
 ceph_dencoder_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(ceph_dencoder_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) $(LDFLAGS) \
@@ -1010,11 +1028,12 @@ ceph_kvstore_tool_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(LDFLAGS) -o $@
 am_ceph_mds_OBJECTS = ceph_mds.$(OBJEXT)
 ceph_mds_OBJECTS = $(am_ceph_mds_OBJECTS)
-ceph_mds_DEPENDENCIES = $(am__DEPENDENCIES_9) $(LIBOSDC) \
+ceph_mds_DEPENDENCIES = $(am__DEPENDENCIES_8) $(LIBOSDC) \
 	$(am__DEPENDENCIES_6) $(LIBCOMMON)
 am_ceph_mon_OBJECTS = ceph_mon.$(OBJEXT)
 ceph_mon_OBJECTS = $(am_ceph_mon_OBJECTS)
-ceph_mon_DEPENDENCIES = $(am__DEPENDENCIES_10) $(am__DEPENDENCIES_5) \
+am__DEPENDENCIES_9 = libmon.la $(am__DEPENDENCIES_7)
+ceph_mon_DEPENDENCIES = $(am__DEPENDENCIES_9) $(am__DEPENDENCIES_5) \
 	$(am__DEPENDENCIES_6) $(LIBCOMMON)
 am_ceph_monstore_tool_OBJECTS = tools/ceph_monstore_tool.$(OBJEXT)
 ceph_monstore_tool_OBJECTS = $(am_ceph_monstore_tool_OBJECTS)
@@ -1022,7 +1041,9 @@ ceph_monstore_tool_DEPENDENCIES = $(am__DEPENDENCIES_5) \
 	$(am__DEPENDENCIES_6) $(am__DEPENDENCIES_1)
 am_ceph_osd_OBJECTS = ceph_osd.$(OBJEXT)
 ceph_osd_OBJECTS = $(am_ceph_osd_OBJECTS)
-ceph_osd_DEPENDENCIES = $(am__DEPENDENCIES_8) $(am__DEPENDENCIES_6) \
+am__DEPENDENCIES_10 = libosd.la $(LIBOSDC) $(am__DEPENDENCIES_5) \
+	$(am__DEPENDENCIES_7)
+ceph_osd_DEPENDENCIES = $(am__DEPENDENCIES_10) $(am__DEPENDENCIES_6) \
 	$(LIBCOMMON)
 am_ceph_osdomap_tool_OBJECTS = tools/ceph_osdomap_tool.$(OBJEXT)
 ceph_osdomap_tool_OBJECTS = $(am_ceph_osdomap_tool_OBJECTS)
@@ -1042,24 +1063,24 @@ ceph_dupstore_DEPENDENCIES = $(am__DEPENDENCIES_5) \
 am_ceph_erasure_code_OBJECTS =  \
 	test/erasure-code/ceph_erasure_code.$(OBJEXT)
 ceph_erasure_code_OBJECTS = $(am_ceph_erasure_code_OBJECTS)
-ceph_erasure_code_DEPENDENCIES = $(am__DEPENDENCIES_8) $(LIBCOMMON) \
+ceph_erasure_code_DEPENDENCIES = $(am__DEPENDENCIES_10) $(LIBCOMMON) \
 	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_6) \
 	$(am__DEPENDENCIES_1)
 am_ceph_erasure_code_benchmark_OBJECTS =  \
 	test/erasure-code/ceph_erasure_code_benchmark.$(OBJEXT)
 ceph_erasure_code_benchmark_OBJECTS =  \
 	$(am_ceph_erasure_code_benchmark_OBJECTS)
-ceph_erasure_code_benchmark_DEPENDENCIES = $(am__DEPENDENCIES_8) \
+ceph_erasure_code_benchmark_DEPENDENCIES = $(am__DEPENDENCIES_10) \
 	$(LIBCOMMON) $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_6) \
 	$(am__DEPENDENCIES_1)
 am_ceph_filestore_dump_OBJECTS = tools/ceph_filestore_dump.$(OBJEXT)
 ceph_filestore_dump_OBJECTS = $(am_ceph_filestore_dump_OBJECTS)
-ceph_filestore_dump_DEPENDENCIES = $(am__DEPENDENCIES_8) \
+ceph_filestore_dump_DEPENDENCIES = $(am__DEPENDENCIES_10) \
 	$(am__DEPENDENCIES_5) $(am__DEPENDENCIES_6) \
 	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1)
 am_ceph_filestore_tool_OBJECTS = tools/ceph_filestore_tool.$(OBJEXT)
 ceph_filestore_tool_OBJECTS = $(am_ceph_filestore_tool_OBJECTS)
-ceph_filestore_tool_DEPENDENCIES = $(am__DEPENDENCIES_8) \
+ceph_filestore_tool_DEPENDENCIES = $(am__DEPENDENCIES_10) \
 	$(am__DEPENDENCIES_5) $(am__DEPENDENCIES_6) \
 	$(am__DEPENDENCIES_1)
 am__ceph_kvstorebench_SOURCES_DIST = test/kv_store_bench.cc \
@@ -1074,7 +1095,7 @@ am_ceph_mon_store_converter_OBJECTS =  \
 	tools/mon_store_converter.$(OBJEXT)
 ceph_mon_store_converter_OBJECTS =  \
 	$(am_ceph_mon_store_converter_OBJECTS)
-ceph_mon_store_converter_DEPENDENCIES = $(am__DEPENDENCIES_10) \
+ceph_mon_store_converter_DEPENDENCIES = $(am__DEPENDENCIES_9) \
 	$(am__DEPENDENCIES_5) $(am__DEPENDENCIES_6)
 am_ceph_multi_stress_watch_OBJECTS =  \
 	test/multi_stress_watch.$(OBJEXT)
@@ -1099,6 +1120,15 @@ am__ceph_rgw_jsonparser_SOURCES_DIST = rgw/rgw_jsonparser.cc \
 @WITH_RADOSGW_TRUE@	rgw/rgw_env.$(OBJEXT) \
 @WITH_RADOSGW_TRUE@	rgw/rgw_json_enc.$(OBJEXT)
 ceph_rgw_jsonparser_OBJECTS = $(am_ceph_rgw_jsonparser_OBJECTS)
+@WITH_RADOSGW_TRUE@am__DEPENDENCIES_11 = $(LIBRADOS) \
+@WITH_RADOSGW_TRUE@	libcls_rgw_client.la libcls_log_client.a \
+@WITH_RADOSGW_TRUE@	libcls_statelog_client.a \
+@WITH_RADOSGW_TRUE@	libcls_user_client.a \
+@WITH_RADOSGW_TRUE@	libcls_replica_log_client.a \
+@WITH_RADOSGW_TRUE@	libcls_lock_client.la \
+@WITH_RADOSGW_TRUE@	libcls_refcount_client.la \
+@WITH_RADOSGW_TRUE@	libcls_version_client.a
+am__DEPENDENCIES_12 = $(am__DEPENDENCIES_11)
 @WITH_RADOSGW_TRUE@ceph_rgw_jsonparser_DEPENDENCIES = $(LIBRGW) \
 @WITH_RADOSGW_TRUE@	$(am__DEPENDENCIES_12) \
 @WITH_RADOSGW_TRUE@	$(am__DEPENDENCIES_6)
@@ -1161,11 +1191,11 @@ ceph_test_cfuse_cache_invalidate_LDADD = $(LDADD)
 am_ceph_test_cls_hello_OBJECTS =  \
 	test/cls_hello/ceph_test_cls_hello-test_cls_hello.$(OBJEXT)
 ceph_test_cls_hello_OBJECTS = $(am_ceph_test_cls_hello_OBJECTS)
-am__DEPENDENCIES_14 = $(top_builddir)/src/gtest/lib/libgtest.a \
+am__DEPENDENCIES_13 = $(top_builddir)/src/gtest/lib/libgtest.a \
 	$(top_builddir)/src/gtest/lib/libgtest_main.a \
 	$(am__DEPENDENCIES_1)
 ceph_test_cls_hello_DEPENDENCIES = $(LIBRADOS) $(am__DEPENDENCIES_1) \
-	$(am__DEPENDENCIES_14) $(am__DEPENDENCIES_6) \
+	$(am__DEPENDENCIES_13) $(am__DEPENDENCIES_6) \
 	$(RADOS_TEST_LDADD)
 ceph_test_cls_hello_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -1175,7 +1205,7 @@ am_ceph_test_cls_lock_OBJECTS =  \
 	test/cls_lock/ceph_test_cls_lock-test_cls_lock.$(OBJEXT)
 ceph_test_cls_lock_OBJECTS = $(am_ceph_test_cls_lock_OBJECTS)
 ceph_test_cls_lock_DEPENDENCIES = $(LIBRADOS) libcls_lock_client.la \
-	$(am__DEPENDENCIES_14) $(RADOS_TEST_LDADD)
+	$(am__DEPENDENCIES_13) $(RADOS_TEST_LDADD)
 ceph_test_cls_lock_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(ceph_test_cls_lock_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -1184,7 +1214,7 @@ am_ceph_test_cls_log_OBJECTS =  \
 	test/cls_log/ceph_test_cls_log-test_cls_log.$(OBJEXT)
 ceph_test_cls_log_OBJECTS = $(am_ceph_test_cls_log_OBJECTS)
 ceph_test_cls_log_DEPENDENCIES = $(LIBRADOS) libcls_log_client.a \
-	$(am__DEPENDENCIES_14) $(am__DEPENDENCIES_6) \
+	$(am__DEPENDENCIES_13) $(am__DEPENDENCIES_6) \
 	$(RADOS_TEST_LDADD)
 ceph_test_cls_log_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -1194,7 +1224,7 @@ am_ceph_test_cls_rbd_OBJECTS =  \
 	test/cls_rbd/ceph_test_cls_rbd-test_cls_rbd.$(OBJEXT)
 ceph_test_cls_rbd_OBJECTS = $(am_ceph_test_cls_rbd_OBJECTS)
 ceph_test_cls_rbd_DEPENDENCIES = $(LIBRADOS) libcls_rbd_client.la \
-	libcls_lock_client.la $(am__DEPENDENCIES_14) \
+	libcls_lock_client.la $(am__DEPENDENCIES_13) \
 	$(RADOS_TEST_LDADD)
 ceph_test_cls_rbd_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -1203,7 +1233,7 @@ ceph_test_cls_rbd_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_ceph_test_cls_refcount_OBJECTS = test/cls_refcount/ceph_test_cls_refcount-test_cls_refcount.$(OBJEXT)
 ceph_test_cls_refcount_OBJECTS = $(am_ceph_test_cls_refcount_OBJECTS)
 ceph_test_cls_refcount_DEPENDENCIES = $(LIBRADOS) \
-	libcls_refcount_client.la $(am__DEPENDENCIES_14) \
+	libcls_refcount_client.la $(am__DEPENDENCIES_13) \
 	$(RADOS_TEST_LDADD)
 ceph_test_cls_refcount_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -1213,7 +1243,7 @@ am_ceph_test_cls_replica_log_OBJECTS = test/cls_replica_log/ceph_test_cls_replic
 ceph_test_cls_replica_log_OBJECTS =  \
 	$(am_ceph_test_cls_replica_log_OBJECTS)
 ceph_test_cls_replica_log_DEPENDENCIES = $(LIBRADOS) \
-	libcls_replica_log_client.a $(am__DEPENDENCIES_14) \
+	libcls_replica_log_client.a $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6) $(RADOS_TEST_LDADD)
 ceph_test_cls_replica_log_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -1223,7 +1253,7 @@ am__ceph_test_cls_rgw_SOURCES_DIST = test/cls_rgw/test_cls_rgw.cc
 @WITH_RADOSGW_TRUE@am_ceph_test_cls_rgw_OBJECTS = test/cls_rgw/ceph_test_cls_rgw-test_cls_rgw.$(OBJEXT)
 ceph_test_cls_rgw_OBJECTS = $(am_ceph_test_cls_rgw_OBJECTS)
 @WITH_RADOSGW_TRUE@ceph_test_cls_rgw_DEPENDENCIES = $(LIBRADOS) \
-@WITH_RADOSGW_TRUE@	libcls_rgw_client.la $(am__DEPENDENCIES_14) \
+@WITH_RADOSGW_TRUE@	libcls_rgw_client.la $(am__DEPENDENCIES_13) \
 @WITH_RADOSGW_TRUE@	$(RADOS_TEST_LDADD)
 ceph_test_cls_rgw_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -1234,7 +1264,7 @@ am__ceph_test_cls_rgw_log_SOURCES_DIST = test/test_rgw_admin_log.cc
 ceph_test_cls_rgw_log_OBJECTS = $(am_ceph_test_cls_rgw_log_OBJECTS)
 @WITH_RADOSGW_TRUE@ceph_test_cls_rgw_log_DEPENDENCIES = $(LIBRADOS) \
 @WITH_RADOSGW_TRUE@	$(LIBRGW) $(am__DEPENDENCIES_6) \
-@WITH_RADOSGW_TRUE@	$(am__DEPENDENCIES_14) \
+@WITH_RADOSGW_TRUE@	$(am__DEPENDENCIES_13) \
 @WITH_RADOSGW_TRUE@	$(am__DEPENDENCIES_1) \
 @WITH_RADOSGW_TRUE@	libcls_version_client.a libcls_log_client.a \
 @WITH_RADOSGW_TRUE@	libcls_statelog_client.a \
@@ -1250,7 +1280,7 @@ am__ceph_test_cls_rgw_meta_SOURCES_DIST = test/test_rgw_admin_meta.cc
 ceph_test_cls_rgw_meta_OBJECTS = $(am_ceph_test_cls_rgw_meta_OBJECTS)
 @WITH_RADOSGW_TRUE@ceph_test_cls_rgw_meta_DEPENDENCIES = $(LIBRADOS) \
 @WITH_RADOSGW_TRUE@	$(LIBRGW) $(am__DEPENDENCIES_6) \
-@WITH_RADOSGW_TRUE@	$(am__DEPENDENCIES_14) \
+@WITH_RADOSGW_TRUE@	$(am__DEPENDENCIES_13) \
 @WITH_RADOSGW_TRUE@	$(am__DEPENDENCIES_1) \
 @WITH_RADOSGW_TRUE@	libcls_version_client.a libcls_log_client.a \
 @WITH_RADOSGW_TRUE@	libcls_statelog_client.a \
@@ -1268,7 +1298,7 @@ ceph_test_cls_rgw_opstate_OBJECTS =  \
 	$(am_ceph_test_cls_rgw_opstate_OBJECTS)
 @WITH_RADOSGW_TRUE@ceph_test_cls_rgw_opstate_DEPENDENCIES =  \
 @WITH_RADOSGW_TRUE@	$(LIBRADOS) $(LIBRGW) $(am__DEPENDENCIES_6) \
-@WITH_RADOSGW_TRUE@	$(am__DEPENDENCIES_14) \
+@WITH_RADOSGW_TRUE@	$(am__DEPENDENCIES_13) \
 @WITH_RADOSGW_TRUE@	$(am__DEPENDENCIES_1) \
 @WITH_RADOSGW_TRUE@	libcls_version_client.a libcls_log_client.a \
 @WITH_RADOSGW_TRUE@	libcls_statelog_client.a \
@@ -1282,7 +1312,7 @@ ceph_test_cls_rgw_opstate_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_ceph_test_cls_statelog_OBJECTS = test/cls_statelog/ceph_test_cls_statelog-test_cls_statelog.$(OBJEXT)
 ceph_test_cls_statelog_OBJECTS = $(am_ceph_test_cls_statelog_OBJECTS)
 ceph_test_cls_statelog_DEPENDENCIES = $(LIBRADOS) \
-	libcls_statelog_client.a $(am__DEPENDENCIES_14) \
+	libcls_statelog_client.a $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6) $(RADOS_TEST_LDADD)
 ceph_test_cls_statelog_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -1291,7 +1321,7 @@ ceph_test_cls_statelog_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_ceph_test_cls_version_OBJECTS = test/cls_version/ceph_test_cls_version-test_cls_version.$(OBJEXT)
 ceph_test_cls_version_OBJECTS = $(am_ceph_test_cls_version_OBJECTS)
 ceph_test_cls_version_DEPENDENCIES = $(LIBRADOS) \
-	libcls_version_client.a $(am__DEPENDENCIES_14) \
+	libcls_version_client.a $(am__DEPENDENCIES_13) \
 	$(RADOS_TEST_LDADD)
 ceph_test_cls_version_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -1303,7 +1333,7 @@ am__ceph_test_cors_SOURCES_DIST = test/test_cors.cc
 ceph_test_cors_OBJECTS = $(am_ceph_test_cors_OBJECTS)
 @WITH_RADOSGW_TRUE@ceph_test_cors_DEPENDENCIES = $(LIBRADOS) $(LIBRGW) \
 @WITH_RADOSGW_TRUE@	$(am__DEPENDENCIES_6) \
-@WITH_RADOSGW_TRUE@	$(am__DEPENDENCIES_14)
+@WITH_RADOSGW_TRUE@	$(am__DEPENDENCIES_13)
 ceph_test_cors_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(ceph_test_cors_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -1315,7 +1345,7 @@ am_ceph_test_filejournal_OBJECTS =  \
 	test/ceph_test_filejournal-test_filejournal.$(OBJEXT)
 ceph_test_filejournal_OBJECTS = $(am_ceph_test_filejournal_OBJECTS)
 ceph_test_filejournal_DEPENDENCIES = $(am__DEPENDENCIES_5) \
-	$(am__DEPENDENCIES_14) $(am__DEPENDENCIES_6)
+	$(am__DEPENDENCIES_13) $(am__DEPENDENCIES_6)
 ceph_test_filejournal_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(ceph_test_filejournal_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -1347,13 +1377,13 @@ ceph_test_ioctls_OBJECTS = $(am_ceph_test_ioctls_OBJECTS)
 ceph_test_ioctls_LDADD = $(LDADD)
 am_ceph_test_keys_OBJECTS = test/testkeys.$(OBJEXT)
 ceph_test_keys_OBJECTS = $(am_ceph_test_keys_OBJECTS)
-ceph_test_keys_DEPENDENCIES = $(am__DEPENDENCIES_10) \
+ceph_test_keys_DEPENDENCIES = $(am__DEPENDENCIES_9) \
 	$(am__DEPENDENCIES_6)
 am_ceph_test_keyvaluedb_atomicity_OBJECTS = test/ObjectMap/ceph_test_keyvaluedb_atomicity-test_keyvaluedb_atomicity.$(OBJEXT)
 ceph_test_keyvaluedb_atomicity_OBJECTS =  \
 	$(am_ceph_test_keyvaluedb_atomicity_OBJECTS)
 ceph_test_keyvaluedb_atomicity_DEPENDENCIES = $(am__DEPENDENCIES_5) \
-	$(am__DEPENDENCIES_14) $(am__DEPENDENCIES_6)
+	$(am__DEPENDENCIES_13) $(am__DEPENDENCIES_6)
 ceph_test_keyvaluedb_atomicity_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(ceph_test_keyvaluedb_atomicity_CXXFLAGS) $(CXXFLAGS) \
@@ -1363,7 +1393,7 @@ am_ceph_test_keyvaluedb_iterators_OBJECTS = test/ObjectMap/ceph_test_keyvaluedb_
 ceph_test_keyvaluedb_iterators_OBJECTS =  \
 	$(am_ceph_test_keyvaluedb_iterators_OBJECTS)
 ceph_test_keyvaluedb_iterators_DEPENDENCIES = $(am__DEPENDENCIES_5) \
-	$(am__DEPENDENCIES_14) $(am__DEPENDENCIES_6)
+	$(am__DEPENDENCIES_13) $(am__DEPENDENCIES_6)
 ceph_test_keyvaluedb_iterators_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(ceph_test_keyvaluedb_iterators_CXXFLAGS) $(CXXFLAGS) \
@@ -1374,7 +1404,7 @@ am_ceph_test_libcephfs_OBJECTS =  \
 	test/libcephfs/ceph_test_libcephfs-caps.$(OBJEXT) \
 	test/libcephfs/ceph_test_libcephfs-multiclient.$(OBJEXT)
 ceph_test_libcephfs_OBJECTS = $(am_ceph_test_libcephfs_OBJECTS)
-ceph_test_libcephfs_DEPENDENCIES = $(LIBCEPHFS) $(am__DEPENDENCIES_14)
+ceph_test_libcephfs_DEPENDENCIES = $(LIBCEPHFS) $(am__DEPENDENCIES_13)
 ceph_test_libcephfs_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(ceph_test_libcephfs_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -1383,7 +1413,7 @@ am_ceph_test_librbd_OBJECTS =  \
 	test/librbd/ceph_test_librbd-test_librbd.$(OBJEXT)
 ceph_test_librbd_OBJECTS = $(am_ceph_test_librbd_OBJECTS)
 ceph_test_librbd_DEPENDENCIES = $(LIBRBD) $(LIBRADOS) \
-	$(am__DEPENDENCIES_14) $(am__DEPENDENCIES_6) \
+	$(am__DEPENDENCIES_13) $(am__DEPENDENCIES_6) \
 	$(RADOS_TEST_LDADD)
 ceph_test_librbd_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -1415,7 +1445,7 @@ am_ceph_test_object_map_OBJECTS =  \
 	test/ObjectMap/ceph_test_object_map-KeyValueDBMemory.$(OBJEXT)
 ceph_test_object_map_OBJECTS = $(am_ceph_test_object_map_OBJECTS)
 ceph_test_object_map_DEPENDENCIES = $(am__DEPENDENCIES_5) \
-	$(am__DEPENDENCIES_14) $(am__DEPENDENCIES_6)
+	$(am__DEPENDENCIES_13) $(am__DEPENDENCIES_6)
 ceph_test_object_map_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(ceph_test_object_map_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -1432,7 +1462,7 @@ am__ceph_test_objectstore_SOURCES_DIST =  \
 @LINUX_TRUE@am_ceph_test_objectstore_OBJECTS = test/objectstore/ceph_test_objectstore-store_test.$(OBJEXT)
 ceph_test_objectstore_OBJECTS = $(am_ceph_test_objectstore_OBJECTS)
 @LINUX_TRUE@ceph_test_objectstore_DEPENDENCIES =  \
-@LINUX_TRUE@	$(am__DEPENDENCIES_5) $(am__DEPENDENCIES_14) \
+@LINUX_TRUE@	$(am__DEPENDENCIES_5) $(am__DEPENDENCIES_13) \
 @LINUX_TRUE@	$(am__DEPENDENCIES_6)
 ceph_test_objectstore_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -1455,7 +1485,7 @@ am_ceph_test_rados_api_aio_OBJECTS =  \
 ceph_test_rados_api_aio_OBJECTS =  \
 	$(am_ceph_test_rados_api_aio_OBJECTS)
 ceph_test_rados_api_aio_DEPENDENCIES = $(LIBRADOS) \
-	$(am__DEPENDENCIES_14) $(RADOS_TEST_LDADD)
+	$(am__DEPENDENCIES_13) $(RADOS_TEST_LDADD)
 ceph_test_rados_api_aio_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(ceph_test_rados_api_aio_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -1464,7 +1494,7 @@ am_ceph_test_rados_api_c_read_operations_OBJECTS = test/librados/ceph_test_rados
 ceph_test_rados_api_c_read_operations_OBJECTS =  \
 	$(am_ceph_test_rados_api_c_read_operations_OBJECTS)
 ceph_test_rados_api_c_read_operations_DEPENDENCIES = $(LIBRADOS) \
-	$(am__DEPENDENCIES_14) $(RADOS_TEST_LDADD)
+	$(am__DEPENDENCIES_13) $(RADOS_TEST_LDADD)
 ceph_test_rados_api_c_read_operations_LINK = $(LIBTOOL) $(AM_V_lt) \
 	--tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link \
 	$(CXXLD) $(ceph_test_rados_api_c_read_operations_CXXFLAGS) \
@@ -1473,7 +1503,7 @@ am_ceph_test_rados_api_c_write_operations_OBJECTS = test/librados/ceph_test_rado
 ceph_test_rados_api_c_write_operations_OBJECTS =  \
 	$(am_ceph_test_rados_api_c_write_operations_OBJECTS)
 ceph_test_rados_api_c_write_operations_DEPENDENCIES = $(LIBRADOS) \
-	$(am__DEPENDENCIES_14) $(RADOS_TEST_LDADD)
+	$(am__DEPENDENCIES_13) $(RADOS_TEST_LDADD)
 ceph_test_rados_api_c_write_operations_LINK = $(LIBTOOL) $(AM_V_lt) \
 	--tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link \
 	$(CXXLD) $(ceph_test_rados_api_c_write_operations_CXXFLAGS) \
@@ -1483,7 +1513,7 @@ am_ceph_test_rados_api_cls_OBJECTS =  \
 ceph_test_rados_api_cls_OBJECTS =  \
 	$(am_ceph_test_rados_api_cls_OBJECTS)
 ceph_test_rados_api_cls_DEPENDENCIES = $(LIBRADOS) \
-	$(am__DEPENDENCIES_14) $(RADOS_TEST_LDADD)
+	$(am__DEPENDENCIES_13) $(RADOS_TEST_LDADD)
 ceph_test_rados_api_cls_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(ceph_test_rados_api_cls_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -1493,7 +1523,7 @@ am_ceph_test_rados_api_cmd_OBJECTS =  \
 ceph_test_rados_api_cmd_OBJECTS =  \
 	$(am_ceph_test_rados_api_cmd_OBJECTS)
 ceph_test_rados_api_cmd_DEPENDENCIES = $(LIBRADOS) \
-	$(am__DEPENDENCIES_14) $(RADOS_TEST_LDADD)
+	$(am__DEPENDENCIES_13) $(RADOS_TEST_LDADD)
 ceph_test_rados_api_cmd_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(ceph_test_rados_api_cmd_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -1502,7 +1532,7 @@ am_ceph_test_rados_api_io_OBJECTS =  \
 	test/librados/ceph_test_rados_api_io-io.$(OBJEXT)
 ceph_test_rados_api_io_OBJECTS = $(am_ceph_test_rados_api_io_OBJECTS)
 ceph_test_rados_api_io_DEPENDENCIES = $(LIBRADOS) \
-	$(am__DEPENDENCIES_14) $(RADOS_TEST_LDADD)
+	$(am__DEPENDENCIES_13) $(RADOS_TEST_LDADD)
 ceph_test_rados_api_io_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(ceph_test_rados_api_io_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -1512,7 +1542,7 @@ am_ceph_test_rados_api_list_OBJECTS =  \
 ceph_test_rados_api_list_OBJECTS =  \
 	$(am_ceph_test_rados_api_list_OBJECTS)
 ceph_test_rados_api_list_DEPENDENCIES = $(LIBRADOS) \
-	$(am__DEPENDENCIES_14) $(RADOS_TEST_LDADD)
+	$(am__DEPENDENCIES_13) $(RADOS_TEST_LDADD)
 ceph_test_rados_api_list_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(ceph_test_rados_api_list_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -1522,7 +1552,7 @@ am_ceph_test_rados_api_lock_OBJECTS =  \
 ceph_test_rados_api_lock_OBJECTS =  \
 	$(am_ceph_test_rados_api_lock_OBJECTS)
 ceph_test_rados_api_lock_DEPENDENCIES = $(LIBRADOS) \
-	$(am__DEPENDENCIES_14) $(RADOS_TEST_LDADD)
+	$(am__DEPENDENCIES_13) $(RADOS_TEST_LDADD)
 ceph_test_rados_api_lock_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(ceph_test_rados_api_lock_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -1532,7 +1562,7 @@ am_ceph_test_rados_api_misc_OBJECTS =  \
 ceph_test_rados_api_misc_OBJECTS =  \
 	$(am_ceph_test_rados_api_misc_OBJECTS)
 ceph_test_rados_api_misc_DEPENDENCIES = $(LIBRADOS) \
-	$(am__DEPENDENCIES_14) $(am__DEPENDENCIES_6) \
+	$(am__DEPENDENCIES_13) $(am__DEPENDENCIES_6) \
 	$(RADOS_TEST_LDADD)
 ceph_test_rados_api_misc_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -1543,7 +1573,7 @@ am_ceph_test_rados_api_pool_OBJECTS =  \
 ceph_test_rados_api_pool_OBJECTS =  \
 	$(am_ceph_test_rados_api_pool_OBJECTS)
 ceph_test_rados_api_pool_DEPENDENCIES = $(LIBRADOS) \
-	$(am__DEPENDENCIES_14) $(RADOS_TEST_LDADD)
+	$(am__DEPENDENCIES_13) $(RADOS_TEST_LDADD)
 ceph_test_rados_api_pool_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(ceph_test_rados_api_pool_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -1552,7 +1582,7 @@ am_ceph_test_rados_api_snapshots_OBJECTS = test/librados/ceph_test_rados_api_sna
 ceph_test_rados_api_snapshots_OBJECTS =  \
 	$(am_ceph_test_rados_api_snapshots_OBJECTS)
 ceph_test_rados_api_snapshots_DEPENDENCIES = $(LIBRADOS) \
-	$(am__DEPENDENCIES_14) $(RADOS_TEST_LDADD)
+	$(am__DEPENDENCIES_13) $(RADOS_TEST_LDADD)
 ceph_test_rados_api_snapshots_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(ceph_test_rados_api_snapshots_CXXFLAGS) $(CXXFLAGS) \
@@ -1562,7 +1592,7 @@ am_ceph_test_rados_api_stat_OBJECTS =  \
 ceph_test_rados_api_stat_OBJECTS =  \
 	$(am_ceph_test_rados_api_stat_OBJECTS)
 ceph_test_rados_api_stat_DEPENDENCIES = $(LIBRADOS) \
-	$(am__DEPENDENCIES_14) $(RADOS_TEST_LDADD)
+	$(am__DEPENDENCIES_13) $(RADOS_TEST_LDADD)
 ceph_test_rados_api_stat_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(ceph_test_rados_api_stat_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -1573,7 +1603,7 @@ am_ceph_test_rados_api_tier_OBJECTS =  \
 ceph_test_rados_api_tier_OBJECTS =  \
 	$(am_ceph_test_rados_api_tier_OBJECTS)
 ceph_test_rados_api_tier_DEPENDENCIES = $(LIBRADOS) \
-	$(am__DEPENDENCIES_14) $(am__DEPENDENCIES_6) \
+	$(am__DEPENDENCIES_13) $(am__DEPENDENCIES_6) \
 	$(RADOS_TEST_LDADD)
 ceph_test_rados_api_tier_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -1583,7 +1613,7 @@ am_ceph_test_rados_api_watch_notify_OBJECTS = test/librados/ceph_test_rados_api_
 ceph_test_rados_api_watch_notify_OBJECTS =  \
 	$(am_ceph_test_rados_api_watch_notify_OBJECTS)
 ceph_test_rados_api_watch_notify_DEPENDENCIES = $(LIBRADOS) \
-	$(am__DEPENDENCIES_14) $(RADOS_TEST_LDADD)
+	$(am__DEPENDENCIES_13) $(RADOS_TEST_LDADD)
 ceph_test_rados_api_watch_notify_LINK = $(LIBTOOL) $(AM_V_lt) \
 	--tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link \
 	$(CXXLD) $(ceph_test_rados_api_watch_notify_CXXFLAGS) \
@@ -1655,7 +1685,7 @@ ceph_test_rgw_manifest_OBJECTS = $(am_ceph_test_rgw_manifest_OBJECTS)
 @WITH_RADOSGW_TRUE@ceph_test_rgw_manifest_DEPENDENCIES = $(LIBRADOS) \
 @WITH_RADOSGW_TRUE@	$(LIBRGW) $(am__DEPENDENCIES_12) \
 @WITH_RADOSGW_TRUE@	$(am__DEPENDENCIES_6) \
-@WITH_RADOSGW_TRUE@	$(am__DEPENDENCIES_14) \
+@WITH_RADOSGW_TRUE@	$(am__DEPENDENCIES_13) \
 @WITH_RADOSGW_TRUE@	$(am__DEPENDENCIES_1)
 ceph_test_rgw_manifest_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -1669,8 +1699,8 @@ ceph_test_signal_handlers_DEPENDENCIES = $(am__DEPENDENCIES_6)
 am_ceph_test_snap_mapper_OBJECTS =  \
 	test/ceph_test_snap_mapper-test_snap_mapper.$(OBJEXT)
 ceph_test_snap_mapper_OBJECTS = $(am_ceph_test_snap_mapper_OBJECTS)
-ceph_test_snap_mapper_DEPENDENCIES = $(am__DEPENDENCIES_8) \
-	$(am__DEPENDENCIES_14) $(am__DEPENDENCIES_6)
+ceph_test_snap_mapper_DEPENDENCIES = $(am__DEPENDENCIES_10) \
+	$(am__DEPENDENCIES_13) $(am__DEPENDENCIES_6)
 ceph_test_snap_mapper_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(ceph_test_snap_mapper_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -1679,7 +1709,7 @@ am_ceph_test_stress_watch_OBJECTS =  \
 	test/ceph_test_stress_watch-test_stress_watch.$(OBJEXT)
 ceph_test_stress_watch_OBJECTS = $(am_ceph_test_stress_watch_OBJECTS)
 ceph_test_stress_watch_DEPENDENCIES = $(LIBRADOS) \
-	$(am__DEPENDENCIES_14) $(RADOS_TEST_LDADD)
+	$(am__DEPENDENCIES_13) $(RADOS_TEST_LDADD)
 ceph_test_stress_watch_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(ceph_test_stress_watch_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -1700,7 +1730,7 @@ am_ceph_xattr_bench_OBJECTS =  \
 	test/ceph_xattr_bench-xattr_bench.$(OBJEXT)
 ceph_xattr_bench_OBJECTS = $(am_ceph_xattr_bench_OBJECTS)
 ceph_xattr_bench_DEPENDENCIES = $(am__DEPENDENCIES_5) \
-	$(am__DEPENDENCIES_14) $(am__DEPENDENCIES_6)
+	$(am__DEPENDENCIES_13) $(am__DEPENDENCIES_6)
 ceph_xattr_bench_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(ceph_xattr_bench_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -1715,7 +1745,7 @@ am_get_command_descriptions_OBJECTS =  \
 	test/common/get_command_descriptions.$(OBJEXT)
 get_command_descriptions_OBJECTS =  \
 	$(am_get_command_descriptions_OBJECTS)
-get_command_descriptions_DEPENDENCIES = $(am__DEPENDENCIES_10) \
+get_command_descriptions_DEPENDENCIES = $(am__DEPENDENCIES_9) \
 	$(LIBCOMMON) $(am__DEPENDENCIES_6)
 am_librados_config_OBJECTS = librados-config.$(OBJEXT)
 librados_config_OBJECTS = $(am_librados_config_OBJECTS)
@@ -1791,10 +1821,10 @@ am__rest_bench_SOURCES_DIST = tools/rest_bench.cc \
 @WITH_REST_BENCH_TRUE@	tools/rest_bench-rest_bench.$(OBJEXT) \
 @WITH_REST_BENCH_TRUE@	common/rest_bench-obj_bencher.$(OBJEXT)
 rest_bench_OBJECTS = $(am_rest_bench_OBJECTS)
-@WITH_REST_BENCH_TRUE@@WITH_SYSTEM_LIBS3_FALSE@am__DEPENDENCIES_15 = libs3/build/lib/libs3.a
+@WITH_REST_BENCH_TRUE@@WITH_SYSTEM_LIBS3_FALSE@am__DEPENDENCIES_14 = libs3/build/lib/libs3.a
 @WITH_REST_BENCH_TRUE@rest_bench_DEPENDENCIES = $(am__DEPENDENCIES_6) \
 @WITH_REST_BENCH_TRUE@	$(am__DEPENDENCIES_1) \
-@WITH_REST_BENCH_TRUE@	$(am__DEPENDENCIES_15)
+@WITH_REST_BENCH_TRUE@	$(am__DEPENDENCIES_14)
 rest_bench_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) \
 	$(LIBTOOLFLAGS) --mode=link $(CXXLD) $(rest_bench_CXXFLAGS) \
 	$(CXXFLAGS) $(AM_LDFLAGS) $(LDFLAGS) -o $@
@@ -1969,7 +1999,8 @@ am__test_build_librgw_SOURCES_DIST = test/buildtest_skeleton.cc \
 	rgw/rgw_multi.cc rgw/rgw_policy_s3.cc rgw/rgw_gc.cc \
 	rgw/rgw_multi_del.cc rgw/rgw_env.cc rgw/rgw_cors.cc \
 	rgw/rgw_cors_s3.cc rgw/rgw_auth_s3.cc rgw/rgw_metadata.cc \
-	rgw/rgw_replica_log.cc rgw/rgw_keystone.cc rgw/rgw_quota.cc
+	rgw/rgw_replica_log.cc rgw/rgw_keystone.cc rgw/rgw_quota.cc \
+	rgw/rgw_dencoder.cc
 @WITH_RADOSGW_TRUE@am__objects_17 =  \
 @WITH_RADOSGW_TRUE@	rgw/test_build_librgw-librgw.$(OBJEXT) \
 @WITH_RADOSGW_TRUE@	rgw/test_build_librgw-rgw_acl.$(OBJEXT) \
@@ -2003,7 +2034,8 @@ am__test_build_librgw_SOURCES_DIST = test/buildtest_skeleton.cc \
 @WITH_RADOSGW_TRUE@	rgw/test_build_librgw-rgw_metadata.$(OBJEXT) \
 @WITH_RADOSGW_TRUE@	rgw/test_build_librgw-rgw_replica_log.$(OBJEXT) \
 @WITH_RADOSGW_TRUE@	rgw/test_build_librgw-rgw_keystone.$(OBJEXT) \
-@WITH_RADOSGW_TRUE@	rgw/test_build_librgw-rgw_quota.$(OBJEXT)
+@WITH_RADOSGW_TRUE@	rgw/test_build_librgw-rgw_quota.$(OBJEXT) \
+@WITH_RADOSGW_TRUE@	rgw/test_build_librgw-rgw_dencoder.$(OBJEXT)
 @WITH_BUILD_TESTS_TRUE@am_test_build_librgw_OBJECTS = test/test_build_librgw-buildtest_skeleton.$(OBJEXT) \
 @WITH_BUILD_TESTS_TRUE@	$(am__objects_17)
 test_build_librgw_OBJECTS = $(am_test_build_librgw_OBJECTS)
@@ -2019,7 +2051,7 @@ test_build_librgw_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(test_build_librgw_LDFLAGS) $(LDFLAGS) -o $@
 am_unittest_addrs_OBJECTS = test/unittest_addrs-test_addrs.$(OBJEXT)
 unittest_addrs_OBJECTS = $(am_unittest_addrs_OBJECTS)
-unittest_addrs_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_addrs_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_addrs_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2028,7 +2060,7 @@ unittest_addrs_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_admin_socket_OBJECTS =  \
 	test/unittest_admin_socket-admin_socket.$(OBJEXT)
 unittest_admin_socket_OBJECTS = $(am_unittest_admin_socket_OBJECTS)
-unittest_admin_socket_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_admin_socket_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_admin_socket_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2036,7 +2068,7 @@ unittest_admin_socket_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(LDFLAGS) -o $@
 am_unittest_arch_OBJECTS = test/unittest_arch-test_arch.$(OBJEXT)
 unittest_arch_OBJECTS = $(am_unittest_arch_OBJECTS)
-unittest_arch_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_arch_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_arch_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2044,7 +2076,7 @@ unittest_arch_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	-o $@
 am_unittest_base64_OBJECTS = test/unittest_base64-base64.$(OBJEXT)
 unittest_base64_OBJECTS = $(am_unittest_base64_OBJECTS)
-unittest_base64_DEPENDENCIES = $(LIBCEPHFS) $(am__DEPENDENCIES_14)
+unittest_base64_DEPENDENCIES = $(LIBCEPHFS) $(am__DEPENDENCIES_13)
 unittest_base64_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(unittest_base64_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -2052,7 +2084,7 @@ unittest_base64_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_bloom_filter_OBJECTS =  \
 	test/common/unittest_bloom_filter-test_bloom_filter.$(OBJEXT)
 unittest_bloom_filter_OBJECTS = $(am_unittest_bloom_filter_OBJECTS)
-unittest_bloom_filter_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_bloom_filter_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_bloom_filter_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2061,7 +2093,7 @@ unittest_bloom_filter_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_bufferlist_OBJECTS =  \
 	test/unittest_bufferlist-bufferlist.$(OBJEXT)
 unittest_bufferlist_OBJECTS = $(am_unittest_bufferlist_OBJECTS)
-unittest_bufferlist_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_bufferlist_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_bufferlist_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2070,7 +2102,7 @@ unittest_bufferlist_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_ceph_argparse_OBJECTS =  \
 	test/unittest_ceph_argparse-ceph_argparse.$(OBJEXT)
 unittest_ceph_argparse_OBJECTS = $(am_unittest_ceph_argparse_OBJECTS)
-unittest_ceph_argparse_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_ceph_argparse_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_ceph_argparse_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2080,7 +2112,7 @@ am_unittest_ceph_compatset_OBJECTS =  \
 	test/unittest_ceph_compatset-ceph_compatset.$(OBJEXT)
 unittest_ceph_compatset_OBJECTS =  \
 	$(am_unittest_ceph_compatset_OBJECTS)
-unittest_ceph_compatset_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_ceph_compatset_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_ceph_compatset_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2089,7 +2121,7 @@ unittest_ceph_compatset_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_ceph_crypto_OBJECTS =  \
 	test/unittest_ceph_crypto-ceph_crypto.$(OBJEXT)
 unittest_ceph_crypto_OBJECTS = $(am_unittest_ceph_crypto_OBJECTS)
-unittest_ceph_crypto_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_ceph_crypto_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_ceph_crypto_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2099,7 +2131,7 @@ am_unittest_chain_xattr_OBJECTS =  \
 	test/objectstore/unittest_chain_xattr-chain_xattr.$(OBJEXT)
 unittest_chain_xattr_OBJECTS = $(am_unittest_chain_xattr_OBJECTS)
 unittest_chain_xattr_DEPENDENCIES = $(am__DEPENDENCIES_5) \
-	$(am__DEPENDENCIES_14) $(am__DEPENDENCIES_6)
+	$(am__DEPENDENCIES_13) $(am__DEPENDENCIES_6)
 unittest_chain_xattr_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(unittest_chain_xattr_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -2107,7 +2139,7 @@ unittest_chain_xattr_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_config_OBJECTS =  \
 	test/common/unittest_config-test_config.$(OBJEXT)
 unittest_config_OBJECTS = $(am_unittest_config_OBJECTS)
-unittest_config_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_config_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_config_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2116,7 +2148,7 @@ unittest_config_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_confutils_OBJECTS =  \
 	test/unittest_confutils-confutils.$(OBJEXT)
 unittest_confutils_OBJECTS = $(am_unittest_confutils_OBJECTS)
-unittest_confutils_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_confutils_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_confutils_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2125,7 +2157,7 @@ unittest_confutils_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_context_OBJECTS =  \
 	test/common/unittest_context-test_context.$(OBJEXT)
 unittest_context_OBJECTS = $(am_unittest_context_OBJECTS)
-unittest_context_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_context_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_context_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2134,7 +2166,7 @@ unittest_context_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_crc32c_OBJECTS =  \
 	test/common/unittest_crc32c-test_crc32c.$(OBJEXT)
 unittest_crc32c_OBJECTS = $(am_unittest_crc32c_OBJECTS)
-unittest_crc32c_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_crc32c_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_crc32c_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2144,7 +2176,7 @@ am_unittest_crush_indep_OBJECTS =  \
 	test/crush/unittest_crush_indep-indep.$(OBJEXT)
 unittest_crush_indep_OBJECTS = $(am_unittest_crush_indep_OBJECTS)
 unittest_crush_indep_DEPENDENCIES = $(LIBCOMMON) \
-	$(am__DEPENDENCIES_14) $(am__DEPENDENCIES_2) \
+	$(am__DEPENDENCIES_13) $(am__DEPENDENCIES_2) \
 	$(am__DEPENDENCIES_6)
 unittest_crush_indep_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2153,7 +2185,7 @@ unittest_crush_indep_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_crush_wrapper_OBJECTS =  \
 	test/crush/unittest_crush_wrapper-TestCrushWrapper.$(OBJEXT)
 unittest_crush_wrapper_OBJECTS = $(am_unittest_crush_wrapper_OBJECTS)
-unittest_crush_wrapper_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_crush_wrapper_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6) $(LIBCRUSH)
 unittest_crush_wrapper_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2161,7 +2193,7 @@ unittest_crush_wrapper_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(LDFLAGS) -o $@
 am_unittest_crypto_OBJECTS = test/unittest_crypto-crypto.$(OBJEXT)
 unittest_crypto_OBJECTS = $(am_unittest_crypto_OBJECTS)
-unittest_crypto_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_crypto_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_crypto_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2170,7 +2202,7 @@ unittest_crypto_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_crypto_init_OBJECTS =  \
 	test/unittest_crypto_init-crypto_init.$(OBJEXT)
 unittest_crypto_init_OBJECTS = $(am_unittest_crypto_init_OBJECTS)
-unittest_crypto_init_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_crypto_init_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_crypto_init_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2179,7 +2211,7 @@ unittest_crypto_init_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_daemon_config_OBJECTS =  \
 	test/unittest_daemon_config-daemon_config.$(OBJEXT)
 unittest_daemon_config_OBJECTS = $(am_unittest_daemon_config_OBJECTS)
-unittest_daemon_config_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_daemon_config_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_daemon_config_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2188,8 +2220,8 @@ unittest_daemon_config_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_ecbackend_OBJECTS =  \
 	test/osd/unittest_ecbackend-TestECBackend.$(OBJEXT)
 unittest_ecbackend_OBJECTS = $(am_unittest_ecbackend_OBJECTS)
-unittest_ecbackend_DEPENDENCIES = $(am__DEPENDENCIES_8) \
-	$(am__DEPENDENCIES_14) $(am__DEPENDENCIES_6)
+unittest_ecbackend_DEPENDENCIES = $(am__DEPENDENCIES_10) \
+	$(am__DEPENDENCIES_13) $(am__DEPENDENCIES_6)
 unittest_ecbackend_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(unittest_ecbackend_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -2198,7 +2230,7 @@ am_unittest_encoding_OBJECTS =  \
 	test/unittest_encoding-encoding.$(OBJEXT)
 unittest_encoding_OBJECTS = $(am_unittest_encoding_OBJECTS)
 unittest_encoding_DEPENDENCIES = $(LIBCEPHFS) $(LIBRADOS) \
-	$(am__DEPENDENCIES_14)
+	$(am__DEPENDENCIES_13)
 unittest_encoding_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(unittest_encoding_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -2206,8 +2238,8 @@ unittest_encoding_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_erasure_code_example_OBJECTS = test/erasure-code/unittest_erasure_code_example-TestErasureCodeExample.$(OBJEXT)
 unittest_erasure_code_example_OBJECTS =  \
 	$(am_unittest_erasure_code_example_OBJECTS)
-unittest_erasure_code_example_DEPENDENCIES = $(am__DEPENDENCIES_8) \
-	$(LIBCOMMON) $(am__DEPENDENCIES_14) $(am__DEPENDENCIES_6)
+unittest_erasure_code_example_DEPENDENCIES = $(am__DEPENDENCIES_10) \
+	$(LIBCOMMON) $(am__DEPENDENCIES_13) $(am__DEPENDENCIES_6)
 unittest_erasure_code_example_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(unittest_erasure_code_example_CXXFLAGS) $(CXXFLAGS) \
@@ -2234,8 +2266,8 @@ am_unittest_erasure_code_jerasure_OBJECTS = test/erasure-code/unittest_erasure_c
 	$(am__objects_18)
 unittest_erasure_code_jerasure_OBJECTS =  \
 	$(am_unittest_erasure_code_jerasure_OBJECTS)
-unittest_erasure_code_jerasure_DEPENDENCIES = $(am__DEPENDENCIES_8) \
-	$(LIBCOMMON) $(am__DEPENDENCIES_14) $(am__DEPENDENCIES_6) \
+unittest_erasure_code_jerasure_DEPENDENCIES = $(am__DEPENDENCIES_10) \
+	$(LIBCOMMON) $(am__DEPENDENCIES_13) $(am__DEPENDENCIES_6) \
 	$(am__DEPENDENCIES_1)
 unittest_erasure_code_jerasure_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2244,8 +2276,8 @@ unittest_erasure_code_jerasure_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_erasure_code_plugin_OBJECTS = test/erasure-code/unittest_erasure_code_plugin-TestErasureCodePlugin.$(OBJEXT)
 unittest_erasure_code_plugin_OBJECTS =  \
 	$(am_unittest_erasure_code_plugin_OBJECTS)
-unittest_erasure_code_plugin_DEPENDENCIES = $(am__DEPENDENCIES_8) \
-	$(LIBCOMMON) $(am__DEPENDENCIES_14) $(am__DEPENDENCIES_6) \
+unittest_erasure_code_plugin_DEPENDENCIES = $(am__DEPENDENCIES_10) \
+	$(LIBCOMMON) $(am__DEPENDENCIES_13) $(am__DEPENDENCIES_6) \
 	$(am__DEPENDENCIES_1)
 unittest_erasure_code_plugin_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2255,7 +2287,7 @@ am_unittest_erasure_code_plugin_jerasure_OBJECTS = test/erasure-code/unittest_er
 unittest_erasure_code_plugin_jerasure_OBJECTS =  \
 	$(am_unittest_erasure_code_plugin_jerasure_OBJECTS)
 unittest_erasure_code_plugin_jerasure_DEPENDENCIES =  \
-	$(am__DEPENDENCIES_8) $(LIBCOMMON) $(am__DEPENDENCIES_14) \
+	$(am__DEPENDENCIES_10) $(LIBCOMMON) $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6) $(am__DEPENDENCIES_1)
 unittest_erasure_code_plugin_jerasure_LINK = $(LIBTOOL) $(AM_V_lt) \
 	--tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link \
@@ -2263,7 +2295,7 @@ unittest_erasure_code_plugin_jerasure_LINK = $(LIBTOOL) $(AM_V_lt) \
 	$(CXXFLAGS) $(AM_LDFLAGS) $(LDFLAGS) -o $@
 am_unittest_escape_OBJECTS = test/unittest_escape-escape.$(OBJEXT)
 unittest_escape_OBJECTS = $(am_unittest_escape_OBJECTS)
-unittest_escape_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_escape_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_escape_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2273,7 +2305,7 @@ am_unittest_flatindex_OBJECTS =  \
 	test/os/unittest_flatindex-TestFlatIndex.$(OBJEXT)
 unittest_flatindex_OBJECTS = $(am_unittest_flatindex_OBJECTS)
 unittest_flatindex_DEPENDENCIES = $(am__DEPENDENCIES_5) \
-	$(am__DEPENDENCIES_14) $(am__DEPENDENCIES_6)
+	$(am__DEPENDENCIES_13) $(am__DEPENDENCIES_6)
 unittest_flatindex_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(unittest_flatindex_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -2282,7 +2314,7 @@ am_unittest_formatter_OBJECTS =  \
 	test/unittest_formatter-formatter.$(OBJEXT) \
 	rgw/unittest_formatter-rgw_formats.$(OBJEXT)
 unittest_formatter_OBJECTS = $(am_unittest_formatter_OBJECTS)
-unittest_formatter_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_formatter_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_formatter_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2290,7 +2322,7 @@ unittest_formatter_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(LDFLAGS) -o $@
 am_unittest_gather_OBJECTS = test/unittest_gather-gather.$(OBJEXT)
 unittest_gather_OBJECTS = $(am_unittest_gather_OBJECTS)
-unittest_gather_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_gather_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_gather_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2300,7 +2332,7 @@ am_unittest_heartbeatmap_OBJECTS =  \
 	test/unittest_heartbeatmap-heartbeat_map.$(OBJEXT)
 unittest_heartbeatmap_OBJECTS = $(am_unittest_heartbeatmap_OBJECTS)
 unittest_heartbeatmap_DEPENDENCIES = $(LIBCOMMON) \
-	$(am__DEPENDENCIES_14) $(am__DEPENDENCIES_6)
+	$(am__DEPENDENCIES_13) $(am__DEPENDENCIES_6)
 unittest_heartbeatmap_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(unittest_heartbeatmap_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -2308,7 +2340,7 @@ unittest_heartbeatmap_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_histogram_OBJECTS =  \
 	test/common/unittest_histogram-histogram.$(OBJEXT)
 unittest_histogram_OBJECTS = $(am_unittest_histogram_OBJECTS)
-unittest_histogram_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_histogram_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_histogram_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2317,8 +2349,8 @@ unittest_histogram_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_hitset_OBJECTS =  \
 	test/osd/unittest_hitset-hitset.$(OBJEXT)
 unittest_hitset_OBJECTS = $(am_unittest_hitset_OBJECTS)
-unittest_hitset_DEPENDENCIES = $(am__DEPENDENCIES_8) \
-	$(am__DEPENDENCIES_14) $(am__DEPENDENCIES_6)
+unittest_hitset_DEPENDENCIES = $(am__DEPENDENCIES_10) \
+	$(am__DEPENDENCIES_13) $(am__DEPENDENCIES_6)
 unittest_hitset_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(unittest_hitset_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -2326,7 +2358,7 @@ unittest_hitset_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_ipaddr_OBJECTS =  \
 	test/unittest_ipaddr-test_ipaddr.$(OBJEXT)
 unittest_ipaddr_OBJECTS = $(am_unittest_ipaddr_OBJECTS)
-unittest_ipaddr_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_ipaddr_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_ipaddr_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2336,7 +2368,7 @@ am_unittest_lfnindex_OBJECTS =  \
 	test/os/unittest_lfnindex-TestLFNIndex.$(OBJEXT)
 unittest_lfnindex_OBJECTS = $(am_unittest_lfnindex_OBJECTS)
 unittest_lfnindex_DEPENDENCIES = $(am__DEPENDENCIES_5) \
-	$(am__DEPENDENCIES_14) $(am__DEPENDENCIES_6)
+	$(am__DEPENDENCIES_13) $(am__DEPENDENCIES_6)
 unittest_lfnindex_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(unittest_lfnindex_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -2346,7 +2378,7 @@ am_unittest_libcephfs_config_OBJECTS =  \
 unittest_libcephfs_config_OBJECTS =  \
 	$(am_unittest_libcephfs_config_OBJECTS)
 unittest_libcephfs_config_DEPENDENCIES = $(LIBCEPHFS) \
-	$(am__DEPENDENCIES_14)
+	$(am__DEPENDENCIES_13)
 unittest_libcephfs_config_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(unittest_libcephfs_config_CXXFLAGS) $(CXXFLAGS) \
@@ -2354,7 +2386,7 @@ unittest_libcephfs_config_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_librados_OBJECTS =  \
 	test/librados/unittest_librados-librados.$(OBJEXT)
 unittest_librados_OBJECTS = $(am_unittest_librados_OBJECTS)
-unittest_librados_DEPENDENCIES = $(LIBRADOS) $(am__DEPENDENCIES_14)
+unittest_librados_DEPENDENCIES = $(LIBRADOS) $(am__DEPENDENCIES_13)
 unittest_librados_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(unittest_librados_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -2363,20 +2395,20 @@ am_unittest_librados_config_OBJECTS = test/librados/unittest_librados_config-lib
 unittest_librados_config_OBJECTS =  \
 	$(am_unittest_librados_config_OBJECTS)
 unittest_librados_config_DEPENDENCIES = $(LIBRADOS) \
-	$(am__DEPENDENCIES_14)
+	$(am__DEPENDENCIES_13)
 unittest_librados_config_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(unittest_librados_config_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
 	$(LDFLAGS) -o $@
 am_unittest_log_OBJECTS = log/unittest_log-test.$(OBJEXT)
 unittest_log_OBJECTS = $(am_unittest_log_OBJECTS)
-unittest_log_DEPENDENCIES = $(LIBCOMMON) $(am__DEPENDENCIES_14)
+unittest_log_DEPENDENCIES = $(LIBCOMMON) $(am__DEPENDENCIES_13)
 unittest_log_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) \
 	$(LIBTOOLFLAGS) --mode=link $(CXXLD) $(unittest_log_CXXFLAGS) \
 	$(CXXFLAGS) $(AM_LDFLAGS) $(LDFLAGS) -o $@
 am_unittest_mime_OBJECTS = test/unittest_mime-mime.$(OBJEXT)
 unittest_mime_OBJECTS = $(am_unittest_mime_OBJECTS)
-unittest_mime_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_mime_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_mime_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2385,8 +2417,8 @@ unittest_mime_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_mon_moncap_OBJECTS =  \
 	test/mon/unittest_mon_moncap-moncap.$(OBJEXT)
 unittest_mon_moncap_OBJECTS = $(am_unittest_mon_moncap_OBJECTS)
-unittest_mon_moncap_DEPENDENCIES = $(am__DEPENDENCIES_10) \
-	$(am__DEPENDENCIES_14) $(am__DEPENDENCIES_6)
+unittest_mon_moncap_DEPENDENCIES = $(am__DEPENDENCIES_9) \
+	$(am__DEPENDENCIES_13) $(am__DEPENDENCIES_6)
 unittest_mon_moncap_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(unittest_mon_moncap_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -2394,8 +2426,8 @@ unittest_mon_moncap_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_mon_pgmap_OBJECTS =  \
 	test/mon/unittest_mon_pgmap-PGMap.$(OBJEXT)
 unittest_mon_pgmap_OBJECTS = $(am_unittest_mon_pgmap_OBJECTS)
-unittest_mon_pgmap_DEPENDENCIES = $(am__DEPENDENCIES_10) \
-	$(am__DEPENDENCIES_14) $(am__DEPENDENCIES_6)
+unittest_mon_pgmap_DEPENDENCIES = $(am__DEPENDENCIES_9) \
+	$(am__DEPENDENCIES_13) $(am__DEPENDENCIES_6)
 unittest_mon_pgmap_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(unittest_mon_pgmap_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -2406,8 +2438,8 @@ unittest_on_exit_DEPENDENCIES = $(am__DEPENDENCIES_1)
 am_unittest_osd_osdcap_OBJECTS =  \
 	test/osd/unittest_osd_osdcap-osdcap.$(OBJEXT)
 unittest_osd_osdcap_OBJECTS = $(am_unittest_osd_osdcap_OBJECTS)
-unittest_osd_osdcap_DEPENDENCIES = $(am__DEPENDENCIES_8) \
-	$(am__DEPENDENCIES_14) $(am__DEPENDENCIES_6)
+unittest_osd_osdcap_DEPENDENCIES = $(am__DEPENDENCIES_10) \
+	$(am__DEPENDENCIES_13) $(am__DEPENDENCIES_6)
 unittest_osd_osdcap_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(unittest_osd_osdcap_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -2415,7 +2447,7 @@ unittest_osd_osdcap_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_osd_types_OBJECTS =  \
 	test/osd/unittest_osd_types-types.$(OBJEXT)
 unittest_osd_types_OBJECTS = $(am_unittest_osd_types_OBJECTS)
-unittest_osd_types_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_osd_types_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_osd_types_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2424,7 +2456,7 @@ unittest_osd_types_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_osdmap_OBJECTS =  \
 	test/osd/unittest_osdmap-TestOSDMap.$(OBJEXT)
 unittest_osdmap_OBJECTS = $(am_unittest_osdmap_OBJECTS)
-unittest_osdmap_DEPENDENCIES = $(am__DEPENDENCIES_14) $(LIBCOMMON) \
+unittest_osdmap_DEPENDENCIES = $(am__DEPENDENCIES_13) $(LIBCOMMON) \
 	$(am__DEPENDENCIES_6)
 unittest_osdmap_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2433,7 +2465,7 @@ unittest_osdmap_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_perf_counters_OBJECTS =  \
 	test/unittest_perf_counters-perf_counters.$(OBJEXT)
 unittest_perf_counters_OBJECTS = $(am_unittest_perf_counters_OBJECTS)
-unittest_perf_counters_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_perf_counters_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_perf_counters_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2442,8 +2474,8 @@ unittest_perf_counters_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_pglog_OBJECTS =  \
 	test/osd/unittest_pglog-TestPGLog.$(OBJEXT)
 unittest_pglog_OBJECTS = $(am_unittest_pglog_OBJECTS)
-unittest_pglog_DEPENDENCIES = $(am__DEPENDENCIES_8) \
-	$(am__DEPENDENCIES_14) $(am__DEPENDENCIES_6) \
+unittest_pglog_DEPENDENCIES = $(am__DEPENDENCIES_10) \
+	$(am__DEPENDENCIES_13) $(am__DEPENDENCIES_6) \
 	$(am__DEPENDENCIES_1)
 unittest_pglog_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2453,14 +2485,14 @@ am_unittest_prebufferedstreambuf_OBJECTS = test/unittest_prebufferedstreambuf-te
 unittest_prebufferedstreambuf_OBJECTS =  \
 	$(am_unittest_prebufferedstreambuf_OBJECTS)
 unittest_prebufferedstreambuf_DEPENDENCIES = $(LIBCOMMON) \
-	$(am__DEPENDENCIES_14) $(am__DEPENDENCIES_2)
+	$(am__DEPENDENCIES_13) $(am__DEPENDENCIES_2)
 unittest_prebufferedstreambuf_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(unittest_prebufferedstreambuf_CXXFLAGS) $(CXXFLAGS) \
 	$(AM_LDFLAGS) $(LDFLAGS) -o $@
 am_unittest_run_cmd_OBJECTS = test/unittest_run_cmd-run_cmd.$(OBJEXT)
 unittest_run_cmd_OBJECTS = $(am_unittest_run_cmd_OBJECTS)
-unittest_run_cmd_DEPENDENCIES = $(LIBCEPHFS) $(am__DEPENDENCIES_14)
+unittest_run_cmd_DEPENDENCIES = $(LIBCEPHFS) $(am__DEPENDENCIES_13)
 unittest_run_cmd_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(unittest_run_cmd_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -2468,7 +2500,7 @@ unittest_run_cmd_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_sharedptr_registry_OBJECTS = test/common/unittest_sharedptr_registry-test_sharedptr_registry.$(OBJEXT)
 unittest_sharedptr_registry_OBJECTS =  \
 	$(am_unittest_sharedptr_registry_OBJECTS)
-unittest_sharedptr_registry_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_sharedptr_registry_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_sharedptr_registry_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2476,7 +2508,7 @@ unittest_sharedptr_registry_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LDFLAGS) $(LDFLAGS) -o $@
 am_unittest_signals_OBJECTS = test/unittest_signals-signals.$(OBJEXT)
 unittest_signals_OBJECTS = $(am_unittest_signals_OBJECTS)
-unittest_signals_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_signals_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_signals_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2486,7 +2518,7 @@ am_unittest_simple_spin_OBJECTS =  \
 	test/unittest_simple_spin-simple_spin.$(OBJEXT)
 unittest_simple_spin_OBJECTS = $(am_unittest_simple_spin_OBJECTS)
 unittest_simple_spin_DEPENDENCIES = $(LIBCEPHFS) \
-	$(am__DEPENDENCIES_14)
+	$(am__DEPENDENCIES_13)
 unittest_simple_spin_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(unittest_simple_spin_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -2494,7 +2526,7 @@ unittest_simple_spin_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_sloppy_crc_map_OBJECTS = test/common/unittest_sloppy_crc_map-test_sloppy_crc_map.$(OBJEXT)
 unittest_sloppy_crc_map_OBJECTS =  \
 	$(am_unittest_sloppy_crc_map_OBJECTS)
-unittest_sloppy_crc_map_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_sloppy_crc_map_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_sloppy_crc_map_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2503,7 +2535,7 @@ unittest_sloppy_crc_map_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_str_list_OBJECTS =  \
 	test/unittest_str_list-test_str_list.$(OBJEXT)
 unittest_str_list_OBJECTS = $(am_unittest_str_list_OBJECTS)
-unittest_str_list_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_str_list_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_str_list_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2512,7 +2544,7 @@ unittest_str_list_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_str_map_OBJECTS =  \
 	test/common/unittest_str_map-test_str_map.$(OBJEXT)
 unittest_str_map_OBJECTS = $(am_unittest_str_map_OBJECTS)
-unittest_str_map_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_str_map_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_str_map_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2521,7 +2553,7 @@ unittest_str_map_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_striper_OBJECTS =  \
 	test/unittest_striper-test_striper.$(OBJEXT)
 unittest_striper_OBJECTS = $(am_unittest_striper_OBJECTS)
-unittest_striper_DEPENDENCIES = $(LIBOSDC) $(am__DEPENDENCIES_14) \
+unittest_striper_DEPENDENCIES = $(LIBOSDC) $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_striper_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2529,7 +2561,7 @@ unittest_striper_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(LDFLAGS) -o $@
 am_unittest_strtol_OBJECTS = test/unittest_strtol-strtol.$(OBJEXT)
 unittest_strtol_OBJECTS = $(am_unittest_strtol_OBJECTS)
-unittest_strtol_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_strtol_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_strtol_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2538,7 +2570,7 @@ unittest_strtol_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_texttable_OBJECTS =  \
 	test/unittest_texttable-test_texttable.$(OBJEXT)
 unittest_texttable_OBJECTS = $(am_unittest_texttable_OBJECTS)
-unittest_texttable_DEPENDENCIES = $(LIBCOMMON) $(am__DEPENDENCIES_14)
+unittest_texttable_DEPENDENCIES = $(LIBCOMMON) $(am__DEPENDENCIES_13)
 unittest_texttable_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(unittest_texttable_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -2546,7 +2578,7 @@ unittest_texttable_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_throttle_OBJECTS =  \
 	test/common/unittest_throttle-Throttle.$(OBJEXT)
 unittest_throttle_OBJECTS = $(am_unittest_throttle_OBJECTS)
-unittest_throttle_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_throttle_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_throttle_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2554,7 +2586,7 @@ unittest_throttle_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(LDFLAGS) -o $@
 am_unittest_utf8_OBJECTS = test/unittest_utf8-utf8.$(OBJEXT)
 unittest_utf8_OBJECTS = $(am_unittest_utf8_OBJECTS)
-unittest_utf8_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_utf8_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_utf8_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2563,7 +2595,7 @@ unittest_utf8_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_util_OBJECTS =  \
 	test/common/unittest_util-test_util.$(OBJEXT)
 unittest_util_OBJECTS = $(am_unittest_util_OBJECTS)
-unittest_util_DEPENDENCIES = $(LIBCOMMON) $(am__DEPENDENCIES_14) \
+unittest_util_DEPENDENCIES = $(LIBCOMMON) $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2)
 unittest_util_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2572,7 +2604,7 @@ unittest_util_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 am_unittest_workqueue_OBJECTS =  \
 	test/unittest_workqueue-test_workqueue.$(OBJEXT)
 unittest_workqueue_OBJECTS = $(am_unittest_workqueue_OBJECTS)
-unittest_workqueue_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+unittest_workqueue_DEPENDENCIES = $(am__DEPENDENCIES_13) \
 	$(am__DEPENDENCIES_6)
 unittest_workqueue_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
@@ -2658,19 +2690,21 @@ SOURCES = $(libcls_log_client_a_SOURCES) \
 	$(libec_test_jerasure_sse4_la_SOURCES) \
 	$(liberasure_code_la_SOURCES) $(libglobal_la_SOURCES) \
 	$(libjson_spirit_la_SOURCES) $(liblog_la_SOURCES) \
-	$(libmds_la_SOURCES) $(libmon_la_SOURCES) $(libmsg_la_SOURCES) \
-	$(libos_la_SOURCES) $(libosd_la_SOURCES) $(libosdc_la_SOURCES) \
-	$(libperfglue_la_SOURCES) $(librados_la_SOURCES) \
-	$(libradostest_la_SOURCES) $(librbd_la_SOURCES) \
-	$(librgw_la_SOURCES) $(libsystest_la_SOURCES) \
-	$(ceph_authtool_SOURCES) $(ceph_client_debug_SOURCES) \
-	$(ceph_conf_SOURCES) $(ceph_dencoder_SOURCES) \
-	$(ceph_fuse_SOURCES) $(ceph_kvstore_tool_SOURCES) \
-	$(ceph_mds_SOURCES) $(ceph_mon_SOURCES) \
-	$(ceph_monstore_tool_SOURCES) $(ceph_osd_SOURCES) \
-	$(ceph_osdomap_tool_SOURCES) $(ceph_syn_SOURCES) \
-	$(ceph_bench_log_SOURCES) $(ceph_dupstore_SOURCES) \
-	$(ceph_erasure_code_SOURCES) \
+	$(libmds_la_SOURCES) $(libmon_la_SOURCES) \
+	$(libmon_types_la_SOURCES) $(libmsg_la_SOURCES) \
+	$(libos_la_SOURCES) $(libos_types_la_SOURCES) \
+	$(libosd_la_SOURCES) $(libosd_types_la_SOURCES) \
+	$(libosdc_la_SOURCES) $(libperfglue_la_SOURCES) \
+	$(librados_la_SOURCES) $(libradostest_la_SOURCES) \
+	$(librbd_la_SOURCES) $(librgw_la_SOURCES) \
+	$(libsystest_la_SOURCES) $(ceph_authtool_SOURCES) \
+	$(ceph_client_debug_SOURCES) $(ceph_conf_SOURCES) \
+	$(ceph_dencoder_SOURCES) $(ceph_fuse_SOURCES) \
+	$(ceph_kvstore_tool_SOURCES) $(ceph_mds_SOURCES) \
+	$(ceph_mon_SOURCES) $(ceph_monstore_tool_SOURCES) \
+	$(ceph_osd_SOURCES) $(ceph_osdomap_tool_SOURCES) \
+	$(ceph_syn_SOURCES) $(ceph_bench_log_SOURCES) \
+	$(ceph_dupstore_SOURCES) $(ceph_erasure_code_SOURCES) \
 	$(ceph_erasure_code_benchmark_SOURCES) \
 	$(ceph_filestore_dump_SOURCES) $(ceph_filestore_tool_SOURCES) \
 	$(ceph_kvstorebench_SOURCES) \
@@ -2810,8 +2844,10 @@ DIST_SOURCES = $(libcls_log_client_a_SOURCES) \
 	$(libec_test_jerasure_sse4_la_SOURCES) \
 	$(liberasure_code_la_SOURCES) $(libglobal_la_SOURCES) \
 	$(libjson_spirit_la_SOURCES) $(liblog_la_SOURCES) \
-	$(libmds_la_SOURCES) $(libmon_la_SOURCES) $(libmsg_la_SOURCES) \
-	$(am__libos_la_SOURCES_DIST) $(libosd_la_SOURCES) \
+	$(libmds_la_SOURCES) $(libmon_la_SOURCES) \
+	$(libmon_types_la_SOURCES) $(libmsg_la_SOURCES) \
+	$(am__libos_la_SOURCES_DIST) $(libos_types_la_SOURCES) \
+	$(libosd_la_SOURCES) $(libosd_types_la_SOURCES) \
 	$(libosdc_la_SOURCES) $(am__libperfglue_la_SOURCES_DIST) \
 	$(librados_la_SOURCES) $(libradostest_la_SOURCES) \
 	$(librbd_la_SOURCES) $(am__librgw_la_SOURCES_DIST) \
@@ -3448,7 +3484,7 @@ top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 AUTOMAKE_OPTIONS = gnu subdir-objects
-SUBDIRS = ocf java $(am__append_62)
+SUBDIRS = ocf java $(am__append_61)
 DIST_SUBDIRS = gtest ocf libs3 java
 BUILT_SOURCES = init-ceph
 
@@ -3782,14 +3818,15 @@ bin_SCRIPTS = brag/client/ceph-brag ceph ceph-run ceph-rest-api \
 sbin_SCRIPTS = 
 su_sbin_SCRIPTS = mount.fuse.ceph mkcephfs
 dist_bin_SCRIPTS = 
-lib_LTLIBRARIES = librados.la librbd.la libcephfs.la $(am__append_66)
-noinst_LTLIBRARIES = libarch.la libauth.la libcrush.la libmon.la \
-	libmds.la libos.la libosd.la liberasure_code.la libosdc.la \
-	libclient.la $(am__append_23) libglobal.la libjson_spirit.la \
-	liblog.la libperfglue.la libcommon_crc.la libcommon.la \
-	libmsg.la $(am__append_35) libcls_lock_client.la \
+lib_LTLIBRARIES = librados.la librbd.la libcephfs.la $(am__append_65)
+noinst_LTLIBRARIES = libarch.la libauth.la libcrush.la libmon_types.la \
+	libmon.la libmds.la libos_types.la libos.la libosd_types.la \
+	libosd.la liberasure_code.la libosdc.la libclient.la \
+	$(am__append_23) libglobal.la libjson_spirit.la liblog.la \
+	libperfglue.la libcommon_crc.la libcommon.la libmsg.la \
+	$(am__append_35) libcls_lock_client.la \
 	libcls_refcount_client.la libcls_rgw_client.la \
-	libcls_rbd_client.la $(am__append_51) libradostest.la
+	libcls_rbd_client.la $(am__append_50) libradostest.la
 noinst_LIBRARIES = $(am__append_17) libcls_version_client.a \
 	libcls_log_client.a libcls_statelog_client.a \
 	libcls_replica_log_client.a libcls_user_client.a
@@ -3804,14 +3841,14 @@ bin_DEBUGPROGRAMS = ceph_test_ioctls $(am__append_38) \
 	ceph_test_signal_handlers ceph_test_rados ceph_test_mutate \
 	ceph_test_rewrite_latency ceph_test_msgr ceph_streamtest \
 	ceph_test_trans ceph_test_crypto ceph_test_keys \
-	$(am__append_49) ceph_smalliobench ceph_smalliobenchfs \
+	$(am__append_48) ceph_smalliobench ceph_smalliobenchfs \
 	ceph_smalliobenchdumb ceph_smalliobenchrbd ceph_tpbench \
-	ceph_omapbench $(am__append_50) ceph_bench_log \
-	$(am__append_53) ceph_multi_stress_watch ceph_test_librbd \
-	$(am__append_54) ceph_test_cls_rbd ceph_test_cls_refcount \
+	ceph_omapbench $(am__append_49) ceph_bench_log \
+	$(am__append_52) ceph_multi_stress_watch ceph_test_librbd \
+	$(am__append_53) ceph_test_cls_rbd ceph_test_cls_refcount \
 	ceph_test_cls_version ceph_test_cls_log ceph_test_cls_statelog \
 	ceph_test_cls_replica_log ceph_test_cls_lock \
-	ceph_test_cls_hello $(am__append_55) ceph_test_mon_workloadgen \
+	ceph_test_cls_hello $(am__append_54) ceph_test_mon_workloadgen \
 	ceph_test_rados_api_cmd ceph_test_rados_api_io \
 	ceph_test_rados_api_c_write_operations \
 	ceph_test_rados_api_c_read_operations ceph_test_rados_api_aio \
@@ -3819,7 +3856,7 @@ bin_DEBUGPROGRAMS = ceph_test_ioctls $(am__append_38) \
 	ceph_test_rados_api_stat ceph_test_rados_api_watch_notify \
 	ceph_test_rados_api_snapshots ceph_test_rados_api_cls \
 	ceph_test_rados_api_misc ceph_test_rados_api_tier \
-	ceph_test_rados_api_lock ceph_test_libcephfs $(am__append_56) \
+	ceph_test_rados_api_lock ceph_test_libcephfs $(am__append_55) \
 	ceph_test_objectstore_workloadgen \
 	ceph_test_filestore_idempotent \
 	ceph_test_filestore_idempotent_sequence ceph_xattr_bench \
@@ -3898,13 +3935,16 @@ LIBLOG = liblog.la
 
 # Always use system leveldb
 LIBOS = libos.la $(am__append_10) $(am__append_11) -lleveldb -lsnappy
+LIBOS_TYPES = libos_types.la
 
 # Libosd always needs osdc and os
 LIBOSD = libosd.la $(LIBOSDC) $(LIBOS) $(LIBPERFGLUE)
+LIBOSD_TYPES = libosd_types.la
 LIBOSDC = libosdc.la
 
 # These have references to syms like ceph_using_tcmalloc(), glue libperfglue to them
 LIBMON = libmon.la $(LIBPERFGLUE)
+LIBMON_TYPES = libmon_types.la
 LIBMDS = libmds.la $(LIBPERFGLUE)
 LIBCLIENT = libclient.la
 LIBCLIENT_FUSE = libclient_fuse.la
@@ -3964,6 +4004,9 @@ libcrush_la_SOURCES = \
 	crush/CrushCompiler.cc \
 	crush/CrushTester.cc
 
+libmon_types_la_SOURCES = \
+	mon/PGMap.cc
+
 libmon_la_SOURCES = \
 	mon/Monitor.cc \
 	mon/Paxos.cc \
@@ -3972,7 +4015,6 @@ libmon_la_SOURCES = \
 	mon/MDSMonitor.cc \
 	mon/MonmapMonitor.cc \
 	mon/PGMonitor.cc \
-	mon/PGMap.cc \
 	mon/LogMonitor.cc \
 	mon/AuthMonitor.cc \
 	mon/Elector.cc \
@@ -3981,7 +4023,7 @@ libmon_la_SOURCES = \
 	mon/DataHealthService.cc \
 	mon/ConfigKeyService.cc
 
-libmon_la_LIBADD = $(LIBAUTH) $(LIBCOMMON) $(LIBOS)
+libmon_la_LIBADD = $(LIBAUTH) $(LIBCOMMON) $(LIBOS) $(LIBMON_TYPES)
 libmds_la_SOURCES = \
 	mds/Anchor.cc \
 	mds/Capability.cc \
@@ -4015,6 +4057,10 @@ libmds_la_SOURCES = \
 	mds/MDSUtility.cc
 
 libmds_la_LIBADD = $(LIBOSDC)
+libos_types_la_SOURCES = \
+	os/Transaction.cc
+
+libos_types_la_CXXFLAGS = ${AM_CXXFLAGS}
 libos_la_SOURCES = os/chain_xattr.cc os/DBObjectMap.cc \
 	os/GenericObjectMap.cc os/FileJournal.cc os/FileStore.cc \
 	os/FlatIndex.cc os/GenericFileStoreBackend.cc os/HashIndex.cc \
@@ -4023,11 +4069,18 @@ libos_la_SOURCES = os/chain_xattr.cc os/DBObjectMap.cc \
 	os/KeyValueStore.cc os/ObjectStore.cc os/WBThrottle.cc \
 	common/TrackedOp.cc $(am__append_14) $(am__append_15) \
 	$(am__append_16)
+libos_la_CXXFLAGS = ${AM_CXXFLAGS}
+libos_la_LIBADD = $(LIBOS_TYPES)
 @WITH_LIBZFS_TRUE@libos_zfs_a_SOURCES = os/ZFS.cc
 @WITH_LIBZFS_TRUE@libos_zfs_a_CXXFLAGS = ${AM_CXXFLAGS} ${LIBZFS_CFLAGS}
+libosd_types_la_SOURCES = \
+	osd/PGLog.cc \
+	osd/osd_types.cc \
+	osd/ECUtil.cc
+
+libosd_types_la_CXXFLAGS = ${AM_CXXFLAGS}
 libosd_la_SOURCES = \
 	osd/PG.cc \
-	osd/PGLog.cc \
 	osd/ReplicatedPG.cc \
 	osd/ReplicatedBackend.cc \
 	osd/ECBackend.cc \
@@ -4043,11 +4096,10 @@ libosd_la_SOURCES = \
 	osd/OpRequest.cc \
 	common/TrackedOp.cc \
 	osd/SnapMapper.cc \
-	osd/osd_types.cc \
-	osd/ECUtil.cc \
 	objclass/class_api.cc
 
-libosd_la_LIBADD = $(LIBOSDC) $(LIBOS)
+libosd_la_CXXFLAGS = ${AM_CXXFLAGS}
+libosd_la_LIBADD = $(LIBOSDC) $(LIBOS) $(LIBOSD_TYPES) $(LIBOS_TYPES)
 erasure_codelibdir = $(pkglibdir)/erasure-code
 erasure_codelib_LTLIBRARIES = libec_jerasure_generic.la \
 	libec_jerasure_sse3.la libec_jerasure_sse4.la \
@@ -4308,7 +4360,8 @@ librbd_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0 $(am__append_34)
 @WITH_RADOSGW_TRUE@	rgw/rgw_metadata.cc \
 @WITH_RADOSGW_TRUE@	rgw/rgw_replica_log.cc \
 @WITH_RADOSGW_TRUE@	rgw/rgw_keystone.cc \
-@WITH_RADOSGW_TRUE@	rgw/rgw_quota.cc
+@WITH_RADOSGW_TRUE@	rgw/rgw_quota.cc \
+@WITH_RADOSGW_TRUE@	rgw/rgw_dencoder.cc
 
 @WITH_RADOSGW_TRUE@librgw_la_CXXFLAGS = -Woverloaded-virtual ${AM_CXXFLAGS}
 @WITH_RADOSGW_TRUE@radosgw_SOURCES = \
@@ -4524,12 +4577,18 @@ ceph_dencoder_SOURCES = \
 	test/encoding/ceph_dencoder.cc \
 	$(DENCODER_SOURCES)
 
-ceph_dencoder_LDADD = $(LIBOSD) $(LIBMDS) $(LIBMON) $(DENCODER_DEPS) \
-	$(CEPH_GLOBAL) $(am__append_46)
+ceph_dencoder_LDADD = \
+	$(LIBOSD_TYPES) \
+	$(LIBOS_TYPES) \
+	$(LIBMDS) \
+	$(LIBMON_TYPES) \
+	$(DENCODER_DEPS) \
+	$(CEPH_GLOBAL)
+
 
 # These should always use explicit _CFLAGS/_CXXFLAGS so avoid basename conflicts
-ceph_dencoder_CFLAGS = ${AM_CFLAGS} $(am__append_47)
-ceph_dencoder_CXXFLAGS = ${AM_CXXFLAGS} $(am__append_48)
+ceph_dencoder_CFLAGS = ${AM_CFLAGS} $(am__append_46)
+ceph_dencoder_CXXFLAGS = ${AM_CXXFLAGS} $(am__append_47)
 get_command_descriptions_SOURCES = test/common/get_command_descriptions.cc
 get_command_descriptions_LDADD = $(LIBMON) $(LIBCOMMON) $(CEPH_GLOBAL)
 
@@ -4732,7 +4791,7 @@ unittest_osd_types_LDADD = $(UNITTEST_LDADD) $(CEPH_GLOBAL)
 unittest_pglog_SOURCES = test/osd/TestPGLog.cc
 unittest_pglog_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 unittest_pglog_LDADD = $(LIBOSD) $(UNITTEST_LDADD) $(CEPH_GLOBAL) \
-	$(am__append_52)
+	$(am__append_51)
 unittest_ecbackend_SOURCES = test/osd/TestECBackend.cc
 unittest_ecbackend_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 unittest_ecbackend_LDADD = $(LIBOSD) $(UNITTEST_LDADD) $(CEPH_GLOBAL)
@@ -5076,10 +5135,10 @@ ceph_kvstore_tool_LDADD = $(LIBOS) $(CEPH_GLOBAL)
 ceph_kvstore_tool_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 ceph_filestore_tool_SOURCES = tools/ceph_filestore_tool.cc
 ceph_filestore_tool_LDADD = $(LIBOSD) $(LIBOS) $(CEPH_GLOBAL) \
-	-lboost_program_options $(am__append_57)
+	-lboost_program_options $(am__append_56)
 ceph_filestore_dump_SOURCES = tools/ceph_filestore_dump.cc
 ceph_filestore_dump_LDADD = $(LIBOSD) $(LIBOS) $(CEPH_GLOBAL) \
-	$(BOOST_PROGRAM_OPTIONS_LIBS) $(am__append_58)
+	$(BOOST_PROGRAM_OPTIONS_LIBS) $(am__append_57)
 monmaptool_SOURCES = tools/monmaptool.cc
 monmaptool_LDADD = $(CEPH_GLOBAL) $(LIBCOMMON)
 crushtool_SOURCES = tools/crushtool.cc
@@ -5107,7 +5166,7 @@ rados_LDADD = libcls_lock_client.la $(LIBRADOS) $(CEPH_GLOBAL)
 @WITH_REST_BENCH_TRUE@	common/obj_bencher.cc # needs cleanup so \
 @WITH_REST_BENCH_TRUE@	it can go in libcommon.la
 @WITH_REST_BENCH_TRUE@rest_bench_LDADD = $(CEPH_GLOBAL) \
-@WITH_REST_BENCH_TRUE@	$(am__append_60) $(am__append_61)
+@WITH_REST_BENCH_TRUE@	$(am__append_59) $(am__append_60)
 @WITH_REST_BENCH_TRUE@@WITH_SYSTEM_LIBS3_FALSE@rest_bench_CXXFLAGS = ${AM_CXXFLAGS} -I$(top_srcdir)/src/libs3/inc
 ceph_conf_SOURCES = tools/ceph_conf.cc
 ceph_conf_LDADD = $(CEPH_GLOBAL) $(LIBCOMMON)
@@ -6207,7 +6266,6 @@ mon/MDSMonitor.lo: mon/$(am__dirstamp) mon/$(DEPDIR)/$(am__dirstamp)
 mon/MonmapMonitor.lo: mon/$(am__dirstamp) \
 	mon/$(DEPDIR)/$(am__dirstamp)
 mon/PGMonitor.lo: mon/$(am__dirstamp) mon/$(DEPDIR)/$(am__dirstamp)
-mon/PGMap.lo: mon/$(am__dirstamp) mon/$(DEPDIR)/$(am__dirstamp)
 mon/LogMonitor.lo: mon/$(am__dirstamp) mon/$(DEPDIR)/$(am__dirstamp)
 mon/AuthMonitor.lo: mon/$(am__dirstamp) mon/$(DEPDIR)/$(am__dirstamp)
 mon/Elector.lo: mon/$(am__dirstamp) mon/$(DEPDIR)/$(am__dirstamp)
@@ -6220,6 +6278,9 @@ mon/ConfigKeyService.lo: mon/$(am__dirstamp) \
 	mon/$(DEPDIR)/$(am__dirstamp)
 libmon.la: $(libmon_la_OBJECTS) $(libmon_la_DEPENDENCIES) $(EXTRA_libmon_la_DEPENDENCIES) 
 	$(AM_V_CXXLD)$(CXXLINK)  $(libmon_la_OBJECTS) $(libmon_la_LIBADD) $(LIBS)
+mon/PGMap.lo: mon/$(am__dirstamp) mon/$(DEPDIR)/$(am__dirstamp)
+libmon_types.la: $(libmon_types_la_OBJECTS) $(libmon_types_la_DEPENDENCIES) $(EXTRA_libmon_types_la_DEPENDENCIES) 
+	$(AM_V_CXXLD)$(CXXLINK)  $(libmon_types_la_OBJECTS) $(libmon_types_la_LIBADD) $(LIBS)
 msg/$(am__dirstamp):
 	@$(MKDIR_P) msg
 	@: > msg/$(am__dirstamp)
@@ -6237,62 +6298,101 @@ msg/SimpleMessenger.lo: msg/$(am__dirstamp) \
 msg/msg_types.lo: msg/$(am__dirstamp) msg/$(DEPDIR)/$(am__dirstamp)
 libmsg.la: $(libmsg_la_OBJECTS) $(libmsg_la_DEPENDENCIES) $(EXTRA_libmsg_la_DEPENDENCIES) 
 	$(AM_V_CXXLD)$(CXXLINK)  $(libmsg_la_OBJECTS) $(libmsg_la_LIBADD) $(LIBS)
-os/chain_xattr.lo: os/$(am__dirstamp) os/$(DEPDIR)/$(am__dirstamp)
-os/DBObjectMap.lo: os/$(am__dirstamp) os/$(DEPDIR)/$(am__dirstamp)
-os/GenericObjectMap.lo: os/$(am__dirstamp) \
+os/libos_la-chain_xattr.lo: os/$(am__dirstamp) \
 	os/$(DEPDIR)/$(am__dirstamp)
-os/FileJournal.lo: os/$(am__dirstamp) os/$(DEPDIR)/$(am__dirstamp)
-os/FileStore.lo: os/$(am__dirstamp) os/$(DEPDIR)/$(am__dirstamp)
-os/FlatIndex.lo: os/$(am__dirstamp) os/$(DEPDIR)/$(am__dirstamp)
-os/GenericFileStoreBackend.lo: os/$(am__dirstamp) \
+os/libos_la-DBObjectMap.lo: os/$(am__dirstamp) \
 	os/$(DEPDIR)/$(am__dirstamp)
-os/HashIndex.lo: os/$(am__dirstamp) os/$(DEPDIR)/$(am__dirstamp)
-os/IndexManager.lo: os/$(am__dirstamp) os/$(DEPDIR)/$(am__dirstamp)
-os/JournalingObjectStore.lo: os/$(am__dirstamp) \
+os/libos_la-GenericObjectMap.lo: os/$(am__dirstamp) \
 	os/$(DEPDIR)/$(am__dirstamp)
-os/LevelDBStore.lo: os/$(am__dirstamp) os/$(DEPDIR)/$(am__dirstamp)
-os/LFNIndex.lo: os/$(am__dirstamp) os/$(DEPDIR)/$(am__dirstamp)
-os/MemStore.lo: os/$(am__dirstamp) os/$(DEPDIR)/$(am__dirstamp)
-os/KeyValueStore.lo: os/$(am__dirstamp) os/$(DEPDIR)/$(am__dirstamp)
-os/ObjectStore.lo: os/$(am__dirstamp) os/$(DEPDIR)/$(am__dirstamp)
-os/WBThrottle.lo: os/$(am__dirstamp) os/$(DEPDIR)/$(am__dirstamp)
-common/TrackedOp.lo: common/$(am__dirstamp) \
+os/libos_la-FileJournal.lo: os/$(am__dirstamp) \
+	os/$(DEPDIR)/$(am__dirstamp)
+os/libos_la-FileStore.lo: os/$(am__dirstamp) \
+	os/$(DEPDIR)/$(am__dirstamp)
+os/libos_la-FlatIndex.lo: os/$(am__dirstamp) \
+	os/$(DEPDIR)/$(am__dirstamp)
+os/libos_la-GenericFileStoreBackend.lo: os/$(am__dirstamp) \
+	os/$(DEPDIR)/$(am__dirstamp)
+os/libos_la-HashIndex.lo: os/$(am__dirstamp) \
+	os/$(DEPDIR)/$(am__dirstamp)
+os/libos_la-IndexManager.lo: os/$(am__dirstamp) \
+	os/$(DEPDIR)/$(am__dirstamp)
+os/libos_la-JournalingObjectStore.lo: os/$(am__dirstamp) \
+	os/$(DEPDIR)/$(am__dirstamp)
+os/libos_la-LevelDBStore.lo: os/$(am__dirstamp) \
+	os/$(DEPDIR)/$(am__dirstamp)
+os/libos_la-LFNIndex.lo: os/$(am__dirstamp) \
+	os/$(DEPDIR)/$(am__dirstamp)
+os/libos_la-MemStore.lo: os/$(am__dirstamp) \
+	os/$(DEPDIR)/$(am__dirstamp)
+os/libos_la-KeyValueStore.lo: os/$(am__dirstamp) \
+	os/$(DEPDIR)/$(am__dirstamp)
+os/libos_la-ObjectStore.lo: os/$(am__dirstamp) \
+	os/$(DEPDIR)/$(am__dirstamp)
+os/libos_la-WBThrottle.lo: os/$(am__dirstamp) \
+	os/$(DEPDIR)/$(am__dirstamp)
+common/libos_la-TrackedOp.lo: common/$(am__dirstamp) \
 	common/$(DEPDIR)/$(am__dirstamp)
-os/BtrfsFileStoreBackend.lo: os/$(am__dirstamp) \
+os/libos_la-BtrfsFileStoreBackend.lo: os/$(am__dirstamp) \
 	os/$(DEPDIR)/$(am__dirstamp)
-os/XfsFileStoreBackend.lo: os/$(am__dirstamp) \
+os/libos_la-XfsFileStoreBackend.lo: os/$(am__dirstamp) \
 	os/$(DEPDIR)/$(am__dirstamp)
-os/ZFSFileStoreBackend.lo: os/$(am__dirstamp) \
+os/libos_la-ZFSFileStoreBackend.lo: os/$(am__dirstamp) \
 	os/$(DEPDIR)/$(am__dirstamp)
 libos.la: $(libos_la_OBJECTS) $(libos_la_DEPENDENCIES) $(EXTRA_libos_la_DEPENDENCIES) 
-	$(AM_V_CXXLD)$(CXXLINK)  $(libos_la_OBJECTS) $(libos_la_LIBADD) $(LIBS)
-osd/PG.lo: osd/$(am__dirstamp) osd/$(DEPDIR)/$(am__dirstamp)
-osd/PGLog.lo: osd/$(am__dirstamp) osd/$(DEPDIR)/$(am__dirstamp)
-osd/ReplicatedPG.lo: osd/$(am__dirstamp) osd/$(DEPDIR)/$(am__dirstamp)
-osd/ReplicatedBackend.lo: osd/$(am__dirstamp) \
+	$(AM_V_CXXLD)$(libos_la_LINK)  $(libos_la_OBJECTS) $(libos_la_LIBADD) $(LIBS)
+os/libos_types_la-Transaction.lo: os/$(am__dirstamp) \
+	os/$(DEPDIR)/$(am__dirstamp)
+libos_types.la: $(libos_types_la_OBJECTS) $(libos_types_la_DEPENDENCIES) $(EXTRA_libos_types_la_DEPENDENCIES) 
+	$(AM_V_CXXLD)$(libos_types_la_LINK)  $(libos_types_la_OBJECTS) $(libos_types_la_LIBADD) $(LIBS)
+osd/libosd_la-PG.lo: osd/$(am__dirstamp) osd/$(DEPDIR)/$(am__dirstamp)
+osd/libosd_la-ReplicatedPG.lo: osd/$(am__dirstamp) \
 	osd/$(DEPDIR)/$(am__dirstamp)
-osd/ECBackend.lo: osd/$(am__dirstamp) osd/$(DEPDIR)/$(am__dirstamp)
-osd/ECTransaction.lo: osd/$(am__dirstamp) \
+osd/libosd_la-ReplicatedBackend.lo: osd/$(am__dirstamp) \
 	osd/$(DEPDIR)/$(am__dirstamp)
-osd/PGBackend.lo: osd/$(am__dirstamp) osd/$(DEPDIR)/$(am__dirstamp)
-osd/Ager.lo: osd/$(am__dirstamp) osd/$(DEPDIR)/$(am__dirstamp)
-osd/OSD.lo: osd/$(am__dirstamp) osd/$(DEPDIR)/$(am__dirstamp)
-osd/OSDCap.lo: osd/$(am__dirstamp) osd/$(DEPDIR)/$(am__dirstamp)
-osd/Watch.lo: osd/$(am__dirstamp) osd/$(DEPDIR)/$(am__dirstamp)
-osd/ClassHandler.lo: osd/$(am__dirstamp) osd/$(DEPDIR)/$(am__dirstamp)
-osd/OpRequest.lo: osd/$(am__dirstamp) osd/$(DEPDIR)/$(am__dirstamp)
-osd/SnapMapper.lo: osd/$(am__dirstamp) osd/$(DEPDIR)/$(am__dirstamp)
-osd/ECUtil.lo: osd/$(am__dirstamp) osd/$(DEPDIR)/$(am__dirstamp)
+osd/libosd_la-ECBackend.lo: osd/$(am__dirstamp) \
+	osd/$(DEPDIR)/$(am__dirstamp)
+osd/libosd_la-ECMsgTypes.lo: osd/$(am__dirstamp) \
+	osd/$(DEPDIR)/$(am__dirstamp)
+osd/libosd_la-ECTransaction.lo: osd/$(am__dirstamp) \
+	osd/$(DEPDIR)/$(am__dirstamp)
+osd/libosd_la-PGBackend.lo: osd/$(am__dirstamp) \
+	osd/$(DEPDIR)/$(am__dirstamp)
+osd/libosd_la-Ager.lo: osd/$(am__dirstamp) \
+	osd/$(DEPDIR)/$(am__dirstamp)
+osd/libosd_la-HitSet.lo: osd/$(am__dirstamp) \
+	osd/$(DEPDIR)/$(am__dirstamp)
+osd/libosd_la-OSD.lo: osd/$(am__dirstamp) \
+	osd/$(DEPDIR)/$(am__dirstamp)
+osd/libosd_la-OSDCap.lo: osd/$(am__dirstamp) \
+	osd/$(DEPDIR)/$(am__dirstamp)
+osd/libosd_la-Watch.lo: osd/$(am__dirstamp) \
+	osd/$(DEPDIR)/$(am__dirstamp)
+osd/libosd_la-ClassHandler.lo: osd/$(am__dirstamp) \
+	osd/$(DEPDIR)/$(am__dirstamp)
+osd/libosd_la-OpRequest.lo: osd/$(am__dirstamp) \
+	osd/$(DEPDIR)/$(am__dirstamp)
+common/libosd_la-TrackedOp.lo: common/$(am__dirstamp) \
+	common/$(DEPDIR)/$(am__dirstamp)
+osd/libosd_la-SnapMapper.lo: osd/$(am__dirstamp) \
+	osd/$(DEPDIR)/$(am__dirstamp)
 objclass/$(am__dirstamp):
 	@$(MKDIR_P) objclass
 	@: > objclass/$(am__dirstamp)
 objclass/$(DEPDIR)/$(am__dirstamp):
 	@$(MKDIR_P) objclass/$(DEPDIR)
 	@: > objclass/$(DEPDIR)/$(am__dirstamp)
-objclass/class_api.lo: objclass/$(am__dirstamp) \
+objclass/libosd_la-class_api.lo: objclass/$(am__dirstamp) \
 	objclass/$(DEPDIR)/$(am__dirstamp)
 libosd.la: $(libosd_la_OBJECTS) $(libosd_la_DEPENDENCIES) $(EXTRA_libosd_la_DEPENDENCIES) 
-	$(AM_V_CXXLD)$(CXXLINK)  $(libosd_la_OBJECTS) $(libosd_la_LIBADD) $(LIBS)
+	$(AM_V_CXXLD)$(libosd_la_LINK)  $(libosd_la_OBJECTS) $(libosd_la_LIBADD) $(LIBS)
+osd/libosd_types_la-PGLog.lo: osd/$(am__dirstamp) \
+	osd/$(DEPDIR)/$(am__dirstamp)
+osd/libosd_types_la-osd_types.lo: osd/$(am__dirstamp) \
+	osd/$(DEPDIR)/$(am__dirstamp)
+osd/libosd_types_la-ECUtil.lo: osd/$(am__dirstamp) \
+	osd/$(DEPDIR)/$(am__dirstamp)
+libosd_types.la: $(libosd_types_la_OBJECTS) $(libosd_types_la_DEPENDENCIES) $(EXTRA_libosd_types_la_DEPENDENCIES) 
+	$(AM_V_CXXLD)$(libosd_types_la_LINK)  $(libosd_types_la_OBJECTS) $(libosd_types_la_LIBADD) $(LIBS)
 osdc/$(am__dirstamp):
 	@$(MKDIR_P) osdc
 	@: > osdc/$(am__dirstamp)
@@ -6445,6 +6545,8 @@ rgw/librgw_la-rgw_replica_log.lo: rgw/$(am__dirstamp) \
 rgw/librgw_la-rgw_keystone.lo: rgw/$(am__dirstamp) \
 	rgw/$(DEPDIR)/$(am__dirstamp)
 rgw/librgw_la-rgw_quota.lo: rgw/$(am__dirstamp) \
+	rgw/$(DEPDIR)/$(am__dirstamp)
+rgw/librgw_la-rgw_dencoder.lo: rgw/$(am__dirstamp) \
 	rgw/$(DEPDIR)/$(am__dirstamp)
 librgw.la: $(librgw_la_OBJECTS) $(librgw_la_DEPENDENCIES) $(EXTRA_librgw_la_DEPENDENCIES) 
 	$(AM_V_CXXLD)$(librgw_la_LINK) $(am_librgw_la_rpath) $(librgw_la_OBJECTS) $(librgw_la_LIBADD) $(LIBS)
@@ -7730,6 +7832,8 @@ rgw/test_build_librgw-rgw_keystone.$(OBJEXT): rgw/$(am__dirstamp) \
 	rgw/$(DEPDIR)/$(am__dirstamp)
 rgw/test_build_librgw-rgw_quota.$(OBJEXT): rgw/$(am__dirstamp) \
 	rgw/$(DEPDIR)/$(am__dirstamp)
+rgw/test_build_librgw-rgw_dencoder.$(OBJEXT): rgw/$(am__dirstamp) \
+	rgw/$(DEPDIR)/$(am__dirstamp)
 test_build_librgw$(EXEEXT): $(test_build_librgw_OBJECTS) $(test_build_librgw_DEPENDENCIES) $(EXTRA_test_build_librgw_DEPENDENCIES) 
 	@rm -f test_build_librgw$(EXEEXT)
 	$(AM_V_CXXLD)$(test_build_librgw_LINK) $(test_build_librgw_OBJECTS) $(test_build_librgw_LDADD) $(LIBS)
@@ -8468,8 +8572,6 @@ mostlyclean-compile:
 	-rm -f common/Throttle.lo
 	-rm -f common/Timer.$(OBJEXT)
 	-rm -f common/Timer.lo
-	-rm -f common/TrackedOp.$(OBJEXT)
-	-rm -f common/TrackedOp.lo
 	-rm -f common/WorkQueue.$(OBJEXT)
 	-rm -f common/WorkQueue.lo
 	-rm -f common/addr_parsing.$(OBJEXT)
@@ -8546,6 +8648,10 @@ mostlyclean-compile:
 	-rm -f common/libcommon_crc_la-crc32c_intel_fast_zero_asm.lo
 	-rm -f common/libcommon_crc_la-sctp_crc32.$(OBJEXT)
 	-rm -f common/libcommon_crc_la-sctp_crc32.lo
+	-rm -f common/libos_la-TrackedOp.$(OBJEXT)
+	-rm -f common/libos_la-TrackedOp.lo
+	-rm -f common/libosd_la-TrackedOp.$(OBJEXT)
+	-rm -f common/libosd_la-TrackedOp.lo
 	-rm -f common/linux_version.$(OBJEXT)
 	-rm -f common/linux_version.lo
 	-rm -f common/lockdep.$(OBJEXT)
@@ -8974,84 +9080,92 @@ mostlyclean-compile:
 	-rm -f msg/SimpleMessenger.lo
 	-rm -f msg/msg_types.$(OBJEXT)
 	-rm -f msg/msg_types.lo
-	-rm -f objclass/class_api.$(OBJEXT)
-	-rm -f objclass/class_api.lo
-	-rm -f os/BtrfsFileStoreBackend.$(OBJEXT)
-	-rm -f os/BtrfsFileStoreBackend.lo
-	-rm -f os/DBObjectMap.$(OBJEXT)
-	-rm -f os/DBObjectMap.lo
-	-rm -f os/FileJournal.$(OBJEXT)
-	-rm -f os/FileJournal.lo
-	-rm -f os/FileStore.$(OBJEXT)
-	-rm -f os/FileStore.lo
-	-rm -f os/FlatIndex.$(OBJEXT)
-	-rm -f os/FlatIndex.lo
-	-rm -f os/GenericFileStoreBackend.$(OBJEXT)
-	-rm -f os/GenericFileStoreBackend.lo
-	-rm -f os/GenericObjectMap.$(OBJEXT)
-	-rm -f os/GenericObjectMap.lo
-	-rm -f os/HashIndex.$(OBJEXT)
-	-rm -f os/HashIndex.lo
-	-rm -f os/IndexManager.$(OBJEXT)
-	-rm -f os/IndexManager.lo
-	-rm -f os/JournalingObjectStore.$(OBJEXT)
-	-rm -f os/JournalingObjectStore.lo
-	-rm -f os/KeyValueStore.$(OBJEXT)
-	-rm -f os/KeyValueStore.lo
-	-rm -f os/LFNIndex.$(OBJEXT)
-	-rm -f os/LFNIndex.lo
-	-rm -f os/LevelDBStore.$(OBJEXT)
-	-rm -f os/LevelDBStore.lo
-	-rm -f os/MemStore.$(OBJEXT)
-	-rm -f os/MemStore.lo
-	-rm -f os/ObjectStore.$(OBJEXT)
-	-rm -f os/ObjectStore.lo
-	-rm -f os/WBThrottle.$(OBJEXT)
-	-rm -f os/WBThrottle.lo
-	-rm -f os/XfsFileStoreBackend.$(OBJEXT)
-	-rm -f os/XfsFileStoreBackend.lo
-	-rm -f os/ZFSFileStoreBackend.$(OBJEXT)
-	-rm -f os/ZFSFileStoreBackend.lo
-	-rm -f os/chain_xattr.$(OBJEXT)
-	-rm -f os/chain_xattr.lo
+	-rm -f objclass/libosd_la-class_api.$(OBJEXT)
+	-rm -f objclass/libosd_la-class_api.lo
+	-rm -f os/libos_la-BtrfsFileStoreBackend.$(OBJEXT)
+	-rm -f os/libos_la-BtrfsFileStoreBackend.lo
+	-rm -f os/libos_la-DBObjectMap.$(OBJEXT)
+	-rm -f os/libos_la-DBObjectMap.lo
+	-rm -f os/libos_la-FileJournal.$(OBJEXT)
+	-rm -f os/libos_la-FileJournal.lo
+	-rm -f os/libos_la-FileStore.$(OBJEXT)
+	-rm -f os/libos_la-FileStore.lo
+	-rm -f os/libos_la-FlatIndex.$(OBJEXT)
+	-rm -f os/libos_la-FlatIndex.lo
+	-rm -f os/libos_la-GenericFileStoreBackend.$(OBJEXT)
+	-rm -f os/libos_la-GenericFileStoreBackend.lo
+	-rm -f os/libos_la-GenericObjectMap.$(OBJEXT)
+	-rm -f os/libos_la-GenericObjectMap.lo
+	-rm -f os/libos_la-HashIndex.$(OBJEXT)
+	-rm -f os/libos_la-HashIndex.lo
+	-rm -f os/libos_la-IndexManager.$(OBJEXT)
+	-rm -f os/libos_la-IndexManager.lo
+	-rm -f os/libos_la-JournalingObjectStore.$(OBJEXT)
+	-rm -f os/libos_la-JournalingObjectStore.lo
+	-rm -f os/libos_la-KeyValueStore.$(OBJEXT)
+	-rm -f os/libos_la-KeyValueStore.lo
+	-rm -f os/libos_la-LFNIndex.$(OBJEXT)
+	-rm -f os/libos_la-LFNIndex.lo
+	-rm -f os/libos_la-LevelDBStore.$(OBJEXT)
+	-rm -f os/libos_la-LevelDBStore.lo
+	-rm -f os/libos_la-MemStore.$(OBJEXT)
+	-rm -f os/libos_la-MemStore.lo
+	-rm -f os/libos_la-ObjectStore.$(OBJEXT)
+	-rm -f os/libos_la-ObjectStore.lo
+	-rm -f os/libos_la-WBThrottle.$(OBJEXT)
+	-rm -f os/libos_la-WBThrottle.lo
+	-rm -f os/libos_la-XfsFileStoreBackend.$(OBJEXT)
+	-rm -f os/libos_la-XfsFileStoreBackend.lo
+	-rm -f os/libos_la-ZFSFileStoreBackend.$(OBJEXT)
+	-rm -f os/libos_la-ZFSFileStoreBackend.lo
+	-rm -f os/libos_la-chain_xattr.$(OBJEXT)
+	-rm -f os/libos_la-chain_xattr.lo
+	-rm -f os/libos_types_la-Transaction.$(OBJEXT)
+	-rm -f os/libos_types_la-Transaction.lo
 	-rm -f os/libos_zfs_a-ZFS.$(OBJEXT)
-	-rm -f osd/Ager.$(OBJEXT)
-	-rm -f osd/Ager.lo
-	-rm -f osd/ClassHandler.$(OBJEXT)
-	-rm -f osd/ClassHandler.lo
-	-rm -f osd/ECBackend.$(OBJEXT)
-	-rm -f osd/ECBackend.lo
 	-rm -f osd/ECMsgTypes.$(OBJEXT)
 	-rm -f osd/ECMsgTypes.lo
-	-rm -f osd/ECTransaction.$(OBJEXT)
-	-rm -f osd/ECTransaction.lo
-	-rm -f osd/ECUtil.$(OBJEXT)
-	-rm -f osd/ECUtil.lo
 	-rm -f osd/HitSet.$(OBJEXT)
 	-rm -f osd/HitSet.lo
-	-rm -f osd/OSD.$(OBJEXT)
-	-rm -f osd/OSD.lo
-	-rm -f osd/OSDCap.$(OBJEXT)
-	-rm -f osd/OSDCap.lo
 	-rm -f osd/OSDMap.$(OBJEXT)
 	-rm -f osd/OSDMap.lo
-	-rm -f osd/OpRequest.$(OBJEXT)
-	-rm -f osd/OpRequest.lo
-	-rm -f osd/PG.$(OBJEXT)
-	-rm -f osd/PG.lo
-	-rm -f osd/PGBackend.$(OBJEXT)
-	-rm -f osd/PGBackend.lo
-	-rm -f osd/PGLog.$(OBJEXT)
-	-rm -f osd/PGLog.lo
-	-rm -f osd/ReplicatedBackend.$(OBJEXT)
-	-rm -f osd/ReplicatedBackend.lo
-	-rm -f osd/ReplicatedPG.$(OBJEXT)
-	-rm -f osd/ReplicatedPG.lo
-	-rm -f osd/SnapMapper.$(OBJEXT)
-	-rm -f osd/SnapMapper.lo
-	-rm -f osd/Watch.$(OBJEXT)
-	-rm -f osd/Watch.lo
 	-rm -f osd/ceph_test_rados_api_tier-HitSet.$(OBJEXT)
+	-rm -f osd/libosd_la-Ager.$(OBJEXT)
+	-rm -f osd/libosd_la-Ager.lo
+	-rm -f osd/libosd_la-ClassHandler.$(OBJEXT)
+	-rm -f osd/libosd_la-ClassHandler.lo
+	-rm -f osd/libosd_la-ECBackend.$(OBJEXT)
+	-rm -f osd/libosd_la-ECBackend.lo
+	-rm -f osd/libosd_la-ECMsgTypes.$(OBJEXT)
+	-rm -f osd/libosd_la-ECMsgTypes.lo
+	-rm -f osd/libosd_la-ECTransaction.$(OBJEXT)
+	-rm -f osd/libosd_la-ECTransaction.lo
+	-rm -f osd/libosd_la-HitSet.$(OBJEXT)
+	-rm -f osd/libosd_la-HitSet.lo
+	-rm -f osd/libosd_la-OSD.$(OBJEXT)
+	-rm -f osd/libosd_la-OSD.lo
+	-rm -f osd/libosd_la-OSDCap.$(OBJEXT)
+	-rm -f osd/libosd_la-OSDCap.lo
+	-rm -f osd/libosd_la-OpRequest.$(OBJEXT)
+	-rm -f osd/libosd_la-OpRequest.lo
+	-rm -f osd/libosd_la-PG.$(OBJEXT)
+	-rm -f osd/libosd_la-PG.lo
+	-rm -f osd/libosd_la-PGBackend.$(OBJEXT)
+	-rm -f osd/libosd_la-PGBackend.lo
+	-rm -f osd/libosd_la-ReplicatedBackend.$(OBJEXT)
+	-rm -f osd/libosd_la-ReplicatedBackend.lo
+	-rm -f osd/libosd_la-ReplicatedPG.$(OBJEXT)
+	-rm -f osd/libosd_la-ReplicatedPG.lo
+	-rm -f osd/libosd_la-SnapMapper.$(OBJEXT)
+	-rm -f osd/libosd_la-SnapMapper.lo
+	-rm -f osd/libosd_la-Watch.$(OBJEXT)
+	-rm -f osd/libosd_la-Watch.lo
+	-rm -f osd/libosd_types_la-ECUtil.$(OBJEXT)
+	-rm -f osd/libosd_types_la-ECUtil.lo
+	-rm -f osd/libosd_types_la-PGLog.$(OBJEXT)
+	-rm -f osd/libosd_types_la-PGLog.lo
+	-rm -f osd/libosd_types_la-osd_types.$(OBJEXT)
+	-rm -f osd/libosd_types_la-osd_types.lo
 	-rm -f osd/osd_types.$(OBJEXT)
 	-rm -f osd/osd_types.lo
 	-rm -f osd/test_build_libcommon-ECMsgTypes.$(OBJEXT)
@@ -9109,6 +9223,8 @@ mostlyclean-compile:
 	-rm -f rgw/librgw_la-rgw_cors.lo
 	-rm -f rgw/librgw_la-rgw_cors_s3.$(OBJEXT)
 	-rm -f rgw/librgw_la-rgw_cors_s3.lo
+	-rm -f rgw/librgw_la-rgw_dencoder.$(OBJEXT)
+	-rm -f rgw/librgw_la-rgw_dencoder.lo
 	-rm -f rgw/librgw_la-rgw_env.$(OBJEXT)
 	-rm -f rgw/librgw_la-rgw_env.lo
 	-rm -f rgw/librgw_la-rgw_fcgi.$(OBJEXT)
@@ -9189,6 +9305,7 @@ mostlyclean-compile:
 	-rm -f rgw/test_build_librgw-rgw_common.$(OBJEXT)
 	-rm -f rgw/test_build_librgw-rgw_cors.$(OBJEXT)
 	-rm -f rgw/test_build_librgw-rgw_cors_s3.$(OBJEXT)
+	-rm -f rgw/test_build_librgw-rgw_dencoder.$(OBJEXT)
 	-rm -f rgw/test_build_librgw-rgw_env.$(OBJEXT)
 	-rm -f rgw/test_build_librgw-rgw_fcgi.$(OBJEXT)
 	-rm -f rgw/test_build_librgw-rgw_formats.$(OBJEXT)
@@ -9518,7 +9635,6 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/Thread.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/Throttle.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/Timer.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/TrackedOp.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/WorkQueue.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/addr_parsing.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/admin_socket.Plo@am__quote@
@@ -9557,6 +9673,8 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/libcommon_crc_la-crc32c_intel_fast_asm.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/libcommon_crc_la-crc32c_intel_fast_zero_asm.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/libcommon_crc_la-sctp_crc32.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/libos_la-TrackedOp.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/libosd_la-TrackedOp.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/linux_version.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/lockdep.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@common/$(DEPDIR)/mime.Plo@am__quote@
@@ -9823,46 +9941,50 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@msg/$(DEPDIR)/Pipe.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@msg/$(DEPDIR)/SimpleMessenger.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@msg/$(DEPDIR)/msg_types.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@objclass/$(DEPDIR)/class_api.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/BtrfsFileStoreBackend.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/DBObjectMap.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/FileJournal.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/FileStore.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/FlatIndex.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/GenericFileStoreBackend.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/GenericObjectMap.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/HashIndex.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/IndexManager.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/JournalingObjectStore.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/KeyValueStore.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/LFNIndex.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/LevelDBStore.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/MemStore.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/ObjectStore.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/WBThrottle.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/XfsFileStoreBackend.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/ZFSFileStoreBackend.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/chain_xattr.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@objclass/$(DEPDIR)/libosd_la-class_api.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/libos_la-BtrfsFileStoreBackend.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/libos_la-DBObjectMap.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/libos_la-FileJournal.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/libos_la-FileStore.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/libos_la-FlatIndex.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/libos_la-GenericFileStoreBackend.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/libos_la-GenericObjectMap.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/libos_la-HashIndex.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/libos_la-IndexManager.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/libos_la-JournalingObjectStore.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/libos_la-KeyValueStore.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/libos_la-LFNIndex.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/libos_la-LevelDBStore.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/libos_la-MemStore.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/libos_la-ObjectStore.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/libos_la-WBThrottle.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/libos_la-XfsFileStoreBackend.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/libos_la-ZFSFileStoreBackend.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/libos_la-chain_xattr.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/libos_types_la-Transaction.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@os/$(DEPDIR)/libos_zfs_a-ZFS.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/Ager.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/ClassHandler.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/ECBackend.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/ECMsgTypes.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/ECTransaction.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/ECUtil.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/HitSet.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/OSD.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/OSDCap.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/OSDMap.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/OpRequest.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/PG.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/PGBackend.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/PGLog.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/ReplicatedBackend.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/ReplicatedPG.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/SnapMapper.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/Watch.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/ceph_test_rados_api_tier-HitSet.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/libosd_la-Ager.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/libosd_la-ClassHandler.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/libosd_la-ECBackend.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/libosd_la-ECMsgTypes.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/libosd_la-ECTransaction.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/libosd_la-HitSet.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/libosd_la-OSD.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/libosd_la-OSDCap.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/libosd_la-OpRequest.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/libosd_la-PG.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/libosd_la-PGBackend.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/libosd_la-ReplicatedBackend.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/libosd_la-ReplicatedPG.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/libosd_la-SnapMapper.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/libosd_la-Watch.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/libosd_types_la-ECUtil.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/libosd_types_la-PGLog.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/libosd_types_la-osd_types.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/osd_types.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/test_build_libcommon-ECMsgTypes.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@osd/$(DEPDIR)/test_build_libcommon-HitSet.Po@am__quote@
@@ -9899,6 +10021,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/librgw_la-rgw_common.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/librgw_la-rgw_cors.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/librgw_la-rgw_cors_s3.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/librgw_la-rgw_dencoder.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/librgw_la-rgw_env.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/librgw_la-rgw_fcgi.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/librgw_la-rgw_formats.Plo@am__quote@
@@ -9957,6 +10080,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/test_build_librgw-rgw_common.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/test_build_librgw-rgw_cors.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/test_build_librgw-rgw_cors_s3.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/test_build_librgw-rgw_dencoder.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/test_build_librgw-rgw_env.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/test_build_librgw-rgw_fcgi.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/test_build_librgw-rgw_formats.Po@am__quote@
@@ -11156,6 +11280,293 @@ test/erasure-code/libec_test_jerasure_sse4_la-TestJerasurePluginSSE4.lo: test/er
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libec_test_jerasure_sse4_la_CXXFLAGS) $(CXXFLAGS) -c -o test/erasure-code/libec_test_jerasure_sse4_la-TestJerasurePluginSSE4.lo `test -f 'test/erasure-code/TestJerasurePluginSSE4.cc' || echo '$(srcdir)/'`test/erasure-code/TestJerasurePluginSSE4.cc
 
+os/libos_la-chain_xattr.lo: os/chain_xattr.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -MT os/libos_la-chain_xattr.lo -MD -MP -MF os/$(DEPDIR)/libos_la-chain_xattr.Tpo -c -o os/libos_la-chain_xattr.lo `test -f 'os/chain_xattr.cc' || echo '$(srcdir)/'`os/chain_xattr.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) os/$(DEPDIR)/libos_la-chain_xattr.Tpo os/$(DEPDIR)/libos_la-chain_xattr.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='os/chain_xattr.cc' object='os/libos_la-chain_xattr.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -c -o os/libos_la-chain_xattr.lo `test -f 'os/chain_xattr.cc' || echo '$(srcdir)/'`os/chain_xattr.cc
+
+os/libos_la-DBObjectMap.lo: os/DBObjectMap.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -MT os/libos_la-DBObjectMap.lo -MD -MP -MF os/$(DEPDIR)/libos_la-DBObjectMap.Tpo -c -o os/libos_la-DBObjectMap.lo `test -f 'os/DBObjectMap.cc' || echo '$(srcdir)/'`os/DBObjectMap.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) os/$(DEPDIR)/libos_la-DBObjectMap.Tpo os/$(DEPDIR)/libos_la-DBObjectMap.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='os/DBObjectMap.cc' object='os/libos_la-DBObjectMap.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -c -o os/libos_la-DBObjectMap.lo `test -f 'os/DBObjectMap.cc' || echo '$(srcdir)/'`os/DBObjectMap.cc
+
+os/libos_la-GenericObjectMap.lo: os/GenericObjectMap.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -MT os/libos_la-GenericObjectMap.lo -MD -MP -MF os/$(DEPDIR)/libos_la-GenericObjectMap.Tpo -c -o os/libos_la-GenericObjectMap.lo `test -f 'os/GenericObjectMap.cc' || echo '$(srcdir)/'`os/GenericObjectMap.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) os/$(DEPDIR)/libos_la-GenericObjectMap.Tpo os/$(DEPDIR)/libos_la-GenericObjectMap.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='os/GenericObjectMap.cc' object='os/libos_la-GenericObjectMap.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -c -o os/libos_la-GenericObjectMap.lo `test -f 'os/GenericObjectMap.cc' || echo '$(srcdir)/'`os/GenericObjectMap.cc
+
+os/libos_la-FileJournal.lo: os/FileJournal.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -MT os/libos_la-FileJournal.lo -MD -MP -MF os/$(DEPDIR)/libos_la-FileJournal.Tpo -c -o os/libos_la-FileJournal.lo `test -f 'os/FileJournal.cc' || echo '$(srcdir)/'`os/FileJournal.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) os/$(DEPDIR)/libos_la-FileJournal.Tpo os/$(DEPDIR)/libos_la-FileJournal.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='os/FileJournal.cc' object='os/libos_la-FileJournal.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -c -o os/libos_la-FileJournal.lo `test -f 'os/FileJournal.cc' || echo '$(srcdir)/'`os/FileJournal.cc
+
+os/libos_la-FileStore.lo: os/FileStore.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -MT os/libos_la-FileStore.lo -MD -MP -MF os/$(DEPDIR)/libos_la-FileStore.Tpo -c -o os/libos_la-FileStore.lo `test -f 'os/FileStore.cc' || echo '$(srcdir)/'`os/FileStore.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) os/$(DEPDIR)/libos_la-FileStore.Tpo os/$(DEPDIR)/libos_la-FileStore.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='os/FileStore.cc' object='os/libos_la-FileStore.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -c -o os/libos_la-FileStore.lo `test -f 'os/FileStore.cc' || echo '$(srcdir)/'`os/FileStore.cc
+
+os/libos_la-FlatIndex.lo: os/FlatIndex.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -MT os/libos_la-FlatIndex.lo -MD -MP -MF os/$(DEPDIR)/libos_la-FlatIndex.Tpo -c -o os/libos_la-FlatIndex.lo `test -f 'os/FlatIndex.cc' || echo '$(srcdir)/'`os/FlatIndex.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) os/$(DEPDIR)/libos_la-FlatIndex.Tpo os/$(DEPDIR)/libos_la-FlatIndex.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='os/FlatIndex.cc' object='os/libos_la-FlatIndex.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -c -o os/libos_la-FlatIndex.lo `test -f 'os/FlatIndex.cc' || echo '$(srcdir)/'`os/FlatIndex.cc
+
+os/libos_la-GenericFileStoreBackend.lo: os/GenericFileStoreBackend.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -MT os/libos_la-GenericFileStoreBackend.lo -MD -MP -MF os/$(DEPDIR)/libos_la-GenericFileStoreBackend.Tpo -c -o os/libos_la-GenericFileStoreBackend.lo `test -f 'os/GenericFileStoreBackend.cc' || echo '$(srcdir)/'`os/GenericFileStoreBackend.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) os/$(DEPDIR)/libos_la-GenericFileStoreBackend.Tpo os/$(DEPDIR)/libos_la-GenericFileStoreBackend.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='os/GenericFileStoreBackend.cc' object='os/libos_la-GenericFileStoreBackend.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -c -o os/libos_la-GenericFileStoreBackend.lo `test -f 'os/GenericFileStoreBackend.cc' || echo '$(srcdir)/'`os/GenericFileStoreBackend.cc
+
+os/libos_la-HashIndex.lo: os/HashIndex.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -MT os/libos_la-HashIndex.lo -MD -MP -MF os/$(DEPDIR)/libos_la-HashIndex.Tpo -c -o os/libos_la-HashIndex.lo `test -f 'os/HashIndex.cc' || echo '$(srcdir)/'`os/HashIndex.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) os/$(DEPDIR)/libos_la-HashIndex.Tpo os/$(DEPDIR)/libos_la-HashIndex.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='os/HashIndex.cc' object='os/libos_la-HashIndex.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -c -o os/libos_la-HashIndex.lo `test -f 'os/HashIndex.cc' || echo '$(srcdir)/'`os/HashIndex.cc
+
+os/libos_la-IndexManager.lo: os/IndexManager.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -MT os/libos_la-IndexManager.lo -MD -MP -MF os/$(DEPDIR)/libos_la-IndexManager.Tpo -c -o os/libos_la-IndexManager.lo `test -f 'os/IndexManager.cc' || echo '$(srcdir)/'`os/IndexManager.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) os/$(DEPDIR)/libos_la-IndexManager.Tpo os/$(DEPDIR)/libos_la-IndexManager.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='os/IndexManager.cc' object='os/libos_la-IndexManager.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -c -o os/libos_la-IndexManager.lo `test -f 'os/IndexManager.cc' || echo '$(srcdir)/'`os/IndexManager.cc
+
+os/libos_la-JournalingObjectStore.lo: os/JournalingObjectStore.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -MT os/libos_la-JournalingObjectStore.lo -MD -MP -MF os/$(DEPDIR)/libos_la-JournalingObjectStore.Tpo -c -o os/libos_la-JournalingObjectStore.lo `test -f 'os/JournalingObjectStore.cc' || echo '$(srcdir)/'`os/JournalingObjectStore.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) os/$(DEPDIR)/libos_la-JournalingObjectStore.Tpo os/$(DEPDIR)/libos_la-JournalingObjectStore.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='os/JournalingObjectStore.cc' object='os/libos_la-JournalingObjectStore.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -c -o os/libos_la-JournalingObjectStore.lo `test -f 'os/JournalingObjectStore.cc' || echo '$(srcdir)/'`os/JournalingObjectStore.cc
+
+os/libos_la-LevelDBStore.lo: os/LevelDBStore.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -MT os/libos_la-LevelDBStore.lo -MD -MP -MF os/$(DEPDIR)/libos_la-LevelDBStore.Tpo -c -o os/libos_la-LevelDBStore.lo `test -f 'os/LevelDBStore.cc' || echo '$(srcdir)/'`os/LevelDBStore.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) os/$(DEPDIR)/libos_la-LevelDBStore.Tpo os/$(DEPDIR)/libos_la-LevelDBStore.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='os/LevelDBStore.cc' object='os/libos_la-LevelDBStore.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -c -o os/libos_la-LevelDBStore.lo `test -f 'os/LevelDBStore.cc' || echo '$(srcdir)/'`os/LevelDBStore.cc
+
+os/libos_la-LFNIndex.lo: os/LFNIndex.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -MT os/libos_la-LFNIndex.lo -MD -MP -MF os/$(DEPDIR)/libos_la-LFNIndex.Tpo -c -o os/libos_la-LFNIndex.lo `test -f 'os/LFNIndex.cc' || echo '$(srcdir)/'`os/LFNIndex.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) os/$(DEPDIR)/libos_la-LFNIndex.Tpo os/$(DEPDIR)/libos_la-LFNIndex.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='os/LFNIndex.cc' object='os/libos_la-LFNIndex.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -c -o os/libos_la-LFNIndex.lo `test -f 'os/LFNIndex.cc' || echo '$(srcdir)/'`os/LFNIndex.cc
+
+os/libos_la-MemStore.lo: os/MemStore.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -MT os/libos_la-MemStore.lo -MD -MP -MF os/$(DEPDIR)/libos_la-MemStore.Tpo -c -o os/libos_la-MemStore.lo `test -f 'os/MemStore.cc' || echo '$(srcdir)/'`os/MemStore.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) os/$(DEPDIR)/libos_la-MemStore.Tpo os/$(DEPDIR)/libos_la-MemStore.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='os/MemStore.cc' object='os/libos_la-MemStore.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -c -o os/libos_la-MemStore.lo `test -f 'os/MemStore.cc' || echo '$(srcdir)/'`os/MemStore.cc
+
+os/libos_la-KeyValueStore.lo: os/KeyValueStore.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -MT os/libos_la-KeyValueStore.lo -MD -MP -MF os/$(DEPDIR)/libos_la-KeyValueStore.Tpo -c -o os/libos_la-KeyValueStore.lo `test -f 'os/KeyValueStore.cc' || echo '$(srcdir)/'`os/KeyValueStore.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) os/$(DEPDIR)/libos_la-KeyValueStore.Tpo os/$(DEPDIR)/libos_la-KeyValueStore.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='os/KeyValueStore.cc' object='os/libos_la-KeyValueStore.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -c -o os/libos_la-KeyValueStore.lo `test -f 'os/KeyValueStore.cc' || echo '$(srcdir)/'`os/KeyValueStore.cc
+
+os/libos_la-ObjectStore.lo: os/ObjectStore.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -MT os/libos_la-ObjectStore.lo -MD -MP -MF os/$(DEPDIR)/libos_la-ObjectStore.Tpo -c -o os/libos_la-ObjectStore.lo `test -f 'os/ObjectStore.cc' || echo '$(srcdir)/'`os/ObjectStore.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) os/$(DEPDIR)/libos_la-ObjectStore.Tpo os/$(DEPDIR)/libos_la-ObjectStore.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='os/ObjectStore.cc' object='os/libos_la-ObjectStore.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -c -o os/libos_la-ObjectStore.lo `test -f 'os/ObjectStore.cc' || echo '$(srcdir)/'`os/ObjectStore.cc
+
+os/libos_la-WBThrottle.lo: os/WBThrottle.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -MT os/libos_la-WBThrottle.lo -MD -MP -MF os/$(DEPDIR)/libos_la-WBThrottle.Tpo -c -o os/libos_la-WBThrottle.lo `test -f 'os/WBThrottle.cc' || echo '$(srcdir)/'`os/WBThrottle.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) os/$(DEPDIR)/libos_la-WBThrottle.Tpo os/$(DEPDIR)/libos_la-WBThrottle.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='os/WBThrottle.cc' object='os/libos_la-WBThrottle.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -c -o os/libos_la-WBThrottle.lo `test -f 'os/WBThrottle.cc' || echo '$(srcdir)/'`os/WBThrottle.cc
+
+common/libos_la-TrackedOp.lo: common/TrackedOp.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -MT common/libos_la-TrackedOp.lo -MD -MP -MF common/$(DEPDIR)/libos_la-TrackedOp.Tpo -c -o common/libos_la-TrackedOp.lo `test -f 'common/TrackedOp.cc' || echo '$(srcdir)/'`common/TrackedOp.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) common/$(DEPDIR)/libos_la-TrackedOp.Tpo common/$(DEPDIR)/libos_la-TrackedOp.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='common/TrackedOp.cc' object='common/libos_la-TrackedOp.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -c -o common/libos_la-TrackedOp.lo `test -f 'common/TrackedOp.cc' || echo '$(srcdir)/'`common/TrackedOp.cc
+
+os/libos_la-BtrfsFileStoreBackend.lo: os/BtrfsFileStoreBackend.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -MT os/libos_la-BtrfsFileStoreBackend.lo -MD -MP -MF os/$(DEPDIR)/libos_la-BtrfsFileStoreBackend.Tpo -c -o os/libos_la-BtrfsFileStoreBackend.lo `test -f 'os/BtrfsFileStoreBackend.cc' || echo '$(srcdir)/'`os/BtrfsFileStoreBackend.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) os/$(DEPDIR)/libos_la-BtrfsFileStoreBackend.Tpo os/$(DEPDIR)/libos_la-BtrfsFileStoreBackend.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='os/BtrfsFileStoreBackend.cc' object='os/libos_la-BtrfsFileStoreBackend.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -c -o os/libos_la-BtrfsFileStoreBackend.lo `test -f 'os/BtrfsFileStoreBackend.cc' || echo '$(srcdir)/'`os/BtrfsFileStoreBackend.cc
+
+os/libos_la-XfsFileStoreBackend.lo: os/XfsFileStoreBackend.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -MT os/libos_la-XfsFileStoreBackend.lo -MD -MP -MF os/$(DEPDIR)/libos_la-XfsFileStoreBackend.Tpo -c -o os/libos_la-XfsFileStoreBackend.lo `test -f 'os/XfsFileStoreBackend.cc' || echo '$(srcdir)/'`os/XfsFileStoreBackend.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) os/$(DEPDIR)/libos_la-XfsFileStoreBackend.Tpo os/$(DEPDIR)/libos_la-XfsFileStoreBackend.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='os/XfsFileStoreBackend.cc' object='os/libos_la-XfsFileStoreBackend.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -c -o os/libos_la-XfsFileStoreBackend.lo `test -f 'os/XfsFileStoreBackend.cc' || echo '$(srcdir)/'`os/XfsFileStoreBackend.cc
+
+os/libos_la-ZFSFileStoreBackend.lo: os/ZFSFileStoreBackend.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -MT os/libos_la-ZFSFileStoreBackend.lo -MD -MP -MF os/$(DEPDIR)/libos_la-ZFSFileStoreBackend.Tpo -c -o os/libos_la-ZFSFileStoreBackend.lo `test -f 'os/ZFSFileStoreBackend.cc' || echo '$(srcdir)/'`os/ZFSFileStoreBackend.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) os/$(DEPDIR)/libos_la-ZFSFileStoreBackend.Tpo os/$(DEPDIR)/libos_la-ZFSFileStoreBackend.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='os/ZFSFileStoreBackend.cc' object='os/libos_la-ZFSFileStoreBackend.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_la_CXXFLAGS) $(CXXFLAGS) -c -o os/libos_la-ZFSFileStoreBackend.lo `test -f 'os/ZFSFileStoreBackend.cc' || echo '$(srcdir)/'`os/ZFSFileStoreBackend.cc
+
+os/libos_types_la-Transaction.lo: os/Transaction.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_types_la_CXXFLAGS) $(CXXFLAGS) -MT os/libos_types_la-Transaction.lo -MD -MP -MF os/$(DEPDIR)/libos_types_la-Transaction.Tpo -c -o os/libos_types_la-Transaction.lo `test -f 'os/Transaction.cc' || echo '$(srcdir)/'`os/Transaction.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) os/$(DEPDIR)/libos_types_la-Transaction.Tpo os/$(DEPDIR)/libos_types_la-Transaction.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='os/Transaction.cc' object='os/libos_types_la-Transaction.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libos_types_la_CXXFLAGS) $(CXXFLAGS) -c -o os/libos_types_la-Transaction.lo `test -f 'os/Transaction.cc' || echo '$(srcdir)/'`os/Transaction.cc
+
+osd/libosd_la-PG.lo: osd/PG.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -MT osd/libosd_la-PG.lo -MD -MP -MF osd/$(DEPDIR)/libosd_la-PG.Tpo -c -o osd/libosd_la-PG.lo `test -f 'osd/PG.cc' || echo '$(srcdir)/'`osd/PG.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) osd/$(DEPDIR)/libosd_la-PG.Tpo osd/$(DEPDIR)/libosd_la-PG.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='osd/PG.cc' object='osd/libosd_la-PG.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -c -o osd/libosd_la-PG.lo `test -f 'osd/PG.cc' || echo '$(srcdir)/'`osd/PG.cc
+
+osd/libosd_la-ReplicatedPG.lo: osd/ReplicatedPG.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -MT osd/libosd_la-ReplicatedPG.lo -MD -MP -MF osd/$(DEPDIR)/libosd_la-ReplicatedPG.Tpo -c -o osd/libosd_la-ReplicatedPG.lo `test -f 'osd/ReplicatedPG.cc' || echo '$(srcdir)/'`osd/ReplicatedPG.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) osd/$(DEPDIR)/libosd_la-ReplicatedPG.Tpo osd/$(DEPDIR)/libosd_la-ReplicatedPG.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='osd/ReplicatedPG.cc' object='osd/libosd_la-ReplicatedPG.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -c -o osd/libosd_la-ReplicatedPG.lo `test -f 'osd/ReplicatedPG.cc' || echo '$(srcdir)/'`osd/ReplicatedPG.cc
+
+osd/libosd_la-ReplicatedBackend.lo: osd/ReplicatedBackend.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -MT osd/libosd_la-ReplicatedBackend.lo -MD -MP -MF osd/$(DEPDIR)/libosd_la-ReplicatedBackend.Tpo -c -o osd/libosd_la-ReplicatedBackend.lo `test -f 'osd/ReplicatedBackend.cc' || echo '$(srcdir)/'`osd/ReplicatedBackend.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) osd/$(DEPDIR)/libosd_la-ReplicatedBackend.Tpo osd/$(DEPDIR)/libosd_la-ReplicatedBackend.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='osd/ReplicatedBackend.cc' object='osd/libosd_la-ReplicatedBackend.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -c -o osd/libosd_la-ReplicatedBackend.lo `test -f 'osd/ReplicatedBackend.cc' || echo '$(srcdir)/'`osd/ReplicatedBackend.cc
+
+osd/libosd_la-ECBackend.lo: osd/ECBackend.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -MT osd/libosd_la-ECBackend.lo -MD -MP -MF osd/$(DEPDIR)/libosd_la-ECBackend.Tpo -c -o osd/libosd_la-ECBackend.lo `test -f 'osd/ECBackend.cc' || echo '$(srcdir)/'`osd/ECBackend.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) osd/$(DEPDIR)/libosd_la-ECBackend.Tpo osd/$(DEPDIR)/libosd_la-ECBackend.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='osd/ECBackend.cc' object='osd/libosd_la-ECBackend.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -c -o osd/libosd_la-ECBackend.lo `test -f 'osd/ECBackend.cc' || echo '$(srcdir)/'`osd/ECBackend.cc
+
+osd/libosd_la-ECMsgTypes.lo: osd/ECMsgTypes.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -MT osd/libosd_la-ECMsgTypes.lo -MD -MP -MF osd/$(DEPDIR)/libosd_la-ECMsgTypes.Tpo -c -o osd/libosd_la-ECMsgTypes.lo `test -f 'osd/ECMsgTypes.cc' || echo '$(srcdir)/'`osd/ECMsgTypes.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) osd/$(DEPDIR)/libosd_la-ECMsgTypes.Tpo osd/$(DEPDIR)/libosd_la-ECMsgTypes.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='osd/ECMsgTypes.cc' object='osd/libosd_la-ECMsgTypes.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -c -o osd/libosd_la-ECMsgTypes.lo `test -f 'osd/ECMsgTypes.cc' || echo '$(srcdir)/'`osd/ECMsgTypes.cc
+
+osd/libosd_la-ECTransaction.lo: osd/ECTransaction.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -MT osd/libosd_la-ECTransaction.lo -MD -MP -MF osd/$(DEPDIR)/libosd_la-ECTransaction.Tpo -c -o osd/libosd_la-ECTransaction.lo `test -f 'osd/ECTransaction.cc' || echo '$(srcdir)/'`osd/ECTransaction.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) osd/$(DEPDIR)/libosd_la-ECTransaction.Tpo osd/$(DEPDIR)/libosd_la-ECTransaction.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='osd/ECTransaction.cc' object='osd/libosd_la-ECTransaction.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -c -o osd/libosd_la-ECTransaction.lo `test -f 'osd/ECTransaction.cc' || echo '$(srcdir)/'`osd/ECTransaction.cc
+
+osd/libosd_la-PGBackend.lo: osd/PGBackend.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -MT osd/libosd_la-PGBackend.lo -MD -MP -MF osd/$(DEPDIR)/libosd_la-PGBackend.Tpo -c -o osd/libosd_la-PGBackend.lo `test -f 'osd/PGBackend.cc' || echo '$(srcdir)/'`osd/PGBackend.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) osd/$(DEPDIR)/libosd_la-PGBackend.Tpo osd/$(DEPDIR)/libosd_la-PGBackend.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='osd/PGBackend.cc' object='osd/libosd_la-PGBackend.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -c -o osd/libosd_la-PGBackend.lo `test -f 'osd/PGBackend.cc' || echo '$(srcdir)/'`osd/PGBackend.cc
+
+osd/libosd_la-Ager.lo: osd/Ager.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -MT osd/libosd_la-Ager.lo -MD -MP -MF osd/$(DEPDIR)/libosd_la-Ager.Tpo -c -o osd/libosd_la-Ager.lo `test -f 'osd/Ager.cc' || echo '$(srcdir)/'`osd/Ager.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) osd/$(DEPDIR)/libosd_la-Ager.Tpo osd/$(DEPDIR)/libosd_la-Ager.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='osd/Ager.cc' object='osd/libosd_la-Ager.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -c -o osd/libosd_la-Ager.lo `test -f 'osd/Ager.cc' || echo '$(srcdir)/'`osd/Ager.cc
+
+osd/libosd_la-HitSet.lo: osd/HitSet.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -MT osd/libosd_la-HitSet.lo -MD -MP -MF osd/$(DEPDIR)/libosd_la-HitSet.Tpo -c -o osd/libosd_la-HitSet.lo `test -f 'osd/HitSet.cc' || echo '$(srcdir)/'`osd/HitSet.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) osd/$(DEPDIR)/libosd_la-HitSet.Tpo osd/$(DEPDIR)/libosd_la-HitSet.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='osd/HitSet.cc' object='osd/libosd_la-HitSet.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -c -o osd/libosd_la-HitSet.lo `test -f 'osd/HitSet.cc' || echo '$(srcdir)/'`osd/HitSet.cc
+
+osd/libosd_la-OSD.lo: osd/OSD.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -MT osd/libosd_la-OSD.lo -MD -MP -MF osd/$(DEPDIR)/libosd_la-OSD.Tpo -c -o osd/libosd_la-OSD.lo `test -f 'osd/OSD.cc' || echo '$(srcdir)/'`osd/OSD.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) osd/$(DEPDIR)/libosd_la-OSD.Tpo osd/$(DEPDIR)/libosd_la-OSD.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='osd/OSD.cc' object='osd/libosd_la-OSD.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -c -o osd/libosd_la-OSD.lo `test -f 'osd/OSD.cc' || echo '$(srcdir)/'`osd/OSD.cc
+
+osd/libosd_la-OSDCap.lo: osd/OSDCap.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -MT osd/libosd_la-OSDCap.lo -MD -MP -MF osd/$(DEPDIR)/libosd_la-OSDCap.Tpo -c -o osd/libosd_la-OSDCap.lo `test -f 'osd/OSDCap.cc' || echo '$(srcdir)/'`osd/OSDCap.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) osd/$(DEPDIR)/libosd_la-OSDCap.Tpo osd/$(DEPDIR)/libosd_la-OSDCap.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='osd/OSDCap.cc' object='osd/libosd_la-OSDCap.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -c -o osd/libosd_la-OSDCap.lo `test -f 'osd/OSDCap.cc' || echo '$(srcdir)/'`osd/OSDCap.cc
+
+osd/libosd_la-Watch.lo: osd/Watch.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -MT osd/libosd_la-Watch.lo -MD -MP -MF osd/$(DEPDIR)/libosd_la-Watch.Tpo -c -o osd/libosd_la-Watch.lo `test -f 'osd/Watch.cc' || echo '$(srcdir)/'`osd/Watch.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) osd/$(DEPDIR)/libosd_la-Watch.Tpo osd/$(DEPDIR)/libosd_la-Watch.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='osd/Watch.cc' object='osd/libosd_la-Watch.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -c -o osd/libosd_la-Watch.lo `test -f 'osd/Watch.cc' || echo '$(srcdir)/'`osd/Watch.cc
+
+osd/libosd_la-ClassHandler.lo: osd/ClassHandler.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -MT osd/libosd_la-ClassHandler.lo -MD -MP -MF osd/$(DEPDIR)/libosd_la-ClassHandler.Tpo -c -o osd/libosd_la-ClassHandler.lo `test -f 'osd/ClassHandler.cc' || echo '$(srcdir)/'`osd/ClassHandler.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) osd/$(DEPDIR)/libosd_la-ClassHandler.Tpo osd/$(DEPDIR)/libosd_la-ClassHandler.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='osd/ClassHandler.cc' object='osd/libosd_la-ClassHandler.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -c -o osd/libosd_la-ClassHandler.lo `test -f 'osd/ClassHandler.cc' || echo '$(srcdir)/'`osd/ClassHandler.cc
+
+osd/libosd_la-OpRequest.lo: osd/OpRequest.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -MT osd/libosd_la-OpRequest.lo -MD -MP -MF osd/$(DEPDIR)/libosd_la-OpRequest.Tpo -c -o osd/libosd_la-OpRequest.lo `test -f 'osd/OpRequest.cc' || echo '$(srcdir)/'`osd/OpRequest.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) osd/$(DEPDIR)/libosd_la-OpRequest.Tpo osd/$(DEPDIR)/libosd_la-OpRequest.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='osd/OpRequest.cc' object='osd/libosd_la-OpRequest.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -c -o osd/libosd_la-OpRequest.lo `test -f 'osd/OpRequest.cc' || echo '$(srcdir)/'`osd/OpRequest.cc
+
+common/libosd_la-TrackedOp.lo: common/TrackedOp.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -MT common/libosd_la-TrackedOp.lo -MD -MP -MF common/$(DEPDIR)/libosd_la-TrackedOp.Tpo -c -o common/libosd_la-TrackedOp.lo `test -f 'common/TrackedOp.cc' || echo '$(srcdir)/'`common/TrackedOp.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) common/$(DEPDIR)/libosd_la-TrackedOp.Tpo common/$(DEPDIR)/libosd_la-TrackedOp.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='common/TrackedOp.cc' object='common/libosd_la-TrackedOp.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -c -o common/libosd_la-TrackedOp.lo `test -f 'common/TrackedOp.cc' || echo '$(srcdir)/'`common/TrackedOp.cc
+
+osd/libosd_la-SnapMapper.lo: osd/SnapMapper.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -MT osd/libosd_la-SnapMapper.lo -MD -MP -MF osd/$(DEPDIR)/libosd_la-SnapMapper.Tpo -c -o osd/libosd_la-SnapMapper.lo `test -f 'osd/SnapMapper.cc' || echo '$(srcdir)/'`osd/SnapMapper.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) osd/$(DEPDIR)/libosd_la-SnapMapper.Tpo osd/$(DEPDIR)/libosd_la-SnapMapper.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='osd/SnapMapper.cc' object='osd/libosd_la-SnapMapper.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -c -o osd/libosd_la-SnapMapper.lo `test -f 'osd/SnapMapper.cc' || echo '$(srcdir)/'`osd/SnapMapper.cc
+
+objclass/libosd_la-class_api.lo: objclass/class_api.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -MT objclass/libosd_la-class_api.lo -MD -MP -MF objclass/$(DEPDIR)/libosd_la-class_api.Tpo -c -o objclass/libosd_la-class_api.lo `test -f 'objclass/class_api.cc' || echo '$(srcdir)/'`objclass/class_api.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) objclass/$(DEPDIR)/libosd_la-class_api.Tpo objclass/$(DEPDIR)/libosd_la-class_api.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='objclass/class_api.cc' object='objclass/libosd_la-class_api.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_la_CXXFLAGS) $(CXXFLAGS) -c -o objclass/libosd_la-class_api.lo `test -f 'objclass/class_api.cc' || echo '$(srcdir)/'`objclass/class_api.cc
+
+osd/libosd_types_la-PGLog.lo: osd/PGLog.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_types_la_CXXFLAGS) $(CXXFLAGS) -MT osd/libosd_types_la-PGLog.lo -MD -MP -MF osd/$(DEPDIR)/libosd_types_la-PGLog.Tpo -c -o osd/libosd_types_la-PGLog.lo `test -f 'osd/PGLog.cc' || echo '$(srcdir)/'`osd/PGLog.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) osd/$(DEPDIR)/libosd_types_la-PGLog.Tpo osd/$(DEPDIR)/libosd_types_la-PGLog.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='osd/PGLog.cc' object='osd/libosd_types_la-PGLog.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_types_la_CXXFLAGS) $(CXXFLAGS) -c -o osd/libosd_types_la-PGLog.lo `test -f 'osd/PGLog.cc' || echo '$(srcdir)/'`osd/PGLog.cc
+
+osd/libosd_types_la-osd_types.lo: osd/osd_types.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_types_la_CXXFLAGS) $(CXXFLAGS) -MT osd/libosd_types_la-osd_types.lo -MD -MP -MF osd/$(DEPDIR)/libosd_types_la-osd_types.Tpo -c -o osd/libosd_types_la-osd_types.lo `test -f 'osd/osd_types.cc' || echo '$(srcdir)/'`osd/osd_types.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) osd/$(DEPDIR)/libosd_types_la-osd_types.Tpo osd/$(DEPDIR)/libosd_types_la-osd_types.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='osd/osd_types.cc' object='osd/libosd_types_la-osd_types.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_types_la_CXXFLAGS) $(CXXFLAGS) -c -o osd/libosd_types_la-osd_types.lo `test -f 'osd/osd_types.cc' || echo '$(srcdir)/'`osd/osd_types.cc
+
+osd/libosd_types_la-ECUtil.lo: osd/ECUtil.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_types_la_CXXFLAGS) $(CXXFLAGS) -MT osd/libosd_types_la-ECUtil.lo -MD -MP -MF osd/$(DEPDIR)/libosd_types_la-ECUtil.Tpo -c -o osd/libosd_types_la-ECUtil.lo `test -f 'osd/ECUtil.cc' || echo '$(srcdir)/'`osd/ECUtil.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) osd/$(DEPDIR)/libosd_types_la-ECUtil.Tpo osd/$(DEPDIR)/libosd_types_la-ECUtil.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='osd/ECUtil.cc' object='osd/libosd_types_la-ECUtil.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libosd_types_la_CXXFLAGS) $(CXXFLAGS) -c -o osd/libosd_types_la-ECUtil.lo `test -f 'osd/ECUtil.cc' || echo '$(srcdir)/'`osd/ECUtil.cc
+
 librados/librados_la-librados.lo: librados/librados.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(librados_la_CXXFLAGS) $(CXXFLAGS) -MT librados/librados_la-librados.lo -MD -MP -MF librados/$(DEPDIR)/librados_la-librados.Tpo -c -o librados/librados_la-librados.lo `test -f 'librados/librados.cc' || echo '$(srcdir)/'`librados/librados.cc
 @am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) librados/$(DEPDIR)/librados_la-librados.Tpo librados/$(DEPDIR)/librados_la-librados.Plo
@@ -11428,6 +11839,13 @@ rgw/librgw_la-rgw_quota.lo: rgw/rgw_quota.cc
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='rgw/rgw_quota.cc' object='rgw/librgw_la-rgw_quota.lo' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(librgw_la_CXXFLAGS) $(CXXFLAGS) -c -o rgw/librgw_la-rgw_quota.lo `test -f 'rgw/rgw_quota.cc' || echo '$(srcdir)/'`rgw/rgw_quota.cc
+
+rgw/librgw_la-rgw_dencoder.lo: rgw/rgw_dencoder.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(librgw_la_CXXFLAGS) $(CXXFLAGS) -MT rgw/librgw_la-rgw_dencoder.lo -MD -MP -MF rgw/$(DEPDIR)/librgw_la-rgw_dencoder.Tpo -c -o rgw/librgw_la-rgw_dencoder.lo `test -f 'rgw/rgw_dencoder.cc' || echo '$(srcdir)/'`rgw/rgw_dencoder.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) rgw/$(DEPDIR)/librgw_la-rgw_dencoder.Tpo rgw/$(DEPDIR)/librgw_la-rgw_dencoder.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='rgw/rgw_dencoder.cc' object='rgw/librgw_la-rgw_dencoder.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(librgw_la_CXXFLAGS) $(CXXFLAGS) -c -o rgw/librgw_la-rgw_dencoder.lo `test -f 'rgw/rgw_dencoder.cc' || echo '$(srcdir)/'`rgw/rgw_dencoder.cc
 
 test/encoding/ceph_dencoder-ceph_dencoder.o: test/encoding/ceph_dencoder.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ceph_dencoder_CXXFLAGS) $(CXXFLAGS) -MT test/encoding/ceph_dencoder-ceph_dencoder.o -MD -MP -MF test/encoding/$(DEPDIR)/ceph_dencoder-ceph_dencoder.Tpo -c -o test/encoding/ceph_dencoder-ceph_dencoder.o `test -f 'test/encoding/ceph_dencoder.cc' || echo '$(srcdir)/'`test/encoding/ceph_dencoder.cc
@@ -13808,6 +14226,20 @@ rgw/test_build_librgw-rgw_quota.obj: rgw/rgw_quota.cc
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='rgw/rgw_quota.cc' object='rgw/test_build_librgw-rgw_quota.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(test_build_librgw_CXXFLAGS) $(CXXFLAGS) -c -o rgw/test_build_librgw-rgw_quota.obj `if test -f 'rgw/rgw_quota.cc'; then $(CYGPATH_W) 'rgw/rgw_quota.cc'; else $(CYGPATH_W) '$(srcdir)/rgw/rgw_quota.cc'; fi`
+
+rgw/test_build_librgw-rgw_dencoder.o: rgw/rgw_dencoder.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(test_build_librgw_CXXFLAGS) $(CXXFLAGS) -MT rgw/test_build_librgw-rgw_dencoder.o -MD -MP -MF rgw/$(DEPDIR)/test_build_librgw-rgw_dencoder.Tpo -c -o rgw/test_build_librgw-rgw_dencoder.o `test -f 'rgw/rgw_dencoder.cc' || echo '$(srcdir)/'`rgw/rgw_dencoder.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) rgw/$(DEPDIR)/test_build_librgw-rgw_dencoder.Tpo rgw/$(DEPDIR)/test_build_librgw-rgw_dencoder.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='rgw/rgw_dencoder.cc' object='rgw/test_build_librgw-rgw_dencoder.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(test_build_librgw_CXXFLAGS) $(CXXFLAGS) -c -o rgw/test_build_librgw-rgw_dencoder.o `test -f 'rgw/rgw_dencoder.cc' || echo '$(srcdir)/'`rgw/rgw_dencoder.cc
+
+rgw/test_build_librgw-rgw_dencoder.obj: rgw/rgw_dencoder.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(test_build_librgw_CXXFLAGS) $(CXXFLAGS) -MT rgw/test_build_librgw-rgw_dencoder.obj -MD -MP -MF rgw/$(DEPDIR)/test_build_librgw-rgw_dencoder.Tpo -c -o rgw/test_build_librgw-rgw_dencoder.obj `if test -f 'rgw/rgw_dencoder.cc'; then $(CYGPATH_W) 'rgw/rgw_dencoder.cc'; else $(CYGPATH_W) '$(srcdir)/rgw/rgw_dencoder.cc'; fi`
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) rgw/$(DEPDIR)/test_build_librgw-rgw_dencoder.Tpo rgw/$(DEPDIR)/test_build_librgw-rgw_dencoder.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='rgw/rgw_dencoder.cc' object='rgw/test_build_librgw-rgw_dencoder.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(test_build_librgw_CXXFLAGS) $(CXXFLAGS) -c -o rgw/test_build_librgw-rgw_dencoder.obj `if test -f 'rgw/rgw_dencoder.cc'; then $(CYGPATH_W) 'rgw/rgw_dencoder.cc'; else $(CYGPATH_W) '$(srcdir)/rgw/rgw_dencoder.cc'; fi`
 
 test/unittest_addrs-test_addrs.o: test/test_addrs.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_addrs_CXXFLAGS) $(CXXFLAGS) -MT test/unittest_addrs-test_addrs.o -MD -MP -MF test/$(DEPDIR)/unittest_addrs-test_addrs.Tpo -c -o test/unittest_addrs-test_addrs.o `test -f 'test/test_addrs.cc' || echo '$(srcdir)/'`test/test_addrs.cc

@@ -66,7 +66,7 @@ Date:   Tue Jun 24 02:09:49 2014
     * Note, on_reserved may be called following cancel_reservation.  Thus,
 --- a/src/common/config_opts.h
 +++ b/src/common/config_opts.h
-@@ -388,8 +388,11 @@
+@@ -389,8 +389,11 @@
  
  // Maximum number of backfills to or from a single osd
  OPTION(osd_max_backfills, OPT_U64, 10)
@@ -95,7 +95,7 @@ Date:   Tue Jun 24 02:09:49 2014
        query_epoch(0), type(-1), priority(-1) {}
 --- a/src/osd/OSD.cc
 +++ b/src/osd/OSD.cc
-@@ -216,10 +216,12 @@
+@@ -218,10 +218,12 @@
    backfill_request_timer(cct, backfill_request_lock, false),
    last_tid(0),
    tid_lock("OSDService::tid_lock"),
@@ -110,7 +110,7 @@ Date:   Tue Jun 24 02:09:49 2014
    map_cache_lock("OSDService::map_lock"),
    map_cache(cct->_conf->osd_map_cache_size),
    map_bl_cache(cct->_conf->osd_map_cache_size),
-@@ -7798,8 +7800,9 @@
+@@ -7870,8 +7872,9 @@
  const char** OSD::get_tracked_conf_keys() const
  {
    static const char* KEYS[] = {
@@ -118,9 +118,9 @@ Date:   Tue Jun 24 02:09:49 2014
 +    "osd_min_recovery_priority",
      "osd_op_complaint_time", "osd_op_log_threshold",
      "osd_op_history_size", "osd_op_history_duration",
-     NULL
-   };
-@@ -7812,8 +7815,12 @@
+     "osd_map_cache_size",
+     "osd_map_max_advance",
+@@ -7889,8 +7892,12 @@
    if (changed.count("osd_max_backfills")) {
      service.local_reserver.set_max(cct->_conf->osd_max_backfills);
      service.remote_reserver.set_max(cct->_conf->osd_max_backfills);
@@ -135,7 +135,7 @@ Date:   Tue Jun 24 02:09:49 2014
                                             cct->_conf->osd_op_log_threshold);
 --- a/src/osd/OSD.h
 +++ b/src/osd/OSD.h
-@@ -593,13 +593,8 @@
+@@ -629,13 +629,8 @@
      return t;
    }
  
@@ -180,7 +180,7 @@ Date:   Tue Jun 24 02:09:49 2014
  {
    dout(10) << "finish_recovery" << dendl;
    assert(info.last_complete == info.last_update);
-@@ -5734,15 +5754,14 @@
+@@ -5839,15 +5859,14 @@
      ConnectionRef con = pg->osd->get_con_osd_cluster(
        backfill_osd_it->osd, pg->get_osdmap()->get_epoch());
      if (con) {
@@ -198,7 +198,7 @@ Date:   Tue Jun 24 02:09:49 2014
        } else {
          post_event(RemoteBackfillReserved());
        }
-@@ -5809,10 +5828,10 @@
+@@ -5914,10 +5933,10 @@
    pg->osd->local_reserver.request_reservation(
      pg->info.pgid,
      new QueuePeeringEvt<LocalBackfillReserved>(
@@ -211,7 +211,7 @@ Date:   Tue Jun 24 02:09:49 2014
  
  void PG::RecoveryState::WaitLocalBackfillReserved::exit()
  {
-@@ -5865,9 +5884,10 @@
+@@ -5982,9 +6001,10 @@
    pg->osd->remote_reserver.request_reservation(
      pg->info.pgid,
      new QueuePeeringEvt<RemoteRecoveryReserved>(
@@ -223,7 +223,7 @@ Date:   Tue Jun 24 02:09:49 2014
  
  boost::statechart::result
  PG::RecoveryState::RepWaitRecoveryReserved::react(const RemoteRecoveryReserved &evt)
-@@ -6006,9 +6026,10 @@
+@@ -6123,9 +6143,10 @@
    pg->osd->local_reserver.request_reservation(
      pg->info.pgid,
      new QueuePeeringEvt<LocalRecoveryReserved>(
@@ -237,7 +237,7 @@ Date:   Tue Jun 24 02:09:49 2014
  {
 --- a/src/osd/PG.h
 +++ b/src/osd/PG.h
-@@ -709,8 +709,13 @@
+@@ -776,8 +776,13 @@
    
    bool needs_recovery() const;
    bool needs_backfill() const;

@@ -13,8 +13,7 @@ Signed-off-by: Joao Eduardo Luis <joao.luis@inktank.com>
 
 --- a/src/mon/MDSMonitor.cc
 +++ b/src/mon/MDSMonitor.cc
-@@ -1067,8 +1067,16 @@
- 	poolid = -1;
+@@ -1068,6 +1068,14 @@ bool MDSMonitor::prepare_command(MMonCom
  	ss << "pool '" << poolname << "' does not exist";
        }
      }
@@ -29,9 +28,7 @@ Signed-off-by: Joao Eduardo Luis <joao.luis@inktank.com>
      if (poolid >= 0) {
        pending_mdsmap.add_data_pool(poolid);
        ss << "added data pool " << poolid << " to mdsmap";
-       r = 0;
-@@ -1115,8 +1123,31 @@
-          << cmd_vartype_stringify(cmdmap["data"]) << "'";
+@@ -1116,6 +1124,29 @@ bool MDSMonitor::prepare_command(MMonCom
        r = -EINVAL;
        goto out;
      }
@@ -61,4 +58,3 @@ Signed-off-by: Joao Eduardo Luis <joao.luis@inktank.com>
      string sure;
      cmd_getval(g_ceph_context, cmdmap, "sure", sure);
      if (sure != "--yes-i-really-mean-it") {
-       ss << "this is DANGEROUS and will wipe out the mdsmap's fs, and may clobber data in the new pools you specify.  add --yes-i-really-mean-it if you do.";

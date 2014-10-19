@@ -32,6 +32,7 @@ librbd.so.1 librbd1 #MINVER#
  rbd_get_size@Base 0.72.2
  rbd_get_stripe_count@Base 0.72.2
  rbd_get_stripe_unit@Base 0.72.2
+ rbd_invalidate_cache@Base 0.80.5-2~
  rbd_list@Base 0.72.2
  rbd_list_children@Base 0.72.2
  rbd_list_lockers@Base 0.72.2

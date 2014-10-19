@@ -10,7 +10,7 @@ Signed-off-by: Yan, Zheng <zheng.z.yan@intel.com>
 
 --- a/src/client/Client.cc
 +++ b/src/client/Client.cc
-@@ -2351,8 +2351,11 @@
+@@ -2385,8 +2385,11 @@
  
  int Client::get_caps(Inode *in, int need, int want, int *phave, loff_t endoff)
  {
@@ -22,7 +22,7 @@ Signed-off-by: Yan, Zheng <zheng.z.yan@intel.com>
  	(endoff >= (loff_t)in->max_size ||
  	 endoff > (loff_t)(in->size << 1)) &&
  	endoff > (loff_t)in->wanted_max_size) {
-@@ -3082,11 +3085,15 @@
+@@ -3116,11 +3119,15 @@
    while (s->caps.size()) {
      Cap *cap = *s->caps.begin();
      Inode *in = cap->inode;
