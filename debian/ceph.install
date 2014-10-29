@@ -11,6 +11,7 @@ usr/bin/crushtool
 usr/bin/monmaptool
 usr/bin/osdmaptool
 usr/lib/*/ceph/ceph_common.sh
+#usr/lib/*/ceph/ceph-osd-prestart.sh
 usr/lib/*/ceph/erasure-code/libec_jerasure*.so
 usr/lib/*/ceph/erasure-code/libec_lrc.so*
 usr/lib/*/ceph/erasure-code/libec_isa.so*
