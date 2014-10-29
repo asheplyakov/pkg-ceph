@@ -1,4 +1,5 @@
 debian/etc/pm/sleep.d/*    /etc/pm/sleep.d/
+debian/lib-systemd/system-sleep/*    /lib/systemd/system-sleep/
 etc/bash_completion.d/ceph
 usr/bin/ceph-clsinfo
 usr/bin/ceph-debugpack
