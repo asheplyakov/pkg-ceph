@@ -22,6 +22,9 @@ extraopts += --with-babeltrace
 ## do not build with lttng just yet, see #765842.
 #extraopts += --with-lttng
 
+## build bundled RocksDB
+extraopts += --with-librocksdb-static=check
+
 ifeq ($(DEB_HOST_ARCH), armel)
   # armel supports ARMv4t or above instructions sets.
   # libatomic-ops is only usable with Ceph for ARMv6 or above.
@@ -55,6 +58,7 @@ override_dh_auto_build:
 	cp -v src/upstart/rbdmap.conf debian/ceph.rbdmap.upstart
 
 override_dh_auto_clean:
+	dh_auto_clean --sourcedirectory=src/rocksdb
 	dh_auto_clean
 	rm -fv debian/*.upstart
 
