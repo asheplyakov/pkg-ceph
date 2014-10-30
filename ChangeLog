@@ -1,6 +1,40 @@
-87eb663 (HEAD, tag: v0.87) 0.87
+c51c8f9 (HEAD, tag: v0.87) 0.87
+eea9803 (origin/wip-enoent-race) os/LevelDBStore, RocksDBStore: fix race handling for get store size
+c4b2abd .gitmodules: ignoring changes in rocksdb submodule
+082416f (origin/wip-rbd-revert) Revert "Enforce cache size on read requests"
+544b9a8 Revert "rbd: ObjectCacher reads can hang when reading sparse files"
+3b1eafc Revert "Fix read performance regression in ObjectCacher"
+f76f83c (origin/wip-9873) osdc/Objecter: fix tick_event handling in shutdown vs tick race
+4848435 common/Timer: recheck stopping before sleep if we dropped the lock
+44a8d59 (origin/fix-fstat-mode) java: fill in stat structure correctly
+cb9262a (origin/wip-9806-giant) Objecter: resend linger ops on any interval change
+1a3ad30 ReplicatedPG: writeout hit_set object with correct prior_version
+95a0ee1 qa: use sudo when rsyncing /usr so we can read everything
+4128814 FDCache: purge hoid on clear
+3abbd4c shared_cache: add purge and tests
+c116b4b shared_cache::add: do not delete value if existed
+227ecd8 (origin/wip-9859) mon: Monitor: MMonGetMap doesn't require caps
+d9ff3a6 PG:: reset_interval_flush and in set_last_peering_reset
+a49d745 objecter: Unlock in shutdown before waiting for timer thread
+bc8fd49 erasure-code: use ErasureCode::SIMD_ALIGN in ceph_erasure_code_benchmark
+c894812 erasure-code: add ErasureCode::encode unit test
+0749a29 erasure-code: expose ErasureCode::SIMD_ALIGN as a const
+abc1cfb ceph_erasure_code_benchmark: use 32-byte aligned input
+fdeeeb1 erasure code: use 32-byte aligned buffers
+3ce0615 erasure code: use a function for the chunk mapping index
+6154339 common: add an aligned buffer with less alignment than a page
+681dad8 common: remove dead code in buffer.cc
+65be257 Fix read performance regression in ObjectCacher
+ac3c1cb (origin/wip-9820) qa/workunits: cephtool: don't remove self's key on auth tests
+9e6ae73 (origin/giant-unknown-locktype) mds: reply -EOPNOTSUPP for unknown lock type
+5558afa qa/workunits/rbd/import_export.sh: be case insensitive
+c4bac3e (origin/wip-inotable-init) mds: fix inotable initialization/reset
 f1fccb1 rpm: 95-ceph-osd-alt.rules is not needed for centos7 / rhel7
-d458b4f (origin/wip-9731) PGLog::IndexedLog::trim(): rollback_info_trimmed_to_riter may be log.rend()
+35bbb2d The fix for issue 9614 was not completed, as a result, for those erasure coded PGs with one OSD down, the state was wrongly marked as active+clean+degraded. This patch makes sure the clean flag is not set for such PG. Signed-off-by: Guang Yang <yguang@yahoo-inc.com>
+d947050 (origin/wip-9718) osd/osd_types: consider CRUSH_ITEM_NONE in check_new_interval() min_size check
+809ddd2 (origin/wip-9706) osdc/Objecter: fix use-after-frees in close_session, shutdown
+72a2ab1 osdc/Objecter: fix tick() session locking
+d458b4f PGLog::IndexedLog::trim(): rollback_info_trimmed_to_riter may be log.rend()
 459b2d2 mds: Locker: remove unused variable
 9b18d99 (origin/wip-9696) PG::choose_acting: in mixed cluster case, acting may include backfill
 3cd8a7f (origin/giant-locker-null) mds: Locker: fix a NULL deref in _update_cap_fields
@@ -28,6 +62,7 @@ fe57fab (origin/wip-9663) client: clean-up objecter on failed client init
 73d5bdb (origin/wip-9245-test-mon-pending-giant) tests: remove tests requiring osdmonitor_prepare_command
 e865781 mon: obsolete osdmonitor_prepare_command
 d0c2d7d test: minor case fix
+d0ceb3a (origin/wip-9545) os/FileStore: do not loop in sync_entry on shutdown
 7e2bd22 (origin/wip-9418) mon: Monitor: let 'handle_command()' deal with caps validation
 f0653c0 qa/workunits: mon: auth_caps: account for mon blank caps
 87d06f1 mon: MonCommands: adjust indentation for 'auth add'
@@ -44,7 +79,7 @@ d6b702c mon: MonCap: add new profiles
 8612461 mon: AuthMonitor: validate caps when creating or changing mon caps
 eb2f0f4 (origin/wip-9653-ceph-disk-bootstrap-osd-giant) ceph-disk: bootstrap-osd keyring ignores --statedir
 19be358 PG::actingset should be used when checking the number of acting OSDs for a given PG. Signed-off-by: Guang Yang <yguang@yahoo-inc.com>
-8253ead (origin/wip-rwtimer) osdc/Objecter: use SafeTimer; make callbacks race-tolerant
+8253ead osdc/Objecter: use SafeTimer; make callbacks race-tolerant
 a1aa06b ReplicatedPG: dump snap_trimq on pg query
 34f38b6 ReplicatedPG: do not queue the snap trimmer constantly
 b29bf00 ReplicatedPG: clean out completed trimmed objects as we go
@@ -617,7 +652,7 @@ bcc69ed mds: adapt to new objecter interface
 3a399ea common/RWLock: add get()
 8f9a9db common/RWLock: check return values
 92615ea common/RWLock: track read/write locks via atomics for assertion checks
-74ce4f2 (origin/wip-warning) rbd: fix signess warning
+74ce4f2 rbd: fix signess warning
 f7c0001 common: remove spurious uint32_t in buffer.c
 6ad8e61 Fix FTBFS on alpha due to incorrect check on BLKGETSIZE
 2554243 (origin/wip-mds-pc) mds/Server: rename perfcounters
@@ -1290,7 +1325,7 @@ e3a5756 remove ceph restarts on upgrades for RPMs
 4d6899c qa/workunits/cephtool/test.sh: fix erasure_code_profile get test
 ce9f12d qa/workunits/cephtool/test.sh: test osd pool get erasure_code_profile
 e8ebcb7 mon: OSDMonitor: add "osd pool get <pool> erasure_code_profile" command
-5ccfd37 (origin/wip-vstart) vstart.sh: default to 3 osds
+5ccfd37 vstart.sh: default to 3 osds
 5f6b11a (origin/wip-8857) mon/MDSMonitor: make legacy 'newfs' command idempotent
 b89ab5f rgw: don't try to wait for pending if list is empty
 19e68ac (origin/wip-rbd-defaults) rbd: respect rbd_default_* parameters

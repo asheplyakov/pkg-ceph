@@ -292,7 +292,7 @@ void Objecter::shutdown()
 {
   assert(initialized.read());
 
-  RWLock::WLocker wl(rwlock);
+  rwlock.get_write();
 
   initialized.set(0);
 
@@ -342,38 +342,43 @@ void Objecter::shutdown()
   while(!homeless_session->linger_ops.empty()) {
     std::map<uint64_t, LingerOp*>::iterator i = homeless_session->linger_ops.begin();
     ldout(cct, 10) << " linger_op " << i->first << dendl;
+    LingerOp *lop = i->second;
     {
       RWLock::WLocker wl(homeless_session->lock);
-      _session_linger_op_remove(homeless_session, i->second);
+      _session_linger_op_remove(homeless_session, lop);
     }
-    linger_ops.erase(i->second->linger_id);
-    i->second->put();
+    linger_ops.erase(lop->linger_id);
+    lop->put();
   }
 
   while(!homeless_session->ops.empty()) {
     std::map<ceph_tid_t, Op*>::iterator i = homeless_session->ops.begin();
     ldout(cct, 10) << " op " << i->first << dendl;
+    Op *op = i->second;
     {
       RWLock::WLocker wl(homeless_session->lock);
-      _session_op_remove(homeless_session, i->second);
+      _session_op_remove(homeless_session, op);
     }
-    i->second->put();
+    op->put();
   }
 
   while(!homeless_session->command_ops.empty()) {
     std::map<ceph_tid_t, CommandOp*>::iterator i = homeless_session->command_ops.begin();
     ldout(cct, 10) << " command_op " << i->first << dendl;
+    CommandOp *cop = i->second;
     {
       RWLock::WLocker wl(homeless_session->lock);
-      _session_command_op_remove(homeless_session, i->second);
+      _session_command_op_remove(homeless_session, cop);
     }
-    i->second->put();
+    cop->put();
   }
 
   if (tick_event) {
     Mutex::Locker l(timer_lock);
-    if (timer.cancel_event(tick_event))
+    if (timer.cancel_event(tick_event)) {
+      ldout(cct, 10) <<  " successfully canceled tick" << dendl;
       tick_event = NULL;
+    }
   }
 
   if (m_request_state_hook) {
@@ -389,11 +394,15 @@ void Objecter::shutdown()
     logger = NULL;
   }
 
+  // Let go of Objecter write lock so timer thread can shutdown
+  rwlock.unlock();
+
   {
     Mutex::Locker l(timer_lock);
     timer.shutdown();
   }
 
+  assert(tick_event == NULL);
 }
 
 void Objecter::_send_linger(LingerOp *info)
@@ -1303,22 +1312,22 @@ void Objecter::close_session(OSDSession *s)
   while(!s->linger_ops.empty()) {
     std::map<uint64_t, LingerOp*>::iterator i = s->linger_ops.begin();
     ldout(cct, 10) << " linger_op " << i->first << dendl;
-    _session_linger_op_remove(s, i->second);
     homeless_lingers.push_back(i->second);
+    _session_linger_op_remove(s, i->second);
   }
 
   while(!s->ops.empty()) {
     std::map<ceph_tid_t, Op*>::iterator i = s->ops.begin();
     ldout(cct, 10) << " op " << i->first << dendl;
-    _session_op_remove(s, i->second);
     homeless_ops.push_back(i->second);
+    _session_op_remove(s, i->second);
   }
 
   while(!s->command_ops.empty()) {
     std::map<ceph_tid_t, CommandOp*>::iterator i = s->command_ops.begin();
     ldout(cct, 10) << " command_op " << i->first << dendl;
-    _session_command_op_remove(s, i->second);
     homeless_commands.push_back(i->second);
+    _session_command_op_remove(s, i->second);
   }
 
   osd_sessions.erase(s->osd);
@@ -1546,6 +1555,7 @@ void Objecter::tick()
 
   if (!initialized.read()) {
     // we raced with shutdown
+    ldout(cct, 10) << __func__ << " raced with shutdown" << dendl;
     return;
   }
 
@@ -1563,6 +1573,7 @@ void Objecter::tick()
     laggy_ops = 0;
     for (map<int,OSDSession*>::iterator siter = osd_sessions.begin(); siter != osd_sessions.end(); ++siter) {
       OSDSession *s = siter->second;
+      RWLock::RLocker l(s->lock);
       for (map<ceph_tid_t,Op*>::iterator p = s->ops.begin();
            p != s->ops.end();
            ++p) {
@@ -2043,9 +2054,29 @@ int Objecter::_calc_target(op_target_t *t, bool any_change)
       return RECALC_OP_TARGET_POOL_DNE;
     }
   }
-  int primary;
-  vector<int> acting;
-  osdmap->pg_to_acting_osds(pgid, &acting, &primary);
+
+  int min_size = pi->min_size;
+  unsigned pg_num = pi->get_pg_num();
+  int up_primary, acting_primary;
+  vector<int> up, acting;
+  osdmap->pg_to_up_acting_osds(pgid, &up, &up_primary,
+			       &acting, &acting_primary);
+  if (any_change && pg_interval_t::is_new_interval(
+          t->acting_primary,
+	  acting_primary,
+	  t->acting,
+	  acting,
+	  t->up_primary,
+	  up_primary,
+	  t->up,
+	  up,
+	  t->min_size,
+	  min_size,
+	  t->pg_num,
+	  pg_num,
+	  pi->raw_pg_to_pg(pgid))) {
+    force_resend = true;
+  }
 
   bool need_resend = false;
 
@@ -2057,15 +2088,20 @@ int Objecter::_calc_target(op_target_t *t, bool any_change)
 
   if (t->pgid != pgid ||
       is_pg_changed(
-	t->primary, t->acting, primary, acting, t->used_replica || any_change) ||
+	t->acting_primary, t->acting, acting_primary, acting,
+	t->used_replica || any_change) ||
       force_resend) {
     t->pgid = pgid;
     t->acting = acting;
-    t->primary = primary;
+    t->acting_primary = acting_primary;
+    t->up_primary = up_primary;
+    t->up = up;
+    t->min_size = min_size;
+    t->pg_num = pg_num;
     ldout(cct, 10) << __func__ << " "
 		   << " pgid " << pgid << " acting " << acting << dendl;
     t->used_replica = false;
-    if (primary == -1) {
+    if (acting_primary == -1) {
       t->osd = -1;
     } else {
       int osd;
@@ -2101,7 +2137,7 @@ int Objecter::_calc_target(op_target_t *t, bool any_change)
 	assert(best >= 0);
 	osd = acting[best];
       } else {
-	osd = primary;
+	osd = acting_primary;
       }
       t->osd = osd;
     }
