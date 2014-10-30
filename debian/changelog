@@ -3,7 +3,6 @@ ceph (0.87-1) experimental; urgency=medium
   * New major upstream release [October 2014].
     + new "libradosstriper*" binary packages.
   * Patchworks (removed old patches, refreshed remaining ones).
-    + "bug-9513.patch" to fix read performance regression in ObjectCacher.
     + "bug-9814.patch" to prevent OSD crash. Thanks, Haomai Wang.
   * Install systemd sleep handler.
   * Exclude erasure-code plugins from `dh_makeshlibs` processing to avoid
@@ -17,7 +16,7 @@ ceph (0.87-1) experimental; urgency=medium
   * Build with "--with-babeltrace".
   * Build and statically link bundled RocksDB.
 
- -- Dmitry Smirnov <onlyjob@debian.org>  Wed, 29 Oct 2014 13:06:21 +1100
+ -- Dmitry Smirnov <onlyjob@debian.org>  Thu, 30 Oct 2014 12:43:49 +1100
 
 ceph (0.80.7-1) unstable; urgency=medium
 
