@@ -20,7 +20,7 @@ extraopts += --with-debug
 extraopts += --enable-cephfs-java
 extraopts += --with-babeltrace
 ## do not build with lttng just yet, see #765842.
-#extraopts += --with-lttng
+extraopts += --without-lttng
 
 ## build bundled RocksDB
 extraopts += --with-librocksdb-static=check
