@@ -79,6 +79,7 @@ noinst_PROGRAMS = get_command_descriptions$(EXEEXT)
 sbin_PROGRAMS =
 su_sbin_PROGRAMS = $(am__EXEEXT_17)
 check_PROGRAMS = unittest_erasure_code_plugin$(EXEEXT) \
+	unittest_erasure_code$(EXEEXT) \
 	unittest_erasure_code_jerasure$(EXEEXT) \
 	unittest_erasure_code_plugin_jerasure$(EXEEXT) \
 	$(am__EXEEXT_16) unittest_erasure_code_lrc$(EXEEXT) \
@@ -87,6 +88,7 @@ check_PROGRAMS = unittest_erasure_code_plugin$(EXEEXT) \
 	unittest_encoding$(EXEEXT) unittest_addrs$(EXEEXT) \
 	unittest_bloom_filter$(EXEEXT) unittest_histogram$(EXEEXT) \
 	unittest_str_map$(EXEEXT) unittest_sharedptr_registry$(EXEEXT) \
+	unittest_shared_cache$(EXEEXT) \
 	unittest_sloppy_crc_map$(EXEEXT) unittest_util$(EXEEXT) \
 	unittest_crush_indep$(EXEEXT) unittest_osdmap$(EXEEXT) \
 	unittest_workqueue$(EXEEXT) unittest_striper$(EXEEXT) \
@@ -1644,6 +1646,7 @@ ceph_erasure_code_DEPENDENCIES = $(am__DEPENDENCIES_11) $(LIBCOMMON) \
 	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_7) \
 	$(am__DEPENDENCIES_1)
 am_ceph_erasure_code_benchmark_OBJECTS =  \
+	erasure-code/ErasureCode.$(OBJEXT) \
 	test/erasure-code/ceph_erasure_code_benchmark.$(OBJEXT)
 ceph_erasure_code_benchmark_OBJECTS =  \
 	$(am_ceph_erasure_code_benchmark_OBJECTS)
@@ -2880,6 +2883,16 @@ unittest_encoding_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(unittest_encoding_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
 	$(LDFLAGS) -o $@
+am_unittest_erasure_code_OBJECTS =  \
+	erasure-code/unittest_erasure_code-ErasureCode.$(OBJEXT) \
+	test/erasure-code/unittest_erasure_code-TestErasureCode.$(OBJEXT)
+unittest_erasure_code_OBJECTS = $(am_unittest_erasure_code_OBJECTS)
+unittest_erasure_code_DEPENDENCIES = $(am__DEPENDENCIES_11) \
+	$(LIBCOMMON) $(am__DEPENDENCIES_14) $(am__DEPENDENCIES_7)
+unittest_erasure_code_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
+	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
+	$(unittest_erasure_code_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
+	$(LDFLAGS) -o $@
 am_unittest_erasure_code_example_OBJECTS = erasure-code/unittest_erasure_code_example-ErasureCode.$(OBJEXT) \
 	test/erasure-code/unittest_erasure_code_example-TestErasureCodeExample.$(OBJEXT)
 unittest_erasure_code_example_OBJECTS =  \
@@ -3234,6 +3247,15 @@ unittest_run_cmd_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(unittest_run_cmd_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
 	$(LDFLAGS) -o $@
+am_unittest_shared_cache_OBJECTS =  \
+	test/common/unittest_shared_cache-test_shared_cache.$(OBJEXT)
+unittest_shared_cache_OBJECTS = $(am_unittest_shared_cache_OBJECTS)
+unittest_shared_cache_DEPENDENCIES = $(am__DEPENDENCIES_14) \
+	$(am__DEPENDENCIES_7)
+unittest_shared_cache_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
+	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
+	$(unittest_shared_cache_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
+	$(LDFLAGS) -o $@
 am_unittest_sharedptr_registry_OBJECTS = test/common/unittest_sharedptr_registry-test_sharedptr_registry.$(OBJEXT)
 unittest_sharedptr_registry_OBJECTS =  \
 	$(am_unittest_sharedptr_registry_OBJECTS)
@@ -3541,6 +3563,7 @@ SOURCES = $(libcls_log_client_a_SOURCES) \
 	$(unittest_crypto_init_SOURCES) \
 	$(unittest_daemon_config_SOURCES) \
 	$(unittest_ecbackend_SOURCES) $(unittest_encoding_SOURCES) \
+	$(unittest_erasure_code_SOURCES) \
 	$(unittest_erasure_code_example_SOURCES) \
 	$(unittest_erasure_code_isa_SOURCES) \
 	$(unittest_erasure_code_jerasure_SOURCES) \
@@ -3564,6 +3587,7 @@ SOURCES = $(libcls_log_client_a_SOURCES) \
 	$(unittest_perf_counters_SOURCES) $(unittest_pglog_SOURCES) \
 	$(unittest_prebufferedstreambuf_SOURCES) \
 	$(unittest_rbd_replay_SOURCES) $(unittest_run_cmd_SOURCES) \
+	$(unittest_shared_cache_SOURCES) \
 	$(unittest_sharedptr_registry_SOURCES) \
 	$(unittest_signals_SOURCES) $(unittest_simple_spin_SOURCES) \
 	$(unittest_sloppy_crc_map_SOURCES) \
@@ -3717,6 +3741,7 @@ DIST_SOURCES = $(libcls_log_client_a_SOURCES) \
 	$(unittest_crypto_init_SOURCES) \
 	$(unittest_daemon_config_SOURCES) \
 	$(unittest_ecbackend_SOURCES) $(unittest_encoding_SOURCES) \
+	$(unittest_erasure_code_SOURCES) \
 	$(unittest_erasure_code_example_SOURCES) \
 	$(am__unittest_erasure_code_isa_SOURCES_DIST) \
 	$(unittest_erasure_code_jerasure_SOURCES) \
@@ -3740,6 +3765,7 @@ DIST_SOURCES = $(libcls_log_client_a_SOURCES) \
 	$(unittest_perf_counters_SOURCES) $(unittest_pglog_SOURCES) \
 	$(unittest_prebufferedstreambuf_SOURCES) \
 	$(unittest_rbd_replay_SOURCES) $(unittest_run_cmd_SOURCES) \
+	$(unittest_shared_cache_SOURCES) \
 	$(unittest_sharedptr_registry_SOURCES) \
 	$(unittest_signals_SOURCES) $(unittest_simple_spin_SOURCES) \
 	$(unittest_sloppy_crc_map_SOURCES) \
@@ -4032,13 +4058,13 @@ am__noinst_HEADERS_DIST = arch/intel.h arch/neon.h arch/probe.h \
 	rbd_replay/ImageNameMap.hpp rbd_replay/ios.hpp \
 	rbd_replay/PendingIO.hpp rbd_replay/rbd_loc.hpp \
 	rbd_replay/rbd_replay_debug.hpp rbd_replay/Replayer.hpp \
-	rbd_replay/Ser.hpp test/erasure-code/ErasureCodeExample.h \
+	rbd_replay/Ser.hpp \
 	test/erasure-code/ceph_erasure_code_benchmark.h \
-	test/bench/backend.h test/bench/bencher.h \
-	test/bench/detailed_stat_collector.h test/bench/distribution.h \
-	test/bench/dumb_backend.h test/bench/rados_backend.h \
-	test/bench/rbd_backend.h test/bench/stat_collector.h \
-	test/bench/testfilestore_backend.h \
+	test/erasure-code/ErasureCodeExample.h test/bench/backend.h \
+	test/bench/bencher.h test/bench/detailed_stat_collector.h \
+	test/bench/distribution.h test/bench/dumb_backend.h \
+	test/bench/rados_backend.h test/bench/rbd_backend.h \
+	test/bench/stat_collector.h test/bench/testfilestore_backend.h \
 	test/common/ObjectContents.h test/encoding/types.h \
 	test/objectstore/DeterministicOpSequence.h \
 	test/objectstore/FileStoreDiff.h \
@@ -4601,13 +4627,13 @@ noinst_HEADERS = arch/intel.h arch/neon.h arch/probe.h \
 	rbd_replay/ImageNameMap.hpp rbd_replay/ios.hpp \
 	rbd_replay/PendingIO.hpp rbd_replay/rbd_loc.hpp \
 	rbd_replay/rbd_replay_debug.hpp rbd_replay/Replayer.hpp \
-	rbd_replay/Ser.hpp test/erasure-code/ErasureCodeExample.h \
+	rbd_replay/Ser.hpp \
 	test/erasure-code/ceph_erasure_code_benchmark.h \
-	test/bench/backend.h test/bench/bencher.h \
-	test/bench/detailed_stat_collector.h test/bench/distribution.h \
-	test/bench/dumb_backend.h test/bench/rados_backend.h \
-	test/bench/rbd_backend.h test/bench/stat_collector.h \
-	test/bench/testfilestore_backend.h \
+	test/erasure-code/ErasureCodeExample.h test/bench/backend.h \
+	test/bench/bencher.h test/bench/detailed_stat_collector.h \
+	test/bench/distribution.h test/bench/dumb_backend.h \
+	test/bench/rados_backend.h test/bench/rbd_backend.h \
+	test/bench/stat_collector.h test/bench/testfilestore_backend.h \
 	test/common/ObjectContents.h test/encoding/types.h \
 	test/objectstore/DeterministicOpSequence.h \
 	test/objectstore/FileStoreDiff.h \
@@ -5426,6 +5452,7 @@ rbd_replay_prep_LDADD = $(LIBRBD) \
 	-lboost_date_time
 
 ceph_erasure_code_benchmark_SOURCES = \
+	erasure-code/ErasureCode.cc \
 	test/erasure-code/ceph_erasure_code_benchmark.cc
 
 ceph_erasure_code_benchmark_LDADD = $(LIBOSD) $(LIBCOMMON) \
@@ -5487,6 +5514,12 @@ unittest_erasure_code_plugin_SOURCES = \
 unittest_erasure_code_plugin_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 unittest_erasure_code_plugin_LDADD = $(LIBOSD) $(LIBCOMMON) \
 	$(UNITTEST_LDADD) $(CEPH_GLOBAL) $(am__append_65)
+unittest_erasure_code_SOURCES = \
+	erasure-code/ErasureCode.cc \
+	test/erasure-code/TestErasureCode.cc
+
+unittest_erasure_code_CXXFLAGS = $(UNITTEST_CXXFLAGS)
+unittest_erasure_code_LDADD = $(LIBOSD) $(LIBCOMMON) $(UNITTEST_LDADD) $(CEPH_GLOBAL)
 unittest_erasure_code_jerasure_SOURCES = \
 	test/erasure-code/TestErasureCodeJerasure.cc \
 	${jerasure_sources}
@@ -5743,6 +5776,9 @@ unittest_str_map_LDADD = $(UNITTEST_LDADD) $(CEPH_GLOBAL)
 unittest_sharedptr_registry_SOURCES = test/common/test_sharedptr_registry.cc
 unittest_sharedptr_registry_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 unittest_sharedptr_registry_LDADD = $(UNITTEST_LDADD) $(CEPH_GLOBAL)
+unittest_shared_cache_SOURCES = test/common/test_shared_cache.cc
+unittest_shared_cache_CXXFLAGS = $(UNITTEST_CXXFLAGS)
+unittest_shared_cache_LDADD = $(UNITTEST_LDADD) $(CEPH_GLOBAL)
 unittest_sloppy_crc_map_SOURCES = test/common/test_sloppy_crc_map.cc
 unittest_sloppy_crc_map_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 unittest_sloppy_crc_map_LDADD = $(UNITTEST_LDADD) $(CEPH_GLOBAL)
@@ -8072,6 +8108,8 @@ test/erasure-code/ceph_erasure_code.$(OBJEXT):  \
 ceph_erasure_code$(EXEEXT): $(ceph_erasure_code_OBJECTS) $(ceph_erasure_code_DEPENDENCIES) $(EXTRA_ceph_erasure_code_DEPENDENCIES) 
 	@rm -f ceph_erasure_code$(EXEEXT)
 	$(AM_V_CXXLD)$(CXXLINK) $(ceph_erasure_code_OBJECTS) $(ceph_erasure_code_LDADD) $(LIBS)
+erasure-code/ErasureCode.$(OBJEXT): erasure-code/$(am__dirstamp) \
+	erasure-code/$(DEPDIR)/$(am__dirstamp)
 test/erasure-code/ceph_erasure_code_benchmark.$(OBJEXT):  \
 	test/erasure-code/$(am__dirstamp) \
 	test/erasure-code/$(DEPDIR)/$(am__dirstamp)
@@ -9295,6 +9333,15 @@ test/unittest_encoding-encoding.$(OBJEXT): test/$(am__dirstamp) \
 unittest_encoding$(EXEEXT): $(unittest_encoding_OBJECTS) $(unittest_encoding_DEPENDENCIES) $(EXTRA_unittest_encoding_DEPENDENCIES) 
 	@rm -f unittest_encoding$(EXEEXT)
 	$(AM_V_CXXLD)$(unittest_encoding_LINK) $(unittest_encoding_OBJECTS) $(unittest_encoding_LDADD) $(LIBS)
+erasure-code/unittest_erasure_code-ErasureCode.$(OBJEXT):  \
+	erasure-code/$(am__dirstamp) \
+	erasure-code/$(DEPDIR)/$(am__dirstamp)
+test/erasure-code/unittest_erasure_code-TestErasureCode.$(OBJEXT):  \
+	test/erasure-code/$(am__dirstamp) \
+	test/erasure-code/$(DEPDIR)/$(am__dirstamp)
+unittest_erasure_code$(EXEEXT): $(unittest_erasure_code_OBJECTS) $(unittest_erasure_code_DEPENDENCIES) $(EXTRA_unittest_erasure_code_DEPENDENCIES) 
+	@rm -f unittest_erasure_code$(EXEEXT)
+	$(AM_V_CXXLD)$(unittest_erasure_code_LINK) $(unittest_erasure_code_OBJECTS) $(unittest_erasure_code_LDADD) $(LIBS)
 erasure-code/unittest_erasure_code_example-ErasureCode.$(OBJEXT):  \
 	erasure-code/$(am__dirstamp) \
 	erasure-code/$(DEPDIR)/$(am__dirstamp)
@@ -9569,6 +9616,12 @@ test/unittest_run_cmd-run_cmd.$(OBJEXT): test/$(am__dirstamp) \
 unittest_run_cmd$(EXEEXT): $(unittest_run_cmd_OBJECTS) $(unittest_run_cmd_DEPENDENCIES) $(EXTRA_unittest_run_cmd_DEPENDENCIES) 
 	@rm -f unittest_run_cmd$(EXEEXT)
 	$(AM_V_CXXLD)$(unittest_run_cmd_LINK) $(unittest_run_cmd_OBJECTS) $(unittest_run_cmd_LDADD) $(LIBS)
+test/common/unittest_shared_cache-test_shared_cache.$(OBJEXT):  \
+	test/common/$(am__dirstamp) \
+	test/common/$(DEPDIR)/$(am__dirstamp)
+unittest_shared_cache$(EXEEXT): $(unittest_shared_cache_OBJECTS) $(unittest_shared_cache_DEPENDENCIES) $(EXTRA_unittest_shared_cache_DEPENDENCIES) 
+	@rm -f unittest_shared_cache$(EXEEXT)
+	$(AM_V_CXXLD)$(unittest_shared_cache_LINK) $(unittest_shared_cache_OBJECTS) $(unittest_shared_cache_LDADD) $(LIBS)
 test/common/unittest_sharedptr_registry-test_sharedptr_registry.$(OBJEXT):  \
 	test/common/$(am__dirstamp) \
 	test/common/$(DEPDIR)/$(am__dirstamp)
@@ -10229,6 +10282,7 @@ mostlyclean-compile:
 	-rm -f crush/hash.lo
 	-rm -f crush/mapper.$(OBJEXT)
 	-rm -f crush/mapper.lo
+	-rm -f erasure-code/ErasureCode.$(OBJEXT)
 	-rm -f erasure-code/ErasureCodePlugin.$(OBJEXT)
 	-rm -f erasure-code/ErasureCodePlugin.lo
 	-rm -f erasure-code/isa/isa-l/erasure_code/libec_isa_la-ec_base.$(OBJEXT)
@@ -10429,6 +10483,7 @@ mostlyclean-compile:
 	-rm -f erasure-code/lrc/libec_lrc_la-ErasureCodePluginLrc.lo
 	-rm -f erasure-code/lrc/unittest_erasure_code_lrc-ErasureCodeLrc.$(OBJEXT)
 	-rm -f erasure-code/lrc/unittest_erasure_code_lrc-ErasureCodePluginLrc.$(OBJEXT)
+	-rm -f erasure-code/unittest_erasure_code-ErasureCode.$(OBJEXT)
 	-rm -f erasure-code/unittest_erasure_code_example-ErasureCode.$(OBJEXT)
 	-rm -f erasure-code/unittest_erasure_code_isa-ErasureCode.$(OBJEXT)
 	-rm -f erasure-code/unittest_erasure_code_jerasure-ErasureCode.$(OBJEXT)
@@ -10934,6 +10989,7 @@ mostlyclean-compile:
 	-rm -f test/common/unittest_histogram-histogram.$(OBJEXT)
 	-rm -f test/common/unittest_io_priority-test_io_priority.$(OBJEXT)
 	-rm -f test/common/unittest_lru-test_lru.$(OBJEXT)
+	-rm -f test/common/unittest_shared_cache-test_shared_cache.$(OBJEXT)
 	-rm -f test/common/unittest_sharedptr_registry-test_sharedptr_registry.$(OBJEXT)
 	-rm -f test/common/unittest_sloppy_crc_map-test_sloppy_crc_map.$(OBJEXT)
 	-rm -f test/common/unittest_str_map-test_str_map.$(OBJEXT)
@@ -10962,6 +11018,7 @@ mostlyclean-compile:
 	-rm -f test/erasure-code/libec_test_jerasure_sse3_la-TestJerasurePluginSSE3.lo
 	-rm -f test/erasure-code/libec_test_jerasure_sse4_la-TestJerasurePluginSSE4.$(OBJEXT)
 	-rm -f test/erasure-code/libec_test_jerasure_sse4_la-TestJerasurePluginSSE4.lo
+	-rm -f test/erasure-code/unittest_erasure_code-TestErasureCode.$(OBJEXT)
 	-rm -f test/erasure-code/unittest_erasure_code_example-TestErasureCodeExample.$(OBJEXT)
 	-rm -f test/erasure-code/unittest_erasure_code_isa-TestErasureCodeIsa.$(OBJEXT)
 	-rm -f test/erasure-code/unittest_erasure_code_jerasure-TestErasureCodeJerasure.$(OBJEXT)
@@ -11367,12 +11424,14 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@crush/$(DEPDIR)/crush.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@crush/$(DEPDIR)/hash.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@crush/$(DEPDIR)/mapper.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@erasure-code/$(DEPDIR)/ErasureCode.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@erasure-code/$(DEPDIR)/ErasureCodePlugin.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@erasure-code/$(DEPDIR)/libec_isa_la-ErasureCode.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@erasure-code/$(DEPDIR)/libec_jerasure_generic_la-ErasureCode.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@erasure-code/$(DEPDIR)/libec_jerasure_sse3_la-ErasureCode.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@erasure-code/$(DEPDIR)/libec_jerasure_sse4_la-ErasureCode.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@erasure-code/$(DEPDIR)/libec_lrc_la-ErasureCode.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@erasure-code/$(DEPDIR)/unittest_erasure_code-ErasureCode.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@erasure-code/$(DEPDIR)/unittest_erasure_code_example-ErasureCode.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@erasure-code/$(DEPDIR)/unittest_erasure_code_isa-ErasureCode.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@erasure-code/$(DEPDIR)/unittest_erasure_code_jerasure-ErasureCode.Po@am__quote@
@@ -11831,6 +11890,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@test/common/$(DEPDIR)/unittest_histogram-histogram.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/common/$(DEPDIR)/unittest_io_priority-test_io_priority.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/common/$(DEPDIR)/unittest_lru-test_lru.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@test/common/$(DEPDIR)/unittest_shared_cache-test_shared_cache.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/common/$(DEPDIR)/unittest_sharedptr_registry-test_sharedptr_registry.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/common/$(DEPDIR)/unittest_sloppy_crc_map-test_sloppy_crc_map.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/common/$(DEPDIR)/unittest_str_map-test_str_map.Po@am__quote@
@@ -11850,6 +11910,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@test/erasure-code/$(DEPDIR)/libec_test_jerasure_generic_la-TestJerasurePluginGeneric.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/erasure-code/$(DEPDIR)/libec_test_jerasure_sse3_la-TestJerasurePluginSSE3.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/erasure-code/$(DEPDIR)/libec_test_jerasure_sse4_la-TestJerasurePluginSSE4.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@test/erasure-code/$(DEPDIR)/unittest_erasure_code-TestErasureCode.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/erasure-code/$(DEPDIR)/unittest_erasure_code_example-TestErasureCodeExample.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/erasure-code/$(DEPDIR)/unittest_erasure_code_isa-TestErasureCodeIsa.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/erasure-code/$(DEPDIR)/unittest_erasure_code_jerasure-TestErasureCodeJerasure.Po@am__quote@
@@ -16475,6 +16536,34 @@ test/unittest_encoding-encoding.obj: test/encoding.cc
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_encoding_CXXFLAGS) $(CXXFLAGS) -c -o test/unittest_encoding-encoding.obj `if test -f 'test/encoding.cc'; then $(CYGPATH_W) 'test/encoding.cc'; else $(CYGPATH_W) '$(srcdir)/test/encoding.cc'; fi`
 
+erasure-code/unittest_erasure_code-ErasureCode.o: erasure-code/ErasureCode.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_erasure_code_CXXFLAGS) $(CXXFLAGS) -MT erasure-code/unittest_erasure_code-ErasureCode.o -MD -MP -MF erasure-code/$(DEPDIR)/unittest_erasure_code-ErasureCode.Tpo -c -o erasure-code/unittest_erasure_code-ErasureCode.o `test -f 'erasure-code/ErasureCode.cc' || echo '$(srcdir)/'`erasure-code/ErasureCode.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) erasure-code/$(DEPDIR)/unittest_erasure_code-ErasureCode.Tpo erasure-code/$(DEPDIR)/unittest_erasure_code-ErasureCode.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='erasure-code/ErasureCode.cc' object='erasure-code/unittest_erasure_code-ErasureCode.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_erasure_code_CXXFLAGS) $(CXXFLAGS) -c -o erasure-code/unittest_erasure_code-ErasureCode.o `test -f 'erasure-code/ErasureCode.cc' || echo '$(srcdir)/'`erasure-code/ErasureCode.cc
+
+erasure-code/unittest_erasure_code-ErasureCode.obj: erasure-code/ErasureCode.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_erasure_code_CXXFLAGS) $(CXXFLAGS) -MT erasure-code/unittest_erasure_code-ErasureCode.obj -MD -MP -MF erasure-code/$(DEPDIR)/unittest_erasure_code-ErasureCode.Tpo -c -o erasure-code/unittest_erasure_code-ErasureCode.obj `if test -f 'erasure-code/ErasureCode.cc'; then $(CYGPATH_W) 'erasure-code/ErasureCode.cc'; else $(CYGPATH_W) '$(srcdir)/erasure-code/ErasureCode.cc'; fi`
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) erasure-code/$(DEPDIR)/unittest_erasure_code-ErasureCode.Tpo erasure-code/$(DEPDIR)/unittest_erasure_code-ErasureCode.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='erasure-code/ErasureCode.cc' object='erasure-code/unittest_erasure_code-ErasureCode.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_erasure_code_CXXFLAGS) $(CXXFLAGS) -c -o erasure-code/unittest_erasure_code-ErasureCode.obj `if test -f 'erasure-code/ErasureCode.cc'; then $(CYGPATH_W) 'erasure-code/ErasureCode.cc'; else $(CYGPATH_W) '$(srcdir)/erasure-code/ErasureCode.cc'; fi`
+
+test/erasure-code/unittest_erasure_code-TestErasureCode.o: test/erasure-code/TestErasureCode.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_erasure_code_CXXFLAGS) $(CXXFLAGS) -MT test/erasure-code/unittest_erasure_code-TestErasureCode.o -MD -MP -MF test/erasure-code/$(DEPDIR)/unittest_erasure_code-TestErasureCode.Tpo -c -o test/erasure-code/unittest_erasure_code-TestErasureCode.o `test -f 'test/erasure-code/TestErasureCode.cc' || echo '$(srcdir)/'`test/erasure-code/TestErasureCode.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/erasure-code/$(DEPDIR)/unittest_erasure_code-TestErasureCode.Tpo test/erasure-code/$(DEPDIR)/unittest_erasure_code-TestErasureCode.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/erasure-code/TestErasureCode.cc' object='test/erasure-code/unittest_erasure_code-TestErasureCode.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_erasure_code_CXXFLAGS) $(CXXFLAGS) -c -o test/erasure-code/unittest_erasure_code-TestErasureCode.o `test -f 'test/erasure-code/TestErasureCode.cc' || echo '$(srcdir)/'`test/erasure-code/TestErasureCode.cc
+
+test/erasure-code/unittest_erasure_code-TestErasureCode.obj: test/erasure-code/TestErasureCode.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_erasure_code_CXXFLAGS) $(CXXFLAGS) -MT test/erasure-code/unittest_erasure_code-TestErasureCode.obj -MD -MP -MF test/erasure-code/$(DEPDIR)/unittest_erasure_code-TestErasureCode.Tpo -c -o test/erasure-code/unittest_erasure_code-TestErasureCode.obj `if test -f 'test/erasure-code/TestErasureCode.cc'; then $(CYGPATH_W) 'test/erasure-code/TestErasureCode.cc'; else $(CYGPATH_W) '$(srcdir)/test/erasure-code/TestErasureCode.cc'; fi`
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/erasure-code/$(DEPDIR)/unittest_erasure_code-TestErasureCode.Tpo test/erasure-code/$(DEPDIR)/unittest_erasure_code-TestErasureCode.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/erasure-code/TestErasureCode.cc' object='test/erasure-code/unittest_erasure_code-TestErasureCode.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_erasure_code_CXXFLAGS) $(CXXFLAGS) -c -o test/erasure-code/unittest_erasure_code-TestErasureCode.obj `if test -f 'test/erasure-code/TestErasureCode.cc'; then $(CYGPATH_W) 'test/erasure-code/TestErasureCode.cc'; else $(CYGPATH_W) '$(srcdir)/test/erasure-code/TestErasureCode.cc'; fi`
+
 erasure-code/unittest_erasure_code_example-ErasureCode.o: erasure-code/ErasureCode.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_erasure_code_example_CXXFLAGS) $(CXXFLAGS) -MT erasure-code/unittest_erasure_code_example-ErasureCode.o -MD -MP -MF erasure-code/$(DEPDIR)/unittest_erasure_code_example-ErasureCode.Tpo -c -o erasure-code/unittest_erasure_code_example-ErasureCode.o `test -f 'erasure-code/ErasureCode.cc' || echo '$(srcdir)/'`erasure-code/ErasureCode.cc
 @am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) erasure-code/$(DEPDIR)/unittest_erasure_code_example-ErasureCode.Tpo erasure-code/$(DEPDIR)/unittest_erasure_code_example-ErasureCode.Po
@@ -17104,6 +17193,20 @@ test/unittest_run_cmd-run_cmd.obj: test/run_cmd.cc
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/run_cmd.cc' object='test/unittest_run_cmd-run_cmd.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_run_cmd_CXXFLAGS) $(CXXFLAGS) -c -o test/unittest_run_cmd-run_cmd.obj `if test -f 'test/run_cmd.cc'; then $(CYGPATH_W) 'test/run_cmd.cc'; else $(CYGPATH_W) '$(srcdir)/test/run_cmd.cc'; fi`
+
+test/common/unittest_shared_cache-test_shared_cache.o: test/common/test_shared_cache.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_shared_cache_CXXFLAGS) $(CXXFLAGS) -MT test/common/unittest_shared_cache-test_shared_cache.o -MD -MP -MF test/common/$(DEPDIR)/unittest_shared_cache-test_shared_cache.Tpo -c -o test/common/unittest_shared_cache-test_shared_cache.o `test -f 'test/common/test_shared_cache.cc' || echo '$(srcdir)/'`test/common/test_shared_cache.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/common/$(DEPDIR)/unittest_shared_cache-test_shared_cache.Tpo test/common/$(DEPDIR)/unittest_shared_cache-test_shared_cache.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/common/test_shared_cache.cc' object='test/common/unittest_shared_cache-test_shared_cache.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_shared_cache_CXXFLAGS) $(CXXFLAGS) -c -o test/common/unittest_shared_cache-test_shared_cache.o `test -f 'test/common/test_shared_cache.cc' || echo '$(srcdir)/'`test/common/test_shared_cache.cc
+
+test/common/unittest_shared_cache-test_shared_cache.obj: test/common/test_shared_cache.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_shared_cache_CXXFLAGS) $(CXXFLAGS) -MT test/common/unittest_shared_cache-test_shared_cache.obj -MD -MP -MF test/common/$(DEPDIR)/unittest_shared_cache-test_shared_cache.Tpo -c -o test/common/unittest_shared_cache-test_shared_cache.obj `if test -f 'test/common/test_shared_cache.cc'; then $(CYGPATH_W) 'test/common/test_shared_cache.cc'; else $(CYGPATH_W) '$(srcdir)/test/common/test_shared_cache.cc'; fi`
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/common/$(DEPDIR)/unittest_shared_cache-test_shared_cache.Tpo test/common/$(DEPDIR)/unittest_shared_cache-test_shared_cache.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/common/test_shared_cache.cc' object='test/common/unittest_shared_cache-test_shared_cache.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_shared_cache_CXXFLAGS) $(CXXFLAGS) -c -o test/common/unittest_shared_cache-test_shared_cache.obj `if test -f 'test/common/test_shared_cache.cc'; then $(CYGPATH_W) 'test/common/test_shared_cache.cc'; else $(CYGPATH_W) '$(srcdir)/test/common/test_shared_cache.cc'; fi`
 
 test/common/unittest_sharedptr_registry-test_sharedptr_registry.o: test/common/test_sharedptr_registry.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_sharedptr_registry_CXXFLAGS) $(CXXFLAGS) -MT test/common/unittest_sharedptr_registry-test_sharedptr_registry.o -MD -MP -MF test/common/$(DEPDIR)/unittest_sharedptr_registry-test_sharedptr_registry.Tpo -c -o test/common/unittest_sharedptr_registry-test_sharedptr_registry.o `test -f 'test/common/test_sharedptr_registry.cc' || echo '$(srcdir)/'`test/common/test_sharedptr_registry.cc
