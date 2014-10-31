@@ -42,6 +42,8 @@ endif
 # Use system provided libs3
 extraopts += --with-system-libs3
 
+#extraopts += --with-cluster-tests
+
 %:
 	dh $@ --with javahelper,python2,autoreconf --parallel
 
@@ -58,6 +60,7 @@ override_dh_auto_build:
 	cp -v src/upstart/rbdmap.conf debian/ceph.rbdmap.upstart
 
 override_dh_auto_clean:
+	$(RM) -rv src/test/fake_home src/mkfs src/test-ceph-disk/osd
 	dh_auto_clean --sourcedirectory=src/rocksdb
 	dh_auto_clean
 	rm -fv debian/*.upstart
@@ -109,7 +112,6 @@ override_dh_makeshlibs:
 	dh_makeshlibs -V -X/usr/lib/jni -X/usr/lib/$(DEB_HOST_MULTIARCH)/ceph/erasure-code
 
 override_dh_auto_test:
-	# Skip tests as they rely on virtualenv
-	:
+	-dh_auto_test -v
 
 .PHONY: override_dh_auto_configure override_dh_installinit override_dh_strip override_dh_makeshlibs override_dh_auto_test

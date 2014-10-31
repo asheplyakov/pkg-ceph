@@ -44,9 +44,12 @@ Build-Depends: debhelper (>= 9~),
                python-nose,
                uuid-dev,
                uuid-runtime,
+               virtualenv,
                xfslibs-dev,
                yasm [amd64],
                zlib1g-dev
+# valgrind is only used in post-build tests, enable on available architectures
+ ,valgrind [amd64 armhf i386 powerpc]
 Build-Conflicts: libcrypto++-dev
 Standards-Version: 3.9.6
 X-Python-Version: >= 2.6

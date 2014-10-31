@@ -8,4 +8,6 @@ rbdmap3-lazyumount.patch
 arch.patch
 modules.patch
 sample.ceph.conf.patch
+tests-disable.patch
+tests-disable-ceph-disk.patch
 virtualenv-never-download.patch

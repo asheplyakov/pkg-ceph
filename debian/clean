@@ -1,2 +1,4 @@
 configure
 src/rocksdb/util/build_version.cc
+src/pybind/*.pyc
+src/test/pybind/*.pyc
