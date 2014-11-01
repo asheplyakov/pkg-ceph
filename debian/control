@@ -72,7 +72,7 @@ Depends: binutils,
 Pre-Depends: ${misc:Pre-Depends}
 Conflicts: gceph, librgw-dev, librgw1, librgw1-dbg, obsync
 Replaces: gceph, librgw-dev, librgw1, librgw1-dbg, obsync
-Recommends: libcephfs1, librados2, librbd1, time-daemon | chrony
+Recommends: libcephfs1, librados2, librbd1, time-daemon | chrony | ntp
 Suggests: logrotate
 Description: distributed storage and file system
  Ceph is a distributed storage system designed to provide excellent
