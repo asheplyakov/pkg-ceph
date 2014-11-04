@@ -1,0 +1,33 @@
+From e0b04414b92018277a0d3b9d82e72ea7529f4ef5 Mon Sep 17 00:00:00 2001
+From: Loic Dachary <loic-201408@dachary.org>
+Date: Fri, 31 Oct 2014 00:49:21 +0100
+Subject: [PATCH] osd: past_interval display bug on acting
+
+The acting array was incorrectly including the primary and up_primary.
+
+http://tracker.ceph.com/issues/9752 Fixes: #9752
+
+Signed-off-by: Loic Dachary <loic-201408@dachary.org>
+(cherry picked from commit c5f8d6eded52da451fdd1d807bd4700221e4c41c)
+---
+ src/osd/osd_types.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/osd/osd_types.cc b/src/osd/osd_types.cc
+index ed06c4f..dc9caa5 100644
+--- a/src/osd/osd_types.cc
++++ b/src/osd/osd_types.cc
+@@ -2303,9 +2303,9 @@ void pg_interval_t::dump(Formatter *f) const
+   f->open_array_section("acting");
+   for (vector<int>::const_iterator p = acting.begin(); p != acting.end(); ++p)
+     f->dump_int("osd", *p);
++  f->close_section();
+   f->dump_int("primary", primary);
+   f->dump_int("up_primary", up_primary);
+-  f->close_section();
+ }
+ 
+ void pg_interval_t::generate_test_instances(list<pg_interval_t*>& o)
+-- 
+2.1.1
+
