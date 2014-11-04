@@ -1,5 +1,7 @@
 debian/etc/pm/sleep.d/*    /etc/pm/sleep.d/
 debian/lib-systemd/system-sleep/*    /lib/systemd/system-sleep/
+debian/lib-systemd/system/ceph-osd@.service   /lib/systemd/system/
+debian/lib-systemd/system/ceph-mon.service    /lib/systemd/system/
 etc/bash_completion.d/ceph
 usr/bin/ceph-clsinfo
 usr/bin/ceph-debugpack
@@ -11,7 +13,7 @@ usr/bin/crushtool
 usr/bin/monmaptool
 usr/bin/osdmaptool
 usr/lib/*/ceph/ceph_common.sh
-#usr/lib/*/ceph/ceph-osd-prestart.sh
+usr/lib/*/ceph/ceph-osd-prestart.sh    /usr/lib/ceph/
 usr/lib/*/ceph/erasure-code/libec_jerasure*.so
 usr/lib/*/ceph/erasure-code/libec_lrc.so*
 usr/lib/*/ceph/erasure-code/libec_isa.so*

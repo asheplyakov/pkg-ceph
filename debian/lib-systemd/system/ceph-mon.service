@@ -1,0 +1,16 @@
+[Unit]
+Description=Ceph cluster monitor daemon (MON)
+Documentation=man:ceph-mon
+After=network-online.target
+Wants=network-online.target
+PartOf=ceph.service
+
+[Service]
+Environment=CLUSTER=ceph
+Environment=CONFIG=/etc/ceph/ceph.conf
+EnvironmentFile=-/etc/default/ceph
+ExecStart=/usr/bin/ceph-mon --id %H --foreground --cluster ${CLUSTER} -c ${CONFIG}
+#Restart=on-abnormal
+
+[Install]
+WantedBy=multi-user.target

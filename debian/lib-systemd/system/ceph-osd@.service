@@ -1,0 +1,25 @@
+[Unit]
+Description=Ceph object storage daemon (OSD)
+Documentation=man:ceph-osd
+After=network-online.target
+Wants=network-online.target
+PartOf=ceph.service
+RequiresMountsFor=/var/lib/ceph/osd/ceph-%i
+
+[Service]
+Environment=CLUSTER=ceph
+Environment=CONFIG=/etc/ceph/ceph.conf
+EnvironmentFile=-/etc/default/ceph
+ExecStartPre=-/bin/sh -c '${osd_prestart_sh}' -- %i
+ExecStartPre=/usr/lib/ceph/ceph-osd-prestart.sh --id %i --cluster ${CLUSTER}
+ExecStart=/usr/bin/ceph-osd --id %i --foreground --cluster ${CLUSTER} -c ${CONFIG}
+ExecStopPost=-/bin/sh -c '${osd_poststop_sh}' -- %i
+LimitNOFILE=32768
+## restart if failed; 1 min. delay after failure; max. 4 restarts per 5 min.:
+#Restart=on-abnormal
+#RestartSec=60
+#StartLimitInterval=300
+#StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target

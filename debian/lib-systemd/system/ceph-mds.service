@@ -1,0 +1,17 @@
+[Unit]
+Description=Ceph metadata server daemon (MDS)
+Documentation=man:ceph-mds
+After=network-online.target nss-lookup.target
+Wants=network-online.target nss-lookup.target
+PartOf=ceph.service
+#RequiresMountsFor=/var/lib/ceph/mds/ceph-%H
+
+[Service]
+Environment=CLUSTER=ceph
+Environment=CONFIG=/etc/ceph/ceph.conf
+EnvironmentFile=-/etc/default/ceph
+ExecStart=/usr/bin/ceph-mds --id %H --foreground --cluster ${CLUSTER} -c ${CONFIG}
+#Restart=on-abnormal
+
+[Install]
+WantedBy=multi-user.target

@@ -45,7 +45,7 @@ extraopts += --with-system-libs3
 #extraopts += --with-cluster-tests
 
 %:
-	dh $@ --with javahelper,python2,autoreconf --parallel
+	dh $@ --with javahelper,python2,autoreconf,systemd --parallel
 
 # use --as-needed only if supported by dh-autoreconf (to simplify backporting)
 DH_AS_NEEDED=$(shell dpkg --compare-versions $$(dpkg --status dh-autoreconf | grep Version | cut -d' ' -f2) ge 6 && echo --as-needed)
@@ -91,6 +91,12 @@ override_dh_installinit:
         cp -v $$conf debian/radosgw.$$name.upstart; \
         dh_installinit -pradosgw --no-start --name=$$name; \
     done
+
+override_dh_systemd_enable:
+	## Do not enable services to match `dh_installinit --no-start`
+	## behaviour.
+	## Users are expected to "systemctl enable" services once their
+	## configuration is correct.
 
 override_dh_strip:
 	dh_strip -pceph --dbg-package=ceph-dbg

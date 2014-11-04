@@ -1,0 +1,9 @@
+## /etc/default/ceph -- sourced by ceph-osd@.service (systemd)
+
+#CLUSTER=ceph
+#CONFIG=/etc/ceph/ceph.conf
+
+## create journal (if not exist) on OSD start; flush journal after OSD stop.
+## (useful for journals on tmpfs).
+#osd_prestart_sh="[ -r \"/var/lib/ceph/osd/${CLUSTER}-$1/journal\" ] || /usr/bin/ceph-osd --id $1 --mkjournal"
+#osd_poststop_sh="/usr/bin/ceph-osd --id $1 --flush-journal"

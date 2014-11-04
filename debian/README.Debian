@@ -4,6 +4,29 @@
 
 -------- -------- --------
 
+## "systemd" requires manual activation of services:
+
+    ## MON
+    # systemctl start ceph-mon
+    # systemctl enable ceph-mon
+
+    ## OSD.0 (set other OSDs like this)
+    # systemctl start ceph-osd@0
+    # systemctl enable ceph-osd@0
+
+    ## MDS
+    # systemctl start ceph-mds
+    # systemctl enable ceph-mds
+
+    ## "ceph" meta-service (starts/stops all the above like old init script)
+    # systemctl start ceph
+    # systemctl enable ceph
+
+ The ceph cluster can be set in the "/etc/default/ceph" file
+ by setting the CLUSTER environment variable.
+
+-------- -------- --------
+
 ## Upgrade procedure (0.72.2 to 0.80):
 
  * Read "Upgrade Sequencing" in release notes:
