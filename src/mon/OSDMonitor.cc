@@ -2067,6 +2067,32 @@ void OSDMonitor::get_health(list<pair<health_status_t,string> >& summary,
       }
     }
 
+    // hit_set-less cache_mode?
+    if (g_conf->mon_warn_on_cache_pools_without_hit_sets) {
+      int problem_cache_pools = 0;
+      for (map<int64_t, pg_pool_t>::const_iterator p = osdmap.pools.begin();
+	   p != osdmap.pools.end();
+	   ++p) {
+	const pg_pool_t& info = p->second;
+	if (info.cache_mode_requires_hit_set() &&
+	    info.hit_set_params.get_type() == HitSet::TYPE_NONE) {
+	  ++problem_cache_pools;
+	  if (detail) {
+	    ostringstream ss;
+	    ss << "pool '" << osdmap.get_pool_name(p->first)
+	       << "' with cache_mode " << info.get_cache_mode_name()
+	       << " needs hit_set_type to be set but it is not";
+	    detail->push_back(make_pair(HEALTH_WARN, ss.str()));
+	  }
+	}
+      }
+      if (problem_cache_pools) {
+	ostringstream ss;
+	ss << problem_cache_pools << " cache pools are missing hit_sets";
+	summary.push_back(make_pair(HEALTH_WARN, ss.str()));
+      }
+    }
+
     // Warn if 'mon_osd_down_out_interval' is set to zero.
     // Having this option set to zero on the leader acts much like the
     // 'noout' flag.  It's hard to figure out what's going wrong with clusters
@@ -2453,6 +2479,26 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
     string var;
     cmd_getval(g_ceph_context, cmdmap, "var", var);
 
+    if (!p->is_tier() &&
+        (var == "hit_set_type" || var == "hit_set_period" ||
+         var == "hit_set_count" || var == "hit_set_fpp" ||
+         var == "target_max_objects" || var == "target_max_bytes" ||
+         var == "cache_target_full_ratio" ||
+         var == "cache_target_dirty_ratio" ||
+         var == "cache_min_flush_age" || var == "cache_min_evict_age")) {
+      ss << "pool '" << poolstr
+         << "' is not a tier pool: variable not applicable";
+      r = -EACCES;
+      goto reply;
+    }
+
+    if (!p->is_erasure() && var == "erasure_code_profile") {
+      ss << "pool '" << poolstr
+         << "' is not a erasure pool: variable not applicable";
+      r = -EACCES;
+      goto reply;
+    }
+
     if (f) {
       f->open_object_section("pool");
       f->dump_string("pool", poolstr);
@@ -2488,6 +2534,26 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
 	  BloomHitSet::Params *bloomp = static_cast<BloomHitSet::Params*>(p->hit_set_params.impl.get());
 	  f->dump_float("hit_set_fpp", bloomp->get_fpp());
 	}
+      } else if (var == "target_max_objects") {
+        f->dump_unsigned("target_max_objects", p->target_max_objects);
+      } else if (var == "target_max_bytes") {
+        f->dump_unsigned("target_max_bytes", p->target_max_bytes);
+      } else if (var == "cache_target_dirty_ratio") {
+        f->dump_unsigned("cache_target_dirty_ratio_micro",
+                         p->cache_target_dirty_ratio_micro);
+        f->dump_float("cache_target_dirty_ratio",
+                      ((float)p->cache_target_dirty_ratio_micro/1000000));
+      } else if (var == "cache_target_full_ratio") {
+        f->dump_unsigned("cache_target_full_ratio_micro",
+                         p->cache_target_full_ratio_micro);
+        f->dump_float("cache_target_full_ratio",
+                      ((float)p->cache_target_full_ratio_micro/1000000));
+      } else if (var == "cache_min_flush_age") {
+        f->dump_unsigned("cache_min_flush_age", p->cache_min_flush_age);
+      } else if (var == "cache_min_evict_age") {
+        f->dump_unsigned("cache_min_evict_age", p->cache_min_evict_age);
+      } else if (var == "erasure_code_profile") {
+       f->dump_string("erasure_code_profile", p->erasure_code_profile);
       }
 
       f->close_section();
@@ -2521,7 +2587,24 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
 	}
 	BloomHitSet::Params *bloomp = static_cast<BloomHitSet::Params*>(p->hit_set_params.impl.get());
 	ss << "hit_set_fpp: " << bloomp->get_fpp();
+      } else if (var == "target_max_objects") {
+        ss << "target_max_objects: " << p->target_max_objects;
+      } else if (var == "target_max_bytes") {
+        ss << "target_max_bytes: " << p->target_max_bytes;
+      } else if (var == "cache_target_dirty_ratio") {
+        ss << "cache_target_dirty_ratio: "
+          << ((float)p->cache_target_dirty_ratio_micro/1000000);
+      } else if (var == "cache_target_full_ratio") {
+        ss << "cache_target_full_ratio: "
+          << ((float)p->cache_target_full_ratio_micro/1000000);
+      } else if (var == "cache_min_flush_age") {
+        ss << "cache_min_flush_age: " << p->cache_min_flush_age;
+      } else if (var == "cache_min_evict_age") {
+        ss << "cache_min_evict_age: " << p->cache_min_evict_age;
+      } else if (var == "erasure_code_profile") {
+       ss << "erasure_code_profile: " << p->erasure_code_profile;
       }
+
       rdata.append(ss);
       ss.str("");
     }
@@ -2626,6 +2709,45 @@ stats_out:
     rdata.append("\n");
     r = 0;
 
+  } else if (prefix == "osd pool get-quota") {
+    string pool_name;
+    cmd_getval(g_ceph_context, cmdmap, "pool", pool_name);
+
+    int64_t poolid = osdmap.lookup_pg_pool_name(pool_name);
+    if (poolid < 0) {
+      assert(poolid == -ENOENT);
+      ss << "unrecognized pool '" << pool_name << "'";
+      r = -ENOENT;
+      goto reply;
+    }
+    const pg_pool_t *p = osdmap.get_pg_pool(poolid);
+
+    if (f) {
+      f->open_object_section("pool_quotas");
+      f->dump_string("pool_name", pool_name);
+      f->dump_unsigned("pool_id", poolid);
+      f->dump_unsigned("quota_max_objects", p->quota_max_objects);
+      f->dump_unsigned("quota_max_bytes", p->quota_max_bytes);
+      f->close_section();
+      f->flush(rdata);
+    } else {
+      stringstream rs;
+      rs << "quotas for pool '" << pool_name << "':\n"
+         << "  max objects: ";
+      if (p->quota_max_objects == 0)
+        rs << "N/A";
+      else
+        rs << si_t(p->quota_max_objects) << " objects";
+      rs << "\n"
+         << "  max bytes  : ";
+      if (p->quota_max_bytes == 0)
+        rs << "N/A";
+      else
+        rs << si_t(p->quota_max_bytes) << "B";
+      rdata.append(rs.str());
+    }
+    rdata.append("\n");
+    r = 0;
   } else if (prefix == "osd crush rule list" ||
 	     prefix == "osd crush rule ls") {
     string format;
@@ -2925,15 +3047,18 @@ int OSDMonitor::crush_ruleset_create_erasure(const string &name,
 					     int *ruleset,
 					     stringstream &ss)
 {
-  *ruleset = osdmap.crush->get_rule_id(name);
-  if (*ruleset != -ENOENT)
+  int ruleid = osdmap.crush->get_rule_id(name);
+  if (ruleid != -ENOENT) {
+    *ruleset = osdmap.crush->get_rule_mask_ruleset(ruleid);
     return -EEXIST;
+  }
 
   CrushWrapper newcrush;
   _get_pending_crush(newcrush);
 
-  *ruleset = newcrush.get_rule_id(name);
-  if (*ruleset != -ENOENT) {
+  ruleid = newcrush.get_rule_id(name);
+  if (ruleid != -ENOENT) {
+    *ruleset = newcrush.get_rule_mask_ruleset(ruleid);
     return -EALREADY;
   } else {
     ErasureCodeInterfaceRef erasure_code;
@@ -3089,20 +3214,23 @@ int OSDMonitor::parse_erasure_code_profile(const vector<string> &erasure_code_pr
 
 int OSDMonitor::prepare_pool_size(const unsigned pool_type,
 				  const string &erasure_code_profile,
-				  unsigned *size,
+				  unsigned *size, unsigned *min_size,
 				  stringstream &ss)
 {
   int err = 0;
   switch (pool_type) {
   case pg_pool_t::TYPE_REPLICATED:
     *size = g_conf->osd_pool_default_size;
+    *min_size = g_conf->get_osd_pool_default_min_size();
     break;
   case pg_pool_t::TYPE_ERASURE:
     {
       ErasureCodeInterfaceRef erasure_code;
       err = get_erasure_code(erasure_code_profile, &erasure_code, ss);
-      if (err == 0)
+      if (err == 0) {
 	*size = erasure_code->get_chunk_count();
+	*min_size = erasure_code->get_data_chunk_count();
+      }
     }
     break;
   default:
@@ -3219,8 +3347,8 @@ int OSDMonitor::prepare_new_pool(string& name, uint64_t auid,
 				 crush_ruleset_name, &crush_ruleset, ss);
   if (r)
     return r;
-  unsigned size;
-  r = prepare_pool_size(pool_type, erasure_code_profile, &size, ss);
+  unsigned size, min_size;
+  r = prepare_pool_size(pool_type, erasure_code_profile, &size, &min_size, ss);
   if (r)
     return r;
   uint32_t stripe_width = 0;
@@ -3246,7 +3374,7 @@ int OSDMonitor::prepare_new_pool(string& name, uint64_t auid,
     pi->flags |= pg_pool_t::FLAG_HASHPSPOOL;
 
   pi->size = size;
-  pi->min_size = g_conf->get_osd_pool_default_min_size();
+  pi->min_size = min_size;
   pi->crush_ruleset = crush_ruleset;
   pi->object_hash = CEPH_STR_HASH_RJENKINS;
   pi->set_pg_num(pg_num ? pg_num : g_conf->osd_pool_default_pg_num);
@@ -3336,6 +3464,7 @@ int OSDMonitor::prepare_command_pool_set(map<string,cmd_vartype> &cmdmap,
   string interr, floaterr;
   int64_t n = 0;
   double f = 0;
+  int64_t uf = 0;  // micro-f
   if (!cmd_getval(g_ceph_context, cmdmap, "val", val)) {
     // wasn't a string; maybe an older mon forwarded json with an int?
     if (!cmd_getval(g_ceph_context, cmdmap, "val", n))
@@ -3345,6 +3474,17 @@ int OSDMonitor::prepare_command_pool_set(map<string,cmd_vartype> &cmdmap,
     n = strict_strtoll(val.c_str(), 10, &interr);
     // or a float
     f = strict_strtod(val.c_str(), &floaterr);
+    uf = llrintl(f * (double)1000000.0);
+  }
+
+  if (!p.is_tier() &&
+      (var == "hit_set_type" || var == "hit_set_period" ||
+       var == "hit_set_count" || var == "hit_set_fpp" ||
+       var == "target_max_objects" || var == "target_max_bytes" ||
+       var == "cache_target_full_ratio" || var == "cache_target_dirty_ratio" ||
+       var == "cache_min_flush_age" || var == "cache_min_evict_age")) {
+    ss << "pool '" << poolstr << "' is not a tier pool: variable not applicable";
+    return -EACCES;
   }
 
   if (var == "size") {
@@ -3399,7 +3539,7 @@ int OSDMonitor::prepare_command_pool_set(map<string,cmd_vartype> &cmdmap,
       ss << "splits in cache pools must be followed by scrubs and leave sufficient free space to avoid overfilling.  use --yes-i-really-mean-it to force.";
       return -EPERM;
     }
-    int expected_osds = MIN(p.get_pg_num(), osdmap.get_num_osds());
+    int expected_osds = MAX(1, MIN(p.get_pg_num(), osdmap.get_num_osds()));
     int64_t new_pgs = n - p.get_pg_num();
     int64_t pgs_per_osd = new_pgs / expected_osds;
     if (pgs_per_osd > g_conf->mon_osd_max_split_count) {
@@ -3487,6 +3627,7 @@ int OSDMonitor::prepare_command_pool_set(map<string,cmd_vartype> &cmdmap,
     }
     p.hit_set_period = n;
   } else if (var == "hit_set_count") {
+
     if (interr.length()) {
       ss << "error parsing integer value '" << val << "': " << interr;
       return -EINVAL;
@@ -3528,7 +3669,7 @@ int OSDMonitor::prepare_command_pool_set(map<string,cmd_vartype> &cmdmap,
       ss << "value must be in the range 0..1";
       return -ERANGE;
     }
-    p.cache_target_dirty_ratio_micro = f * 1000000;
+    p.cache_target_dirty_ratio_micro = uf;
   } else if (var == "cache_target_full_ratio") {
     if (floaterr.length()) {
       ss << "error parsing float '" << val << "': " << floaterr;
@@ -3538,7 +3679,7 @@ int OSDMonitor::prepare_command_pool_set(map<string,cmd_vartype> &cmdmap,
       ss << "value must be in the range 0..1";
       return -ERANGE;
     }
-    p.cache_target_full_ratio_micro = f * 1000000;
+    p.cache_target_full_ratio_micro = uf;
   } else if (var == "cache_min_flush_age") {
     if (interr.length()) {
       ss << "error parsing int '" << val << "': " << interr;
@@ -4172,6 +4313,24 @@ bool OSDMonitor::prepare_command_impl(MMonCommand *m,
     cmd_getval(g_ceph_context, cmdmap, "profile", profile);
     if (profile == "")
       profile = "default";
+    if (profile == "default") {
+      if (!osdmap.has_erasure_code_profile(profile)) {
+	if (pending_inc.has_erasure_code_profile(profile)) {
+	  dout(20) << "erasure code profile " << profile << " already pending" << dendl;
+	  goto wait;
+	}
+
+	map<string,string> profile_map;
+	err = osdmap.get_erasure_code_profile_default(g_ceph_context,
+						      profile_map,
+						      &ss);
+	if (err)
+	  goto reply;
+	dout(20) << "erasure code profile " << profile << " set" << dendl;
+	pending_inc.set_erasure_code_profile(profile, profile_map);
+	goto wait;
+      }
+    }
 
     int ruleset;
     err = crush_ruleset_create_erasure(name, profile, &ruleset, ss);
@@ -4847,6 +5006,25 @@ done:
     cmd_getval(g_ceph_context, cmdmap, "erasure_code_profile", erasure_code_profile);
     if (erasure_code_profile == "")
       erasure_code_profile = "default";
+    if (erasure_code_profile == "default") {
+      if (!osdmap.has_erasure_code_profile(erasure_code_profile)) {
+	if (pending_inc.has_erasure_code_profile(erasure_code_profile)) {
+	  dout(20) << "erasure code profile " << erasure_code_profile << " already pending" << dendl;
+	  goto wait;
+	}
+
+	map<string,string> profile_map;
+	err = osdmap.get_erasure_code_profile_default(g_ceph_context,
+						      profile_map,
+						      &ss);
+	if (err)
+	  goto reply;
+	dout(20) << "erasure code profile " << erasure_code_profile << " set" << dendl;
+	pending_inc.set_erasure_code_profile(erasure_code_profile, profile_map);
+	goto wait;
+      }
+    }
+
     if (ruleset_name == "") {
       if (erasure_code_profile == "default") {
 	ruleset_name = "erasure-code";
@@ -5054,7 +5232,10 @@ done:
       goto reply;
     }
     if (tp->tier_of != pool_id) {
-      ss << "tier pool '" << tierpoolstr << "' is a tier of '" << tp->tier_of << "'";
+      ss << "tier pool '" << tierpoolstr << "' is a tier of '"
+         << osdmap.get_pool_name(tp->tier_of) << "': "
+         // be scary about it; this is an inconsistency and bells must go off
+         << "THIS SHOULD NOT HAVE HAPPENED AT ALL";
       err = -EINVAL;
       goto reply;
     }
@@ -5182,8 +5363,67 @@ done:
       err = -EINVAL;
       goto reply;
     }
+
+    // pool already has this cache-mode set and there are no pending changes
+    if (p->cache_mode == mode &&
+	(pending_inc.new_pools.count(pool_id) == 0 ||
+	 pending_inc.new_pools[pool_id].cache_mode == p->cache_mode)) {
+      ss << "set cache-mode for pool '" << poolstr << "'"
+         << " to " << pg_pool_t::get_cache_mode_name(mode);
+      err = 0;
+      goto reply;
+    }
+
+    /* Mode description:
+     *
+     *  none:       No cache-mode defined
+     *  forward:    Forward all reads and writes to base pool
+     *  writeback:  Cache writes, promote reads from base pool
+     *  readonly:   Forward writes to base pool
+     *
+     * Hence, these are the allowed transitions:
+     *
+     *  none -> any
+     *  forward -> writeback || any IF num_objects_dirty == 0
+     *  writeback -> forward
+     *  readonly -> any
+     */
+
+    // We check if the transition is valid against the current pool mode, as
+    // it is the only committed state thus far.  We will blantly squash
+    // whatever mode is on the pending state.
+
+    if (p->cache_mode == pg_pool_t::CACHEMODE_WRITEBACK &&
+        mode != pg_pool_t::CACHEMODE_FORWARD) {
+      ss << "unable to set cache-mode '" << pg_pool_t::get_cache_mode_name(mode)
+         << "' on a '" << pg_pool_t::get_cache_mode_name(p->cache_mode)
+         << "' pool; only '"
+         << pg_pool_t::get_cache_mode_name(pg_pool_t::CACHEMODE_FORWARD)
+        << "' allowed.";
+      err = -EINVAL;
+      goto reply;
+    }
+    if (p->cache_mode == pg_pool_t::CACHEMODE_FORWARD &&
+               mode != pg_pool_t::CACHEMODE_WRITEBACK) {
+
+      const pool_stat_t& tier_stats =
+        mon->pgmon()->pg_map.get_pg_pool_sum_stat(pool_id);
+
+      if (tier_stats.stats.sum.num_objects_dirty > 0) {
+        ss << "unable to set cache-mode '"
+           << pg_pool_t::get_cache_mode_name(mode) << "' on pool '" << poolstr
+           << "': dirty objects found";
+        err = -EBUSY;
+        goto reply;
+      }
+    }
+
     // go
-    pending_inc.get_new_pool(pool_id, p)->cache_mode = mode;
+    pg_pool_t *np = pending_inc.get_new_pool(pool_id, p);
+    np->cache_mode = mode;
+    // set this both when moving to and from cache_mode NONE.  this is to
+    // capture legacy pools that were set up before this flag existed.
+    np->flags |= pg_pool_t::FLAG_INCOMPLETE_CLONES;
     ss << "set cache-mode for pool '" << poolstr
 	<< "' to " << pg_pool_t::get_cache_mode_name(mode);
     wait_for_finished_proposal(new Monitor::C_Command(mon, m, 0, ss.str(),
@@ -5623,8 +5863,12 @@ int OSDMonitor::_check_remove_pool(int64_t pool, const pg_pool_t *p,
     return -EBUSY;
   }
   if (!p->tiers.empty()) {
-    *ss << "pool '" << poolstr << "' includes tiers "
-	<< p->tiers;
+    *ss << "pool '" << poolstr << "' has tiers";
+    for(std::set<uint64_t>::iterator i = p->tiers.begin(); i != p->tiers.end(); ++i) {
+      const char *name = osdmap.get_pool_name(*i);
+      assert(name != NULL);
+      *ss << " " << name;
+    }
     return -EBUSY;
   }
   *ss << "pool '" << poolstr << "' removed";

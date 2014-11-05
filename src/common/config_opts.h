@@ -177,6 +177,7 @@ OPTION(mon_force_standby_active, OPT_BOOL, true) // should mons force standby-re
 OPTION(mon_warn_on_old_mons, OPT_BOOL, true) // should mons set health to WARN if part of quorum is old?
 OPTION(mon_warn_on_legacy_crush_tunables, OPT_BOOL, true) // warn if crush tunables are not optimal
 OPTION(mon_warn_on_osd_down_out_interval_zero, OPT_BOOL, true) // warn if 'mon_osd_down_out_interval == 0'
+OPTION(mon_warn_on_cache_pools_without_hit_sets, OPT_BOOL, true)
 OPTION(mon_min_osdmap_epochs, OPT_INT, 500)
 OPTION(mon_max_pgmap_epochs, OPT_INT, 500)
 OPTION(mon_max_log_epochs, OPT_INT, 500)
@@ -434,6 +435,7 @@ OPTION(osd_pool_default_erasure_code_profile,
        "k=2 "
        "m=1 "
        ) // default properties of osd pool create
+OPTION(osd_erasure_code_plugins, OPT_STR, "jerasure") // list of erasure code plugins
 OPTION(osd_pool_default_flags, OPT_INT, 0)   // default flags for new pools
 OPTION(osd_pool_default_flag_hashpspool, OPT_BOOL, true)   // use new pg hashing to prevent pool/pg overlap
 OPTION(osd_pool_default_hit_set_bloom_fpp, OPT_FLOAT, .05)
@@ -442,6 +444,7 @@ OPTION(osd_pool_default_cache_target_full_ratio, OPT_FLOAT, .8)
 OPTION(osd_pool_default_cache_min_flush_age, OPT_INT, 0)  // seconds
 OPTION(osd_pool_default_cache_min_evict_age, OPT_INT, 0)  // seconds
 OPTION(osd_hit_set_min_size, OPT_INT, 1000)  // min target size for a HitSet
+OPTION(osd_hit_set_max_size, OPT_INT, 100000)  // max target size for a HitSet
 OPTION(osd_hit_set_namespace, OPT_STR, ".ceph-internal") // rados namespace for hit_set tracking
 
 OPTION(osd_tier_default_cache_mode, OPT_STR, "writeback")
@@ -450,6 +453,7 @@ OPTION(osd_tier_default_cache_hit_set_period, OPT_INT, 1200)
 OPTION(osd_tier_default_cache_hit_set_type, OPT_STR, "bloom")
 
 OPTION(osd_map_dedup, OPT_BOOL, true)
+OPTION(osd_map_max_advance, OPT_INT, 200) // make this < cache_size!
 OPTION(osd_map_cache_size, OPT_INT, 500)
 OPTION(osd_map_message_max, OPT_INT, 100)  // max maps per MOSDMap message
 OPTION(osd_map_share_max_epochs, OPT_INT, 100)  // cap on # of inc maps we send to peers, clients
@@ -458,6 +462,8 @@ OPTION(osd_peering_wq_batch_size, OPT_U64, 20)
 OPTION(osd_op_pq_max_tokens_per_priority, OPT_U64, 4194304)
 OPTION(osd_op_pq_min_cost, OPT_U64, 65536)
 OPTION(osd_disk_threads, OPT_INT, 1)
+OPTION(osd_disk_thread_ioprio_class, OPT_STR, "") // rt realtime be besteffort best effort idle
+OPTION(osd_disk_thread_ioprio_priority, OPT_INT, -1) // 0-7
 OPTION(osd_recovery_threads, OPT_INT, 1)
 OPTION(osd_recover_clone_overlap, OPT_BOOL, true)   // preserve clone_overlap during recovery/migration
 
@@ -473,6 +479,7 @@ OPTION(osd_snap_trim_thread_timeout, OPT_INT, 60*60*1)
 OPTION(osd_snap_trim_sleep, OPT_FLOAT, 0)
 OPTION(osd_scrub_thread_timeout, OPT_INT, 60)
 OPTION(osd_scrub_finalize_thread_timeout, OPT_INT, 60*10)
+OPTION(osd_scrub_invalid_stats, OPT_BOOL, true)
 OPTION(osd_remove_thread_timeout, OPT_INT, 60*60)
 OPTION(osd_command_thread_timeout, OPT_INT, 10*60)
 OPTION(osd_age, OPT_FLOAT, .8)
@@ -509,6 +516,7 @@ OPTION(osd_scrub_min_interval, OPT_FLOAT, 60*60*24)    // if load is low
 OPTION(osd_scrub_max_interval, OPT_FLOAT, 7*60*60*24)  // regardless of load
 OPTION(osd_scrub_chunk_min, OPT_INT, 5)
 OPTION(osd_scrub_chunk_max, OPT_INT, 25)
+OPTION(osd_scrub_sleep, OPT_FLOAT, 0)   // sleep between [deep]scrub ops
 OPTION(osd_deep_scrub_interval, OPT_FLOAT, 60*60*24*7) // once a week
 OPTION(osd_deep_scrub_stride, OPT_INT, 524288)
 OPTION(osd_scan_list_ping_tp_interval, OPT_U64, 100)
@@ -690,6 +698,9 @@ OPTION(keyvaluestore_debug_check_backend, OPT_BOOL, 0) // Expensive debugging ch
 OPTION(keyvaluestore_op_threads, OPT_INT, 2)
 OPTION(keyvaluestore_op_thread_timeout, OPT_INT, 60)
 OPTION(keyvaluestore_op_thread_suicide_timeout, OPT_INT, 180)
+OPTION(keyvaluestore_default_strip_size, OPT_INT, 4096) // Only affect new object
+OPTION(keyvaluestore_max_expected_write_size, OPT_U64, 1ULL << 24) // bytes
+OPTION(keyvaluestore_header_cache_size, OPT_INT, 4096)    // Header cache size
 
 // max bytes to search ahead in journal searching for corruption
 OPTION(journal_max_corrupt_search, OPT_U64, 10<<20)
@@ -713,6 +724,7 @@ OPTION(rbd_cache_size, OPT_LONGLONG, 32<<20)         // cache size in bytes
 OPTION(rbd_cache_max_dirty, OPT_LONGLONG, 24<<20)    // dirty limit in bytes - set to 0 for write-through caching
 OPTION(rbd_cache_target_dirty, OPT_LONGLONG, 16<<20) // target dirty limit in bytes
 OPTION(rbd_cache_max_dirty_age, OPT_FLOAT, 1.0)      // seconds in cache before writeback starts
+OPTION(rbd_cache_max_dirty_object, OPT_INT, 0)       // dirty limit for objects - set to 0 for auto calculate from rbd_cache_size
 OPTION(rbd_cache_block_writes_upfront, OPT_BOOL, false) // whether to block writes to the cache before the aio_write call completes (true), or block before the aio completion is called (false)
 OPTION(rbd_concurrent_management_ops, OPT_INT, 10) // how many operations can be in flight for a management operation like deleting or resizing an image
 OPTION(rbd_balance_snap_reads, OPT_BOOL, false)

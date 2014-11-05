@@ -334,6 +334,42 @@ public:
 
   void dequeue_pg(PG *pg, list<OpRequestRef> *dequeued);
 
+  // -- map epoch lower bound --
+  Mutex pg_epoch_lock;
+  multiset<epoch_t> pg_epochs;
+  map<spg_t,epoch_t> pg_epoch;
+
+  void pg_add_epoch(spg_t pgid, epoch_t epoch) {
+    Mutex::Locker l(pg_epoch_lock);
+    map<spg_t,epoch_t>::iterator t = pg_epoch.find(pgid);
+    assert(t == pg_epoch.end());
+    pg_epoch[pgid] = epoch;
+    pg_epochs.insert(epoch);
+  }
+  void pg_update_epoch(spg_t pgid, epoch_t epoch) {
+    Mutex::Locker l(pg_epoch_lock);
+    map<spg_t,epoch_t>::iterator t = pg_epoch.find(pgid);
+    assert(t != pg_epoch.end());
+    pg_epochs.erase(pg_epochs.find(t->second));
+    t->second = epoch;
+    pg_epochs.insert(epoch);
+  }
+  void pg_remove_epoch(spg_t pgid) {
+    Mutex::Locker l(pg_epoch_lock);
+    map<spg_t,epoch_t>::iterator t = pg_epoch.find(pgid);
+    if (t != pg_epoch.end()) {
+      pg_epochs.erase(pg_epochs.find(t->second));
+      pg_epoch.erase(t);
+    }
+  }
+  epoch_t get_min_pg_epoch() {
+    Mutex::Locker l(pg_epoch_lock);
+    if (pg_epochs.empty())
+      return 0;
+    else
+      return *pg_epochs.begin();
+  }
+
   // -- superblock --
   Mutex publish_lock, pre_publish_lock; // pre-publish orders before publish
   OSDSuperblock superblock;
@@ -784,6 +820,7 @@ public:
   virtual const char** get_tracked_conf_keys() const;
   virtual void handle_conf_change(const struct md_config_t *conf,
 				  const std::set <std::string> &changed);
+  void check_config();
 
 protected:
   Mutex osd_lock;			// global lock
@@ -943,6 +980,8 @@ private:
   ThreadPool command_tp;
 
   bool paused_recovery;
+
+  void set_disk_tp_priority();
 
   // -- sessions --
 public:
@@ -1255,7 +1294,7 @@ private:
   void note_down_osd(int osd);
   void note_up_osd(int osd);
   
-  void advance_pg(
+  bool advance_pg(
     epoch_t advance_to, PG *pg,
     ThreadPool::TPHandle &handle,
     PG::RecoveryCtx *rctx,
@@ -1513,9 +1552,22 @@ protected:
   void repeer(PG *pg, map< int, map<spg_t,pg_query_t> >& query_map);
 
   bool require_mon_peer(Message *m);
-  bool require_osd_peer(OpRequestRef op);
+  bool require_osd_peer(OpRequestRef& op);
+  /***
+   * Verifies that we were alive in the given epoch, and that
+   * still are.
+   */
+  bool require_self_aliveness(OpRequestRef& op, epoch_t alive_since);
+  /**
+   * Verifies that the OSD who sent the given op has the same
+   * address as in the given map.
+   * @pre op was sent by an OSD using the cluster messenger
+   */
+  bool require_same_peer_instance(OpRequestRef& op, OSDMapRef& map);
+  bool require_up_osd_peer(OpRequestRef& Op, OSDMapRef& map,
+                           epoch_t their_epoch);
 
-  bool require_same_or_newer_map(OpRequestRef op, epoch_t e);
+  bool require_same_or_newer_map(OpRequestRef& op, epoch_t e);
 
   void handle_pg_query(OpRequestRef op);
   void handle_pg_notify(OpRequestRef op);

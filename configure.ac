@@ -8,7 +8,7 @@ AC_PREREQ(2.59)
 # VERSION define is not used by the code.  It gets a version string
 # from 'git describe'; see src/ceph_ver.[ch]
 
-AC_INIT([ceph], [0.80.5], [ceph-devel@vger.kernel.org])
+AC_INIT([ceph], [0.80.7], [ceph-devel@vger.kernel.org])
 
 # Create release string.  Used with VERSION for RPMs.
 RPM_RELEASE=0
@@ -472,8 +472,13 @@ AS_IF([test "x$with_libatomic_ops" != xno],
                    [no libatomic-ops found (use --without-libatomic-ops to disable)])
               ])])
 AS_IF([test "$HAVE_ATOMIC_OPS" = "1"],
-	[],
+	[
+         AC_CHECK_SIZEOF(AO_t, [], [
+                                #include <atomic_ops.h>
+                                ])
+         ],
 	[AC_DEFINE([NO_ATOMIC_OPS], [1], [Defined if you do not have atomic_ops])])
+
 
 AM_CONDITIONAL(WITH_LIBATOMIC, [test "$HAVE_ATOMIC_OPS" = "1"])
 

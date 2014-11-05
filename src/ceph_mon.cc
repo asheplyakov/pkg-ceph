@@ -43,6 +43,8 @@ using namespace std;
 
 #include "include/assert.h"
 
+#include "erasure-code/ErasureCodePlugin.h"
+
 #define dout_subsys ceph_subsys_mon
 
 Monitor *mon = NULL;
@@ -182,6 +184,21 @@ void usage()
   cerr << "  --mon-data <directory>\n";
   cerr << "        where the mon store and keyring are located\n";
   generic_server_usage();
+}
+
+int preload_erasure_code()
+{
+  string directory = g_conf->osd_pool_default_erasure_code_directory;
+  string plugins = g_conf->osd_erasure_code_plugins;
+  stringstream ss;
+  int r = ErasureCodePluginRegistry::instance().preload(plugins,
+							directory,
+							ss);
+  if (r)
+    derr << ss.str() << dendl;
+  else
+    dout(10) << ss.str() << dendl;
+  return r;
 }
 
 int main(int argc, const char **argv) 
@@ -406,8 +423,7 @@ int main(int argc, const char **argv)
   // screwing us over
   Preforker prefork;
   if (!(flags & CINIT_FLAG_NO_DAEMON_ACTIONS)) {
-    if (g_conf->daemonize) {
-      global_init_prefork(g_ceph_context, 0);
+    if (global_init_prefork(g_ceph_context, 0) >= 0) {
       prefork.prefork();
       if (prefork.is_parent()) {
 	return prefork.parent_wait();
@@ -416,6 +432,8 @@ int main(int argc, const char **argv)
     }
     common_init_finish(g_ceph_context);
     global_init_chdir(g_ceph_context);
+    if (preload_erasure_code() < -1)
+      prefork.exit(1);
   }
 
   MonitorDBStore *store = new MonitorDBStore(g_conf->mon_data);

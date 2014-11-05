@@ -42,6 +42,7 @@
 
 #include "common/ceph_argparse.h"
 #include "common/version.h"
+#include "common/io_priority.h"
 
 #include "os/ObjectStore.h"
 
@@ -191,6 +192,7 @@ OSDService::OSDService(OSD *osd) :
   push_wq("push_wq", cct->_conf->osd_recovery_thread_timeout, &osd->recovery_tp),
   gen_wq("gen_wq", cct->_conf->osd_recovery_thread_timeout, &osd->recovery_tp),
   class_handler(osd->class_handler),
+  pg_epoch_lock("OSDService::pg_epoch_lock"),
   publish_lock("OSDService::publish_lock"),
   pre_publish_lock("OSDService::pre_publish_lock"),
   sched_scrub_lock("OSDService::sched_scrub_lock"), scrubs_pending(0),
@@ -1277,6 +1279,8 @@ int OSD::init()
   disk_tp.start();
   command_tp.start();
 
+  set_disk_tp_priority();
+
   // start the heartbeat
   heartbeat_thread.create();
 
@@ -1304,6 +1308,8 @@ int OSD::init()
   osd_lock.Lock();
   if (is_stopping())
     return 0;
+
+  check_config();
 
   dout(10) << "ensuring pgs have consumed prior maps" << dendl;
   consume_map();
@@ -1663,8 +1669,10 @@ int OSD::shutdown()
   dout(10) << "recovery tp stopped" << dendl;
 
   op_tp.drain();
+  peering_wq.clear();
+  scrub_finalize_wq.clear();
   op_tp.stop();
-  dout(10) << "op tp stopped" << dendl;
+  dout(10) << "osd tp stopped" << dendl;
 
   command_tp.drain();
   command_tp.stop();
@@ -1708,7 +1716,6 @@ int OSD::shutdown()
     assert(pg_stat_queue.empty());
   }
 
-  peering_wq.clear();
   // Remove PGs
 #ifdef PG_DEBUG_REFS
   service.dump_live_pgids();
@@ -1854,6 +1861,8 @@ PG *OSD::_open_lock_pg(
 
   pg_map[pgid] = pg;
 
+  service.pg_add_epoch(pg->info.pgid, createmap->get_epoch());
+
   pg->lock(no_lockdep_check);
   pg->get("PGMap");  // because it's in pg_map
   return pg;
@@ -1885,6 +1894,7 @@ void OSD::add_newly_split_pg(PG *pg, PG::RecoveryCtx *rctx)
   epoch_t e(service.get_osdmap()->get_epoch());
   pg->get("PGMap");  // For pg_map
   pg_map[pg->info.pgid] = pg;
+  service.pg_add_epoch(pg->info.pgid, pg->get_osdmap()->get_epoch());
   dout(10) << "Adding newly split pg " << *pg << dendl;
   vector<int> up, acting;
   pg->get_osdmap()->pg_to_up_acting_osds(pg->info.pgid.pgid, up, acting);
@@ -4392,9 +4402,8 @@ void OSD::do_command(Connection *con, ceph_tid_t tid, vector<string>& cmd, buffe
       // However, to avoid the osd from getting hung on this and having
       // timers being triggered, we are going to limit the count assuming
       // a configurable throughput and duration.
-      int64_t total_throughput =
+      int64_t max_count =
         g_conf->osd_bench_large_size_max_throughput * duration;
-      int64_t max_count = (int64_t) (total_throughput / bsize);
       if (count > max_count) {
         ss << "'count' values greater than " << max_count
            << " for a block size of " << prettybyte_t(bsize) << ", assuming "
@@ -5713,11 +5722,12 @@ void OSD::check_osdmap_features(ObjectStore *fs)
     }
   }
   {
-    Messenger::Policy p = cluster_messenger->get_policy(entity_name_t::TYPE_MON);
+    Messenger::Policy p = client_messenger->get_policy(entity_name_t::TYPE_MON);
     uint64_t mask;
     uint64_t features = osdmap->get_features(entity_name_t::TYPE_MON, &mask);
     if ((p.features_required & mask) != features) {
       dout(0) << "crush map has features " << features
+	      << " was " << p.features_required
 	      << ", adjusting msgr requires for mons" << dendl;
       p.features_required = (p.features_required & ~mask) | features;
       client_messenger->set_policy(entity_name_t::TYPE_MON, p);
@@ -5748,7 +5758,7 @@ void OSD::check_osdmap_features(ObjectStore *fs)
   }
 }
 
-void OSD::advance_pg(
+bool OSD::advance_pg(
   epoch_t osd_epoch, PG *pg,
   ThreadPool::TPHandle &handle,
   PG::RecoveryCtx *rctx,
@@ -5759,11 +5769,19 @@ void OSD::advance_pg(
   OSDMapRef lastmap = pg->get_osdmap();
 
   if (lastmap->get_epoch() == osd_epoch)
-    return;
+    return true;
   assert(lastmap->get_epoch() < osd_epoch);
 
+  epoch_t min_epoch = service.get_min_pg_epoch();
+  epoch_t max;
+  if (min_epoch) {
+    max = min_epoch + g_conf->osd_map_max_advance;
+  } else {
+    max = next_epoch + g_conf->osd_map_max_advance;
+  }
+
   for (;
-       next_epoch <= osd_epoch;
+       next_epoch <= osd_epoch && next_epoch <= max;
        ++next_epoch) {
     OSDMapRef nextmap = service.try_get_map(next_epoch);
     if (!nextmap)
@@ -5795,7 +5813,15 @@ void OSD::advance_pg(
     lastmap = nextmap;
     handle.reset_tp_timeout();
   }
+  service.pg_update_epoch(pg->info.pgid, lastmap->get_epoch());
   pg->handle_activate_map(rctx);
+  if (next_epoch <= osd_epoch) {
+    dout(10) << __func__ << " advanced by max " << g_conf->osd_map_max_advance
+	     << " past min epoch " << min_epoch
+	     << " ... will requeue " << *pg << dendl;
+    return false;
+  }
+  return true;
 }
 
 /** 
@@ -6127,7 +6153,7 @@ bool OSD::require_mon_peer(Message *m)
   return true;
 }
 
-bool OSD::require_osd_peer(OpRequestRef op)
+bool OSD::require_osd_peer(OpRequestRef& op)
 {
   if (!op->get_req()->get_connection()->peer_is_osd()) {
     dout(0) << "require_osd_peer received from non-osd " << op->get_req()->get_connection()->get_peer_addr()
@@ -6137,11 +6163,64 @@ bool OSD::require_osd_peer(OpRequestRef op)
   return true;
 }
 
+bool OSD::require_self_aliveness(OpRequestRef& op, epoch_t epoch)
+{
+  if (epoch < up_epoch) {
+    dout(7) << "from pre-up epoch " << epoch << " < " << up_epoch << dendl;
+    return false;
+  }
+
+  if (!is_active()) {
+    dout(7) << "still in boot state, dropping message " << *op->get_req() << dendl;
+    return false;
+  }
+
+  return true;
+}
+
+bool OSD::require_same_peer_instance(OpRequestRef& op, OSDMapRef& map)
+{
+  Message *m = op->get_req();
+  int from = m->get_source().num();
+
+  if (!map->have_inst(from) ||
+      (map->get_cluster_addr(from) != m->get_source_inst().addr)) {
+    dout(5) << "from dead osd." << from << ", marking down, "
+	    << " msg was " << m->get_source_inst().addr
+	    << " expected " << (map->have_inst(from) ?
+				map->get_cluster_addr(from) : entity_addr_t())
+	    << dendl;
+    ConnectionRef con = m->get_connection();
+    cluster_messenger->mark_down(con.get());
+    Session *s = static_cast<Session*>(con->get_priv());
+    if (s) {
+      con->set_priv(NULL);   // break ref <-> session cycle, if any
+      s->put();
+    }
+    return false;
+  }
+  return true;
+}
+
+bool OSD::require_up_osd_peer(OpRequestRef& op, OSDMapRef& map,
+                              epoch_t their_epoch)
+{
+  if (!require_self_aliveness(op, their_epoch)) {
+    return false;
+  } else if (!require_osd_peer(op)) {
+    return false;
+  } else if (map->get_epoch() >= their_epoch &&
+	     !require_same_peer_instance(op, map)) {
+    return false;
+  }
+  return true;
+}
+
 /*
  * require that we have same (or newer) map, and that
  * the source is the pg primary.
  */
-bool OSD::require_same_or_newer_map(OpRequestRef op, epoch_t epoch)
+bool OSD::require_same_or_newer_map(OpRequestRef& op, epoch_t epoch)
 {
   Message *m = op->get_req();
   dout(15) << "require_same_or_newer_map " << epoch << " (i am " << osdmap->get_epoch() << ") " << m << dendl;
@@ -6155,30 +6234,13 @@ bool OSD::require_same_or_newer_map(OpRequestRef op, epoch_t epoch)
     return false;
   }
 
-  if (epoch < up_epoch) {
-    dout(7) << "from pre-up epoch " << epoch << " < " << up_epoch << dendl;
+  if (!require_self_aliveness(op, epoch)) {
     return false;
   }
 
   // ok, our map is same or newer.. do they still exist?
-  if (m->get_connection()->get_messenger() == cluster_messenger) {
-    int from = m->get_source().num();
-    if (!osdmap->have_inst(from) ||
-	osdmap->get_cluster_addr(from) != m->get_source_inst().addr) {
-      dout(5) << "from dead osd." << from << ", marking down, "
-	      << " msg was " << m->get_source_inst().addr
-	      << " expected " << (osdmap->have_inst(from) ? osdmap->get_cluster_addr(from) : entity_addr_t())
-	      << dendl;
-      ConnectionRef con = m->get_connection();
-      con->set_priv(NULL);   // break ref <-> session cycle, if any
-      cluster_messenger->mark_down(con.get());
-      return false;
-    }
-  }
-
-  // ok, we have at least as new a map as they do.  are we (re)booting?
-  if (!is_active()) {
-    dout(7) << "still in boot state, dropping message " << *m << dendl;
+  if (m->get_connection()->get_messenger() == cluster_messenger &&
+      !require_same_peer_instance(op, osdmap)) {
     return false;
   }
 
@@ -7142,6 +7204,8 @@ void OSD::_remove_pg(PG *pg)
     );
   remove_wq.queue(make_pair(PGRef(pg), deleting));
 
+  service.pg_remove_epoch(pg->info.pgid);
+
   // remove from map
   pg_map.erase(pg->info.pgid);
   pg->put("PGMap"); // since we've taken it out of map
@@ -7555,7 +7619,7 @@ void OSD::handle_replica_op(OpRequestRef op)
     return;
   }
 
-  if (!require_osd_peer(op))
+  if (!require_up_osd_peer(op, osdmap, m->map_epoch))
     return;
 
   // must be a rep op.
@@ -7770,8 +7834,9 @@ void OSD::process_peering_events(
       pg->unlock();
       continue;
     }
-    advance_pg(curmap->get_epoch(), pg, handle, &rctx, &split_pgs);
-    if (!pg->peering_queue.empty()) {
+    if (!advance_pg(curmap->get_epoch(), pg, handle, &rctx, &split_pgs)) {
+      pg->queue_null(curmap->get_epoch(), curmap->get_epoch());
+    } else if (!pg->peering_queue.empty()) {
       PG::CephPeeringEvtRef evt = pg->peering_queue.front();
       pg->peering_queue.pop_front();
       pg->handle_peering_event(evt, &rctx);
@@ -7808,6 +7873,11 @@ const char** OSD::get_tracked_conf_keys() const
     "osd_max_backfills",
     "osd_op_complaint_time", "osd_op_log_threshold",
     "osd_op_history_size", "osd_op_history_duration",
+    "osd_map_cache_size",
+    "osd_map_max_advance",
+    "osd_pg_epoch_persisted_max_stale",
+    "osd_disk_thread_ioprio_class",
+    "osd_disk_thread_ioprio_priority",
     NULL
   };
   return KEYS;
@@ -7830,6 +7900,38 @@ void OSD::handle_conf_change(const struct md_config_t *conf,
     op_tracker.set_history_size_and_duration(cct->_conf->osd_op_history_size,
                                              cct->_conf->osd_op_history_duration);
   }
+  if (changed.count("osd_disk_thread_ioprio_class") ||
+      changed.count("osd_disk_thread_ioprio_priority")) {
+    set_disk_tp_priority();
+  }
+
+  check_config();
+}
+
+void OSD::check_config()
+{
+  // some sanity checks
+  if (g_conf->osd_map_cache_size <= g_conf->osd_map_max_advance + 2) {
+    clog.warn() << "osd_map_cache_size (" << g_conf->osd_map_cache_size << ")"
+		<< " is not > osd_map_max_advance ("
+		<< g_conf->osd_map_max_advance << ")";
+  }
+  if (g_conf->osd_map_cache_size <= (int)g_conf->osd_pg_epoch_persisted_max_stale + 2) {
+    clog.warn() << "osd_map_cache_size (" << g_conf->osd_map_cache_size << ")"
+		<< " is not > osd_pg_epoch_persisted_max_stale ("
+		<< g_conf->osd_pg_epoch_persisted_max_stale << ")";
+  }
+}
+
+void OSD::set_disk_tp_priority()
+{
+  dout(10) << __func__
+	   << " class " << cct->_conf->osd_disk_thread_ioprio_class
+	   << " priority " << cct->_conf->osd_disk_thread_ioprio_priority
+	   << dendl;
+  int cls =
+    ceph_ioprio_string_to_class(cct->_conf->osd_disk_thread_ioprio_class);
+  disk_tp.set_ioprio(cls, cct->_conf->osd_disk_thread_ioprio_priority);
 }
 
 // --------------------------------

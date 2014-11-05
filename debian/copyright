@@ -8,6 +8,7 @@ Copyright: 2004-2013 Sage Weil <sage@newdream.net>
            2004-2014 Inktank <info@inktank.com>
                      Inktank, Inc
                      Inktank Storage, Inc.
+           2012-2014 Red Hat <contact@redhat.com>
            2013-2014 Cloudwatt <libre.licensing@cloudwatt.com>
            2004-2011 Dreamhost
            2013      eNovance SAS <licensing@enovance.com>
@@ -16,12 +17,11 @@ Copyright: 2004-2013 Sage Weil <sage@newdream.net>
            2014      John Spray <john.spray@inktank.com
            2004-2012 New Dream Network
            2011      Stanislav Sedov <stas@FreeBSD.org>
-           2013      UnitedStack <haomai@unitedstack.com>
+           2013-2014 UnitedStack <haomai@unitedstack.com>
            2011      Wido den Hollander <wido@widodh.nl>
 License: LGPL-2.1
 
-Files: src/erasure-code/jerasure/vectorop.h
-       src/erasure-code/jerasure/ErasureCode*
+Files: src/erasure-code/jerasure/ErasureCode*
        src/erasure-code/ErasureCode*
        src/include/str_map.h
        src/test/common/test_str_map.cc
@@ -36,7 +36,7 @@ Files: src/mount/canonicalize.c
        src/test/common/test_config.cc
        src/test/crush/TestCrushWrapper.cc
        src/test/common/Throttle.cc
-       src/test/filestore/chain_xattr.cc
+       src/test/objectstore/chain_xattr.cc
        src/test/mon/mon-test-helpers.sh
        src/test/objectstore/chain_xattr.cc
        src/test/osd/osd-test-helpers.sh
@@ -53,7 +53,7 @@ Copyright: 2007 Oracle.  All rights reserved.
            2014 Inktank <info@inktank.com>
 License: GPL-2
 
-Files: src/include/ceph_hash.cc
+Files: src/common/ceph_hash.cc
 Copyright: 1995-1997 Robert J. Jenkins Jr.
 License: public-domain
   This file uses Robert Jenkin's hash function as detailed at:
@@ -177,7 +177,7 @@ License: BSD-3-clause
  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
  THE POSSIBILITY OF SUCH DAMAGE.
 
-Files: src/ceph/ceph-0.79/src/erasure-code/jerasure/gf-complete/*
+Files: src/erasure-code/jerasure/gf-complete/*/*
 Copyright: 2013 James S. Plank
                 Ethan L. Miller
                 Kevin M. Greenan
@@ -217,12 +217,7 @@ License: BSD-3-clause
 Comment:
  https://bitbucket.org/jimplank/gf-complete
 
-Files: src/erasure-code/jerasure/cauchy.*
-       src/erasure-code/jerasure/galois.*
-       src/erasure-code/jerasure/jerasure.*
-       src/erasure-code/jerasure/liberation.*
-       src/erasure-code/jerasure/reed_sol.*
-       src/erasure-code/jerasure/jerasure/*
+Files: src/erasure-code/jerasure/jerasure/*/*
 Copyright: 2011-2013 James S. Plank <plank@cs.utk.edu>
            2013      Kevin Greenan
 License: BSD-3-clause
