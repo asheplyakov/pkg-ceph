@@ -1,9 +1,7 @@
 ## Backported / Upstream
-bug-9341.patch
-bug-9752.patch
+0latest-giant.patch
 bug-9814.patch
-bug-9869.patch
-bug-9945.patch
+bug-10059.patch
 sleep-recover.patch
 
 ## Debian

@@ -6,7 +6,7 @@ Description: fix fuse-client hang after wake-up from suspend.
 
 --- a/src/client/Client.cc
 +++ b/src/client/Client.cc
-@@ -9359,8 +9359,9 @@
+@@ -9370,8 +9370,9 @@
  
  	case MetaSession::STATE_OPEN:
  	  ldout(cct, 1) << "reset from mds we were open; mark session as stale" << dendl;
