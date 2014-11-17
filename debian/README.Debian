@@ -43,9 +43,16 @@
 
  * (Restart MDSes).
 
- * Set 'hashpspool' flag on your pools (new default):
+ * Consider setting the 'hashpspool' flag on your pools (new default):
 
     ceph osd pool set {pool} hashpspool true
+
+    This changes the pool to use a new hashing algorithm for the distribution of
+    Placement Groups (PGs) to OSDs. This new algorithm ensures a better distribution
+    to all OSDs. Be aware that this change will temporarly put some of your PGs into
+    "misplaced" state and cause additional I/O until all PGs are moved to their new
+    location. See http://tracker.ceph.com/issues/4128 for the details about the new
+    algorithm.
 
  Read more about tunables in
 
