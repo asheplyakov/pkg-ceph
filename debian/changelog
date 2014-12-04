@@ -1,5 +1,6 @@
-ceph (0.87-1) experimental; urgency=medium
+ceph (0.87-0ubuntu1) vivid; urgency=medium
 
+  [ Dmitry Smirnov ]
   * New major upstream release [October 2014].
     + new "libradosstriper*" binary packages.
   * Patchworks (removed old patches, refreshed remaining ones).
@@ -16,7 +17,7 @@ ceph (0.87-1) experimental; urgency=medium
   * Build with "--with-babeltrace".
   * Build and statically link bundled RocksDB.
 
- -- Dmitry Smirnov <onlyjob@debian.org>  Thu, 30 Oct 2014 12:43:49 +1100
+ -- James Page <james.page@ubuntu.com>  Thu, 04 Dec 2014 15:42:28 +0000
 
 ceph (0.80.7-1) unstable; urgency=medium
 
