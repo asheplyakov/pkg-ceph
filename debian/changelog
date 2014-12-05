@@ -1,4 +1,4 @@
-ceph (0.87-0ubuntu1) UNRELEASED; urgency=medium
+ceph (0.87-0ubuntu1) vivid; urgency=medium
 
   [ Dmitry Smirnov ]
   * New major upstream release [October 2014].
@@ -23,7 +23,7 @@ ceph (0.87-0ubuntu1) UNRELEASED; urgency=medium
   * d/p/modules.patch,d/ceph.install: Mark new erasure coding libraries
     as modules, install via wildcard.
 
- -- James Page <james.page@ubuntu.com>  Thu, 04 Dec 2014 15:42:28 +0000
+ -- James Page <james.page@ubuntu.com>  Fri, 05 Dec 2014 13:40:46 +0000
 
 ceph (0.80.7-1) unstable; urgency=medium
 
