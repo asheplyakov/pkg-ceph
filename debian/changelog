@@ -1,4 +1,4 @@
-ceph (0.87-0ubuntu1) vivid; urgency=medium
+ceph (0.87-0ubuntu1) UNRELEASED; urgency=medium
 
   [ Dmitry Smirnov ]
   * New major upstream release [October 2014].
@@ -16,6 +16,12 @@ ceph (0.87-0ubuntu1) vivid; urgency=medium
     + zlib1g-dev
   * Build with "--with-babeltrace".
   * Build and statically link bundled RocksDB.
+
+  [ James Page ]
+  * d/control,rules: Disable test suite execution and drop BD's on
+    virtualenv and valgrind for Ubuntu.
+  * d/p/modules.patch,d/ceph.install: Mark new erasure coding libraries
+    as modules, install via wildcard.
 
  -- James Page <james.page@ubuntu.com>  Thu, 04 Dec 2014 15:42:28 +0000
 
