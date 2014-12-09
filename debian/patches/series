@@ -20,4 +20,5 @@ rbdmap3-lazyumount.patch
 arch.patch
 modules.patch
 sample.ceph.conf.patch
+use_system_jerasure.patch
 virtualenv-never-download.patch
