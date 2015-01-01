@@ -22,9 +22,6 @@ extraopts += --with-babeltrace
 ## do not build with lttng just yet, see #765842.
 extraopts += --without-lttng
 
-## build bundled RocksDB
-extraopts += --with-librocksdb-static=check
-
 ifeq ($(DEB_HOST_ARCH), armel)
   # armel supports ARMv4t or above instructions sets.
   # libatomic-ops is only usable with Ceph for ARMv6 or above.
