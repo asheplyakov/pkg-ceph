@@ -261,10 +261,10 @@ namespace librbd {
 
   int ImageCtx::snap_set(string in_snap_name)
   {
-    snap_t in_snap_id = get_snap_id(in_snap_name);
-    if (in_snap_id != CEPH_NOSNAP) {
-      snap_id = in_snap_id;
+    map<string, SnapInfo>::iterator it = snaps_by_name.find(in_snap_name);
+    if (it != snaps_by_name.end()) {
       snap_name = in_snap_name;
+      snap_id = it->second.id;
       snap_exists = true;
       data_ctx.snap_set_read(snap_id);
       return 0;
@@ -282,40 +282,34 @@ namespace librbd {
 
   snap_t ImageCtx::get_snap_id(string in_snap_name) const
   {
-    map<string, snap_t>::const_iterator it =
-      snap_ids.find(in_snap_name);
-    if (it != snap_ids.end())
-      return it->second;
+    map<string, SnapInfo>::const_iterator it = snaps_by_name.find(in_snap_name);
+    if (it != snaps_by_name.end())
+      return it->second.id;
     return CEPH_NOSNAP;
   }
 
-  const SnapInfo* ImageCtx::get_snap_info(snap_t in_snap_id) const
+  int ImageCtx::get_snap_name(snapid_t in_snap_id, string *out_snap_name) const
   {
-    map<snap_t, SnapInfo>::const_iterator it =
-      snap_info.find(in_snap_id);
-    if (it != snap_info.end())
-      return &it->second;
-    return NULL;
-  }
+    map<string, SnapInfo>::const_iterator it;
 
-  int ImageCtx::get_snap_name(snap_t in_snap_id,
-			      string *out_snap_name) const
-  {
-    const SnapInfo *info = get_snap_info(in_snap_id);
-    if (info) {
-      *out_snap_name = info->name;
-      return 0;
+    for (it = snaps_by_name.begin(); it != snaps_by_name.end(); ++it) {
+      if (it->second.id == in_snap_id) {
+	*out_snap_name = it->first;
+	return 0;
+      }
     }
     return -ENOENT;
   }
 
-  int ImageCtx::get_parent_spec(snap_t in_snap_id,
-				parent_spec *out_pspec) const
+  int ImageCtx::get_parent_spec(snapid_t in_snap_id, parent_spec *out_pspec)
   {
-    const SnapInfo *info = get_snap_info(in_snap_id);
-    if (info) {
-      *out_pspec = info->parent.spec;
-      return 0;
+    map<string, SnapInfo>::iterator it;
+
+    for (it = snaps_by_name.begin(); it != snaps_by_name.end(); ++it) {
+      if (it->second.id == in_snap_id) {
+	*out_pspec = it->second.parent.spec;
+	return 0;
+      }
     }
     return -ENOENT;
   }
@@ -358,25 +352,24 @@ namespace librbd {
     return num_periods * stripe_count;
   }
 
-  int ImageCtx::is_snap_protected(snap_t in_snap_id,
-				  bool *is_protected) const
+  int ImageCtx::is_snap_protected(string in_snap_name, bool *is_protected) const
   {
-    const SnapInfo *info = get_snap_info(in_snap_id);
-    if (info) {
+    map<string, SnapInfo>::const_iterator it = snaps_by_name.find(in_snap_name);
+    if (it != snaps_by_name.end()) {
       *is_protected =
-	(info->protection_status == RBD_PROTECTION_STATUS_PROTECTED);
+	(it->second.protection_status == RBD_PROTECTION_STATUS_PROTECTED);
       return 0;
     }
     return -ENOENT;
   }
 
-  int ImageCtx::is_snap_unprotected(snap_t in_snap_id,
+  int ImageCtx::is_snap_unprotected(string in_snap_name,
 				    bool *is_unprotected) const
   {
-    const SnapInfo *info = get_snap_info(in_snap_id);
-    if (info) {
+    map<string, SnapInfo>::const_iterator it = snaps_by_name.find(in_snap_name);
+    if (it != snaps_by_name.end()) {
       *is_unprotected =
-	(info->protection_status == RBD_PROTECTION_STATUS_UNPROTECTED);
+	(it->second.protection_status == RBD_PROTECTION_STATUS_UNPROTECTED);
       return 0;
     }
     return -ENOENT;
@@ -388,9 +381,8 @@ namespace librbd {
 			  uint8_t protection_status)
   {
     snaps.push_back(id);
-    SnapInfo info(in_snap_name, in_size, features, parent, protection_status);
-    snap_info.insert(pair<snap_t, SnapInfo>(id, info));
-    snap_ids.insert(pair<string, snap_t>(in_snap_name, id));
+    SnapInfo info(id, in_size, features, parent, protection_status);
+    snaps_by_name.insert(pair<string, SnapInfo>(in_snap_name, info));
   }
 
   uint64_t ImageCtx::get_image_size(snap_t in_snap_id) const
@@ -398,12 +390,14 @@ namespace librbd {
     if (in_snap_id == CEPH_NOSNAP) {
       return size;
     }
-
-    const SnapInfo *info = get_snap_info(in_snap_id);
-    if (info) {
-      return info->size;
-    }
-    return 0;
+    string in_snap_name;
+    int r = get_snap_name(in_snap_id, &in_snap_name);
+    if (r < 0)
+      return 0;
+    map<string, SnapInfo>::const_iterator p = snaps_by_name.find(in_snap_name);
+    if (p == snaps_by_name.end())
+      return 0;
+    return p->second.size;
   }
 
   int ImageCtx::get_features(snap_t in_snap_id, uint64_t *out_features) const
@@ -412,56 +406,77 @@ namespace librbd {
       *out_features = features;
       return 0;
     }
-    const SnapInfo *info = get_snap_info(in_snap_id);
-    if (info) {
-      *out_features = info->features;
-      return 0;
-    }
-    return -ENOENT;
-  }
-
-  const parent_info* ImageCtx::get_parent_info(snap_t in_snap_id) const
-  {
-    if (in_snap_id == CEPH_NOSNAP)
-      return &parent_md;
-    const SnapInfo *info = get_snap_info(in_snap_id);
-    if (info)
-      return &info->parent;
-    return NULL;
+    string in_snap_name;
+    int r = get_snap_name(in_snap_id, &in_snap_name);
+    if (r < 0)
+      return r;
+    map<string, SnapInfo>::const_iterator p = snaps_by_name.find(in_snap_name);
+    if (p == snaps_by_name.end())
+      return -ENOENT;
+    *out_features = p->second.features;
+    return 0;
   }
 
   int64_t ImageCtx::get_parent_pool_id(snap_t in_snap_id) const
   {
-    const parent_info *info = get_parent_info(in_snap_id);
-    if (info)
-      return info->spec.pool_id;
-    return -1;
+    if (in_snap_id == CEPH_NOSNAP) {
+      return parent_md.spec.pool_id;
+    }
+    string in_snap_name;
+    int r = get_snap_name(in_snap_id, &in_snap_name);
+    if (r < 0)
+      return -1;
+    map<string, SnapInfo>::const_iterator p = snaps_by_name.find(in_snap_name);
+    if (p == snaps_by_name.end())
+      return -1;
+    return p->second.parent.spec.pool_id;
   }
 
   string ImageCtx::get_parent_image_id(snap_t in_snap_id) const
   {
-    const parent_info *info = get_parent_info(in_snap_id);
-    if (info)
-      return info->spec.image_id;
-    return "";
+    if (in_snap_id == CEPH_NOSNAP) {
+      return parent_md.spec.image_id;
+    }
+    string in_snap_name;
+    int r = get_snap_name(in_snap_id, &in_snap_name);
+    if (r < 0)
+      return "";
+    map<string, SnapInfo>::const_iterator p = snaps_by_name.find(in_snap_name);
+    if (p == snaps_by_name.end())
+      return "";
+    return p->second.parent.spec.image_id;
   }
 
   uint64_t ImageCtx::get_parent_snap_id(snap_t in_snap_id) const
   {
-    const parent_info *info = get_parent_info(in_snap_id);
-    if (info)
-      return info->spec.snap_id;
-    return CEPH_NOSNAP;
+    if (in_snap_id == CEPH_NOSNAP) {
+      return parent_md.spec.snap_id;
+    }
+    string in_snap_name;
+    int r = get_snap_name(in_snap_id, &in_snap_name);
+    if (r < 0)
+      return CEPH_NOSNAP;
+    map<string, SnapInfo>::const_iterator p = snaps_by_name.find(in_snap_name);
+    if (p == snaps_by_name.end())
+      return CEPH_NOSNAP;
+    return p->second.parent.spec.snap_id;
   }
 
   int ImageCtx::get_parent_overlap(snap_t in_snap_id, uint64_t *overlap) const
   {
-    const parent_info *info = get_parent_info(in_snap_id);
-    if (info) {
-      *overlap = info->overlap;
+    if (in_snap_id == CEPH_NOSNAP) {
+      *overlap = parent_md.overlap;
       return 0;
     }
-    return -ENOENT;
+    string in_snap_name;
+    int r = get_snap_name(in_snap_id, &in_snap_name);
+    if (r < 0)
+      return r;
+    map<string, SnapInfo>::const_iterator p = snaps_by_name.find(in_snap_name);
+    if (p == snaps_by_name.end())
+      return -ENOENT;
+    *overlap = p->second.parent.overlap;
+    return 0;
   }
 
   void ImageCtx::aio_read_from_cache(object_t o, bufferlist *bl, size_t len,
@@ -569,15 +584,10 @@ namespace librbd {
     object_cacher->release_set(object_set);
     cache_lock.Unlock();
     int r = flush_cache();
-    if (r == -EBLACKLISTED) {
-      Mutex::Locker l(cache_lock);
-      lderr(cct) << "Blacklisted during flush!  Purging cache..." << dendl;
-      object_cacher->purge_set(object_set);
-    } else if (r) {
+    if (r)
       lderr(cct) << "flush_cache returned " << r << dendl;
-    }
     cache_lock.Lock();
-    loff_t unclean = object_cacher->release_set(object_set);
+    bool unclean = object_cacher->release_set(object_set);
     cache_lock.Unlock();
     if (unclean) {
       lderr(cct) << "could not release all objects from cache: "

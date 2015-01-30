@@ -67,7 +67,7 @@ public:
     if (header.version >= 3)
       ::decode(pgid.shard, p);
     else
-      pgid.shard = shard_id_t::NO_SHARD;
+      pgid.shard = ghobject_t::no_shard();
   }
 
   virtual void encode_payload(uint64_t features) {

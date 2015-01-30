@@ -210,9 +210,7 @@ public:
     const ContDesc &cont, map<uint64_t, uint64_t> &out);
   uint64_t get_length(const ContDesc &in) {
     RandWrap rand(in.seqnum);
-    if (max_length == 0)
-      return 0;
-    return (rand() % (max_length/2)) + ((max_length - 1)/2) + 1;
+    return (rand() % max_length);
   }
 };
 
@@ -222,7 +220,7 @@ public:
   AttrGenerator(uint64_t max_len) : max_len(max_len) {}
   void get_ranges_map(
     const ContDesc &cont, map<uint64_t, uint64_t> &out) {
-    out.insert(pair<uint64_t, uint64_t>(0, get_length(cont)));
+    out.insert(make_pair(0, get_length(cont)));
   }
   uint64_t get_length(const ContDesc &in) {
     RandWrap rand(in.seqnum);
@@ -284,7 +282,7 @@ public:
   ObjectDesc(const ContDesc &init, ContentsGenerator *cont_gen)
     : exists(false), dirty(false),
       version(0) {
-    layers.push_front(pair<ceph::shared_ptr<ContentsGenerator>, ContDesc>(ceph::shared_ptr<ContentsGenerator>(cont_gen), init));
+    layers.push_front(make_pair(cont_gen, init));
   }
 
   class iterator {

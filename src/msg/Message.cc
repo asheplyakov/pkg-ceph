@@ -687,8 +687,6 @@ Message *decode_message(CephContext *cct, ceph_msg_header& header, ceph_msg_foot
     return 0;
   }
 
-  m->set_cct(cct);
-
   // m->header.version, if non-zero, should be populated with the
   // newest version of the encoding the code supports.  If set, check
   // it against compat_version.
@@ -705,7 +703,7 @@ Message *decode_message(CephContext *cct, ceph_msg_header& header, ceph_msg_foot
     m->put();
     return 0;
   }
-
+  
   m->set_header(header);
   m->set_footer(footer);
   m->set_payload(front);
@@ -720,7 +718,7 @@ Message *decode_message(CephContext *cct, ceph_msg_header& header, ceph_msg_foot
       lderr(cct) << "failed to decode message of type " << type
 		 << " v" << header.version
 		 << ": " << e.what() << dendl;
-      ldout(cct, cct->_conf->ms_dump_corrupt_message_level) << "dump: \n";
+      ldout(cct, 30) << "dump: \n";
       m->get_payload().hexdump(*_dout);
       *_dout << dendl;
       if (cct->_conf->ms_die_on_bad_msg)

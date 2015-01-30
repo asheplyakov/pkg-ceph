@@ -36,8 +36,6 @@ class MMDSGetMap;
 class MMonCommand;
 class MMDSLoadTargets;
 
-#define MDS_HEALTH_PREFIX "mds_health"
-
 class MDSMonitor : public PaxosService {
  public:
   // mds maps
@@ -65,7 +63,7 @@ class MDSMonitor : public PaxosService {
     }
   };
 
-  void create_new_fs(MDSMap &m, const std::string &name, int metadata_pool, int data_pool);
+  void create_new_fs(MDSMap &m, int metadata_pool, int data_pool);
 
   version_t get_trim_to();
 
@@ -73,9 +71,9 @@ class MDSMonitor : public PaxosService {
   void create_initial();
   void update_from_paxos(bool *need_bootstrap);
   void create_pending(); 
-  void encode_pending(MonitorDBStore::TransactionRef t);
+  void encode_pending(MonitorDBStore::Transaction *t);
   // we don't require full versions; don't encode any.
-  virtual void encode_full(MonitorDBStore::TransactionRef t) { }
+  virtual void encode_full(MonitorDBStore::Transaction *t) { }
 
   void update_logger();
 
@@ -101,17 +99,6 @@ class MDSMonitor : public PaxosService {
 
   bool preprocess_command(MMonCommand *m);
   bool prepare_command(MMonCommand *m);
-  bool management_command(
-      std::string const &prefix,
-      map<string, cmd_vartype> &cmdmap,
-      std::stringstream &ss,
-      int &r);
-  bool filesystem_command(
-      MMonCommand *m,
-      std::string const &prefix,
-      map<string, cmd_vartype> &cmdmap,
-      std::stringstream &ss,
-      int &r);
 
   // beacons
   struct beacon_info_t {
@@ -135,12 +122,6 @@ public:
   void check_subs();
   void check_sub(Subscription *sub);
 
-private:
-  // MDS daemon GID to latest health state from that GID
-  std::map<uint64_t, MDSHealth> pending_daemon_health;
-  std::set<uint64_t> pending_daemon_health_rm;
-
-  int _check_pool(const int64_t pool_id, std::stringstream *ss) const;
 };
 
 #endif

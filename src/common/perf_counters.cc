@@ -101,18 +101,15 @@ void PerfCounters::inc(int idx, uint64_t amt)
   if (!m_cct->_conf->perf)
     return;
 
+  Mutex::Locker lck(m_lock);
   assert(idx > m_lower_bound);
   assert(idx < m_upper_bound);
   perf_counter_data_any_d& data(m_data[idx - m_lower_bound - 1]);
   if (!(data.type & PERFCOUNTER_U64))
     return;
-  if (data.type & PERFCOUNTER_LONGRUNAVG) {
-    data.avgcount.inc();
-    data.u64.add(amt);
-    data.avgcount2.inc();
-  } else {
-    data.u64.add(amt);
-  }
+  data.u64 += amt;
+  if (data.type & PERFCOUNTER_LONGRUNAVG)
+    data.avgcount++;
 }
 
 void PerfCounters::dec(int idx, uint64_t amt)
@@ -120,13 +117,15 @@ void PerfCounters::dec(int idx, uint64_t amt)
   if (!m_cct->_conf->perf)
     return;
 
+  Mutex::Locker lck(m_lock);
   assert(idx > m_lower_bound);
   assert(idx < m_upper_bound);
   perf_counter_data_any_d& data(m_data[idx - m_lower_bound - 1]);
   assert(!(data.type & PERFCOUNTER_LONGRUNAVG));
   if (!(data.type & PERFCOUNTER_U64))
     return;
-  data.u64.sub(amt);
+  assert(data.u64 >= amt);
+  data.u64 -= amt;
 }
 
 void PerfCounters::set(int idx, uint64_t amt)
@@ -134,19 +133,15 @@ void PerfCounters::set(int idx, uint64_t amt)
   if (!m_cct->_conf->perf)
     return;
 
+  Mutex::Locker lck(m_lock);
   assert(idx > m_lower_bound);
   assert(idx < m_upper_bound);
   perf_counter_data_any_d& data(m_data[idx - m_lower_bound - 1]);
   if (!(data.type & PERFCOUNTER_U64))
     return;
-  data.u64.set(amt);
-  if (data.type & PERFCOUNTER_LONGRUNAVG) {
-    data.avgcount.inc();
-    data.u64.set(amt);
-    data.avgcount2.inc();
-  } else {
-    data.u64.set(amt);
-  }
+  data.u64 = amt;
+  if (data.type & PERFCOUNTER_LONGRUNAVG)
+    data.avgcount++;
 }
 
 uint64_t PerfCounters::get(int idx) const
@@ -154,12 +149,13 @@ uint64_t PerfCounters::get(int idx) const
   if (!m_cct->_conf->perf)
     return 0;
 
+  Mutex::Locker lck(m_lock);
   assert(idx > m_lower_bound);
   assert(idx < m_upper_bound);
   const perf_counter_data_any_d& data(m_data[idx - m_lower_bound - 1]);
   if (!(data.type & PERFCOUNTER_U64))
     return 0;
-  return data.u64.read();
+  return data.u64;
 }
 
 void PerfCounters::tinc(int idx, utime_t amt)
@@ -167,18 +163,15 @@ void PerfCounters::tinc(int idx, utime_t amt)
   if (!m_cct->_conf->perf)
     return;
 
+  Mutex::Locker lck(m_lock);
   assert(idx > m_lower_bound);
   assert(idx < m_upper_bound);
   perf_counter_data_any_d& data(m_data[idx - m_lower_bound - 1]);
   if (!(data.type & PERFCOUNTER_TIME))
     return;
-  if (data.type & PERFCOUNTER_LONGRUNAVG) {
-    data.avgcount.inc();
-    data.u64.add(amt.to_nsec());
-    data.avgcount2.inc();
-  } else {
-    data.u64.add(amt.to_nsec());
-  }
+  data.u64 += amt.to_nsec();
+  if (data.type & PERFCOUNTER_LONGRUNAVG)
+    data.avgcount++;
 }
 
 void PerfCounters::tset(int idx, utime_t amt)
@@ -186,12 +179,13 @@ void PerfCounters::tset(int idx, utime_t amt)
   if (!m_cct->_conf->perf)
     return;
 
+  Mutex::Locker lck(m_lock);
   assert(idx > m_lower_bound);
   assert(idx < m_upper_bound);
   perf_counter_data_any_d& data(m_data[idx - m_lower_bound - 1]);
   if (!(data.type & PERFCOUNTER_TIME))
     return;
-  data.u64.set(amt.to_nsec());
+  data.u64 = amt.to_nsec();
   if (data.type & PERFCOUNTER_LONGRUNAVG)
     assert(0);
 }
@@ -201,13 +195,13 @@ utime_t PerfCounters::tget(int idx) const
   if (!m_cct->_conf->perf)
     return utime_t();
 
+  Mutex::Locker lck(m_lock);
   assert(idx > m_lower_bound);
   assert(idx < m_upper_bound);
   const perf_counter_data_any_d& data(m_data[idx - m_lower_bound - 1]);
   if (!(data.type & PERFCOUNTER_TIME))
     return utime_t();
-  uint64_t v = data.u64.read();
-  return utime_t(v / 1000000000ull, v % 1000000000ull);
+  return utime_t(data.u64 / 1000000000ull, data.u64 % 1000000000ull);
 }
 
 pair<uint64_t, uint64_t> PerfCounters::get_tavg_ms(int idx) const
@@ -215,6 +209,7 @@ pair<uint64_t, uint64_t> PerfCounters::get_tavg_ms(int idx) const
   if (!m_cct->_conf->perf)
     return make_pair(0, 0);
 
+  Mutex::Locker lck(m_lock);
   assert(idx > m_lower_bound);
   assert(idx < m_upper_bound);
   const perf_counter_data_any_d& data(m_data[idx - m_lower_bound - 1]);
@@ -222,12 +217,13 @@ pair<uint64_t, uint64_t> PerfCounters::get_tavg_ms(int idx) const
     return make_pair(0, 0);
   if (!(data.type & PERFCOUNTER_LONGRUNAVG))
     return make_pair(0, 0);
-  pair<uint64_t,uint64_t> a = data.read_avg();
-  return make_pair(a.second, a.first / 1000000ull);
+  return make_pair(data.avgcount, data.u64/1000000);
 }
 
 void PerfCounters::dump_formatted(Formatter *f, bool schema)
 {
+  Mutex::Locker lck(m_lock);
+
   f->open_object_section(m_name.c_str());
   perf_counter_data_vec_t::const_iterator d = m_data.begin();
   perf_counter_data_vec_t::const_iterator d_end = m_data.end();
@@ -243,27 +239,25 @@ void PerfCounters::dump_formatted(Formatter *f, bool schema)
     } else {
       if (d->type & PERFCOUNTER_LONGRUNAVG) {
 	f->open_object_section(d->name);
-	pair<uint64_t,uint64_t> a = d->read_avg();
 	if (d->type & PERFCOUNTER_U64) {
-	  f->dump_unsigned("avgcount", a.second);
-	  f->dump_unsigned("sum", a.first);
+	  f->dump_unsigned("avgcount", d->avgcount);
+	  f->dump_unsigned("sum", d->u64);
 	} else if (d->type & PERFCOUNTER_TIME) {
-	  f->dump_unsigned("avgcount", a.second);
-	  f->dump_format_unquoted("sum", "%" PRId64 ".%09" PRId64,
-				  a.first / 1000000000ull,
-				  a.first % 1000000000ull);
+	  f->dump_unsigned("avgcount", d->avgcount);
+	  f->dump_format_unquoted("sum", "%"PRId64".%09"PRId64,
+				  d->u64 / 1000000000ull,
+				  d->u64 % 1000000000ull);
 	} else {
 	  assert(0);
 	}
 	f->close_section();
       } else {
-	uint64_t v = d->u64.read();
 	if (d->type & PERFCOUNTER_U64) {
-	  f->dump_unsigned(d->name, v);
+	  f->dump_unsigned(d->name, d->u64);
 	} else if (d->type & PERFCOUNTER_TIME) {
-	  f->dump_format_unquoted(d->name, "%" PRId64 ".%09" PRId64,
-				  v / 1000000000ull,
-				  v % 1000000000ull);
+	  f->dump_format_unquoted(d->name, "%"PRId64".%09"PRId64,
+				  d->u64 / 1000000000ull,
+				  d->u64 % 1000000000ull);
 	} else {
 	  assert(0);
 	}
@@ -291,6 +285,14 @@ PerfCounters::PerfCounters(CephContext *cct, const std::string &name,
     m_lock(m_lock_name.c_str())
 {
   m_data.resize(upper_bound - lower_bound - 1);
+}
+
+PerfCounters::perf_counter_data_any_d::perf_counter_data_any_d()
+  : name(NULL),
+    type(PERFCOUNTER_NONE),
+    u64(0),
+    avgcount(0)
+{
 }
 
 PerfCountersBuilder::PerfCountersBuilder(CephContext *cct, const std::string &name,

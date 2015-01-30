@@ -85,23 +85,20 @@ public:
   /// compact the underlying leveldb store
   void compact();
 
-  /// compact db for all keys with a given prefix
+  /// compact leveldb for all keys with a given prefix
   void compact_prefix(const string& prefix) {
     compact_range(prefix, past_prefix(prefix));
   }
   void compact_prefix_async(const string& prefix) {
     compact_range_async(prefix, past_prefix(prefix));
   }
-  void compact_range(const string& prefix,
-		     const string& start, const string& end) {
+
+  void compact_range(const string& prefix, const string& start, const string& end) {
     compact_range(combine_strings(prefix, start), combine_strings(prefix, end));
   }
-  void compact_range_async(const string& prefix,
-			   const string& start, const string& end) {
-    compact_range_async(combine_strings(prefix, start),
-			combine_strings(prefix, end));
+  void compact_range_async(const string& prefix, const string& start, const string& end) {
+    compact_range_async(combine_strings(prefix, start), combine_strings(prefix, end));
   }
-
 
   /**
    * options_t: Holds options which are minimally interpreted
@@ -157,7 +154,6 @@ public:
 
   ~LevelDBStore();
 
-  static int _test_init(const string& dir);
   int init();
 
   /// Opens underlying db
@@ -341,10 +337,7 @@ public:
       // happen when those files are being updated, data is being shuffled
       // and files get removed, in which case there's not much of a problem
       // as we'll get to them next time around.
-      if (err == -ENOENT) {
-	continue;
-      }
-      if (err < 0) {
+      if ((err < 0) && (err != -ENOENT)) {
         lderr(cct) << __func__ << " error obtaining stats for " << fpath
                    << ": " << cpp_strerror(err) << dendl;
         goto err;

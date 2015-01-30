@@ -111,9 +111,12 @@ void MDBalancer::tick()
 
 
 
-class C_Bal_SendHeartbeat : public MDSInternalContext {
+class C_Bal_SendHeartbeat : public Context {
 public:
-  C_Bal_SendHeartbeat(MDS *mds_) : MDSInternalContext(mds_) { }
+  MDS *mds;
+  C_Bal_SendHeartbeat(MDS *mds) {
+    this->mds = mds;
+  }
   virtual void finish(int f) {
     mds->balancer->send_heartbeat();
   }
@@ -548,7 +551,7 @@ void MDBalancer::prep_rebalance(int beat)
 	  if (maxim <= .001) continue;
 	  try_match(ex->second, maxex,
 		    im->first, maxim);
-	  if (maxex <= .001) break;
+	  if (maxex <= .001) break;;
 	}
       }
     }
@@ -640,12 +643,26 @@ void MDBalancer::try_rebalance()
 
   // do my exports!
   set<CDir*> already_exporting;
+  double total_sent = 0;
+  double total_goal = 0;
 
   for (map<int,double>::iterator it = my_targets.begin();
        it != my_targets.end();
        ++it) {
+
+      /*
+	double fac = 1.0;
+	if (false && total_goal > 0 && total_sent > 0) {
+	fac = total_goal / total_sent;
+	dout(0) << " total sent is " << total_sent << " / " << total_goal << " -> fac 1/ " << fac << dendl;
+	if (fac > 1.0) fac = 1.0;
+	}
+	fac = .9 - .4 * ((float)g_conf->num_mds / 128.0);  // hack magic fixme
+      */
+
     int target = (*it).first;
     double amount = (*it).second;
+    total_goal += amount;
 
     if (amount < MIN_OFFLOAD) continue;
     if (amount / target_load < .2) continue;
@@ -691,6 +708,7 @@ void MDBalancer::try_rebalance()
       }
     }
     if (amount-have < MIN_OFFLOAD) {
+      total_sent += have;
       continue;
     }
 
@@ -717,6 +735,7 @@ void MDBalancer::try_rebalance()
       }
     if (amount-have < MIN_OFFLOAD) {
       //fudge = amount-have;
+      total_sent += have;
       continue;
     }
 
@@ -735,6 +754,7 @@ void MDBalancer::try_rebalance()
 	break;
     }
     //fudge = amount - have;
+    total_sent += have;
 
     for (list<CDir*>::iterator it = exports.begin(); it != exports.end(); ++it) {
       dout(0) << "   - exporting "

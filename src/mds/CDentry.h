@@ -19,6 +19,7 @@
 
 #include <string>
 #include <set>
+using namespace std;
 
 #include "include/types.h"
 #include "include/buffer.h"
@@ -32,8 +33,11 @@
 
 class CInode;
 class CDir;
+struct MDRequest;
 
 class Message;
+class Anchor;
+
 class CDentry;
 class LogSegment;
 
@@ -86,12 +90,12 @@ public:
     case PIN_PURGING: return "purging";
     default: return generic_pin_name(p);
     }
-  }
+  };
 
   // -- wait --
   //static const int WAIT_LOCK_OFFSET = 8;
 
-  void add_waiter(uint64_t tag, MDSInternalContextBase *c);
+  void add_waiter(uint64_t tag, Context *c);
 
   static const unsigned EXPORT_NONCE = 1;
 
@@ -100,7 +104,7 @@ public:
   }
 
 public:
-  std::string name;
+  string name;
   __u32 hash;
   snapid_t first, last;
 
@@ -151,6 +155,8 @@ protected:
 #ifdef MDS_AUTHPIN_SET
   multiset<void*> auth_pin_set;
 #endif
+  int nested_anchors;
+
   friend class Migrator;
   friend class Locker;
   friend class MDCache;
@@ -168,27 +174,27 @@ public:
 
  public:
   // cons
-  CDentry(const std::string& n, __u32 h,
+  CDentry(const string& n, __u32 h,
 	  snapid_t f, snapid_t l) :
     name(n), hash(h),
     first(f), last(l),
     dir(0),
     version(0), projected_version(0),
     item_dirty(this),
-    auth_pins(0), nested_auth_pins(0),
+    auth_pins(0), nested_auth_pins(0), nested_anchors(0),
     lock(this, &lock_type),
     versionlock(this, &versionlock_type) {
     g_num_dn++;
     g_num_dna++;
   }
-  CDentry(const std::string& n, __u32 h, inodeno_t ino, unsigned char dt,
+  CDentry(const string& n, __u32 h, inodeno_t ino, unsigned char dt,
 	  snapid_t f, snapid_t l) :
     name(n), hash(h),
     first(f), last(l),
     dir(0),
     version(0), projected_version(0),
     item_dirty(this),
-    auth_pins(0), nested_auth_pins(0),
+    auth_pins(0), nested_auth_pins(0), nested_anchors(0),
     lock(this, &lock_type),
     versionlock(this, &versionlock_type) {
     g_num_dn++;
@@ -203,7 +209,7 @@ public:
 
 
   CDir *get_dir() const { return dir; }
-  const std::string& get_name() const { return name; }
+  const string& get_name() const { return name; }
 
   __u32 get_hash() const { return hash; }
 
@@ -225,7 +231,7 @@ public:
   void push_projected_linkage(CInode *inode); 
   linkage_t *pop_projected_linkage();
 
-  bool is_projected() { return !projected.empty(); }
+  bool is_projected() { return projected.size(); }
 
   linkage_t *get_projected_linkage() {
     if (!projected.empty())
@@ -265,6 +271,8 @@ public:
   int get_num_dir_auth_pins();
   int get_num_nested_auth_pins() { return nested_auth_pins; }
   
+  void adjust_nested_anchors(int by);
+
   // remote links
   void link_remote(linkage_t *dnl, CInode *in);
   void unlink_remote(linkage_t *dnl);
@@ -274,8 +282,9 @@ public:
   const CDentry& operator= (const CDentry& right);
 
   // misc
-  void make_path_string(std::string& s);
+  void make_path_string(string& s);
   void make_path(filepath& fp);
+  void make_anchor_trace(vector<class Anchor>& trace, CInode *in);
 
   // -- version --
   version_t get_version() { return version; }

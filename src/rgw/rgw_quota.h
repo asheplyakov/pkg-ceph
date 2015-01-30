@@ -55,7 +55,7 @@ struct RGWQuotaInfo {
 };
 WRITE_CLASS_ENCODER(RGWQuotaInfo)
 
-struct rgw_bucket;
+class rgw_bucket;
 
 class RGWQuotaHandler {
 public:

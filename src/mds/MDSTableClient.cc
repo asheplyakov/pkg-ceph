@@ -16,7 +16,7 @@
 
 #include "MDSMap.h"
 
-#include "MDSContext.h"
+#include "include/Context.h"
 #include "msg/Messenger.h"
 
 #include "MDS.h"
@@ -33,17 +33,6 @@
 #define dout_subsys ceph_subsys_mds
 #undef dout_prefix
 #define dout_prefix *_dout << "mds." << mds->get_nodeid() << ".tableclient(" << get_mdstable_name(table) << ") "
-
-
-class C_LoggedAck : public MDSInternalContext {
-  MDSTableClient *tc;
-  version_t tid;
-public:
-  C_LoggedAck(MDSTableClient *a, version_t t) : MDSInternalContext(a->mds), tc(a), tid(t) {}
-  void finish(int r) {
-    tc->_logged_ack(tid);
-  }
-};
 
 
 void MDSTableClient::handle_request(class MMDSTableRequest *m)
@@ -65,7 +54,7 @@ void MDSTableClient::handle_request(class MMDSTableRequest *m)
 
       assert(g_conf->mds_kill_mdstable_at != 3);
 
-      MDSInternalContextBase *onfinish = pending_prepare[reqid].onfinish;
+      Context *onfinish = pending_prepare[reqid].onfinish;
       *pending_prepare[reqid].ptid = tid;
       if (pending_prepare[reqid].pbl)
 	*pending_prepare[reqid].pbl = m->bl;
@@ -149,7 +138,7 @@ void MDSTableClient::_logged_ack(version_t tid)
 }
 
 void MDSTableClient::_prepare(bufferlist& mutation, version_t *ptid, bufferlist *pbl,
-			      MDSInternalContextBase *onfinish)
+			      Context *onfinish)
 {
   if (last_reqid == ~0ULL) {
     dout(10) << "tableserver is not ready yet, waiting for request id" << dendl;

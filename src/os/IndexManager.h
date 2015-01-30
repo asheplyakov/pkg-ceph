@@ -28,17 +28,7 @@
 
 
 /// Public type for Index
-struct Index {
-  CollectionIndex *index;
-
-  Index() : index(NULL) {}
-  Index(CollectionIndex* index) : index(index) {}
-
-  CollectionIndex *operator->() { return index; }
-  CollectionIndex &operator*() { return *index; }
-};
-
-
+typedef ceph::shared_ptr<CollectionIndex> Index;
 /**
  * Encapsulates mutual exclusion for CollectionIndexes.
  *
@@ -47,12 +37,39 @@ struct Index {
  * that path) may result in the path becoming invalid.  Thus, during
  * the lifetime of a CollectionIndex object and any paths returned
  * by it, no other concurrent accesses may be allowed.
- * This is enforced by using CollectionIndex::access_lock
+ *
+ * This is enforced using shared_ptr.  A shared_ptr<CollectionIndex>
+ * is returned from get_index.  Any paths generated using that object
+ * carry a reference to the parrent index.  Once all
+ * shared_ptr<CollectionIndex> references have expired, the destructor
+ * removes the weak_ptr from col_indices and wakes waiters.
  */
 class IndexManager {
   Mutex lock; ///< Lock for Index Manager
+  Cond cond;  ///< Cond for waiters on col_indices
   bool upgrade;
-  map<coll_t, CollectionIndex* > col_indices;
+
+  /// Currently in use CollectionIndices
+  map<coll_t,ceph::weak_ptr<CollectionIndex> > col_indices;
+
+  /// Cleans up state for c @see RemoveOnDelete
+  void put_index(
+    coll_t c ///< Put the index for c
+    );
+
+  /// Callback for shared_ptr release @see get_index
+  class RemoveOnDelete {
+  public:
+    coll_t c;
+    IndexManager *manager;
+    RemoveOnDelete(coll_t c, IndexManager *manager) : 
+      c(c), manager(manager) {}
+
+    void operator()(CollectionIndex *index) {
+      manager->put_index(c);
+      delete index;
+    }
+  };
 
   /**
    * Index factory
@@ -65,13 +82,11 @@ class IndexManager {
    * @param [out] index Index for c
    * @return error code
    */
-  int build_index(coll_t c, const char *path, CollectionIndex **index);
+  int build_index(coll_t c, const char *path, Index *index);
 public:
   /// Constructor
   IndexManager(bool upgrade) : lock("IndexManager lock"),
 			       upgrade(upgrade) {}
-
-  ~IndexManager();
 
   /**
    * Reserve and return index for c
@@ -81,7 +96,7 @@ public:
    * @param [out] index Index for c
    * @return error code
    */
-  int get_index(coll_t c, const string& baseDir, Index *index);
+  int get_index(coll_t c, const char *path, Index *index);
 
   /**
    * Initialize index for collection c at path

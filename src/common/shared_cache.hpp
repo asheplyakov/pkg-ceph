@@ -24,7 +24,6 @@
 
 template <class K, class V>
 class SharedLRU {
-  CephContext *cct;
   typedef ceph::shared_ptr<V> VPtr;
   typedef ceph::weak_ptr<V> WeakVPtr;
   Mutex lock;
@@ -35,7 +34,7 @@ class SharedLRU {
   map<K, typename list<pair<K, VPtr> >::iterator > contents;
   list<pair<K, VPtr> > lru;
 
-  map<K, pair<WeakVPtr, V*> > weak_refs;
+  map<K, WeakVPtr> weak_refs;
 
   void trim_cache(list<VPtr> *to_release) {
     while (size > max_size) {
@@ -44,7 +43,7 @@ class SharedLRU {
     }
   }
 
-  void lru_remove(const K& key) {
+  void lru_remove(K key) {
     typename map<K, typename list<pair<K, VPtr> >::iterator>::iterator i =
       contents.find(key);
     if (i == contents.end())
@@ -54,7 +53,7 @@ class SharedLRU {
     contents.erase(i);
   }
 
-  void lru_add(const K& key, const VPtr& val, list<VPtr> *to_release) {
+  void lru_add(K key, VPtr val, list<VPtr> *to_release) {
     typename map<K, typename list<pair<K, VPtr> >::iterator>::iterator i =
       contents.find(key);
     if (i != contents.end()) {
@@ -67,12 +66,9 @@ class SharedLRU {
     }
   }
 
-  void remove(const K& key, V *valptr) {
+  void remove(K key) {
     Mutex::Locker l(lock);
-    typename map<K, pair<WeakVPtr, V*> >::iterator i = weak_refs.find(key);
-    if (i != weak_refs.end() && i->second.second == valptr) {
-      weak_refs.erase(i);
-    }
+    weak_refs.erase(key);
     cond.Signal();
   }
 
@@ -82,67 +78,29 @@ class SharedLRU {
     K key;
     Cleanup(SharedLRU<K, V> *cache, K key) : cache(cache), key(key) {}
     void operator()(V *ptr) {
-      cache->remove(key, ptr);
+      cache->remove(key);
       delete ptr;
     }
   };
 
 public:
-  SharedLRU(CephContext *cct = NULL, size_t max_size = 20)
-    : cct(cct), lock("SharedLRU::lock"), max_size(max_size), size(0) {}
+  SharedLRU(size_t max_size = 20)
+    : lock("SharedLRU::lock"), max_size(max_size), size(0) {}
   
   ~SharedLRU() {
     contents.clear();
     lru.clear();
-    if (!weak_refs.empty()) {
-      lderr(cct) << "leaked refs:\n";
-      dump_weak_refs(*_dout);
-      *_dout << dendl;
-      assert(weak_refs.empty());
-    }
+    assert(weak_refs.empty());
   }
 
-  void set_cct(CephContext *c) {
-    cct = c;
-  }
-
-  void dump_weak_refs() {
-    lderr(cct) << "leaked refs:\n";
-    dump_weak_refs(*_dout);
-    *_dout << dendl;
-  }
-
-  void dump_weak_refs(ostream& out) {
-    for (typename map<K, pair<WeakVPtr, V*> >::iterator p = weak_refs.begin();
-	 p != weak_refs.end();
-	 ++p) {
-      out << __func__ << " " << this << " weak_refs: "
-	  << p->first << " = " << p->second.second
-	  << " with " << p->second.first.use_count() << " refs"
-	  << std::endl;
-    }
-  }
-
-  void clear(const K& key) {
+  void clear(K key) {
     VPtr val; // release any ref we have after we drop the lock
     {
       Mutex::Locker l(lock);
       if (weak_refs.count(key)) {
-	val = weak_refs[key].first.lock();
+	val = weak_refs[key].lock();
       }
       lru_remove(key);
-    }
-  }
-
-  void purge(const K &key) {
-    VPtr val; // release any ref we have after we drop the lock
-    {
-      Mutex::Locker l(lock);
-      if (weak_refs.count(key)) {
-	val = weak_refs[key].first.lock();
-      }
-      lru_remove(key);
-      weak_refs.erase(key);
     }
   }
 
@@ -161,7 +119,7 @@ public:
     return weak_refs.begin()->first;
   }
 
-  VPtr lower_bound(const K& key) {
+  VPtr lower_bound(K key) {
     VPtr val;
     list<VPtr> to_release;
     {
@@ -171,11 +129,10 @@ public:
 	retry = false;
 	if (weak_refs.empty())
 	  break;
-	typename map<K, pair<WeakVPtr, V*> >::iterator i =
-	  weak_refs.lower_bound(key);
+	typename map<K, WeakVPtr>::iterator i = weak_refs.lower_bound(key);
 	if (i == weak_refs.end())
 	  --i;
-	val = i->second.first.lock();
+	val = i->second.lock();
 	if (val) {
 	  lru_add(i->first, val, &to_release);
 	} else {
@@ -188,7 +145,7 @@ public:
     return val;
   }
 
-  VPtr lookup(const K& key) {
+  VPtr lookup(K key) {
     VPtr val;
     list<VPtr> to_release;
     {
@@ -196,9 +153,8 @@ public:
       bool retry = false;
       do {
 	retry = false;
-	typename map<K, pair<WeakVPtr, V*> >::iterator i = weak_refs.find(key);
-	if (i != weak_refs.end()) {
-	  val = i->second.first.lock();
+	if (weak_refs.count(key)) {
+	  val = weak_refs[key].lock();
 	  if (val) {
 	    lru_add(key, val, &to_release);
 	  } else {
@@ -212,37 +168,12 @@ public:
     return val;
   }
 
-  /***
-   * Inserts a key if not present, or bumps it to the front of the LRU if
-   * it is, and then gives you a reference to the value. If the key already
-   * existed, you are responsible for deleting the new value you tried to
-   * insert.
-   *
-   * @param key The key to insert
-   * @param value The value that goes with the key
-   * @param existed Set to true if the value was already in the
-   * map, false otherwise
-   * @return A reference to the map's value for the given key
-   */
-  VPtr add(const K& key, V *value, bool *existed = NULL) {
-    VPtr val;
+  VPtr add(K key, V *value) {
+    VPtr val(value, Cleanup(this, key));
     list<VPtr> to_release;
     {
       Mutex::Locker l(lock);
-      typename map<K, pair<WeakVPtr, V*> >::iterator actual =
-	weak_refs.lower_bound(key);
-      if (actual != weak_refs.end() && actual->first == key) {
-        if (existed) 
-          *existed = true;
-
-        return actual->second.first.lock();
-      }
-
-      if (existed)      
-        *existed = false;
-
-      val = VPtr(value, Cleanup(this, key));
-      weak_refs.insert(actual, make_pair(key, make_pair(val, value)));
+      weak_refs.insert(make_pair(key, val));
       lru_add(key, val, &to_release);
     }
     return val;

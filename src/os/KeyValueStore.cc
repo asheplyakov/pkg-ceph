@@ -48,10 +48,7 @@
 #include "common/safe_io.h"
 #include "common/perf_counters.h"
 #include "common/sync_filesystem.h"
-
-#ifdef HAVE_KINETIC
-#include "KineticStore.h"
-#endif
+#include "LevelDBStore.h"
 
 #include "common/ceph_crypto.h"
 using ceph::crypto::SHA1;
@@ -69,24 +66,6 @@ const string KeyValueStore::OBJECT_OMAP_HEADER = "__OBJOMAP_HEADER__";
 const string KeyValueStore::OBJECT_OMAP_HEADER_KEY = "__OBJOMAP_HEADER__KEY_";
 const string KeyValueStore::COLLECTION = "__COLLECTION__";
 const string KeyValueStore::COLLECTION_ATTR = "__COLL_ATTR__";
-
-
-//Initial features in new superblock.
-static CompatSet get_kv_initial_compat_set() {
-  CompatSet::FeatureSet ceph_osd_feature_compat;
-  CompatSet::FeatureSet ceph_osd_feature_ro_compat;
-  CompatSet::FeatureSet ceph_osd_feature_incompat;
-  return CompatSet(ceph_osd_feature_compat, ceph_osd_feature_ro_compat,
-		   ceph_osd_feature_incompat);
-}
-
-//Features are added here that this KeyValueStore supports.
-static CompatSet get_kv_supported_compat_set() {
-  CompatSet compat =  get_kv_initial_compat_set();
-  //Any features here can be set in code, but not in initial superblock
-  return compat;
-}
-
 
 // ============== StripObjectMap Implementation =================
 
@@ -446,7 +425,7 @@ int KeyValueStore::BufferTransaction::submit_transaction()
     }
   }
 
-  r = store->backend->submit_transaction_sync(t);
+  r = store->backend->submit_transaction(t);
   for (list<Context*>::iterator it = finishes.begin(); it != finishes.end(); ++it) {
     (*it)->complete(r);
   }
@@ -495,6 +474,7 @@ KeyValueStore::KeyValueStore(const std::string &base,
   internal_name(name),
   basedir(base),
   fsid_fd(-1), current_fd(-1),
+  kv_type(KV_TYPE_NONE),
   backend(NULL),
   ondisk_finisher(g_ceph_context),
   lock("KeyValueStore::lock"),
@@ -506,11 +486,9 @@ KeyValueStore::KeyValueStore(const std::string &base,
         g_conf->keyvaluestore_op_threads, "keyvaluestore_op_threads"),
   op_wq(this, g_conf->keyvaluestore_op_thread_timeout,
         g_conf->keyvaluestore_op_thread_suicide_timeout, &op_tp),
-  perf_logger(NULL),
+  logger(NULL),
   m_keyvaluestore_queue_max_ops(g_conf->keyvaluestore_queue_max_ops),
   m_keyvaluestore_queue_max_bytes(g_conf->keyvaluestore_queue_max_bytes),
-  m_keyvaluestore_strip_size(g_conf->keyvaluestore_default_strip_size),
-  m_keyvaluestore_max_expected_write_size(g_conf->keyvaluestore_max_expected_write_size),
   do_update(do_update)
 {
   ostringstream oss;
@@ -521,8 +499,8 @@ KeyValueStore::KeyValueStore(const std::string &base,
   sss << basedir << "/current/commit_op_seq";
   current_op_seq_fn = sss.str();
 
-  // initialize perf_logger
-  PerfCountersBuilder plb(g_ceph_context, internal_name, l_os_commit_len, l_os_last);
+  // initialize logger
+  PerfCountersBuilder plb(g_ceph_context, internal_name, l_os_commit_lat, l_os_last);
 
   plb.add_u64(l_os_oq_max_ops, "op_queue_max_ops");
   plb.add_u64(l_os_oq_ops, "op_queue_ops");
@@ -530,24 +508,21 @@ KeyValueStore::KeyValueStore(const std::string &base,
   plb.add_u64(l_os_oq_max_bytes, "op_queue_max_bytes");
   plb.add_u64(l_os_oq_bytes, "op_queue_bytes");
   plb.add_u64_counter(l_os_bytes, "bytes");
-  plb.add_time_avg(l_os_commit_lat, "commit_latency");
   plb.add_time_avg(l_os_apply_lat, "apply_latency");
   plb.add_time_avg(l_os_queue_lat, "queue_transaction_latency_avg");
 
-  perf_logger = plb.create_perf_counters();
+  logger = plb.create_perf_counters();
 
-  g_ceph_context->get_perfcounters_collection()->add(perf_logger);
+  g_ceph_context->get_perfcounters_collection()->add(logger);
   g_ceph_context->_conf->add_observer(this);
-
-  superblock.compat_features = get_kv_initial_compat_set();
 }
 
 KeyValueStore::~KeyValueStore()
 {
   g_ceph_context->_conf->remove_observer(this);
-  g_ceph_context->get_perfcounters_collection()->remove(perf_logger);
+  g_ceph_context->get_perfcounters_collection()->remove(logger);
 
-  delete perf_logger;
+  delete logger;
 }
 
 int KeyValueStore::statfs(struct statfs *buf)
@@ -634,26 +609,34 @@ int KeyValueStore::mkfs()
     goto close_fsid_fd;
   }
 
-  // superblock
-  superblock.backend = g_conf->keyvaluestore_backend;
-  ret = write_superblock();
-  if (ret < 0) {
-    derr << "KeyValueStore::mkfs write_superblock() failed: "
-	 << cpp_strerror(ret) << dendl;
+  if (_detect_backend()) {
+    derr << "KeyValueStore::mkfs error in _detect_backend" << dendl;
+    ret = -1;
     goto close_fsid_fd;
   }
 
   {
-    ret = KeyValueDB::test_init(superblock.backend, current_fn.c_str());
-    if(ret < 0)
-    {
-      derr << __func__  << " failed to create backend type "
-	   << g_conf->keyvaluestore_backend << "." << dendl;
+    KeyValueDB *store;
+    if (kv_type == KV_TYPE_LEVELDB) {
+      store = new LevelDBStore(g_ceph_context, current_fn);
+    } else {
+      derr << "KeyValueStore::mkfs error: unknown backend type" << kv_type << dendl;
       ret = -1;
       goto close_fsid_fd;
-
     }
-    dout(1) << g_conf->keyvaluestore_backend << " backend exists/created" << dendl;
+
+    store->init();
+    stringstream err;
+    if (store->create_and_open(err)) {
+      derr << "KeyValueStore::mkfs failed to create keyvaluestore backend: "
+           << err.str() << dendl;
+      ret = -1;
+      delete store;
+      goto close_fsid_fd;
+    } else {
+      delete store;
+      dout(1) << "keyvaluestore backend exists/created" << dendl;
+    }
   }
 
   dout(1) << "mkfs done in " << basedir << dendl;
@@ -721,36 +704,6 @@ bool KeyValueStore::test_mount_in_use()
   return inuse;
 }
 
-int KeyValueStore::write_superblock()
-{
-  bufferlist bl;
-  ::encode(superblock, bl);
-  return safe_write_file(basedir.c_str(), "superblock",
-      bl.c_str(), bl.length());
-}
-
-int KeyValueStore::read_superblock()
-{
-  bufferptr bp(PATH_MAX);
-  int ret = safe_read_file(basedir.c_str(), "superblock",
-      bp.c_str(), bp.length());
-  if (ret < 0) {
-    if (ret == -ENOENT) {
-      // If the file doesn't exist write initial CompatSet
-      return write_superblock();
-    }
-    return ret;
-  }
-
-  bufferlist bl;
-  bl.push_back(bp);
-  bufferlist::iterator i = bl.begin();
-  ::decode(superblock, i);
-  return 0;
-}
-
-
-
 int KeyValueStore::update_version_stamp()
 {
   return write_version_stamp();
@@ -789,7 +742,6 @@ int KeyValueStore::mount()
 {
   int ret;
   char buf[PATH_MAX];
-  CompatSet supported_compat_set = get_kv_supported_compat_set();
 
   dout(5) << "basedir " << basedir << dendl;
 
@@ -846,21 +798,6 @@ int KeyValueStore::mount()
       goto close_fsid_fd;
     }
   }
-  
-  superblock.backend = g_conf->keyvaluestore_backend;
-  ret = read_superblock();
-  if (ret < 0) {
-    ret = -EINVAL;
-    goto close_fsid_fd;
-  }
-
-  // Check if this KeyValueStore supports all the necessary features to mount
-  if (supported_compat_set.compare(superblock.compat_features) == -1) {
-    derr << "KeyValueStore::mount : Incompatible features set "
-	   << superblock.compat_features << dendl;
-    ret = -EINVAL;
-    goto close_fsid_fd;
-  }
 
   current_fd = ::open(current_fn.c_str(), O_RDONLY);
   if (current_fd < 0) {
@@ -872,26 +809,28 @@ int KeyValueStore::mount()
 
   assert(current_fd >= 0);
 
-  {
-    if (superblock.backend.empty())
-      superblock.backend = g_conf->keyvaluestore_backend;
-    KeyValueDB *store = KeyValueDB::create(g_ceph_context,
-					   superblock.backend,
-					   current_fn.c_str());
-    if(!store)
-    {
-      derr << "KeyValueStore::mount backend type "
-	   << superblock.backend << " error" << dendl;
-      ret = -1;
-      goto close_fsid_fd;
+  if (_detect_backend()) {
+    derr << "KeyValueStore::mount error in _detect_backend" << dendl;
+    ret = -1;
+    goto close_current_fd;
+  }
 
+  {
+    KeyValueDB *store;
+    if (kv_type == KV_TYPE_LEVELDB) {
+      store = new LevelDBStore(g_ceph_context, current_fn);
+    } else {
+      derr << "KeyValueStore::mount error: unknown backend type" << kv_type
+           << dendl;
+      ret = -1;
+      goto close_current_fd;
     }
 
     store->init();
     stringstream err;
     if (store->open(err)) {
-      derr << "KeyValueStore::mount Error initializing keyvaluestore backend "
-           << superblock.backend << ": " << err.str() << dendl;
+      derr << "KeyValueStore::mount Error initializing keyvaluestore backend: "
+           << err.str() << dendl;
       ret = -1;
       delete store;
       goto close_current_fd;
@@ -907,13 +846,12 @@ int KeyValueStore::mount()
     stringstream err2;
 
     if (g_conf->keyvaluestore_debug_check_backend && !dbomap->check(err2)) {
-      derr << err2.str() << dendl;
+      derr << err2.str() << dendl;;
       delete dbomap;
       ret = -EINVAL;
       goto close_current_fd;
     }
 
-    default_strip_size = m_keyvaluestore_strip_size;
     backend.reset(dbomap);
   }
 
@@ -955,6 +893,21 @@ int KeyValueStore::umount()
 
   // nothing
   return 0;
+}
+
+int KeyValueStore::get_max_object_name_length()
+{
+  lock.Lock();
+  int ret = pathconf(basedir.c_str(), _PC_NAME_MAX);
+  if (ret < 0) {
+    int err = errno;
+    lock.Unlock();
+    if (err == 0)
+      return -EDOM;
+    return -err;
+  }
+  lock.Unlock();
+  return ret;
 }
 
 int KeyValueStore::queue_transactions(Sequencer *posr, list<Transaction*> &tls,
@@ -1025,8 +978,8 @@ void KeyValueStore::queue_op(OpSequencer *osr, Op *o)
 
   osr->queue(o);
 
-  perf_logger->inc(l_os_ops);
-  perf_logger->inc(l_os_bytes, o->bytes);
+  logger->inc(l_os_ops);
+  logger->inc(l_os_bytes, o->bytes);
 
   dout(5) << "queue_op " << o << " seq " << o->op << " " << *osr << " "
           << o->bytes << " bytes" << "   (queue has " << op_queue_len
@@ -1039,8 +992,8 @@ void KeyValueStore::op_queue_reserve_throttle(Op *o, ThreadPool::TPHandle *handl
   uint64_t max_ops = m_keyvaluestore_queue_max_ops;
   uint64_t max_bytes = m_keyvaluestore_queue_max_bytes;
 
-  perf_logger->set(l_os_oq_max_ops, max_ops);
-  perf_logger->set(l_os_oq_max_bytes, max_bytes);
+  logger->set(l_os_oq_max_ops, max_ops);
+  logger->set(l_os_oq_max_bytes, max_bytes);
 
   utime_t start = ceph_clock_now(g_ceph_context);
   {
@@ -1062,10 +1015,10 @@ void KeyValueStore::op_queue_reserve_throttle(Op *o, ThreadPool::TPHandle *handl
     op_queue_bytes += o->bytes;
   }
   utime_t end = ceph_clock_now(g_ceph_context);
-  perf_logger->tinc(l_os_queue_lat, end - start);
+  logger->tinc(l_os_queue_lat, end - start);
 
-  perf_logger->set(l_os_oq_ops, op_queue_len);
-  perf_logger->set(l_os_oq_bytes, op_queue_bytes);
+  logger->set(l_os_oq_ops, op_queue_len);
+  logger->set(l_os_oq_bytes, op_queue_bytes);
 }
 
 void KeyValueStore::op_queue_release_throttle(Op *o)
@@ -1077,8 +1030,8 @@ void KeyValueStore::op_queue_release_throttle(Op *o)
     op_throttle_cond.Signal();
   }
 
-  perf_logger->set(l_os_oq_ops, op_queue_len);
-  perf_logger->set(l_os_oq_bytes, op_queue_bytes);
+  logger->set(l_os_oq_ops, op_queue_len);
+  logger->set(l_os_oq_bytes, op_queue_bytes);
 }
 
 void KeyValueStore::_do_op(OpSequencer *osr, ThreadPool::TPHandle &handle)
@@ -1113,8 +1066,7 @@ void KeyValueStore::_finish_op(OpSequencer *osr)
 
   utime_t lat = ceph_clock_now(g_ceph_context);
   lat -= o->start;
-  perf_logger->tinc(l_os_commit_lat, lat);
-  perf_logger->tinc(l_os_apply_lat, lat);
+  logger->tinc(l_os_apply_lat, lat);
 
   if (o->onreadable_sync) {
     o->onreadable_sync->complete(0);
@@ -1178,7 +1130,7 @@ unsigned KeyValueStore::_do_transaction(Transaction& transaction,
     if (handle)
       handle->reset_tp_timeout();
 
-    int op = i.decode_op();
+    int op = i.get_op();
     int r = 0;
 
     switch (op) {
@@ -1187,69 +1139,69 @@ unsigned KeyValueStore::_do_transaction(Transaction& transaction,
 
     case Transaction::OP_TOUCH:
       {
-        coll_t cid = i.decode_cid();
-        ghobject_t oid = i.decode_oid();
+        coll_t cid = i.get_cid();
+        ghobject_t oid = i.get_oid();
         r = _touch(cid, oid, t);
       }
       break;
 
     case Transaction::OP_WRITE:
       {
-        coll_t cid = i.decode_cid();
-        ghobject_t oid = i.decode_oid();
-        uint64_t off = i.decode_length();
-        uint64_t len = i.decode_length();
+        coll_t cid = i.get_cid();
+        ghobject_t oid = i.get_oid();
+        uint64_t off = i.get_length();
+        uint64_t len = i.get_length();
         bool replica = i.get_replica();
         bufferlist bl;
-        i.decode_bl(bl);
+        i.get_bl(bl);
         r = _write(cid, oid, off, len, bl, t, replica);
       }
       break;
 
     case Transaction::OP_ZERO:
       {
-        coll_t cid = i.decode_cid();
-        ghobject_t oid = i.decode_oid();
-        uint64_t off = i.decode_length();
-        uint64_t len = i.decode_length();
+        coll_t cid = i.get_cid();
+        ghobject_t oid = i.get_oid();
+        uint64_t off = i.get_length();
+        uint64_t len = i.get_length();
         r = _zero(cid, oid, off, len, t);
       }
       break;
 
     case Transaction::OP_TRIMCACHE:
       {
-        i.decode_cid();
-        i.decode_oid();
-        i.decode_length();
-        i.decode_length();
+        i.get_cid();
+        i.get_oid();
+        i.get_length();
+        i.get_length();
         // deprecated, no-op
       }
       break;
 
     case Transaction::OP_TRUNCATE:
       {
-        coll_t cid = i.decode_cid();
-        ghobject_t oid = i.decode_oid();
-        uint64_t off = i.decode_length();
+        coll_t cid = i.get_cid();
+        ghobject_t oid = i.get_oid();
+        uint64_t off = i.get_length();
         r = _truncate(cid, oid, off, t);
       }
       break;
 
     case Transaction::OP_REMOVE:
       {
-        coll_t cid = i.decode_cid();
-        ghobject_t oid = i.decode_oid();
+        coll_t cid = i.get_cid();
+        ghobject_t oid = i.get_oid();
         r = _remove(cid, oid, t);
       }
       break;
 
     case Transaction::OP_SETATTR:
       {
-        coll_t cid = i.decode_cid();
-        ghobject_t oid = i.decode_oid();
-        string name = i.decode_attrname();
+        coll_t cid = i.get_cid();
+        ghobject_t oid = i.get_oid();
+        string name = i.get_attrname();
         bufferlist bl;
-        i.decode_bl(bl);
+        i.get_bl(bl);
         map<string, bufferptr> to_set;
         to_set[name] = bufferptr(bl.c_str(), bl.length());
         r = _setattrs(cid, oid, to_set, t);
@@ -1261,10 +1213,10 @@ unsigned KeyValueStore::_do_transaction(Transaction& transaction,
 
     case Transaction::OP_SETATTRS:
       {
-        coll_t cid = i.decode_cid();
-        ghobject_t oid = i.decode_oid();
+        coll_t cid = i.get_cid();
+        ghobject_t oid = i.get_oid();
         map<string, bufferptr> aset;
-        i.decode_attrset(aset);
+        i.get_attrset(aset);
         r = _setattrs(cid, oid, aset, t);
         if (r == -ENOSPC)
           dout(0) << " ENOSPC on setxattrs on " << cid << "/" << oid << dendl;
@@ -1273,100 +1225,80 @@ unsigned KeyValueStore::_do_transaction(Transaction& transaction,
 
     case Transaction::OP_RMATTR:
       {
-        coll_t cid = i.decode_cid();
-        ghobject_t oid = i.decode_oid();
-        string name = i.decode_attrname();
+        coll_t cid = i.get_cid();
+        ghobject_t oid = i.get_oid();
+        string name = i.get_attrname();
         r = _rmattr(cid, oid, name.c_str(), t);
       }
       break;
 
     case Transaction::OP_RMATTRS:
       {
-        coll_t cid = i.decode_cid();
-        ghobject_t oid = i.decode_oid();
+        coll_t cid = i.get_cid();
+        ghobject_t oid = i.get_oid();
         r = _rmattrs(cid, oid, t);
       }
       break;
 
     case Transaction::OP_CLONE:
       {
-        coll_t cid = i.decode_cid();
-        ghobject_t oid = i.decode_oid();
-        ghobject_t noid = i.decode_oid();
+        coll_t cid = i.get_cid();
+        ghobject_t oid = i.get_oid();
+        ghobject_t noid = i.get_oid();
         r = _clone(cid, oid, noid, t);
       }
       break;
 
     case Transaction::OP_CLONERANGE:
       {
-        coll_t cid = i.decode_cid();
-        ghobject_t oid = i.decode_oid();
-        ghobject_t noid = i.decode_oid();
-        uint64_t off = i.decode_length();
-        uint64_t len = i.decode_length();
+        coll_t cid = i.get_cid();
+        ghobject_t oid = i.get_oid();
+        ghobject_t noid = i.get_oid();
+        uint64_t off = i.get_length();
+        uint64_t len = i.get_length();
         r = _clone_range(cid, oid, noid, off, len, off, t);
       }
       break;
 
     case Transaction::OP_CLONERANGE2:
       {
-        coll_t cid = i.decode_cid();
-        ghobject_t oid = i.decode_oid();
-        ghobject_t noid = i.decode_oid();
-        uint64_t srcoff = i.decode_length();
-        uint64_t len = i.decode_length();
-        uint64_t dstoff = i.decode_length();
+        coll_t cid = i.get_cid();
+        ghobject_t oid = i.get_oid();
+        ghobject_t noid = i.get_oid();
+        uint64_t srcoff = i.get_length();
+        uint64_t len = i.get_length();
+        uint64_t dstoff = i.get_length();
         r = _clone_range(cid, oid, noid, srcoff, len, dstoff, t);
       }
       break;
 
     case Transaction::OP_MKCOLL:
       {
-        coll_t cid = i.decode_cid();
+        coll_t cid = i.get_cid();
         r = _create_collection(cid, t);
-      }
-      break;
-
-    case Transaction::OP_COLL_HINT:
-      {
-        coll_t cid = i.decode_cid();
-        uint32_t type = i.decode_u32();
-        bufferlist hint;
-        i.decode_bl(hint);
-        bufferlist::iterator hiter = hint.begin();
-        if (type == Transaction::COLL_HINT_EXPECTED_NUM_OBJECTS) {
-          uint32_t pg_num;
-          uint64_t num_objs;
-          ::decode(pg_num, hiter);
-          ::decode(num_objs, hiter);
-          r = _collection_hint_expected_num_objs(cid, pg_num, num_objs);
-        } else {
-          // Ignore the hint
-          dout(10) << "Unrecognized collection hint type: " << type << dendl;
-        }
       }
       break;
 
     case Transaction::OP_RMCOLL:
       {
-        coll_t cid = i.decode_cid();
+        coll_t cid = i.get_cid();
         r = _destroy_collection(cid, t);
       }
       break;
 
     case Transaction::OP_COLL_ADD:
       {
-        coll_t ncid = i.decode_cid();
-        coll_t ocid = i.decode_cid();
-        ghobject_t oid = i.decode_oid();
+        coll_t ncid = i.get_cid();
+        coll_t ocid = i.get_cid();
+        ghobject_t oid = i.get_oid();
         r = _collection_add(ncid, ocid, oid, t);
       }
       break;
 
     case Transaction::OP_COLL_REMOVE:
        {
-        coll_t cid = i.decode_cid();
-        ghobject_t oid = i.decode_oid();
+        coll_t cid = i.get_cid();
+        ghobject_t oid = i.get_oid();
         r = _remove(cid, oid, t);
        }
       break;
@@ -1374,37 +1306,37 @@ unsigned KeyValueStore::_do_transaction(Transaction& transaction,
     case Transaction::OP_COLL_MOVE:
       {
         // WARNING: this is deprecated and buggy; only here to replay old journals.
-        coll_t ocid = i.decode_cid();
-        coll_t ncid = i.decode_cid();
-        ghobject_t oid = i.decode_oid();
+        coll_t ocid = i.get_cid();
+        coll_t ncid = i.get_cid();
+        ghobject_t oid = i.get_oid();
         r = _collection_move_rename(ocid, oid, ncid, oid, t);
       }
       break;
 
     case Transaction::OP_COLL_MOVE_RENAME:
       {
-        coll_t oldcid = i.decode_cid();
-        ghobject_t oldoid = i.decode_oid();
-        coll_t newcid = i.decode_cid();
-        ghobject_t newoid = i.decode_oid();
+        coll_t oldcid = i.get_cid();
+        ghobject_t oldoid = i.get_oid();
+        coll_t newcid = i.get_cid();
+        ghobject_t newoid = i.get_oid();
         r = _collection_move_rename(oldcid, oldoid, newcid, newoid, t);
       }
       break;
 
     case Transaction::OP_COLL_SETATTR:
       {
-        coll_t cid = i.decode_cid();
-        string name = i.decode_attrname();
+        coll_t cid = i.get_cid();
+        string name = i.get_attrname();
         bufferlist bl;
-        i.decode_bl(bl);
+        i.get_bl(bl);
         r = _collection_setattr(cid, name.c_str(), bl.c_str(), bl.length(), t);
       }
       break;
 
     case Transaction::OP_COLL_RMATTR:
       {
-        coll_t cid = i.decode_cid();
-        string name = i.decode_attrname();
+        coll_t cid = i.get_cid();
+        string name = i.get_attrname();
         r = _collection_rmattr(cid, name.c_str(), t);
       }
       break;
@@ -1417,83 +1349,82 @@ unsigned KeyValueStore::_do_transaction(Transaction& transaction,
 
     case Transaction::OP_COLL_RENAME:
       {
-        coll_t cid(i.decode_cid());
-        coll_t ncid(i.decode_cid());
+        coll_t cid(i.get_cid());
+        coll_t ncid(i.get_cid());
         r = _collection_rename(cid, ncid, t);
       }
       break;
 
     case Transaction::OP_OMAP_CLEAR:
       {
-        coll_t cid(i.decode_cid());
-        ghobject_t oid = i.decode_oid();
+        coll_t cid(i.get_cid());
+        ghobject_t oid = i.get_oid();
         r = _omap_clear(cid, oid, t);
       }
       break;
     case Transaction::OP_OMAP_SETKEYS:
       {
-        coll_t cid(i.decode_cid());
-        ghobject_t oid = i.decode_oid();
+        coll_t cid(i.get_cid());
+        ghobject_t oid = i.get_oid();
         map<string, bufferlist> aset;
-        i.decode_attrset(aset);
+        i.get_attrset(aset);
         r = _omap_setkeys(cid, oid, aset, t);
       }
       break;
     case Transaction::OP_OMAP_RMKEYS:
       {
-        coll_t cid(i.decode_cid());
-        ghobject_t oid = i.decode_oid();
+        coll_t cid(i.get_cid());
+        ghobject_t oid = i.get_oid();
         set<string> keys;
-        i.decode_keyset(keys);
+        i.get_keyset(keys);
         r = _omap_rmkeys(cid, oid, keys, t);
       }
       break;
     case Transaction::OP_OMAP_RMKEYRANGE:
       {
-        coll_t cid(i.decode_cid());
-        ghobject_t oid = i.decode_oid();
+        coll_t cid(i.get_cid());
+        ghobject_t oid = i.get_oid();
         string first, last;
-        first = i.decode_key();
-        last = i.decode_key();
+        first = i.get_key();
+        last = i.get_key();
         r = _omap_rmkeyrange(cid, oid, first, last, t);
       }
       break;
     case Transaction::OP_OMAP_SETHEADER:
       {
-        coll_t cid(i.decode_cid());
-        ghobject_t oid = i.decode_oid();
+        coll_t cid(i.get_cid());
+        ghobject_t oid = i.get_oid();
         bufferlist bl;
-        i.decode_bl(bl);
+        i.get_bl(bl);
         r = _omap_setheader(cid, oid, bl, t);
       }
       break;
     case Transaction::OP_SPLIT_COLLECTION:
       {
-        coll_t cid(i.decode_cid());
-        uint32_t bits(i.decode_u32());
-        uint32_t rem(i.decode_u32());
-        coll_t dest(i.decode_cid());
+        coll_t cid(i.get_cid());
+        uint32_t bits(i.get_u32());
+        uint32_t rem(i.get_u32());
+        coll_t dest(i.get_cid());
         r = _split_collection_create(cid, bits, rem, dest, t);
       }
       break;
     case Transaction::OP_SPLIT_COLLECTION2:
       {
-        coll_t cid(i.decode_cid());
-        uint32_t bits(i.decode_u32());
-        uint32_t rem(i.decode_u32());
-        coll_t dest(i.decode_cid());
+        coll_t cid(i.get_cid());
+        uint32_t bits(i.get_u32());
+        uint32_t rem(i.get_u32());
+        coll_t dest(i.get_cid());
         r = _split_collection(cid, bits, rem, dest, t);
       }
       break;
 
     case Transaction::OP_SETALLOCHINT:
       {
-        coll_t cid(i.decode_cid());
-        ghobject_t oid = i.decode_oid();
-        uint64_t expected_object_size = i.decode_length();
-        uint64_t expected_write_size = i.decode_length();
-        r = _set_alloc_hint(cid, oid, expected_object_size,
-                            expected_write_size, t);
+        // TODO: can kvstore make use of the hint?
+        coll_t cid(i.get_cid());
+        ghobject_t oid = i.get_oid();
+        (void)i.get_length();  // discard result
+        (void)i.get_length();  // discard result
       }
       break;
 
@@ -2067,7 +1998,7 @@ int KeyValueStore::getattr(coll_t cid, const ghobject_t& oid, const char *name,
 }
 
 int KeyValueStore::getattrs(coll_t cid, const ghobject_t& oid,
-                           map<string,bufferptr>& aset)
+                           map<string,bufferptr>& aset, bool user_only)
 {
   int r;
   map<string, bufferlist> attr_aset;
@@ -2084,7 +2015,15 @@ int KeyValueStore::getattrs(coll_t cid, const ghobject_t& oid,
   for (map<string, bufferlist>::iterator i = attr_aset.begin();
        i != attr_aset.end(); ++i) {
     string key;
-    key = i->first;
+    if (user_only) {
+      if (i->first[0] != '_')
+        continue;
+      if (i->first == "_")
+        continue;
+      key = i->first.substr(1, i->first.size());
+    } else {
+      key = i->first;
+    }
     aset.insert(make_pair(key,
                 bufferptr(i->second.c_str(), i->second.length())));
   }
@@ -3049,54 +2988,11 @@ int KeyValueStore::_split_collection(coll_t cid, uint32_t bits, uint32_t rem,
   return 0;
 }
 
-int KeyValueStore::_set_alloc_hint(coll_t cid, const ghobject_t& oid,
-                                   uint64_t expected_object_size,
-                                   uint64_t expected_write_size,
-                                   BufferTransaction &t)
-{
-  dout(15) << __func__ << " " << cid << "/" << oid << " object_size "
-           << expected_object_size << " write_size "
-           << expected_write_size << dendl;
-
-  int r = 0;
-  StripObjectMap::StripObjectHeaderRef header;
-
-  r = t.lookup_cached_header(cid, oid, &header, false);
-  if (r < 0) {
-    dout(10) << __func__ << " " << cid << "/" << oid
-             << " failed to get header: r = " << r << dendl;
-    return r;
-  }
-
-  bool blank = true;
-  for (vector<char>::iterator it = header->bits.begin();
-       it != header->bits.end(); ++it) {
-    if (*it) {
-      blank = false;
-      break;
-    }
-  }
-
-  // Now only consider to change "strip_size" when the object is blank,
-  // because set_alloc_hint is expected to be very lightweight<O(1)>
-  if (blank) {
-    // header->strip_size = MIN(expected_write_size, m_keyvaluestore_max_expected_write_size);
-    // dout(20) << __func__ << " hint " << header->strip_size << " success" << dendl;
-  }
-
-  dout(10) << __func__ << "" << cid << "/" << oid << " object_size "
-           << expected_object_size << " write_size "
-           << expected_write_size << " = " << r << dendl;
-
-  return r;
-}
-
 const char** KeyValueStore::get_tracked_conf_keys() const
 {
   static const char* KEYS[] = {
     "keyvaluestore_queue_max_ops",
     "keyvaluestore_queue_max_bytes",
-    "keyvaluestore_strip_size",
     NULL
   };
   return KEYS;
@@ -3106,59 +3002,12 @@ void KeyValueStore::handle_conf_change(const struct md_config_t *conf,
                                        const std::set <std::string> &changed)
 {
   if (changed.count("keyvaluestore_queue_max_ops") ||
-      changed.count("keyvaluestore_queue_max_bytes") ||
-      changed.count("keyvaluestore_max_expected_write_size")) {
+      changed.count("keyvaluestore_queue_max_bytes")) {
     m_keyvaluestore_queue_max_ops = conf->keyvaluestore_queue_max_ops;
     m_keyvaluestore_queue_max_bytes = conf->keyvaluestore_queue_max_bytes;
-    m_keyvaluestore_max_expected_write_size = conf->keyvaluestore_max_expected_write_size;
-  }
-  if (changed.count("keyvaluestore_default_strip_size")) {
-    m_keyvaluestore_strip_size = conf->keyvaluestore_default_strip_size;
-    default_strip_size = m_keyvaluestore_strip_size;
   }
 }
 
 void KeyValueStore::dump_transactions(list<ObjectStore::Transaction*>& ls, uint64_t seq, OpSequencer *osr)
 {
-}
-
-
-// -- KVSuperblock --
-
-void KVSuperblock::encode(bufferlist &bl) const
-{
-  ENCODE_START(1, 1, bl);
-  compat_features.encode(bl);
-  ::encode(backend, bl);
-  ENCODE_FINISH(bl);
-}
-
-void KVSuperblock::decode(bufferlist::iterator &bl)
-{
-  DECODE_START(1, bl);
-  compat_features.decode(bl);
-  ::decode(backend, bl);
-  DECODE_FINISH(bl);
-}
-
-void KVSuperblock::dump(Formatter *f) const
-{
-  f->open_object_section("compat");
-  compat_features.dump(f);
-  f->dump_string("backend", backend);
-  f->close_section();
-}
-
-void KVSuperblock::generate_test_instances(list<KVSuperblock*>& o)
-{
-  KVSuperblock z;
-  o.push_back(new KVSuperblock(z));
-  CompatSet::FeatureSet feature_compat;
-  CompatSet::FeatureSet feature_ro_compat;
-  CompatSet::FeatureSet feature_incompat;
-  z.compat_features = CompatSet(feature_compat, feature_ro_compat,
-                                feature_incompat);
-  o.push_back(new KVSuperblock(z));
-  z.backend = "rocksdb";
-  o.push_back(new KVSuperblock(z));
 }

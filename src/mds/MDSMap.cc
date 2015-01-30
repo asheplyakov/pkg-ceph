@@ -31,7 +31,6 @@ CompatSet get_mdsmap_compat_set_all() {
   feature_incompat.insert(MDS_FEATURE_INCOMPAT_ENCODING);
   feature_incompat.insert(MDS_FEATURE_INCOMPAT_OMAPDIRFRAG);
   feature_incompat.insert(MDS_FEATURE_INCOMPAT_INLINE);
-  feature_incompat.insert(MDS_FEATURE_INCOMPAT_NOANCHOR);
 
   return CompatSet(feature_compat, feature_ro_compat, feature_incompat);
 }
@@ -46,7 +45,6 @@ CompatSet get_mdsmap_compat_set_default() {
   feature_incompat.insert(MDS_FEATURE_INCOMPAT_DIRINODE);
   feature_incompat.insert(MDS_FEATURE_INCOMPAT_ENCODING);
   feature_incompat.insert(MDS_FEATURE_INCOMPAT_OMAPDIRFRAG);
-  feature_incompat.insert(MDS_FEATURE_INCOMPAT_NOANCHOR);
 
   return CompatSet(feature_compat, feature_ro_compat, feature_incompat);
 }
@@ -144,8 +142,6 @@ void MDSMap::dump(Formatter *f) const
     f->dump_int("pool", *p);
   f->close_section();
   f->dump_int("metadata_pool", metadata_pool);
-  f->dump_bool("enabled", enabled);
-  f->dump_string("fs_name", fs_name);
 }
 
 void MDSMap::generate_test_instances(list<MDSMap*>& ls)
@@ -365,7 +361,7 @@ void MDSMap::mds_info_t::encode_versioned(bufferlist& bl, uint64_t features) con
   ::encode(name, bl);
   ::encode(rank, bl);
   ::encode(inc, bl);
-  ::encode((int32_t)state, bl);
+  ::encode(state, bl);
   ::encode(state_seq, bl);
   ::encode(addr, bl);
   ::encode(laggy_since, bl);
@@ -383,7 +379,7 @@ void MDSMap::mds_info_t::encode_unversioned(bufferlist& bl) const
   ::encode(name, bl);
   ::encode(rank, bl);
   ::encode(inc, bl);
-  ::encode((int32_t)state, bl);
+  ::encode(state, bl);
   ::encode(state_seq, bl);
   ::encode(addr, bl);
   ::encode(laggy_since, bl);
@@ -399,7 +395,7 @@ void MDSMap::mds_info_t::decode(bufferlist::iterator& bl)
   ::decode(name, bl);
   ::decode(rank, bl);
   ::decode(inc, bl);
-  ::decode((int32_t&)(state), bl);
+  ::decode(state, bl);
   ::decode(state_seq, bl);
   ::decode(addr, bl);
   ::decode(laggy_since, bl);
@@ -477,47 +473,44 @@ void MDSMap::encode(bufferlist& bl, uint64_t features) const
     ::encode(failed, bl);
     ::encode(stopped, bl);
     ::encode(last_failure_osd_epoch, bl);
-    return;
+  } else {// have MDS encoding feature!
+    ENCODE_START(4, 4, bl);
+    ::encode(epoch, bl);
+    ::encode(flags, bl);
+    ::encode(last_failure, bl);
+    ::encode(root, bl);
+    ::encode(session_timeout, bl);
+    ::encode(session_autoclose, bl);
+    ::encode(max_file_size, bl);
+    ::encode(max_mds, bl);
+    ::encode(mds_info, bl, features);
+    ::encode(data_pools, bl);
+    ::encode(cas_pool, bl);
+
+    // kclient ignores everything from here
+    __u16 ev = 7;
+    ::encode(ev, bl);
+    ::encode(compat, bl);
+    ::encode(metadata_pool, bl);
+    ::encode(created, bl);
+    ::encode(modified, bl);
+    ::encode(tableserver, bl);
+    ::encode(in, bl);
+    ::encode(inc, bl);
+    ::encode(up, bl);
+    ::encode(failed, bl);
+    ::encode(stopped, bl);
+    ::encode(last_failure_osd_epoch, bl);
+    ::encode(ever_allowed_snaps, bl);
+    ::encode(explicitly_allowed_snaps, bl);
+    ::encode(inline_data_enabled, bl);
+    ENCODE_FINISH(bl);
   }
-
-  ENCODE_START(5, 4, bl);
-  ::encode(epoch, bl);
-  ::encode(flags, bl);
-  ::encode(last_failure, bl);
-  ::encode(root, bl);
-  ::encode(session_timeout, bl);
-  ::encode(session_autoclose, bl);
-  ::encode(max_file_size, bl);
-  ::encode(max_mds, bl);
-  ::encode(mds_info, bl, features);
-  ::encode(data_pools, bl);
-  ::encode(cas_pool, bl);
-
-  // kclient ignores everything from here
-  __u16 ev = 8;
-  ::encode(ev, bl);
-  ::encode(compat, bl);
-  ::encode(metadata_pool, bl);
-  ::encode(created, bl);
-  ::encode(modified, bl);
-  ::encode(tableserver, bl);
-  ::encode(in, bl);
-  ::encode(inc, bl);
-  ::encode(up, bl);
-  ::encode(failed, bl);
-  ::encode(stopped, bl);
-  ::encode(last_failure_osd_epoch, bl);
-  ::encode(ever_allowed_snaps, bl);
-  ::encode(explicitly_allowed_snaps, bl);
-  ::encode(inline_data_enabled, bl);
-  ::encode(enabled, bl);
-  ::encode(fs_name, bl);
-  ENCODE_FINISH(bl);
 }
 
 void MDSMap::decode(bufferlist::iterator& p)
 {
-  DECODE_START_LEGACY_COMPAT_LEN_16(5, 4, 4, p);
+  DECODE_START_LEGACY_COMPAT_LEN_16(4, 4, 4, p);
   ::decode(epoch, p);
   ::decode(flags, p);
   ::decode(last_failure, p);
@@ -577,21 +570,5 @@ void MDSMap::decode(bufferlist::iterator& p)
   }
   if (ev >= 7)
     ::decode(inline_data_enabled, p);
-
-  if (ev >= 8) {
-    assert(struct_v >= 5);
-    ::decode(enabled, p);
-    ::decode(fs_name, p);
-  } else {
-    if (epoch > 1) {
-      // If an MDS has ever been started, epoch will be greater than 1,
-      // assume filesystem is enabled.
-      enabled = true;
-    } else {
-      // Upgrading from a cluster that never used an MDS, switch off
-      // filesystem until it's explicitly enabled.
-      enabled = false;
-    }
-  }
   DECODE_FINISH(p);
 }

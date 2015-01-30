@@ -47,17 +47,18 @@ int XfsFileStoreBackend::set_extsize(int fd, unsigned int val)
   if (fstat(fd, &sb) < 0) {
     ret = -errno;
     dout(0) << "set_extsize: fstat: " << cpp_strerror(ret) << dendl;
-    return ret;
+    goto out;
   }
   if (!S_ISREG(sb.st_mode)) {
+    ret = -EINVAL;
     dout(0) << "set_extsize: invalid target file type" << dendl;
-    return -EINVAL;
+    goto out;
   }
 
   if (ioctl(fd, XFS_IOC_FSGETXATTR, &fsx) < 0) {
     ret = -errno;
     dout(0) << "set_extsize: FSGETXATTR: " << cpp_strerror(ret) << dendl;
-    return ret;
+    goto out;
   }
 
   // already set?
@@ -74,10 +75,12 @@ int XfsFileStoreBackend::set_extsize(int fd, unsigned int val)
   if (ioctl(fd, XFS_IOC_FSSETXATTR, &fsx) < 0) {
     ret = -errno;
     dout(0) << "set_extsize: FSSETXATTR: " << cpp_strerror(ret) << dendl;
-    return ret;
+    goto out;
   }
+  ret = 0;
 
-  return 0;
+out:
+  return ret;
 }
 
 int XfsFileStoreBackend::detect_features()

@@ -20,7 +20,6 @@
 #include "msg_types.h"
 #include "Messenger.h"
 #include "auth/AuthSessionHandler.h"
-#include "PipeConnection.h"
 
 
 class SimpleMessenger;
@@ -76,20 +75,13 @@ class DispatchQueue;
       std::deque< pair<utime_t,Message*> > delay_queue;
       Mutex delay_lock;
       Cond delay_cond;
-      int flush_count;
-      bool active_flush;
       bool stop_delayed_delivery;
-      bool delay_dispatching; // we are in fast dispatch now
-      bool stop_fast_dispatching_flag; // we need to stop fast dispatching
 
     public:
       DelayedDelivery(Pipe *p)
 	: pipe(p),
-	  delay_lock("Pipe::DelayedDelivery::delay_lock"), flush_count(0),
-	  active_flush(false),
-	  stop_delayed_delivery(false),
-	  delay_dispatching(false),
-	  stop_fast_dispatching_flag(false) { }
+	  delay_lock("Pipe::DelayedDelivery::delay_lock"),
+	  stop_delayed_delivery(false) { }
       ~DelayedDelivery() {
 	discard();
       }
@@ -101,44 +93,22 @@ class DispatchQueue;
       }
       void discard();
       void flush();
-      bool is_flushing() {
-        Mutex::Locker l(delay_lock);
-        return flush_count > 0 || active_flush;
-      }
-      void wait_for_flush() {
-        Mutex::Locker l(delay_lock);
-        while (flush_count > 0 || active_flush)
-          delay_cond.Wait(delay_lock);
-      }
       void stop() {
 	delay_lock.Lock();
 	stop_delayed_delivery = true;
 	delay_cond.Signal();
 	delay_lock.Unlock();
       }
-      void steal_for_pipe(Pipe *new_owner) {
-        Mutex::Locker l(delay_lock);
-        pipe = new_owner;
-      }
-      /**
-       * We need to stop fast dispatching before we need to stop putting
-       * normal messages into the DispatchQueue.
-       */
-      void stop_fast_dispatching();
     } *delay_thread;
     friend class DelayedDelivery;
 
   public:
-    Pipe(SimpleMessenger *r, int st, PipeConnection *con);
+    Pipe(SimpleMessenger *r, int st, Connection *con);
     ~Pipe();
 
     SimpleMessenger *msgr;
     uint64_t conn_id;
     ostream& _pipe_prefix(std::ostream *_dout);
-
-    Pipe* get() {
-      return static_cast<Pipe*>(RefCountedObject::get());
-    }
 
     enum {
       STATE_ACCEPTING,
@@ -182,12 +152,11 @@ class DispatchQueue;
 
   protected:
     friend class SimpleMessenger;
-    PipeConnectionRef connection_state;
+    ConnectionRef connection_state;
 
     utime_t backoff;         // backoff time
 
     bool reader_running, reader_needs_join;
-    bool reader_dispatching; /// reader thread is dispatching without pipe_lock
     bool writer_running;
 
     map<int, list<Message*> > out_q;  // priority queue for outbound msgs
@@ -198,6 +167,7 @@ class DispatchQueue;
     bool send_keepalive_ack;
     utime_t keepalive_ack_stamp;
     bool halt_delivery; //if a pipe's queue is destroyed, stop adding to it
+    bool close_on_empty;
     
     __u32 connect_seq, peer_global_seq;
     uint64_t out_seq;
@@ -271,11 +241,7 @@ class DispatchQueue;
     void register_pipe();
     void unregister_pipe();
     void join();
-    /// stop a Pipe by closing its socket and setting it to STATE_CLOSED
     void stop();
-    /// stop() a Pipe if not already done, and wait for it to finish any
-    /// fast_dispatch in progress.
-    void stop_and_wait();
 
     void _send(Message *m) {
       assert(pipe_lock.is_locked());

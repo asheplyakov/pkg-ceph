@@ -75,7 +75,7 @@ radosgw_SOURCES = \
 	rgw/rgw_civetweb_log.cc \
 	civetweb/src/civetweb.c \
 	rgw/rgw_main.cc
-radosgw_CFLAGS = -I$(srcdir)/civetweb/include
+radosgw_CFLAGS = -Icivetweb/include
 radosgw_LDADD = $(LIBRGW) $(LIBRGW_DEPS) $(RESOLV_LIBS) $(CEPH_GLOBAL)
 bin_PROGRAMS += radosgw
 
@@ -163,3 +163,4 @@ noinst_HEADERS += \
 	civetweb/civetweb.h \
 	civetweb/include/civetweb.h \
 	civetweb/src/md5.h
+

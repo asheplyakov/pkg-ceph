@@ -12,21 +12,22 @@
  *
  */
 
-#include <deque>
-#include <errno.h>
-
-#include "libs3.h"
-
-#include "common/ceph_argparse.h"
-#include "common/debug.h"
-#include "common/obj_bencher.h"
-#include "common/WorkQueue.h"
-
 #include "include/types.h"
 #include "include/atomic.h"
 
-#include "global/global_init.h"
+#include "common/obj_bencher.h"
+#include "common/config.h"
+#include "common/debug.h"
+#include "common/ceph_argparse.h"
+#include "common/WorkQueue.h"
 #include "msg/Message.h"
+#include "global/global_init.h"
+
+#include "libs3.h"
+
+#include <deque>
+
+#include <errno.h>
 
 #define DEFAULT_USER_AGENT "rest-bench"
 #define DEFAULT_BUCKET "rest-bench-bucket"

@@ -89,12 +89,7 @@ int main(int argc, const char **argv)
   argv_to_vec(argc, argv, args);
   env_to_vec(args);
 
-  vector<const char*> def_args;
-  // We want to enable leveldb's log, while allowing users to override this
-  // option, therefore we will pass it as a default argument to global_init().
-  def_args.push_back("--leveldb-log=");
-
-  global_init(&def_args, args, CEPH_ENTITY_TYPE_OSD, CODE_ENVIRONMENT_DAEMON, 0);
+  global_init(NULL, args, CEPH_ENTITY_TYPE_OSD, CODE_ENVIRONMENT_DAEMON, 0);
   ceph_heap_profiler_init();
 
   // osd specific args
@@ -473,7 +468,7 @@ int main(int argc, const char **argv)
     return -1;
   global_init_chdir(g_ceph_context);
 
-  if (preload_erasure_code() < 0)
+  if (preload_erasure_code() < -1)
     return -1;
 
   osd = new OSD(g_ceph_context,

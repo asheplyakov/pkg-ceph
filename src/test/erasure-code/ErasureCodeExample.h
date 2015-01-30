@@ -1,7 +1,7 @@
 // -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*- 
 // vim: ts=8 sw=2 smarttab
 /*
- * Ceph distributed storage system
+ * Ceph - scalable distributed file system
  *
  * Copyright (C) 2013 Cloudwatt <libre.licensing@cloudwatt.com>
  *
@@ -24,7 +24,7 @@
 
 #include "crush/CrushWrapper.h"
 #include "osd/osd_types.h"
-#include "erasure-code/ErasureCode.h"
+#include "erasure-code/ErasureCodeInterface.h"
 
 #define FIRST_DATA_CHUNK 0
 #define SECOND_DATA_CHUNK 1
@@ -35,7 +35,7 @@
 
 #define MINIMUM_TO_RECOVER 2u
 
-class ErasureCodeExample : public ErasureCode {
+class ErasureCodeExample : public ErasureCodeInterface {
 public:
   virtual ~ErasureCodeExample() {}
 
@@ -138,12 +138,6 @@ public:
     return 0;
   }
 
-  virtual int encode_chunks(const set<int> &want_to_encode,
-			    map<int, bufferlist> *encoded) {
-    assert(0);
-    return 0;
-  }
-
   virtual int decode(const set<int> &want_to_read,
                      const map<int, bufferlist> &chunks,
                      map<int, bufferlist> *decoded) {
@@ -185,19 +179,6 @@ public:
     }
     return 0;
   }
-
-  virtual int decode_chunks(const set<int> &want_to_read,
-			    const map<int, bufferlist> &chunks,
-			    map<int, bufferlist> *decoded) {
-    assert(0);
-    return 0;
-  }
-
-  virtual const vector<int> &get_chunk_mapping() const {
-    static vector<int> mapping;
-    return mapping;
-  }
-
 };
 
 #endif

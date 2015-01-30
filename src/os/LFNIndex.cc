@@ -74,6 +74,10 @@ struct FDCloser {
 
 /* Public methods */
 
+void LFNIndex::set_ref(ceph::shared_ptr<CollectionIndex> ref)
+{
+  self_ref = ref;
+}
 
 int LFNIndex::init()
 {
@@ -138,7 +142,7 @@ int LFNIndex::lookup(const ghobject_t &oid,
   } else {
     *exist = 1;
   }
-  *out_path = IndexedPath(new Path(full_path, this));
+  *out_path = IndexedPath(new Path(full_path, self_ref));
   r = 0;
   );
 }
@@ -146,11 +150,6 @@ int LFNIndex::lookup(const ghobject_t &oid,
 int LFNIndex::collection_list(vector<ghobject_t> *ls)
 {
   return _collection_list(ls);
-}
-
-int LFNIndex::pre_hash_collection(uint32_t pg_num, uint64_t expected_num_objs)
-{
-  return _pre_hash_collection(pg_num, expected_num_objs);
 }
 
 
@@ -674,7 +673,7 @@ string LFNIndex::lfn_generate_object_name(const ghobject_t &oid)
   full_name += string(buf);
 
   if (oid.generation != ghobject_t::NO_GEN ||
-      oid.shard_id != shard_id_t::NO_SHARD) {
+      oid.shard_id != ghobject_t::NO_SHARD) {
     full_name.append("_");
 
     t = buf;
@@ -1131,7 +1130,7 @@ bool LFNIndex::lfn_parse_object_name(const string &long_name, ghobject_t *out)
   snapid_t snap;
   uint64_t pool;
   gen_t generation = ghobject_t::NO_GEN;
-  shard_id_t shard_id = shard_id_t::NO_SHARD;
+  shard_t shard_id = ghobject_t::NO_SHARD;
 
   if (index_version == HASH_INDEX_TAG)
     return lfn_parse_object_name_keyless(long_name, out);
@@ -1208,7 +1207,7 @@ bool LFNIndex::lfn_parse_object_name(const string &long_name, ghobject_t *out)
       return false;
     shardstring = string(current, end);
 
-    shard_id = (shard_id_t)strtoul(shardstring.c_str(), NULL, 16);
+    shard_id = (shard_t)strtoul(shardstring.c_str(), NULL, 16);
   }
 
   if (snap_str == "head")

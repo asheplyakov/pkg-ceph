@@ -1140,6 +1140,10 @@ int SyntheticClient::play_trace(Trace& t, string& prefix, bool metadata_only)
       const char *a = t.get_string(buf, p);
       list<string> contents;
       client->getdir(a, contents);
+    } else if (strcmp(op, "getdir") == 0) {
+      const char *a = t.get_string(buf, p);
+      list<string> contents;
+      client->getdir(a, contents);
     } else if (strcmp(op, "opendir") == 0) {
       const char *a = t.get_string(buf, p);
       int64_t b = t.get_int();
@@ -1722,9 +1726,7 @@ int SyntheticClient::dump_placement(string& fn) {
   for (vector<ObjectExtent>::iterator i = extents.begin(); 
        i != extents.end(); ++i) {
     
-    const OSDMap *osdmap = client->objecter->get_osdmap_read();
-    int osd = osdmap->get_pg_acting_primary(osdmap->object_locator_to_pg(i->oid, i->oloc));
-    client->objecter->put_osdmap_read();
+    int osd = client->osdmap->get_pg_acting_primary(client->osdmap->object_locator_to_pg(i->oid, i->oloc));
 
     // run through all the buffer extents
     for (vector<pair<uint64_t, uint64_t> >::iterator j = i->buffer_extents.begin();
@@ -2001,15 +2003,11 @@ int SyntheticClient::overload_osd_0(int n, int size, int wrsize) {
 
 
 // See what the primary is for the first object in this file.
-int SyntheticClient::check_first_primary(int fh)
-{
+int SyntheticClient::check_first_primary(int fh) {
   vector<ObjectExtent> extents;
   client->enumerate_layout(fh, extents, 1, 0);  
-  const OSDMap *osdmap = client->objecter->get_osdmap_read();
-  int primary = osdmap->get_pg_acting_primary(osdmap->object_locator_to_pg(extents.begin()->oid,
-									   extents.begin()->oloc));
-  client->objecter->put_osdmap_read();
-  return primary;
+  return client->osdmap->get_pg_acting_primary(client->osdmap->object_locator_to_pg(extents.begin()->oid,
+									     extents.begin()->oloc));
 }
 
 int SyntheticClient::rm_file(string& fn)

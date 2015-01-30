@@ -1,6 +1,3 @@
-// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
-// vim: ts=8 sw=2 smarttab
-
 #include <errno.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -672,6 +669,8 @@ int RGWObjManifest::generator::create_next(uint64_t ofs)
   if (ofs < last_ofs) /* only going forward */
     return -EINVAL;
 
+  string obj_name = manifest->prefix;
+
   uint64_t max_head_size = manifest->get_max_head_size();
 
   if (ofs <= max_head_size) {
@@ -690,6 +689,7 @@ int RGWObjManifest::generator::create_next(uint64_t ofs)
 
   last_ofs = ofs;
   manifest->set_obj_size(ofs);
+
 
   manifest->get_implicit_location(cur_part_id, cur_stripe, ofs, NULL, &cur_obj);
 
@@ -903,7 +903,7 @@ int RGWPutObjProcessor_Plain::prepare(RGWRados *store, void *obj_ctx, string *oi
   obj.init(bucket, obj_str);
 
   return 0;
-}
+};
 
 int RGWPutObjProcessor_Plain::handle_data(bufferlist& bl, off_t _ofs, MD5 *hash, void **phandle, bool *again)
 {
@@ -1143,7 +1143,7 @@ int RGWPutObjProcessor_Atomic::prepare_next_part(off_t ofs) {
   add_obj(cur_obj);
 
   return 0;
-}
+};
 
 int RGWPutObjProcessor_Atomic::complete_parts()
 {
@@ -1334,24 +1334,6 @@ int RGWRados::init_rados()
   return ret;
 }
 
-/**
- * Add new connection to connections map
- * @param region_conn_map map which new connection will be added to 
- * @param region region which new connection will connect to
- * @param new_connection pointer to new connection instance
- */
-static void add_new_connection_to_map(map<string, RGWRESTConn *> &region_conn_map, RGWRegion &region, RGWRESTConn *new_connection) 
-{
-  // Delete if connection is already exists
-  map<string, RGWRESTConn *>::iterator iterRegion = region_conn_map.find(region.name);
-  if (iterRegion != region_conn_map.end()) {
-    delete iterRegion->second;
-  }
-    
-  // Add new connection to connections map
-  region_conn_map[region.name] = new_connection;
-}
-
 /** 
  * Initialize the RADOS instance and prepare to do other ops
  * Returns 0 on success, -ERR# on failure.
@@ -1394,7 +1376,8 @@ int RGWRados::init_complete()
 
     for (iter = region_map.regions.begin(); iter != region_map.regions.end(); ++iter) {
       RGWRegion& region = iter->second;
-      add_new_connection_to_map(region_conn_map, region, new RGWRESTConn(cct, this, region.endpoints));
+
+      region_conn_map[region.name] = new RGWRESTConn(cct, this, region.endpoints);
     }
   }
 
@@ -3131,36 +3114,6 @@ public:
     }
 };
 
-int RGWRados::rewrite_obj(const string& bucket_owner, rgw_obj& obj)
-{
-  map<string, bufferlist> attrset;
-  off_t ofs = 0;
-  off_t end = -1;
-  void *handle = NULL;
-
-  time_t mtime;
-  uint64_t total_len;
-  uint64_t obj_size;
-  RGWRadosCtx rctx(this);
-  int ret = prepare_get_obj((void *)&rctx, obj, &ofs, &end, &attrset,
-                            NULL, NULL, &mtime, NULL, NULL, &total_len,
-                            &obj_size, NULL, &handle, NULL);
-  if (ret < 0)
-    return ret;
-
-  attrset.erase(RGW_ATTR_ID_TAG);
-
-  uint64_t max_chunk_size;
-
-  ret = get_max_chunk_size(obj.bucket, &max_chunk_size);
-  if (ret < 0) {
-    ldout(cct, 0) << "ERROR: failed to get max_chunk_size() for bucket " << obj.bucket << dendl;
-    return ret;
-  }
-
-  return copy_obj_data((void *)&rctx, bucket_owner, &handle, end, obj, obj, max_chunk_size, NULL, mtime, attrset, RGW_OBJ_CATEGORY_MAIN, NULL, NULL);
-}
-
 /**
  * Copy an object.
  * dest_obj: the object to copy into
@@ -3378,7 +3331,7 @@ set_err_state:
   }
 
   if (copy_data) { /* refcounting tail wouldn't work here, just copy the data */
-    return copy_obj_data(ctx, dest_bucket_info.owner, &handle, end, dest_obj, src_obj, max_chunk_size, mtime, 0, src_attrs, category, ptag, err);
+    return copy_obj_data(ctx, dest_bucket_info.owner, &handle, end, dest_obj, src_obj, max_chunk_size, mtime, src_attrs, category, ptag, err);
   }
 
   RGWObjManifest::obj_iterator miter = astate->manifest.obj_begin();
@@ -3439,7 +3392,7 @@ set_err_state:
   }
 
   if (copy_first) {
-    ret = get_obj(ctx, NULL, &handle, src_obj, first_chunk, 0, max_chunk_size, NULL);
+    ret = get_obj(ctx, NULL, &handle, src_obj, first_chunk, 0, max_chunk_size);
     if (ret < 0)
       goto done_ret;
 
@@ -3490,7 +3443,6 @@ int RGWRados::copy_obj_data(void *ctx,
                rgw_obj& src_obj,
                uint64_t max_chunk_size,
 	       time_t *mtime,
-	       time_t set_mtime,
                map<string, bufferlist>& attrs,
                RGWObjCategory category,
                string *ptag,
@@ -3513,7 +3465,7 @@ int RGWRados::copy_obj_data(void *ctx,
 
   do {
     bufferlist bl;
-    ret = get_obj(ctx, NULL, handle, src_obj, bl, ofs, end, NULL);
+    ret = get_obj(ctx, NULL, handle, src_obj, bl, ofs, end);
     if (ret < 0)
       return ret;
 
@@ -3542,7 +3494,10 @@ int RGWRados::copy_obj_data(void *ctx,
     etag = string(bl.c_str(), bl.length());
   }
 
-  ret = processor.complete(etag, mtime, set_mtime, attrs);
+  ret = processor.complete(etag, NULL, 0, attrs);
+
+  if (mtime)
+    obj_stat(ctx, dest_obj, NULL, mtime, NULL, NULL, NULL, NULL);
 
   return ret;
 }
@@ -4582,7 +4537,7 @@ int RGWRados::clone_objs(void *ctx, rgw_obj& dst_obj,
 
 
 int RGWRados::get_obj(void *ctx, RGWObjVersionTracker *objv_tracker, void **handle, rgw_obj& obj,
-                      bufferlist& bl, off_t ofs, off_t end, rgw_cache_entry_info *cache_info)
+                      bufferlist& bl, off_t ofs, off_t end)
 {
   rgw_bucket bucket;
   std::string oid, key;
@@ -5405,14 +5360,13 @@ int RGWRados::get_bucket_instance_info(void *ctx, rgw_bucket& bucket, RGWBucketI
 }
 
 int RGWRados::get_bucket_instance_from_oid(void *ctx, string& oid, RGWBucketInfo& info,
-                                           time_t *pmtime, map<string, bufferlist> *pattrs,
-                                           rgw_cache_entry_info *cache_info)
+                                           time_t *pmtime, map<string, bufferlist> *pattrs)
 {
   ldout(cct, 20) << "reading from " << zone.domain_root << ":" << oid << dendl;
 
   bufferlist epbl;
 
-  int ret = rgw_get_system_obj(this, ctx, zone.domain_root, oid, epbl, &info.objv_tracker, pmtime, pattrs, cache_info);
+  int ret = rgw_get_system_obj(this, ctx, zone.domain_root, oid, epbl, &info.objv_tracker, pmtime, pattrs);
   if (ret < 0) {
     return ret;
   }
@@ -5432,12 +5386,11 @@ int RGWRados::get_bucket_entrypoint_info(void *ctx, const string& bucket_name,
                                          RGWBucketEntryPoint& entry_point,
                                          RGWObjVersionTracker *objv_tracker,
                                          time_t *pmtime,
-                                         map<string, bufferlist> *pattrs,
-                                         rgw_cache_entry_info *cache_info)
+                                         map<string, bufferlist> *pattrs)
 {
   bufferlist bl;
 
-  int ret = rgw_get_system_obj(this, ctx, zone.domain_root, bucket_name, bl, objv_tracker, pmtime, pattrs, cache_info);
+  int ret = rgw_get_system_obj(this, ctx, zone.domain_root, bucket_name, bl, objv_tracker, pmtime, pattrs);
   if (ret < 0) {
     return ret;
   }
@@ -5487,34 +5440,15 @@ int RGWRados::convert_old_bucket_info(void *ctx, string& bucket_name)
   return 0;
 }
 
-struct bucket_info_entry {
-  RGWBucketInfo info;
-  time_t mtime;
-  map<string, bufferlist> attrs;
-};
-
-static RGWChainedCacheImpl<bucket_info_entry> binfo_cache;
-
 int RGWRados::get_bucket_info(void *ctx, const string& bucket_name, RGWBucketInfo& info,
                               time_t *pmtime, map<string, bufferlist> *pattrs)
 {
-  bucket_info_entry e;
-  if (binfo_cache.find(bucket_name, &e)) {
-    info = e.info;
-    if (pattrs)
-      *pattrs = e.attrs;
-    if (pmtime)
-      *pmtime = e.mtime;
-    return 0;
-  }
-
   bufferlist bl;
 
   RGWBucketEntryPoint entry_point;
   time_t ep_mtime;
   RGWObjVersionTracker ot;
-  rgw_cache_entry_info entry_cache_info;
-  int ret = get_bucket_entrypoint_info(ctx, bucket_name, entry_point, &ot, &ep_mtime, pattrs, &entry_cache_info);
+  int ret = get_bucket_entrypoint_info(ctx, bucket_name, entry_point, &ot, &ep_mtime, pattrs);
   if (ret < 0) {
     info.bucket.name = bucket_name; /* only init this field */
     return ret;
@@ -5545,31 +5479,12 @@ int RGWRados::get_bucket_info(void *ctx, const string& bucket_name, RGWBucketInf
   string oid;
   get_bucket_meta_oid(entry_point.bucket, oid);
 
-  rgw_cache_entry_info cache_info;
-
-  ret = get_bucket_instance_from_oid(ctx, oid, e.info, &e.mtime, &e.attrs, &cache_info);
-  e.info.ep_objv = ot.read_version;
-  info = e.info;
+  ret = get_bucket_instance_from_oid(ctx, oid, info, pmtime, pattrs);
+  info.ep_objv = ot.read_version;
   if (ret < 0) {
     info.bucket.name = bucket_name;
     return ret;
   }
-
-  if (pmtime)
-    *pmtime = e.mtime;
-  if (pattrs)
-    *pattrs = e.attrs;
-
-  list<rgw_cache_entry_info *> cache_info_entries;
-  cache_info_entries.push_back(&entry_cache_info);
-  cache_info_entries.push_back(&cache_info);
-
-
-  /* chain to both bucket entry point and bucket instance */
-  if (!binfo_cache.put(this, bucket_name, &e, cache_info_entries)) {
-    ldout(cct, 20) << "couldn't put binfo cache entry, might have raced with data changes" << dendl;
-  }
-
   return 0;
 }
 

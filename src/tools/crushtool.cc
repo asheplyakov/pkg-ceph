@@ -193,7 +193,7 @@ int main(int argc, const char **argv)
 
   CrushWrapper crush;
 
-  CrushTester tester(crush, cout);
+  CrushTester tester(crush, cerr);
 
   // we use -c, don't confuse the generic arg parsing
   // only parse arguments from CEPH_ARGS, if in the environment
@@ -427,13 +427,13 @@ int main(int argc, const char **argv)
   }
 
   if (decompile + compile + build > 1) {
-    cerr << "cannot specify more than one of compile, decompile, and build" << std::endl;
+    cout << "cannot specify more than one of compile, decompile, and build" << std::endl;
     exit(EXIT_FAILURE);
   }
   if (!compile && !decompile && !build && !test && !reweight && !adjust &&
       add_item < 0 &&
       remove_name.empty() && reweight_name.empty()) {
-    cerr << "no action specified; -h for help" << std::endl;
+    cout << "no action specified; -h for help" << std::endl;
     exit(EXIT_FAILURE);
   }
   if ((!build) && (!args.empty())) {
@@ -581,8 +581,10 @@ int main(int argc, const char **argv)
 	  dout(2) << "  item " << items[j] << " weight " << weights[j] << dendl;
 	}
 
+	crush_bucket *b = crush_make_bucket(buckettype, CRUSH_HASH_DEFAULT, type, j, items, weights);
+	assert(b);
 	int id;
-	int r = crush.add_bucket(0, buckettype, CRUSH_HASH_DEFAULT, type, j, items, weights, &id);
+	int r = crush_add_bucket(crush.crush, 0, b, &id);
 	if (r < 0) {
 	  dout(2) << "Couldn't add bucket: " << cpp_strerror(r) << dendl;
 	}

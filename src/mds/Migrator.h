@@ -88,7 +88,7 @@ protected:
     set<int> warning_ack_waiting;
     set<int> notify_ack_waiting;
     map<inodeno_t,map<client_t,Capability::Import> > peer_imported;
-    list<MDSInternalContextBase*> waiting_for_finish;
+    list<Context*> waiting_for_finish;
     MutationRef mut;
     // for freeze tree deadlock detection
     utime_t last_cum_auth_pins_change;
@@ -246,7 +246,7 @@ public:
 				map<client_t,entity_inst_t>& exported_client_map);
   void finish_export_inode(CInode *in, utime_t now, int target,
 			   map<client_t,Capability::Import>& peer_imported,
-			   list<MDSInternalContextBase*>& finished);
+			   list<Context*>& finished);
   void finish_export_inode_caps(CInode *in, int target,
 			        map<client_t,Capability::Import>& peer_imported);
 
@@ -257,9 +257,9 @@ public:
 			utime_t now);
   void finish_export_dir(CDir *dir, utime_t now, int target,
 			 map<inodeno_t,map<client_t,Capability::Import> >& peer_imported,
-			 list<MDSInternalContextBase*>& finished, int *num_dentries);
+			 list<Context*>& finished);
 
-  void add_export_finish_waiter(CDir *dir, MDSInternalContextBase *c) {
+  void add_export_finish_waiter(CDir *dir, Context *c) {
     map<CDir*, export_state_t>::iterator it = export_state.find(dir);
     assert(it != export_state.end());
     it->second.waiting_for_finish.push_back(c);
@@ -270,7 +270,7 @@ public:
 
  protected:
   void handle_export_discover_ack(MExportDirDiscoverAck *m);
-  void export_frozen(CDir *dir, uint64_t tid);
+  void export_frozen(CDir *dir);
   void handle_export_prep_ack(MExportDirPrepAck *m);
   void export_sessions_flushed(CDir *dir, uint64_t tid);
   void export_go(CDir *dir);
@@ -287,7 +287,6 @@ public:
   friend class C_MDS_ExportFinishLogged;
   friend class C_M_ExportGo;
   friend class C_M_ExportSessionsFlushed;
-  friend class MigratorContext;
 
   // importer
   void handle_export_discover(MExportDirDiscover *m);

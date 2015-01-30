@@ -23,7 +23,6 @@
 
 static int gotrados = 0;
 char *pool_name;
-char *mount_image_name;
 rados_t cluster;
 rados_ioctx_t ioctx;
 
@@ -37,7 +36,6 @@ struct rbd_stat {
 struct rbd_options {
 	char *ceph_config;
 	char *pool_name;
-	char *image_name;
 };
 
 struct rbd_image {
@@ -54,7 +52,7 @@ struct rbd_openimage {
 #define MAX_RBD_IMAGES		128
 struct rbd_openimage opentbl[MAX_RBD_IMAGES];
 
-struct rbd_options rbd_options = {"/etc/ceph/ceph.conf", "rbd", NULL};
+struct rbd_options rbd_options = {"/etc/ceph/ceph.conf", "rbd"};
 
 #define rbdsize(fd)	opentbl[fd].rbd_stat.rbd_info.size
 #define rbdblksize(fd)	opentbl[fd].rbd_stat.rbd_info.obj_size
@@ -116,15 +114,11 @@ enumerate_images(struct rbd_image **head)
 
 	fprintf(stderr, "pool %s: ", pool_name);
 	for (ip = ibuf; ip < &ibuf[ibuf_len]; ip += strlen(ip) + 1)  {
-		if ((mount_image_name == NULL) ||
-		    ((strlen(mount_image_name) > 0) &&
-		    (strcmp(ip, mount_image_name) == 0))) {
-			fprintf(stderr, "%s, ", ip);
-			im = malloc(sizeof(*im));
-			im->image_name = ip;
-			im->next = *head;
-			*head = im;
-		}
+		fprintf(stderr, "%s, ", ip);
+		im = malloc(sizeof(*im));
+		im->image_name = ip;
+		im->next = *head;
+		*head = im;
 	}
 	fprintf(stderr, "\n");
 }
@@ -148,7 +142,7 @@ int
 open_rbd_image(const char *image_name)
 {
 	struct rbd_image *im;
-	struct rbd_openimage *rbd = NULL;
+	struct rbd_openimage *rbd;
 	int fd;
 
 	if (image_name == (char *)NULL) 
@@ -177,7 +171,7 @@ open_rbd_image(const char *image_name)
 				break;
 			}
 		}
-		if (i == MAX_RBD_IMAGES || !rbd)
+		if (i == MAX_RBD_IMAGES)
 			return -1;
 		int ret = rbd_open(ioctx, rbd->image_name, &(rbd->image), NULL);
 		if (ret < 0) {
@@ -477,7 +471,6 @@ rbdfs_init(struct fuse_conn_info *conn)
 		exit(90);
 
 	pool_name = rbd_options.pool_name;
-	mount_image_name = rbd_options.image_name;
 	ret = rados_ioctx_create(cluster, pool_name, &ioctx);
 	if (ret < 0)
 		exit(91);
@@ -513,7 +506,7 @@ rbdfs_utime(const char *path, struct utimbuf *utime)
 int
 rbdfs_unlink(const char *path)
 {
-	int fd = find_openrbd(path+1);
+	int fd = find_openrbd(path);
 	if (fd != -1) {
 		struct rbd_openimage *rbd = &opentbl[fd];
 		rbd_close(rbd->image);
@@ -565,7 +558,7 @@ struct rbdfuse_attr {
 	{ "user.rbdfuse.imagesize", &imagesize },
 	{ "user.rbdfuse.imageorder", &imageorder },
 	{ "user.rbdfuse.imagefeatures", &imagefeatures },
-	{ NULL, NULL }
+	{ NULL }
 };
 
 int
@@ -654,9 +647,7 @@ enum {
 	KEY_CEPH_CONFIG,
 	KEY_CEPH_CONFIG_LONG,
 	KEY_RADOS_POOLNAME,
-	KEY_RADOS_POOLNAME_LONG,
-	KEY_RBD_IMAGENAME,
-	KEY_RBD_IMAGENAME_LONG
+	KEY_RADOS_POOLNAME_LONG
 };
 
 static struct fuse_opt rbdfs_opts[] = {
@@ -670,9 +661,6 @@ static struct fuse_opt rbdfs_opts[] = {
 	{"-p %s", offsetof(struct rbd_options, pool_name), KEY_RADOS_POOLNAME},
 	{"--poolname=%s", offsetof(struct rbd_options, pool_name),
 	 KEY_RADOS_POOLNAME_LONG},
-	{"-r %s", offsetof(struct rbd_options, image_name), KEY_RBD_IMAGENAME},
-	{"--image=%s", offsetof(struct rbd_options, image_name),
-	KEY_RBD_IMAGENAME_LONG},
 };
 
 static void usage(const char *progname)
@@ -685,7 +673,6 @@ static void usage(const char *progname)
 "    -V   --version         print version\n"
 "    -c   --configfile      ceph configuration file [/etc/ceph/ceph.conf]\n"
 "    -p   --poolname        rados pool name [rbd]\n"
-"    -r   --image           RBD image name\n"
 "\n", progname);
 }
 
@@ -722,15 +709,6 @@ static int rbdfs_opt_proc(void *data, const char *arg, int key,
 		rbd_options.pool_name = strdup(arg+2);
 		return 0;
 	}
-    
-	if (key == KEY_RBD_IMAGENAME) {
-		if (rbd_options.image_name!= NULL) {
-			free(rbd_options.image_name);
-			rbd_options.image_name = NULL;
-		}
-		rbd_options.image_name = strdup(arg+2);
-		return 0;
-	}
 
 	return 1;
 }
@@ -738,8 +716,8 @@ static int rbdfs_opt_proc(void *data, const char *arg, int key,
 void
 simple_err(const char *msg, int err)
 {
-	fprintf(stderr, "%s: %s\n", msg, strerror(-err));
-	return;
+    fprintf(stderr, "%s: %s\n", msg, strerror(-err));
+    return;
 }
 
 int
@@ -775,7 +753,8 @@ int main(int argc, char *argv[])
 {
 	struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
 
-	if (fuse_opt_parse(&args, &rbd_options, rbdfs_opts, rbdfs_opt_proc) == -1) {
+	if (fuse_opt_parse(&args, &rbd_options, rbdfs_opts, rbdfs_opt_proc)
+	    == -1) {
 		exit(1);
 	}
 

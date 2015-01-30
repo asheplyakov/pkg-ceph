@@ -52,7 +52,6 @@
 
 #include <memory>
 #include "include/memory.h"
-#include "include/str_map.h"
 #include <errno.h>
 
 
@@ -67,9 +66,9 @@ enum {
   l_cluster_num_osd_up,
   l_cluster_num_osd_in,
   l_cluster_osd_epoch,
-  l_cluster_osd_bytes,
-  l_cluster_osd_bytes_used,
-  l_cluster_osd_bytes_avail,
+  l_cluster_osd_kb,
+  l_cluster_osd_kb_used,
+  l_cluster_osd_kb_avail,
   l_cluster_num_pool,
   l_cluster_num_pg,
   l_cluster_num_pg_active_clean,
@@ -77,7 +76,6 @@ enum {
   l_cluster_num_pg_peering,
   l_cluster_num_object,
   l_cluster_num_object_degraded,
-  l_cluster_num_object_misplaced,
   l_cluster_num_object_unfound,
   l_cluster_num_bytes,
   l_cluster_num_mds_up,
@@ -85,19 +83,6 @@ enum {
   l_cluster_num_mds_failed,
   l_cluster_mds_epoch,
   l_cluster_last,
-};
-
-enum {
-  l_mon_first = 456000,
-  l_mon_num_sessions,
-  l_mon_session_add,
-  l_mon_session_rm,
-  l_mon_session_trim,
-  l_mon_num_elections,
-  l_mon_election_call,
-  l_mon_election_win,
-  l_mon_election_lose,
-  l_mon_last,
 };
 
 class QuorumService;
@@ -121,8 +106,7 @@ struct MonCommand;
 
 #define COMPAT_SET_LOC "feature_set"
 
-class Monitor : public Dispatcher,
-                public md_config_obs_t {
+class Monitor : public Dispatcher {
 public:
   // me
   string name;
@@ -148,9 +132,7 @@ public:
 
   set<entity_addr_t> extra_probe_peers;
 
-  LogClient log_client;
-  LogChannelRef clog;
-  LogChannelRef audit_clog;
+  LogClient clog;
   KeyRing keyring;
   KeyServer key_server;
 
@@ -209,7 +191,7 @@ public:
 
   const utime_t &get_leader_since() const;
 
-  void prepare_new_fingerprint(MonitorDBStore::TransactionRef t);
+  void prepare_new_fingerprint(MonitorDBStore::Transaction *t);
 
   // -- elector --
 private:
@@ -376,7 +358,7 @@ private:
    * We store a few things on the side that we don't want to get clobbered by sync.  This
    * includes the latest monmap and a lower bound on last_committed.
    */
-  void sync_stash_critical_state(MonitorDBStore::TransactionRef tx);
+  void sync_stash_critical_state(MonitorDBStore::Transaction *tx);
 
   /**
    * reset the sync timeout
@@ -557,7 +539,6 @@ public:
 
 private:
   void _reset();   ///< called from bootstrap, start_, or join_election
-  void wait_for_paxos_write();
 public:
   void bootstrap();
   void join_election();
@@ -648,7 +629,8 @@ public:
                         const MonCommand *this_cmd);
   void get_mon_status(Formatter *f, ostream& ss);
   void _quorum_status(Formatter *f, ostream& ss);
-  bool _add_bootstrap_peer_hint(string cmd, cmdmap_t& cmdmap, ostream& ss);
+  void _osdmonitor_prepare_command(cmdmap_t& cmdmap, ostream& ss);
+  void _add_bootstrap_peer_hint(string cmd, cmdmap_t& cmdmap, ostream& ss);
   void handle_command(class MMonCommand *m);
   void handle_route(MRoute *m);
 
@@ -727,31 +709,8 @@ public:
     C_Command(Monitor *_mm, MMonCommand *_m, int r, string s, bufferlist rd, version_t v) :
       mon(_mm), m(_m), rc(r), rs(s), rdata(rd), version(v){}
     void finish(int r) {
-      if (r >= 0) {
-        ostringstream ss;
-        if (!m->get_connection()) {
-          ss << "connection dropped for command ";
-        } else {
-          MonSession *s = m->get_session();
-
-          // if client drops we may not have a session to draw information from.
-          if (s) {
-            ss << "from='" << s->inst << "' "
-              << "entity='";
-            if (s->auth_handler)
-              ss << s->auth_handler->get_entity_name();
-            else
-              ss << "forwarded-request";
-            ss << "' ";
-          } else {
-            ss << "session dropped for command ";
-          }
-        }
-        ss << "cmd='" << m->cmd << "': finished";
-
-        mon->audit_clog->info() << ss.str();
+      if (r >= 0)
 	mon->reply_command(m, rc, rs, rdata, version);
-      }
       else if (r == -ECANCELED)
 	m->put();
       else if (r == -EAGAIN)
@@ -779,15 +738,15 @@ public:
 
   //ms_dispatch handles a lot of logic and we want to reuse it
   //on forwarded messages, so we create a non-locking version for this class
-  void _ms_dispatch(Message *m);
+  bool _ms_dispatch(Message *m);
   bool ms_dispatch(Message *m) {
     lock.Lock();
-    _ms_dispatch(m);
+    bool ret = _ms_dispatch(m);
     lock.Unlock();
-    return true;
+    return ret;
   }
   // dissociate message handling from session and connection logic
-  void dispatch(MonSession *s, Message *m, const bool src_is_mon);
+  bool dispatch(MonSession *s, Message *m, const bool src_is_mon);
   //mon_caps is used for un-connected messages from monitors
   MonCap * mon_caps;
   bool ms_get_authorizer(int dest_type, AuthAuthorizer **authorizer, bool force_new);
@@ -806,7 +765,7 @@ public:
   /// read the ondisk features into the CompatSet pointed to by read_features
   static void read_features_off_disk(MonitorDBStore *store, CompatSet *read_features);
   void read_features();
-  void write_features(MonitorDBStore::TransactionRef t);
+  void write_features(MonitorDBStore::Transaction &t);
 
  public:
   Monitor(CephContext *cct_, string nm, MonitorDBStore *s,
@@ -815,18 +774,6 @@ public:
 
   static int check_features(MonitorDBStore *store);
 
-  // config observer
-  virtual const char** get_tracked_conf_keys() const;
-  virtual void handle_conf_change(const struct md_config_t *conf,
-                                  const std::set<std::string> &changed);
-
-  void update_log_client(LogChannelRef lc, const string &name,
-                         map<string,string> &log_to_monitors,
-                         map<string,string> &log_to_syslog,
-                         map<string,string> &log_channels,
-                         map<string,string> &log_prios);
-  void update_log_clients();
-  int sanitize_options();
   int preinit();
   int init();
   void init_paxos();
@@ -851,7 +798,7 @@ public:
    * @return 0 on success, or negative error code
    */
   int write_fsid();
-  int write_fsid(MonitorDBStore::TransactionRef t);
+  int write_fsid(MonitorDBStore::Transaction &t);
 
   void do_admin_command(std::string command, cmdmap_t& cmdmap,
 			std::string format, ostream& ss);
@@ -919,15 +866,15 @@ public:
     }
 
     void _mark_convert_start() {
-      MonitorDBStore::TransactionRef tx(new MonitorDBStore::Transaction);
-      tx->put("mon_convert", "on_going", 1);
+      MonitorDBStore::Transaction tx;
+      tx.put("mon_convert", "on_going", 1);
       db->apply_transaction(tx);
     }
 
-    void _convert_finish_features(MonitorDBStore::TransactionRef t);
+    void _convert_finish_features(MonitorDBStore::Transaction &t);
     void _mark_convert_finish() {
-      MonitorDBStore::TransactionRef tx(new MonitorDBStore::Transaction);
-      tx->erase("mon_convert", "on_going");
+      MonitorDBStore::Transaction tx;
+      tx.erase("mon_convert", "on_going");
       _convert_finish_features(tx);
       db->apply_transaction(tx);
     }
@@ -956,7 +903,6 @@ public:
 #define CEPH_MON_FEATURE_INCOMPAT_SINGLE_PAXOS CompatSet::Feature (3, "single paxos with k/v store (v0.\?)")
 #define CEPH_MON_FEATURE_INCOMPAT_OSD_ERASURE_CODES CompatSet::Feature(4, "support erasure code pools")
 #define CEPH_MON_FEATURE_INCOMPAT_OSDMAP_ENC CompatSet::Feature(5, "new-style osdmap encoding")
-#define CEPH_MON_FEATURE_INCOMPAT_ERASURE_CODE_PLUGINS_V2 CompatSet::Feature(6, "support isa/lrc erasure code")
 // make sure you add your feature to Monitor::get_supported_features
 
 long parse_pos_long(const char *s, ostream *pss = NULL);
@@ -1013,54 +959,7 @@ struct MonCommand {
     ::decode_array_nohead(*cmds, *size, bl);
     DECODE_FINISH(bl);
   }
-
-  bool requires_perm(char p) const {
-    return (req_perms.find(p) != string::npos); 
-  }
 };
-WRITE_CLASS_ENCODER(MonCommand)
-
-// Having this here is less than optimal, but we needed to keep it
-// somewhere as to avoid code duplication, as it will be needed both
-// on the Monitor class and the LogMonitor class.
-//
-// We are attempting to avoid code duplication in the event that
-// changing how the mechanisms currently work will lead to unnecessary
-// issues, resulting from the need of changing this function in multiple
-// places.
-//
-// This function is just a helper to perform a task that should not be
-// needed anywhere else besides the two functions that shall call it.
-//
-// This function's only purpose is to check whether a given map has only
-// ONE key with an empty value (which would mean that 'get_str_map()' read
-// a map in the form of 'VALUE', without any KEY/VALUE pairs) and, in such
-// event, to assign said 'VALUE' to a given 'def_key', such that we end up
-// with a map of the form "m = { 'def_key' : 'VALUE' }" instead of the
-// original "m = { 'VALUE' : '' }".
-static inline int get_conf_str_map_helper(
-    const string &str,
-    ostringstream &oss,
-    map<string,string> *m,
-    const string &def_key)
-{
-  int r = get_str_map(str, m);
-
-  if (r < 0) {
-    generic_derr << __func__ << " error: " << oss.str() << dendl;
-    return r;
-  }
-
-  if (r >= 0 && m->size() == 1) {
-    map<string,string>::iterator p = m->begin();
-    if (p->second.empty()) {
-      string s = p->first;
-      m->erase(s);
-      (*m)[def_key] = s;
-    }
-  }
-  return r;
-}
-
+WRITE_CLASS_ENCODER(MonCommand);
 
 #endif

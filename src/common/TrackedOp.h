@@ -29,14 +29,13 @@ class OpTracker;
 class OpHistory {
   set<pair<utime_t, TrackedOpRef> > arrived;
   set<pair<double, TrackedOpRef> > duration;
-  Mutex ops_history_lock;
   void cleanup(utime_t now);
   bool shutdown;
   uint32_t history_size;
   uint32_t history_duration;
 
 public:
-  OpHistory() : ops_history_lock("OpHistory::Lock"), shutdown(false),
+  OpHistory() : shutdown(false),
   history_size(0), history_duration(0) {}
   ~OpHistory() {
     assert(arrived.empty());
@@ -60,36 +59,19 @@ class OpTracker {
   };
   friend class RemoveOnDelete;
   friend class OpHistory;
-  atomic64_t seq;
-  struct ShardedTrackingData {
-    Mutex ops_in_flight_lock_sharded;
-    xlist<TrackedOp *> ops_in_flight_sharded;
-    ShardedTrackingData(string lock_name):
-        ops_in_flight_lock_sharded(lock_name.c_str()) {}
-  };
-  vector<ShardedTrackingData*> sharded_in_flight_list;
-  uint32_t num_optracker_shards;
+  uint64_t seq;
+  Mutex ops_in_flight_lock;
+  xlist<TrackedOp *> ops_in_flight;
   OpHistory history;
   float complaint_time;
   int log_threshold;
-  void _mark_event(TrackedOp *op, const string &evt, utime_t now);
 
 public:
   bool tracking_enabled;
   CephContext *cct;
-  OpTracker(CephContext *cct_, bool tracking, uint32_t num_shards) : seq(0), 
-                                     num_optracker_shards(num_shards),
-				     complaint_time(0), log_threshold(0),
-				     tracking_enabled(tracking), cct(cct_) {
-
-    for (uint32_t i = 0; i < num_optracker_shards; i++) {
-      char lock_name[32] = {0};
-      snprintf(lock_name, sizeof(lock_name), "%s:%d", "OpTracker::ShardedLock", i);
-      ShardedTrackingData* one_shard = new ShardedTrackingData(lock_name);
-      sharded_in_flight_list.push_back(one_shard);
-    }
-  }
-      
+  OpTracker(CephContext *cct_, bool tracking) : seq(0), ops_in_flight_lock("OpTracker mutex"),
+						complaint_time(0), log_threshold(0),
+						tracking_enabled(tracking), cct(cct_) {}
   void set_complaint_and_threshold(float time, int threshold) {
     complaint_time = time;
     log_threshold = threshold;
@@ -113,25 +95,30 @@ public:
    * @return True if there are any Ops to warn on, false otherwise.
    */
   bool check_ops_in_flight(std::vector<string> &warning_strings);
-  void mark_event(TrackedOp *op, const string &evt,
-                          utime_t time = ceph_clock_now(g_ceph_context));
+  void mark_event(TrackedOp *op, const string &evt);
+  void _mark_event(TrackedOp *op, const string &evt, utime_t now);
 
   void on_shutdown() {
+    Mutex::Locker l(ops_in_flight_lock);
     history.on_shutdown();
   }
   ~OpTracker() {
-    while (!sharded_in_flight_list.empty()) {
-      assert((sharded_in_flight_list.back())->ops_in_flight_sharded.empty());
-      delete sharded_in_flight_list.back();
-      sharded_in_flight_list.pop_back();
-    }    
+    assert(ops_in_flight.empty());
   }
 
-  template <typename T, typename U>
-  typename T::Ref create_request(U params)
+  template <typename T>
+  typename T::Ref create_request(Message *ref)
   {
-    typename T::Ref retval(new T(params, this),
+    typename T::Ref retval(new T(ref, this),
 			   RemoveOnDelete(this));
+    
+    _mark_event(retval.get(), "header_read", ref->get_recv_stamp());
+    _mark_event(retval.get(), "throttled", ref->get_throttle_stamp());
+    _mark_event(retval.get(), "all_read", ref->get_recv_complete_stamp());
+    _mark_event(retval.get(), "dispatched", ref->get_dispatch_stamp());
+    
+    retval->init_from_message();
+    
     return retval;
   }
 };
@@ -142,49 +129,46 @@ private:
   friend class OpTracker;
   xlist<TrackedOp*>::item xitem;
 protected:
+  Message *request; /// the logical request we are tracking
   OpTracker *tracker; /// the tracker we are associated with
 
-  utime_t initiated_at;
   list<pair<utime_t, string> > events; /// list of events and their times
-  mutable Mutex lock; /// to protect the events list
+  Mutex lock; /// to protect the events list
   string current; /// the current state the event is in
   uint64_t seq; /// a unique value set by the OpTracker
 
   uint32_t warn_interval_multiplier; // limits output of a given op warning
 
-  TrackedOp(OpTracker *_tracker, const utime_t& initiated) :
+  TrackedOp(Message *req, OpTracker *_tracker) :
     xitem(this),
+    request(req),
     tracker(_tracker),
-    initiated_at(initiated),
     lock("TrackedOp::lock"),
     seq(0),
     warn_interval_multiplier(1)
   {
     tracker->register_inflight_op(&xitem);
-    events.push_back(make_pair(initiated_at, "initiated"));
   }
 
+  virtual void init_from_message() {}
   /// output any type-specific data you want to get when dump() is called
   virtual void _dump(utime_t now, Formatter *f) const {}
   /// if you want something else to happen when events are marked, implement
   virtual void _event_marked() {}
-  /// return a unique descriptor of the Op; eg the message it's attached to
-  virtual void _dump_op_descriptor_unlocked(ostream& stream) const = 0;
-  /// called when the last non-OpTracker reference is dropped
-  virtual void _unregistered() {};
 
 public:
-  virtual ~TrackedOp() {}
+  virtual ~TrackedOp() { assert(request); request->put(); }
 
-  const utime_t& get_initiated() const {
-    return initiated_at;
+  utime_t get_arrived() const {
+    return request->get_recv_stamp();
   }
   // This function maybe needs some work; assumes last event is completion time
   double get_duration() const {
     return events.size() ?
-      (events.rbegin()->first - get_initiated()) :
+      (events.rbegin()->first - get_arrived()) :
       0.0;
   }
+  Message *get_req() const { return request; }
 
   void mark_event(const string &event);
   virtual const char *state_string() const {

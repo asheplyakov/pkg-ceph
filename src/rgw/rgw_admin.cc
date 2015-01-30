@@ -1,27 +1,23 @@
-// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
-// vim: ts=8 sw=2 smarttab
-
 #include <errno.h>
+
 #include <iostream>
 #include <sstream>
 #include <string>
 
 using namespace std;
 
-#include "auth/Crypto.h"
-
-#include "common/armor.h"
 #include "common/ceph_json.h"
+
 #include "common/config.h"
 #include "common/ceph_argparse.h"
 #include "common/Formatter.h"
-#include "common/errno.h"
-
+#include "common/ceph_json.h"
 #include "global/global_init.h"
-
+#include "common/errno.h"
 #include "include/utime.h"
 #include "include/str_list.h"
 
+#include "common/armor.h"
 #include "rgw_user.h"
 #include "rgw_bucket.h"
 #include "rgw_rados.h"
@@ -31,6 +27,7 @@ using namespace std;
 #include "rgw_formats.h"
 #include "rgw_usage.h"
 #include "rgw_replica_log.h"
+#include "auth/Crypto.h"
 
 #define dout_subsys ceph_subsys_rgw
 
@@ -207,7 +204,6 @@ enum {
   OPT_BUCKET_STATS,
   OPT_BUCKET_CHECK,
   OPT_BUCKET_RM,
-  OPT_BUCKET_REWRITE,
   OPT_POLICY,
   OPT_POOL_ADD,
   OPT_POOL_RM,
@@ -221,7 +217,6 @@ enum {
   OPT_OBJECT_RM,
   OPT_OBJECT_UNLINK,
   OPT_OBJECT_STAT,
-  OPT_OBJECT_REWRITE,
   OPT_QUOTA_SET,
   OPT_QUOTA_ENABLE,
   OPT_QUOTA_DISABLE,
@@ -339,8 +334,6 @@ static int get_cmd(const char *cmd, const char *prev_cmd, bool *need_more)
       return OPT_BUCKET_STATS;
     if (strcmp(cmd, "rm") == 0)
       return OPT_BUCKET_RM;
-    if (strcmp(cmd, "rewrite") == 0)
-      return OPT_BUCKET_REWRITE;
     if (strcmp(cmd, "check") == 0)
       return OPT_BUCKET_CHECK;
   } else if (strcmp(prev_cmd, "log") == 0) {
@@ -380,8 +373,6 @@ static int get_cmd(const char *cmd, const char *prev_cmd, bool *need_more)
       return OPT_OBJECT_UNLINK;
     if (strcmp(cmd, "stat") == 0)
       return OPT_OBJECT_STAT;
-    if (strcmp(cmd, "rewrite") == 0)
-      return OPT_OBJECT_REWRITE;
   } else if (strcmp(prev_cmd, "region") == 0) {
     if (strcmp(cmd, "get") == 0)
       return OPT_REGION_GET;
@@ -754,62 +745,6 @@ int set_user_quota(int opt_cmd, RGWUser& user, RGWUserAdminOpState& op_state, in
   return 0;
 }
 
-static bool bucket_object_check_filter(const string& name)
-{
-  string ns;
-  string obj = name;
-  return rgw_obj::translate_raw_obj_to_obj_in_ns(obj, ns);
-}
-
-int check_min_obj_stripe_size(RGWRados *store, rgw_obj& obj, uint64_t min_stripe_size, bool *need_rewrite)
-{
-  map<string, bufferlist> attrs;
-  uint64_t obj_size;
-  void *handle;
-
-  void *obj_ctx = store->create_context(NULL);
-  int ret = store->prepare_get_obj(obj_ctx, obj, NULL, NULL, &attrs, NULL,
-                                   NULL, NULL, NULL, NULL, NULL, &obj_size, NULL, &handle, NULL);
-  store->finish_get_obj(&handle);
-  store->destroy_context(obj_ctx);
-  if (ret < 0) {
-    lderr(store->ctx()) << "ERROR: failed to stat object, returned error: " << cpp_strerror(-ret) << dendl;
-    return ret;
-  }
-
-  map<string, bufferlist>::iterator iter;
-  iter = attrs.find(RGW_ATTR_MANIFEST);
-  if (iter == attrs.end()) {
-    *need_rewrite = (obj_size >= min_stripe_size);
-    return 0;
-  }
-
-  RGWObjManifest manifest;
-
-  try {
-    bufferlist& bl = iter->second;
-    bufferlist::iterator biter = bl.begin();
-    ::decode(manifest, biter);
-  } catch (buffer::error& err) {
-    ldout(store->ctx(), 0) << "ERROR: failed to decode manifest" << dendl;
-    return -EIO;
-  }
-
-  map<uint64_t, RGWObjManifestPart>& objs = manifest.get_explicit_objs();
-  map<uint64_t, RGWObjManifestPart>::iterator oiter;
-  for (oiter = objs.begin(); oiter != objs.end(); ++oiter) {
-    RGWObjManifestPart& part = oiter->second;
-
-    if (part.size >= min_stripe_size) {
-      *need_rewrite = true;
-      return 0;
-    }
-  }
-  *need_rewrite = false;
-
-  return 0;
-}
-
 int main(int argc, char **argv) 
 {
   vector<const char*> args;
@@ -882,10 +817,6 @@ int main(int argc, char **argv)
 
   int sync_stats = false;
 
-  uint64_t min_rewrite_size = 4 * 1024 * 1024;
-  uint64_t max_rewrite_size = ULLONG_MAX;
-  uint64_t min_rewrite_stripe_size = 0;
-
   std::string val;
   std::ostringstream errs;
   string err;
@@ -949,12 +880,6 @@ int main(int argc, char **argv)
 	cerr << errs.str() << std::endl;
 	exit(EXIT_FAILURE);
       }
-    } else if (ceph_argparse_witharg(args, i, &val, "--min-rewrite-size", (char*)NULL)) {
-      min_rewrite_size = (uint64_t)atoll(val.c_str());
-    } else if (ceph_argparse_witharg(args, i, &val, "--max-rewrite-size", (char*)NULL)) {
-      max_rewrite_size = (uint64_t)atoll(val.c_str());
-    } else if (ceph_argparse_witharg(args, i, &val, "--min-rewrite-stripe-size", (char*)NULL)) {
-      min_rewrite_stripe_size = (uint64_t)atoll(val.c_str());
     } else if (ceph_argparse_witharg(args, i, &val, "--max-buckets", (char*)NULL)) {
       max_buckets = atoi(val.c_str());
     } else if (ceph_argparse_witharg(args, i, &val, "--max-entries", (char*)NULL)) {
@@ -1600,11 +1525,9 @@ int main(int argc, char **argv)
   }
 
   if (opt_cmd == OPT_BUCKET_LINK) {
-    bucket_op.set_bucket_id(bucket_id);
-    string err;
-    int r = RGWBucketAdminOp::link(store, bucket_op, &err);
+    int r = RGWBucketAdminOp::link(store, bucket_op);
     if (r < 0) {
-      cerr << "failure: " << cpp_strerror(-r) << ": " << err << std::endl;
+      cerr << "failure: " << cpp_strerror(-r) << std::endl;
       return -r;
     }
   }
@@ -1684,7 +1607,7 @@ int main(int argc, char **argv)
       oid += "-";
       oid += bucket_id;
       oid += "-";
-      oid += bucket_name;
+      oid += string(bucket.name);
     }
 
     if (opt_cmd == OPT_LOG_SHOW) {
@@ -1888,141 +1811,6 @@ next:
       cerr << "ERROR: object remove returned: " << cpp_strerror(-ret) << std::endl;
       return -ret;
     }
-  }
-
-  if (opt_cmd == OPT_OBJECT_REWRITE) {
-    if (bucket_name.empty()) {
-      cerr << "ERROR: bucket not specified" << std::endl;
-      return EINVAL;
-    }
-    if (object.empty()) {
-      cerr << "ERROR: object not specified" << std::endl;
-      return EINVAL;
-    }
-
-    RGWBucketInfo bucket_info;
-    int ret = init_bucket(bucket_name, bucket_info, bucket);
-    if (ret < 0) {
-      cerr << "ERROR: could not init bucket: " << cpp_strerror(-ret) << std::endl;
-      return -ret;
-    }
-
-    rgw_obj obj(bucket, object);
-    bool need_rewrite = true;
-    if (min_rewrite_stripe_size > 0) {
-      ret = check_min_obj_stripe_size(store, obj, min_rewrite_stripe_size, &need_rewrite);
-      if (ret < 0) {
-        ldout(store->ctx(), 0) << "WARNING: check_min_obj_stripe_size failed, r=" << ret << dendl;
-      }
-    }
-    if (need_rewrite) {
-      ret = store->rewrite_obj(bucket_info.owner, obj);
-      if (ret < 0) {
-        cerr << "ERROR: object rewrite returned: " << cpp_strerror(-ret) << std::endl;
-        return -ret;
-      }
-    } else {
-      ldout(store->ctx(), 20) << "skipped object" << dendl;
-    }
-  }
-
-  if (opt_cmd == OPT_BUCKET_REWRITE) {
-    if (bucket_name.empty()) {
-      cerr << "ERROR: bucket not specified" << std::endl;
-      return EINVAL;
-    }
-
-    RGWBucketInfo bucket_info;
-    int ret = init_bucket(bucket_name, bucket_info, bucket);
-    if (ret < 0) {
-      cerr << "ERROR: could not init bucket: " << cpp_strerror(-ret) << std::endl;
-      return -ret;
-    }
-
-    uint64_t start_epoch = 0;
-    uint64_t end_epoch = 0;
-
-    if (!end_date.empty()) {
-      int ret = utime_t::parse_date(end_date, &end_epoch, NULL);
-      if (ret < 0) {
-        cerr << "ERROR: failed to parse end date" << std::endl;
-        return EINVAL;
-      }
-    }
-    if (!start_date.empty()) {
-      int ret = utime_t::parse_date(start_date, &start_epoch, NULL);
-      if (ret < 0) {
-        cerr << "ERROR: failed to parse start date" << std::endl;
-        return EINVAL;
-      }
-    }
-
-    bool is_truncated = true;
-
-    string marker;
-    string prefix;
-
-    formatter->open_object_section("result");
-    formatter->dump_string("bucket", bucket_name);
-    formatter->open_array_section("objects");
-    while (is_truncated) {
-      map<string, RGWObjEnt> result;
-      int r = store->cls_bucket_list(bucket, marker, prefix, 1000, 
-                                     result, &is_truncated, &marker,
-                                     bucket_object_check_filter);
-
-      if (r < 0 && r != -ENOENT) {
-        cerr << "ERROR: failed operation r=" << r << std::endl;
-      }
-
-      if (r == -ENOENT)
-        break;
-
-      map<string, RGWObjEnt>::iterator iter;
-      for (iter = result.begin(); iter != result.end(); ++iter) {
-        string name = iter->first;
-        RGWObjEnt& entry = iter->second;
-
-        formatter->open_object_section("object");
-        formatter->dump_string("name", name);
-        formatter->dump_int("size", entry.size);
-        utime_t ut(entry.mtime, 0);
-        ut.gmtime(formatter->dump_stream("mtime"));
-
-        if ((entry.size < min_rewrite_size) ||
-            (entry.size > max_rewrite_size) ||
-            (start_epoch > 0 && start_epoch > (uint64_t)ut.sec()) ||
-            (end_epoch > 0 && end_epoch < (uint64_t)ut.sec())) {
-          formatter->dump_string("status", "Skipped");
-        } else {
-          rgw_obj obj(bucket, name);
-
-          bool need_rewrite = true;
-          if (min_rewrite_stripe_size > 0) {
-            r = check_min_obj_stripe_size(store, obj, min_rewrite_stripe_size, &need_rewrite);
-            if (r < 0) {
-              ldout(store->ctx(), 0) << "WARNING: check_min_obj_stripe_size failed, r=" << r << dendl;
-            }
-          }
-          if (!need_rewrite) {
-            formatter->dump_string("status", "Skipped");
-          } else {
-            r = store->rewrite_obj(bucket_info.owner, obj);
-            if (r == 0) {
-              formatter->dump_string("status", "Success");
-            } else {
-              formatter->dump_string("status", cpp_strerror(-r));
-            }
-          }
-        }
-
-        formatter->close_section();
-        formatter->flush(cout);
-      }
-    }
-    formatter->close_section();
-    formatter->close_section();
-    formatter->flush(cout);
   }
 
   if (opt_cmd == OPT_OBJECT_UNLINK) {

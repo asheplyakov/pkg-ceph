@@ -1,5 +1,4 @@
 // -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
-// vim: ts=8 sw=2 smarttab
 #include "common/Mutex.h"
 #include "common/Cond.h"
 #include "common/errno.h"
@@ -262,7 +261,7 @@ int main(int argc, char **argv)
   };
 
   map<TestOpType, unsigned int> op_weights;
-  string pool_name = "rbd";
+  string pool_name = "data";
   bool ec_pool = false;
   bool no_omap = false;
 

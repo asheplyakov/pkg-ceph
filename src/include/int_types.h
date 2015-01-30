@@ -3,6 +3,10 @@
 
 #include "acconfig.h"
 
+#ifdef HAVE_LINUX_TYPES_H
+#include <linux/types.h>
+#endif
+
 /*
  * Get 64b integers either from inttypes.h or glib.h
  */
@@ -20,14 +24,6 @@
  */
 #ifdef HAVE_STDINT_H
 #include <stdint.h>
-#endif
-
-/*
- * Include types.h after stdint.h to accomodate for older distributions
- *
- */
-#ifdef HAVE_LINUX_TYPES_H
-#include <linux/types.h>
 #endif
 
 /*

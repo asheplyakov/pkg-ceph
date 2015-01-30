@@ -1,5 +1,4 @@
-// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
-// vim: ts=8 sw=2 smarttab
+
 
 #include "rgw_gc.h"
 #include "include/rados/librados.hpp"
@@ -155,7 +154,7 @@ int RGWGC::process(int index, int max_secs)
 
   string marker;
   bool truncated;
-  IoCtx *ctx = new IoCtx;
+  IoCtx *ctx = NULL;
   do {
     int max = 100;
     std::list<cls_rgw_gc_obj_info> entries;
@@ -168,6 +167,7 @@ int RGWGC::process(int index, int max_secs)
       goto done;
 
     string last_pool;
+    ctx = new IoCtx;
     std::list<cls_rgw_gc_obj_info>::iterator iter;
     for (iter = entries.begin(); iter != entries.end(); ++iter) {
       bool remove_tag;

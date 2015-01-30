@@ -37,18 +37,6 @@ void MDSTableServer::handle_request(MMDSTableRequest *req)
   }
 }
 
-class C_Prepare : public MDSInternalContext {
-  MDSTableServer *server;
-  MMDSTableRequest *req;
-  version_t tid;
-public:
-
-  C_Prepare(MDSTableServer *s, MMDSTableRequest *r, version_t v) : MDSInternalContext(s->mds), server(s), req(r), tid(v) {}
-  void finish(int r) {
-    server->_prepare_logged(req, tid);
-  }
-};
-
 // prepare
 /* This function DOES put the passed message before returning */
 void MDSTableServer::handle_prepare(MMDSTableRequest *req)
@@ -81,15 +69,6 @@ void MDSTableServer::_prepare_logged(MMDSTableRequest *req, version_t tid)
   req->put();
 }
 
-class C_Commit : public MDSInternalContext {
-  MDSTableServer *server;
-  MMDSTableRequest *req;
-public:
-  C_Commit(MDSTableServer *s, MMDSTableRequest *r) : MDSInternalContext(s->mds), server(s), req(r) {}
-  void finish(int r) {
-    server->_commit_logged(req);
-  }
-};
 
 // commit
 /* This function DOES put the passed message before returning */
@@ -108,8 +87,8 @@ void MDSTableServer::handle_commit(MMDSTableRequest *req)
 
     _note_commit(tid);
     mds->mdlog->start_submit_entry(new ETableServer(table, TABLESERVER_OP_COMMIT, 0, -1, 
-						    tid, version),
-				   new C_Commit(this, req));
+						    tid, version));
+    mds->mdlog->wait_for_safe(new C_Commit(this, req));
   }
   else if (tid <= version) {
     dout(0) << "got commit for tid " << tid << " <= " << version 

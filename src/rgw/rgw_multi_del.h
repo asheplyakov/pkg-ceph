@@ -1,6 +1,3 @@
-// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
-// vim: ts=8 sw=2 smarttab
-
 #ifndef RGW_MULTI_DELETE_H_
 #define RGW_MULTI_DELETE_H_
 
@@ -16,7 +13,7 @@ public:
 
   std::vector<string> objects;
   bool quiet;
-  bool is_quiet() { return quiet; }
+  bool is_quiet() { return quiet; };
 };
 
 class RGWMultiDelQuiet : public XMLObj

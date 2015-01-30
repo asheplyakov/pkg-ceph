@@ -28,8 +28,8 @@ public:
     GRANT = 1,
     REJECT = 2,
   };
-  uint32_t type;
-  uint32_t priority;
+  int type;
+  unsigned priority;
 
   MBackfillReserve()
     : Message(MSG_OSD_BACKFILL_RESERVE, HEAD_VERSION, COMPAT_VERSION),
@@ -75,7 +75,7 @@ public:
     if (header.version >= 3)
       ::decode(pgid.shard, p);
     else
-      pgid.shard = shard_id_t::NO_SHARD;
+      pgid.shard = ghobject_t::no_shard();
 
   }
 

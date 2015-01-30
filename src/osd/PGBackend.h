@@ -22,6 +22,7 @@
 #include "PGLog.h"
 #include "osd_types.h"
 #include "common/WorkQueue.h"
+#include "osd_types.h"
 #include "include/Context.h"
 #include "os/ObjectStore.h"
 #include "common/LogClient.h"
@@ -190,7 +191,7 @@
      virtual void update_stats(
        const pg_stat_t &stat) = 0;
 
-     virtual void schedule_recovery_work(
+     virtual void schedule_work(
        GenContext<ThreadPool::TPHandle&> *c) = 0;
 
      virtual pg_shard_t whoami_shard() const = 0;
@@ -598,7 +599,7 @@
      map<hobject_t, pg_shard_t> &authoritative,
      map<hobject_t, set<pg_shard_t> > &invalid_snapcolls,
      int &shallow_errors, int &deep_errors,
-     const spg_t& pgid,
+     const spg_t pgid,
      const vector<int> &acting,
      ostream &errorstream);
    virtual uint64_t be_get_ondisk_size(
@@ -631,14 +632,14 @@ struct PG_SendMessageOnConn: public Context {
   }
 };
 
-struct PG_RecoveryQueueAsync : public Context {
+struct PG_QueueAsync : public Context {
   PGBackend::Listener *pg;
   GenContext<ThreadPool::TPHandle&> *c;
-  PG_RecoveryQueueAsync(
+  PG_QueueAsync(
     PGBackend::Listener *pg,
     GenContext<ThreadPool::TPHandle&> *c) : pg(pg), c(c) {}
   void finish(int) {
-    pg->schedule_recovery_work(c);
+    pg->schedule_work(c);
   }
 };
 

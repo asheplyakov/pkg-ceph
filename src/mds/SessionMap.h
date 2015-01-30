@@ -80,22 +80,7 @@ private:
   uint64_t state_seq;
   int importing_count;
   friend class SessionMap;
-
-  // Human (friendly) name is soft state generated from client metadata
-  void _update_human_name();
-  std::string human_name;
-
 public:
-
-  void decode(bufferlist::iterator &p);
-  void set_client_metadata(std::map<std::string, std::string> const &meta);
-  std::string get_human_name() const {return human_name;}
-
-  // Ephemeral state for tracking progress of capability recalls
-  utime_t recalled_at;  // When was I asked to SESSION_RECALL?
-  uint32_t recall_count;  // How many caps was I asked to SESSION_RECALL?
-  uint32_t recall_release_count;  // How many caps have I actually revoked?
-
   session_info_t info;                         ///< durable bits
 
   ConnectionRef connection;
@@ -104,12 +89,8 @@ public:
   list<Message*> preopen_out_queue;  ///< messages for client, queued before they connect
 
   elist<MDRequestImpl*> requests;
-  size_t get_request_count();
 
   interval_set<inodeno_t> pending_prealloc_inos; // journaling prealloc, will be added to prealloc_inos
-
-  void notify_cap_release(size_t n_caps);
-  void notify_recall_sent(int const new_limit);
 
   inodeno_t next_ino() {
     if (info.prealloc_inos.empty())
@@ -162,7 +143,7 @@ public:
   // -- caps --
 private:
   version_t cap_push_seq;        // cap push seq #
-  map<version_t, list<MDSInternalContextBase*> > waitfor_flush; // flush session messages
+  map<version_t, list<Context*> > waitfor_flush; // flush session messages
 public:
   xlist<Capability*> caps;     // inodes with caps; front=most recently used
   xlist<ClientLease*> leases;  // metadata leases to clients
@@ -172,11 +153,11 @@ public:
   version_t inc_push_seq() { return ++cap_push_seq; }
   version_t get_push_seq() const { return cap_push_seq; }
 
-  version_t wait_for_flush(MDSInternalContextBase* c) {
+  version_t wait_for_flush(Context* c) {
     waitfor_flush[get_push_seq()].push_back(c);
     return get_push_seq();
   }
-  void finish_flush(version_t seq, list<MDSInternalContextBase*>& ls) {
+  void finish_flush(version_t seq, list<Context*>& ls) {
     while (!waitfor_flush.empty()) {
       if (waitfor_flush.begin()->first > seq)
 	break;
@@ -221,7 +202,6 @@ public:
 
   Session() : 
     state(STATE_CLOSED), state_seq(0), importing_count(0),
-    recalled_at(), recall_count(0), recall_release_count(0),
     connection(NULL), item_session_list(this),
     requests(0),  // member_offset passed to front() manually
     cap_push_seq(0),
@@ -252,16 +232,15 @@ public:
 class MDS;
 
 class SessionMap {
-public:
-  MDS *mds;
 private:
+  MDS *mds;
   ceph::unordered_map<entity_name_t, Session*> session_map;
 public:
   map<int,xlist<Session*>* > by_state;
   
 public:  // i am lazy
   version_t version, projected, committing, committed;
-  map<version_t, list<MDSInternalContextBase*> > commit_waiters;
+  map<version_t, list<Context*> > commit_waiters;
 
 public:
   SessionMap(MDS *m) : mds(m), 
@@ -274,10 +253,6 @@ public:
     
   // sessions
   bool empty() { return session_map.empty(); }
-  const ceph::unordered_map<entity_name_t, Session*> &get_sessions() const
-  {
-    return session_map;
-  }
 
   bool is_any_state(int state) {
     map<int,xlist<Session*>* >::iterator p = by_state.find(state);
@@ -303,14 +278,6 @@ public:
       return session_map[w];
     return 0;
   }
-  const Session* get_session(entity_name_t w) const {
-    ceph::unordered_map<entity_name_t, Session*>::const_iterator p = session_map.find(w);
-    if (p == session_map.end()) {
-      return NULL;
-    } else {
-      return p->second;
-    }
-  }
   Session* get_or_add_session(const entity_inst_t& i) {
     Session *s;
     if (session_map.count(i.name)) {
@@ -322,10 +289,30 @@ public:
     }
     return s;
   }
-  void add_session(Session *s);
-  void remove_session(Session *s);
-  void touch_session(Session *session);
-
+  void add_session(Session *s) {
+    assert(session_map.count(s->info.inst.name) == 0);
+    session_map[s->info.inst.name] = s;
+    if (by_state.count(s->state) == 0)
+      by_state[s->state] = new xlist<Session*>;
+    by_state[s->state]->push_back(&s->item_session_list);
+    s->get();
+  }
+  void remove_session(Session *s) {
+    s->trim_completed_requests(0);
+    s->item_session_list.remove_myself();
+    session_map.erase(s->info.inst.name);
+    s->put();
+  }
+  void touch_session(Session *session) {
+    if (session->item_session_list.is_on_list()) {
+      if (by_state.count(session->state) == 0)
+	by_state[session->state] = new xlist<Session*>;
+      by_state[session->state]->push_back(&session->item_session_list);
+      session->last_cap_renew = ceph_clock_now(g_ceph_context);
+    } else {
+      assert(0);  // hrm, should happen?
+    }
+  }
   Session *get_oldest_session(int state) {
     if (by_state.count(state) == 0 || by_state[state]->empty())
       return 0;
@@ -350,8 +337,8 @@ public:
       if (p->second->info.inst.name.is_client())
 	s.insert(p->second->info.inst.name.num());
   }
-  void get_client_session_set(set<Session*>& s) const {
-    for (ceph::unordered_map<entity_name_t,Session*>::const_iterator p = session_map.begin();
+  void get_client_session_set(set<Session*>& s) {
+    for (ceph::unordered_map<entity_name_t,Session*>::iterator p = session_map.begin();
 	 p != session_map.end();
 	 ++p)
       if (p->second->info.inst.name.is_client())
@@ -394,7 +381,7 @@ public:
 
   // -- loading, saving --
   inodeno_t ino;
-  list<MDSInternalContextBase*> waiting_for_load;
+  list<Context*> waiting_for_load;
 
   void encode(bufferlist& bl) const;
   void decode(bufferlist::iterator& blp);
@@ -403,9 +390,9 @@ public:
 
   object_t get_object_name();
 
-  void load(MDSInternalContextBase *onload);
+  void load(Context *onload);
   void _load_finish(int r, bufferlist &bl);
-  void save(MDSInternalContextBase *onsave, version_t needv=0);
+  void save(Context *onsave, version_t needv=0);
   void _save_finish(version_t v);
  
 };

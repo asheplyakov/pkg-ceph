@@ -17,7 +17,6 @@
 
 #include "MDS.h"
 
-class OSDMap;
 class PerfCounters;
 class LogEvent;
 class EMetaBlob;
@@ -32,19 +31,16 @@ typedef ceph::shared_ptr<MDRequestImpl> MDRequestRef;
 
 enum {
   l_mdss_first = 1000,
-  l_mdss_handle_client_request,
-  l_mdss_handle_slave_request,
-  l_mdss_handle_client_session,
-  l_mdss_dispatch_client_request,
-  l_mdss_dispatch_slave_request,
+  l_mdss_hcreq,
+  l_mdss_hsreq,
+  l_mdss_hcsess,
+  l_mdss_dcreq,
+  l_mdss_dsreq,
   l_mdss_last,
 };
 
 class Server {
-public:
-  // XXX FIXME: can probably friend enough contexts to make this not need to be public
   MDS *mds;
-private:
   MDCache *mdcache;
   MDLog *mdlog;
   Messenger *messenger;
@@ -77,7 +73,6 @@ public:
   // -- sessions and recovery --
   utime_t  reconnect_start;
   set<client_t> client_reconnect_gather;  // clients i need a reconnect msg from.
-  bool waiting_for_reconnect(client_t c) const;
 
   Session *get_session(Message *m);
   void handle_client_session(class MClientSession *m);
@@ -88,12 +83,12 @@ public:
   void finish_force_open_sessions(map<client_t,entity_inst_t> &cm,
 				  map<client_t,uint64_t>& sseqmap,
 				  bool dec_import=true);
-  void flush_client_sessions(set<client_t>& client_set, MDSGatherBuilder& gather);
+  void flush_client_sessions(set<client_t>& client_set, C_GatherBuilder& gather);
   void finish_flush_session(Session *session, version_t seq);
   void terminate_sessions();
   void find_idle_sessions();
-  void kill_session(Session *session, Context *on_safe);
-  void journal_close_session(Session *session, int state, Context *on_safe);
+  void kill_session(Session *session);
+  void journal_close_session(Session *session, int state);
   void reconnect_clients();
   void handle_client_reconnect(class MClientReconnect *m);
   //void process_reconnect_cap(CInode *in, int from, ceph_mds_cap_reconnect& capinfo);
@@ -107,9 +102,7 @@ public:
   void handle_client_request(MClientRequest *m);
 
   void journal_and_reply(MDRequestRef& mdr, CInode *tracei, CDentry *tracedn,
-			 LogEvent *le, MDSInternalContextBase *fin);
-  void submit_mdlog_entry(LogEvent *le, MDSInternalContextBase *fin,
-                          MDRequestRef& mdr, const char *evt);
+			 LogEvent *le, Context *fin);
   void dispatch_client_request(MDRequestRef& mdr);
   void early_reply(MDRequestRef& mdr, CInode *tracei, CDentry *tracedn);
   void reply_request(MDRequestRef& mdr, int r = 0, CInode *tracei = 0, CDentry *tracedn = 0);
@@ -166,8 +159,7 @@ public:
   void handle_client_setlayout(MDRequestRef& mdr);
   void handle_client_setdirlayout(MDRequestRef& mdr);
 
-  int parse_layout_vxattr(string name, string value, const OSDMap *osdmap,
-			  ceph_file_layout *layout);
+  int parse_layout_vxattr(string name, string value, ceph_file_layout *layout);
   void handle_set_vxattr(MDRequestRef& mdr, CInode *cur,
 			 ceph_file_layout *dir_layout,
 			 set<SimpleLock*> rdlocks,

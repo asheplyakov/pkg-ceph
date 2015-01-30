@@ -53,6 +53,7 @@ using std::fstream;
 #include "osdc/ObjectCacher.h"
 
 class MDSMap;
+class OSDMap;
 class MonClient;
 
 class CephContext;
@@ -108,7 +109,7 @@ struct DirEntry {
   DirEntry(const string &n, struct stat& s, int stm) : d_name(n), st(s), stmask(stm) {}
 };
 
-struct Inode;
+class Inode;
 struct Cap;
 class Dir;
 class Dentry;
@@ -209,6 +210,7 @@ class Client : public Dispatcher {
 
   // cluster descriptors
   MDSMap *mdsmap;
+  OSDMap *osdmap;
 
   SafeTimer timer;
 
@@ -223,7 +225,6 @@ class Client : public Dispatcher {
 
   Finisher async_ino_invalidator;
   Finisher async_dentry_invalidator;
-  Finisher objecter_finisher;
 
   Context *tick_event;
   utime_t last_cap_renew;
@@ -242,7 +243,6 @@ public:
   map<int, MetaSession*> mds_sessions;  // mds -> push seq
   list<Cond*> waiting_for_mdsmap;
 
-  void get_session_metadata(std::map<std::string, std::string> *meta) const;
   bool have_open_session(int mds);
   void got_mds_push(MetaSession *s);
   MetaSession *_get_mds_session(int mds, Connection *con);  ///< return session for mds *and* con; null otherwise
@@ -315,11 +315,6 @@ protected:
   int num_flushing_caps;
   ceph::unordered_map<inodeno_t,SnapRealm*> snap_realms;
 
-  // Optional extra metadata about me to send to the MDS
-  std::map<std::string, std::string> metadata;
-  void populate_metadata();
-
-
   /* async block write barrier support */
   //map<uint64_t, BarrierContext* > barriers;
 
@@ -379,8 +374,6 @@ protected:
   friend class C_Client_CacheInvalidate;  // calls ino_invalidate_cb
   friend class C_Client_DentryInvalidate;  // calls dentry_invalidate_cb
   friend class C_Block_Sync; // Calls block map and protected helpers
-  friend class C_C_Tick; // Asserts on client_lock
-  friend class C_Client_SyncCommit; // Asserts on client_lock
 
   //int get_cache_size() { return lru.lru_get_size(); }
   //void set_cache_size(int m) { lru.lru_set_max(m); }
@@ -391,7 +384,7 @@ protected:
    * a new inode to a pre-created Dentry
    */
   Dentry* link(Dir *dir, const string& name, Inode *in, Dentry *dn);
-  void unlink(Dentry *dn, bool keepdir, bool keepdentry);
+  void unlink(Dentry *dn, bool keepdir);
 
   // path traversal for high-level interface
   Inode *cwd;
@@ -431,8 +424,6 @@ protected:
   Client(Messenger *m, MonClient *mc);
   ~Client();
   void tear_down_cache();
-
-  void update_metadata(std::string const &k, std::string const &v);
 
   client_t get_nodeid() { return whoami; }
 
@@ -621,49 +612,6 @@ private:
 
   vinodeno_t _get_vino(Inode *in);
   inodeno_t _get_inodeno(Inode *in);
-
-  /*
-   * These define virtual xattrs exposing the recursive directory
-   * statistics and layout metadata.
-   */
-  struct VXattr {
-	  const string name;
-	  size_t (Client::*getxattr_cb)(Inode *in, char *val, size_t size);
-	  bool readonly, hidden;
-	  bool (Client::*exists_cb)(Inode *in);
-  };
-
-  bool _vxattrcb_layout_exists(Inode *in);
-  size_t _vxattrcb_layout(Inode *in, char *val, size_t size);
-  size_t _vxattrcb_layout_stripe_unit(Inode *in, char *val, size_t size);
-  size_t _vxattrcb_layout_stripe_count(Inode *in, char *val, size_t size);
-  size_t _vxattrcb_layout_object_size(Inode *in, char *val, size_t size);
-  size_t _vxattrcb_layout_pool(Inode *in, char *val, size_t size);
-  size_t _vxattrcb_dir_entries(Inode *in, char *val, size_t size);
-  size_t _vxattrcb_dir_files(Inode *in, char *val, size_t size);
-  size_t _vxattrcb_dir_subdirs(Inode *in, char *val, size_t size);
-  size_t _vxattrcb_dir_rentries(Inode *in, char *val, size_t size);
-  size_t _vxattrcb_dir_rfiles(Inode *in, char *val, size_t size);
-  size_t _vxattrcb_dir_rsubdirs(Inode *in, char *val, size_t size);
-  size_t _vxattrcb_dir_rbytes(Inode *in, char *val, size_t size);
-  size_t _vxattrcb_dir_rctime(Inode *in, char *val, size_t size);
-  size_t _vxattrs_calcu_name_size(const VXattr *vxattrs);
-
-  static const VXattr _dir_vxattrs[];
-  static const VXattr _file_vxattrs[];
-
-  static const VXattr *_get_vxattrs(Inode *in);
-  static const VXattr *_match_vxattr(Inode *in, const char *name);
-
-  size_t _file_vxattrs_name_size;
-  size_t _dir_vxattrs_name_size;
-  size_t _vxattrs_name_size(const VXattr *vxattrs) {
-	  if (vxattrs == _dir_vxattrs)
-		  return _dir_vxattrs_name_size;
-	  else if (vxattrs == _file_vxattrs)
-		  return _file_vxattrs_name_size;
-	  return 0;
-  }
 
 public:
   int mount(const std::string &mount_root);

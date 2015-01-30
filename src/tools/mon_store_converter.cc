@@ -10,18 +10,20 @@
 * License version 2.1, as published by the Free Software
 * Foundation. See file COPYING.
 */
-#include <boost/scoped_ptr.hpp>
-
-#include <set>
+#include <iostream>
 #include <string>
-
-#include "common/ceph_argparse.h"
-#include "common/debug.h"
+#include <sstream>
+#include <map>
+#include <set>
+#include <boost/scoped_ptr.hpp>
+#include <errno.h>
 
 #include "include/types.h"
 #include "include/buffer.h"
-
+#include "common/ceph_argparse.h"
 #include "global/global_init.h"
+#include "common/debug.h"
+#include "common/config.h"
 
 #include "mon/MonitorDBStore.h"
 #include "mon/MonitorStore.h"
@@ -94,14 +96,14 @@ class MonitorStoreConverter {
   }
 
   void _mark_convert_start() {
-    MonitorDBStore::TransactionRef tx(new MonitorDBStore::Transaction);
-    tx->put("mon_convert", "on_going", 1);
+    MonitorDBStore::Transaction tx;
+    tx.put("mon_convert", "on_going", 1);
     db->apply_transaction(tx);
   }
 
   void _mark_convert_finish() {
-    MonitorDBStore::TransactionRef tx(new MonitorDBStore::Transaction);
-    tx->erase("mon_convert", "on_going");
+    MonitorDBStore::Transaction tx;
+    tx.erase("mon_convert", "on_going");
     db->apply_transaction(tx);
   }
 
@@ -112,11 +114,11 @@ class MonitorStoreConverter {
     assert(store->exists_bl_ss("feature_set"));
     assert(store->exists_bl_ss("election_epoch"));
 
-    MonitorDBStore::TransactionRef tx(new MonitorDBStore::Transaction);
+    MonitorDBStore::Transaction tx;
 
     if (store->exists_bl_ss("joined")) {
       version_t joined = store->get_int("joined");
-      tx->put(MONITOR_NAME, "joined", joined);
+      tx.put(MONITOR_NAME, "joined", joined);
     }
 
     vector<string> keys;
@@ -133,10 +135,10 @@ class MonitorStoreConverter {
       bufferlist bl;
       int r = store->get_bl_ss(bl, (*it).c_str(), 0);
       assert(r > 0);
-      tx->put(MONITOR_NAME, *it, bl);
+      tx.put(MONITOR_NAME, *it, bl);
     }
 
-    assert(!tx->empty());
+    assert(!tx.empty());
     db->apply_transaction(tx);
   }
 
@@ -179,9 +181,9 @@ class MonitorStoreConverter {
       std::cout << __func__ << " " << machine
 		<< " ver " << ver << " bl " << bl.length() << std::endl;
 
-      MonitorDBStore::TransactionRef tx(new MonitorDBStore::Transaction);
-      tx->put(machine, ver, bl);
-      tx->put(machine, "last_committed", ver);
+      MonitorDBStore::Transaction tx;
+      tx.put(machine, ver, bl);
+      tx.put(machine, "last_committed", ver);
 
       if (has_gv && store->exists_bl_sn(machine_gv.c_str(), ver)) {
 	stringstream s;
@@ -201,8 +203,8 @@ class MonitorStoreConverter {
 	}
 
 	bufferlist tx_bl;
-	tx->encode(tx_bl);
-	tx->put("paxos", gv, tx_bl);
+	tx.encode(tx_bl);
+	tx.put("paxos", gv, tx_bl);
       }
       db->apply_transaction(tx);
     }
@@ -210,9 +212,9 @@ class MonitorStoreConverter {
     version_t lc = db->get(machine, "last_committed");
     assert(lc == last_committed);
 
-    MonitorDBStore::TransactionRef tx(new MonitorDBStore::Transaction);
-    tx->put(machine, "first_committed", first_committed);
-    tx->put(machine, "last_committed", last_committed);
+    MonitorDBStore::Transaction tx;
+    tx.put(machine, "first_committed", first_committed);
+    tx.put(machine, "last_committed", last_committed);
 
     if (store->exists_bl_ss(machine.c_str(), "latest")) {
       bufferlist latest_bl_raw;
@@ -224,7 +226,7 @@ class MonitorStoreConverter {
 	goto out;
       }
 
-      tx->put(machine, "latest", latest_bl_raw);
+      tx.put(machine, "latest", latest_bl_raw);
 
       bufferlist::iterator lbl_it = latest_bl_raw.begin();
       bufferlist latest_bl;
@@ -235,10 +237,10 @@ class MonitorStoreConverter {
       std::cout << __func__ << " machine " << machine
 		<< " latest ver " << latest_ver << std::endl;
 
-      tx->put(machine, "full_latest", latest_ver);
+      tx.put(machine, "full_latest", latest_ver);
       stringstream os;
       os << "full_" << latest_ver;
-      tx->put(machine, os.str(), latest_bl);
+      tx.put(machine, os.str(), latest_bl);
     }
   out:
     db->apply_transaction(tx);
@@ -269,17 +271,17 @@ class MonitorStoreConverter {
 
     // erase all paxos versions between [first, last_gv[, with first being the
     // first gv in the map.
-    MonitorDBStore::TransactionRef tx(new MonitorDBStore::Transaction);
+    MonitorDBStore::Transaction tx;
     set<version_t>::iterator it = gvs.begin();
     std::cout << __func__ << " first gv " << (*it)
 	      << " last gv " << last_gv << std::endl;
     for (; it != gvs.end() && (*it < last_gv); ++it) {
-      tx->erase("paxos", *it);
+      tx.erase("paxos", *it);
     }
-    tx->put("paxos", "first_committed", last_gv);
-    tx->put("paxos", "last_committed", highest_gv);
-    tx->put("paxos", "accepted_pn", highest_accepted_pn);
-    tx->put("paxos", "last_pn", highest_last_pn);
+    tx.put("paxos", "first_committed", last_gv);
+    tx.put("paxos", "last_committed", highest_gv);
+    tx.put("paxos", "accepted_pn", highest_accepted_pn);
+    tx.put("paxos", "last_pn", highest_last_pn);
     db->apply_transaction(tx);
   }
 

@@ -7,6 +7,7 @@ libosdc_la_SOURCES = \
 noinst_LTLIBRARIES += libosdc.la
 
 noinst_HEADERS += \
+	osdc/Blinker.h \
 	osdc/Filer.h \
 	osdc/Journaler.h \
 	osdc/ObjectCacher.h \

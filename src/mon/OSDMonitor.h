@@ -158,7 +158,7 @@ public:
 private:
   void update_from_paxos(bool *need_bootstrap);
   void create_pending();  // prepare a new pending
-  void encode_pending(MonitorDBStore::TransactionRef t);
+  void encode_pending(MonitorDBStore::Transaction *t);
   void on_active();
   void on_shutdown();
 
@@ -166,7 +166,7 @@ private:
    * we haven't delegated full version stashing to paxosservice for some time
    * now, making this function useless in current context.
    */
-  virtual void encode_full(MonitorDBStore::TransactionRef t) { }
+  virtual void encode_full(MonitorDBStore::Transaction *t) { }
   /**
    * do not let paxosservice periodically stash full osdmaps, or we will break our
    * locally-managed full maps.  (update_from_paxos loads the latest and writes them
@@ -182,7 +182,7 @@ private:
    * This ensures that anyone post-sync will have enough to rebuild their
    * full osdmaps.
    */
-  void encode_trim_extra(MonitorDBStore::TransactionRef tx, version_t first);
+  void encode_trim_extra(MonitorDBStore::Transaction *tx, version_t first);
 
   void update_msgr_features();
   int check_cluster_features(uint64_t features, stringstream &ss);
@@ -219,8 +219,7 @@ private:
   void send_incremental(PaxosServiceMessage *m, epoch_t first);
   void send_incremental(epoch_t first, entity_inst_t& dest, bool onetime);
 
-  int reweight_by_utilization(int oload, std::string& out_str, bool by_pg,
-			      const set<int64_t> *pools);
+  int reweight_by_utilization(int oload, std::string& out_str);
 
   bool check_source(PaxosServiceMessage *m, uuid_d fsid);
  
@@ -245,14 +244,6 @@ private:
   bool prepare_pgtemp(class MOSDPGTemp *m);
 
   int _check_remove_pool(int64_t pool, const pg_pool_t *pi, ostream *ss);
-  bool _check_become_tier(
-      int64_t tier_pool_id, const pg_pool_t *tier_pool,
-      int64_t base_pool_id, const pg_pool_t *base_pool,
-      int *err, ostream *ss) const;
-  bool _check_remove_tier(
-      int64_t base_pool_id, const pg_pool_t *base_pool,
-      int *err, ostream *ss) const;
-
   int _prepare_remove_pool(int64_t pool, ostream *ss);
   int _prepare_rename_pool(int64_t pool, string newname);
 
@@ -265,9 +256,6 @@ private:
 				   const string &profile,
 				   int *ruleset,
 				   stringstream &ss);
-  int get_crush_ruleset(const string &ruleset_name,
-			int *crush_ruleset,
-			stringstream &ss);
   int get_erasure_code(const string &erasure_code_profile,
 		       ErasureCodeInterfaceRef *erasure_code,
 		       stringstream &ss) const;
@@ -296,7 +284,6 @@ private:
                        unsigned pg_num, unsigned pgp_num,
 		       const string &erasure_code_profile,
                        const unsigned pool_type,
-                       const uint64_t expected_num_objects,
 		       stringstream &ss);
   int prepare_new_pool(MPoolOp *m);
 
@@ -385,7 +372,6 @@ private:
   bool prepare_command(MMonCommand *m);
   bool prepare_command_impl(MMonCommand *m, map<string,cmd_vartype> &cmdmap);
 
-  int set_crash_replay_interval(const int64_t pool_id, const uint32_t cri);
   int prepare_command_pool_set(map<string,cmd_vartype> &cmdmap,
                                stringstream& ss);
 

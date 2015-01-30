@@ -52,15 +52,16 @@ using namespace std;
 class CrushWrapper {
   mutable Mutex mapper_lock;
 public:
+  struct crush_map *crush;
   std::map<int32_t, string> type_map; /* bucket/device type names */
   std::map<int32_t, string> name_map; /* bucket/device names */
   std::map<int32_t, string> rule_name_map;
 
-private:
-  struct crush_map *crush;
   /* reverse maps */
   bool have_rmaps;
   std::map<string, int> type_rmap, name_rmap, rule_name_rmap;
+
+private:
   void build_rmaps() {
     if (have_rmaps) return;
     build_rmap(type_map, type_rmap);
@@ -552,11 +553,6 @@ public:
   }
   void reweight(CephContext *cct);
 
-  int adjust_subtree_weight(CephContext *cct, int id, int weight);
-  int adjust_subtree_weightf(CephContext *cct, int id, float weight) {
-    return adjust_subtree_weight(cct, id, (int)(weight * (float)0x10000));
-  }
-
   /// check if item id is present in the map hierarchy
   bool check_item_present(int id);
 
@@ -882,7 +878,7 @@ public:
     return crush_find_rule(crush, ruleset, type, size);
   }
 
-  bool ruleset_exists(int const ruleset) const {
+  bool ruleset_exists(int ruleset) const {
     for (size_t i = 0; i < crush->max_rules; ++i) {
       if (rule_exists(i) && crush->rules[i]->mask.ruleset == ruleset) {
 	return true;

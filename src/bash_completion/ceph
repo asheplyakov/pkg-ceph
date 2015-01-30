@@ -16,7 +16,6 @@ _ceph()
         COMPREPLY=()
         cur="${COMP_WORDS[COMP_CWORD]}"
         prev="${COMP_WORDS[COMP_CWORD-1]}"
-        prevprev="${COMP_WORDS[COMP_CWORD-2]}"
 
         if [[ ${cur} == -* ]] ; then
             COMPREPLY=( $(compgen -W "--conf -c --name --id -m --version -s --status -w --watch -o --out-file -i --in-file" -- ${cur}) )
@@ -33,41 +32,29 @@ _ceph()
                 return 0
                 ;;
             auth)
-                COMPREPLY=( $(compgen -W "list add del print_key print-key export get get-key import get-or-create get-or-create-key" -- ${cur}) )
+                COMPREPLY=( $(compgen -W "list add del" -- ${cur}) )
                 return 0
                 ;;
             pg)
-                COMPREPLY=( $(compgen -W "stat dump dump_json dump_stuck force_create_pg getmap map send_pg_creates scrub deep-scrub repair" -- ${cur}) )
+                COMPREPLY=( $(compgen -W "stat dump getmap map send_pg_creates scrub deep-scrub repair" -- ${cur}) )
                 return 0
                 ;;
             osd)
-                COMPREPLY=( $(compgen -W "stat pool dump getmaxosd tree getmap getcrushmap lspools reweight-by-utilization trash tier" -- ${cur}) )
+                COMPREPLY=( $(compgen -W "tell stat pool dump getmaxosd tree getmap getcrushmap lspools" -- ${cur}) )
                 return 0
                 ;;
             mon)
-                COMPREPLY=( $(compgen -W "stat getmap add remove dump" -- ${cur}) )
+                COMPREPLY=( $(compgen -W "tell stat getmap" -- ${cur}) )
                 return 0
                 ;;
             mds)
-                COMPREPLY=( $(compgen -W "stat stat getmap dump compat" -- ${cur}) )
+                COMPREPLY=( $(compgen -W "tell stat stat getmap dump compat" -- ${cur}) )
                 return 0
                 ;;
-            pool)
-                COMPREPLY=( $(compgen -W "create delete rename stats set set-quota get rmsnap mksnap" -- ${cur}) )
+            *)
+                COMPREPLY=( $(compgen -W "osd mon mds pg auth" -- ${cur}) )
                 return 0
-                ;;
-            health)
-                COMPREPLY=( $(compgen -W "detail" -- ${cur}) )
-                return 0
-                ;;
-            tier)
-                COMPREPLY=( $(compgen -W "remove cache-mode" -- ${cur}) )
-                return 0
-                ;;
-            ceph)
-                COMPREPLY=( $(compgen -W "osd mon mds pg auth health df" -- ${cur}) )
-                return 0
-                ;;
+            ;;
         esac
 }
 complete -F _ceph ceph

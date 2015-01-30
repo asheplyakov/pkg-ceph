@@ -73,12 +73,10 @@ int main(int argc, const char **argv)
 		    1, 0, pool, "0.obj");
     StRadosNotify r3(argc, argv, setup_sem, watch_sem, notify_sem,
 		     0, pool, "0.obj");
-    StRadosDeletePool r4(argc, argv, notify_sem, NULL, pool);
     vector<SysTestRunnable*> vec;
     vec.push_back(&r1);
     vec.push_back(&r2);
     vec.push_back(&r3);
-    vec.push_back(&r4);
     std::string error = SysTestRunnable::run_until_finished(vec);
     if (!error.empty()) {
       printf("test1: got error: %s\n", error.c_str());
@@ -99,12 +97,10 @@ int main(int argc, const char **argv)
 		    0, -ENOENT, pool, "0.obj");
     StRadosNotify r3(argc, argv, setup_sem, watch_sem, notify_sem,
 		     -ENOENT, pool, "0.obj");
-    StRadosDeletePool r4(argc, argv, notify_sem, NULL, pool);
     vector<SysTestRunnable*> vec;
     vec.push_back(&r1);
     vec.push_back(&r2);
     vec.push_back(&r3);
-    vec.push_back(&r4);
     std::string error = SysTestRunnable::run_until_finished(vec);
     if (!error.empty()) {
       printf("test2: got error: %s\n", error.c_str());
@@ -175,7 +171,6 @@ int main(int argc, const char **argv)
     StRadosDeleteObjs r4(argc, argv, notify_sem, deleted_sem, 1, pool, ".obj");
     StRadosNotify r5(argc, argv, setup_sem, deleted_sem, finished_notifies_sem,
 		     -ENOENT, pool, "0.obj");
-    StRadosDeletePool r6(argc, argv, finished_notifies_sem, NULL, pool);
 
     vector<SysTestRunnable*> vec;
     vec.push_back(&r1);
@@ -183,7 +178,6 @@ int main(int argc, const char **argv)
     vec.push_back(&r3);
     vec.push_back(&r4);
     vec.push_back(&r5);
-    vec.push_back(&r6);
     std::string error = SysTestRunnable::run_until_finished(vec);
     if (!error.empty()) {
       printf("test4: got error: %s\n", error.c_str());

@@ -41,7 +41,6 @@ TEST(DaemonConfig, SimpleSet) {
 TEST(DaemonConfig, Substitution) {
   int ret;
   ret = g_ceph_context->_conf->set_val("internal_safe_to_start_threads", "false");
-  ASSERT_EQ(ret, 0);
   ret = g_ceph_context->_conf->set_val("host", "foo");
   ASSERT_EQ(ret, 0);
   ret = g_ceph_context->_conf->set_val("public_network", "bar$host.baz", false);
@@ -58,7 +57,6 @@ TEST(DaemonConfig, Substitution) {
 TEST(DaemonConfig, SubstitutionTrailing) {
   int ret;
   ret = g_ceph_context->_conf->set_val("internal_safe_to_start_threads", "false");
-  ASSERT_EQ(ret, 0);
   ret = g_ceph_context->_conf->set_val("host", "foo");
   ASSERT_EQ(ret, 0);
   ret = g_ceph_context->_conf->set_val("public_network", "bar$host", false);
@@ -75,7 +73,6 @@ TEST(DaemonConfig, SubstitutionTrailing) {
 TEST(DaemonConfig, SubstitutionBraces) {
   int ret;
   ret = g_ceph_context->_conf->set_val("internal_safe_to_start_threads", "false");
-  ASSERT_EQ(ret, 0);
   ret = g_ceph_context->_conf->set_val("host", "foo");
   ASSERT_EQ(ret, 0);
   ret = g_ceph_context->_conf->set_val("public_network", "bar${host}baz", false);
@@ -91,7 +88,6 @@ TEST(DaemonConfig, SubstitutionBraces) {
 TEST(DaemonConfig, SubstitutionBracesTrailing) {
   int ret;
   ret = g_ceph_context->_conf->set_val("internal_safe_to_start_threads", "false");
-  ASSERT_EQ(ret, 0);
   ret = g_ceph_context->_conf->set_val("host", "foo");
   ASSERT_EQ(ret, 0);
   ret = g_ceph_context->_conf->set_val("public_network", "bar${host}", false);

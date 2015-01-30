@@ -42,7 +42,7 @@ public:
   virtual int _split(
 		     uint32_t match,                           
 		     uint32_t bits,                            
-		     CollectionIndex* dest
+		     ceph::shared_ptr<CollectionIndex> dest
 		     ) { return 0; }
 
   void test_generate_and_parse(const ghobject_t &hoid, const std::string &mangled_expected) {
@@ -87,11 +87,6 @@ protected:
 				       vector<ghobject_t> *ls,
 				       ghobject_t *next
 				       ) { return 0; }
-  virtual int _pre_hash_collection(
-                                   uint32_t pg_num,
-                                   uint64_t expected_num_objs
-                                  ) { return 0; }
-
 };
 
 class TestHASH_INDEX_TAG : public TestWrapLFNIndex, public ::testing::Test {
@@ -120,6 +115,7 @@ public:
 
 TEST_F(TestHASH_INDEX_TAG_2, generate_and_parse_name) {
   const vector<string> path;
+  std::string mangled_name;
   const std::string key("KEY");
   uint64_t hash = 0xABABABAB;
   uint64_t pool = -1;
@@ -143,11 +139,12 @@ public:
 
 TEST_F(TestHOBJECT_WITH_POOL, generate_and_parse_name) {
   const vector<string> path;
+  std::string mangled_name;
   const std::string key("KEY");
   uint64_t hash = 0xABABABAB;
   uint64_t pool = 0xCDCDCDCD;
   int64_t gen = 0xefefefefef;
-  shard_id_t shard_id(0xb);
+  int8_t shard_id = 0xb;
 
   {
     std::string name(".XA/B_\\C.D");

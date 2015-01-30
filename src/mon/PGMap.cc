@@ -379,17 +379,31 @@ void PGMap::update_pg(pg_t pgid, bufferlist& bl)
 {
   bufferlist::iterator p = bl.begin();
   ceph::unordered_map<pg_t,pg_stat_t>::iterator s = pg_stat.find(pgid);
-  if (s != pg_stat.end())
+  epoch_t old_lec = 0;
+  if (s != pg_stat.end()) {
+    old_lec = s->second.get_effective_last_epoch_clean();
     stat_pg_sub(pgid, s->second);
+  }
   pg_stat_t& r = pg_stat[pgid];
   ::decode(r, p);
   stat_pg_add(pgid, r);
+
+  epoch_t lec = r.get_effective_last_epoch_clean();
+  if (min_last_epoch_clean &&
+      (lec < min_last_epoch_clean ||  // we did
+       (lec > min_last_epoch_clean && // we might
+	old_lec == min_last_epoch_clean)
+       ))
+    min_last_epoch_clean = 0;
 }
 
 void PGMap::remove_pg(pg_t pgid)
 {
   ceph::unordered_map<pg_t,pg_stat_t>::iterator s = pg_stat.find(pgid);
   if (s != pg_stat.end()) {
+    if (min_last_epoch_clean &&
+	s->second.get_effective_last_epoch_clean() == min_last_epoch_clean)
+      min_last_epoch_clean = 0;
     stat_pg_sub(pgid, s->second);
     pg_stat.erase(s);
   }
@@ -399,14 +413,33 @@ void PGMap::update_osd(int osd, bufferlist& bl)
 {
   bufferlist::iterator p = bl.begin();
   ceph::unordered_map<int32_t,osd_stat_t>::iterator o = osd_stat.find(osd);
-  if (o != osd_stat.end())
+  epoch_t old_lec = 0;
+  if (o != osd_stat.end()) {
+    ceph::unordered_map<int32_t,epoch_t>::iterator i = osd_epochs.find(osd);
+    if (i != osd_epochs.end())
+      old_lec = i->second;
     stat_osd_sub(o->second);
+  }
   osd_stat_t& r = osd_stat[osd];
   ::decode(r, p);
   stat_osd_add(r);
 
   // adjust [near]full status
   register_nearfull_status(osd, r);
+
+  // epoch?
+  if (!p.end()) {
+    epoch_t e;
+    ::decode(e, p);
+
+    if (e < min_last_epoch_clean ||
+	(e > min_last_epoch_clean &&
+	 old_lec == min_last_epoch_clean))
+      min_last_epoch_clean = 0;
+  } else {
+    // WARNING: we are not refreshing min_last_epoch_clean!  must be old store
+    // or old mon running.
+  }
 }
 
 void PGMap::remove_osd(int osd)
@@ -433,11 +466,6 @@ void PGMap::stat_pg_add(const pg_t &pgid, const pg_stat_t &s)
     if (s.acting_primary >= 0)
       creating_pgs_by_osd[s.acting_primary].insert(pgid);
   }
-  for (vector<int>::const_iterator p = s.blocked_by.begin();
-       p != s.blocked_by.end();
-       ++p) {
-    ++blocked_by_sum[*p];
-  }
 }
 
 void PGMap::stat_pg_sub(const pg_t &pgid, const pg_stat_t &s)
@@ -459,16 +487,6 @@ void PGMap::stat_pg_sub(const pg_t &pgid, const pg_stat_t &s)
       if (creating_pgs_by_osd[s.acting_primary].size() == 0)
         creating_pgs_by_osd.erase(s.acting_primary);
     }
-  }
-
-  for (vector<int>::const_iterator p = s.blocked_by.begin();
-       p != s.blocked_by.end();
-       ++p) {
-    ceph::unordered_map<int,int>::iterator q = blocked_by_sum.find(*p);
-    assert(q != blocked_by_sum.end());
-    --q->second;
-    if (q->second == 0)
-      blocked_by_sum.erase(q);
   }
 }
 
@@ -677,7 +695,7 @@ void PGMap::dump_osd_stats(Formatter *f) const
 void PGMap::dump_pg_stats_plain(ostream& ss,
 				const ceph::unordered_map<pg_t, pg_stat_t>& pg_stats) const
 {
-  ss << "pg_stat\tobjects\tmip\tdegr\tmisp\tunf\tbytes\tlog\tdisklog\tstate\tstate_stamp\tv\treported\tup\tup_primary\tacting\tacting_primary\tlast_scrub\tscrub_stamp\tlast_deep_scrub\tdeep_scrub_stamp" << std::endl;
+  ss << "pg_stat\tobjects\tmip\tdegr\tunf\tbytes\tlog\tdisklog\tstate\tstate_stamp\tv\treported\tup\tup_primary\tacting\tacting_primary\tlast_scrub\tscrub_stamp\tlast_deep_scrub\tdeep_scrub_stamp" << std::endl;
   for (ceph::unordered_map<pg_t, pg_stat_t>::const_iterator i = pg_stats.begin();
        i != pg_stats.end(); ++i) {
     const pg_stat_t &st(i->second);
@@ -686,7 +704,6 @@ void PGMap::dump_pg_stats_plain(ostream& ss,
       //<< "\t" << st.num_object_copies
        << "\t" << st.stats.sum.num_objects_missing_on_primary
        << "\t" << st.stats.sum.num_objects_degraded
-       << "\t" << st.stats.sum.num_objects_misplaced
        << "\t" << st.stats.sum.num_objects_unfound
        << "\t" << st.stats.sum.num_bytes
        << "\t" << st.log_size
@@ -771,16 +788,6 @@ void PGMap::get_stuck_stats(PGMap::StuckPG type, utime_t cutoff,
 	continue;
       val = i->second.last_clean;
       break;
-    case STUCK_DEGRADED:
-      if ((i->second.state & PG_STATE_DEGRADED) == 0)
-	continue;
-      val = i->second.last_undegraded;
-      break;
-    case STUCK_UNDERSIZED:
-      if ((i->second.state & PG_STATE_UNDERSIZED) == 0)
-	continue;
-      val = i->second.last_fullsized;
-      break;
     case STUCK_STALE:
       if ((i->second.state & PG_STATE_STALE) == 0)
 	continue;
@@ -840,7 +847,7 @@ void PGMap::dump_osd_perf_stats(Formatter *f) const
 void PGMap::print_osd_perf_stats(std::ostream *ss) const
 {
   TextTable tab;
-  tab.define_column("osd", TextTable::LEFT, TextTable::RIGHT);
+  tab.define_column("osdid", TextTable::LEFT, TextTable::RIGHT);
   tab.define_column("fs_commit_latency(ms)", TextTable::LEFT, TextTable::RIGHT);
   tab.define_column("fs_apply_latency(ms)", TextTable::LEFT, TextTable::RIGHT);
   for (ceph::unordered_map<int32_t, osd_stat_t>::const_iterator i = osd_stat.begin();
@@ -849,34 +856,6 @@ void PGMap::print_osd_perf_stats(std::ostream *ss) const
     tab << i->first;
     tab << i->second.fs_perf_stat.filestore_commit_latency;
     tab << i->second.fs_perf_stat.filestore_apply_latency;
-    tab << TextTable::endrow;
-  }
-  (*ss) << tab;
-}
-
-void PGMap::dump_osd_blocked_by_stats(Formatter *f) const
-{
-  f->open_array_section("osd_blocked_by_infos");
-  for (ceph::unordered_map<int,int>::const_iterator i = blocked_by_sum.begin();
-       i != blocked_by_sum.end();
-       ++i) {
-    f->open_object_section("osd");
-    f->dump_int("id", i->first);
-    f->dump_int("num_blocked", i->second);
-    f->close_section();
-  }
-  f->close_section();
-}
-void PGMap::print_osd_blocked_by_stats(std::ostream *ss) const
-{
-  TextTable tab;
-  tab.define_column("osd", TextTable::LEFT, TextTable::RIGHT);
-  tab.define_column("num_blocked", TextTable::LEFT, TextTable::RIGHT);
-  for (ceph::unordered_map<int,int>::const_iterator i = blocked_by_sum.begin();
-       i != blocked_by_sum.end();
-       ++i) {
-    tab << i->first;
-    tab << i->second;
     tab << TextTable::endrow;
   }
   (*ss) << tab;
@@ -901,23 +880,6 @@ void PGMap::recovery_summary(Formatter *f, ostream *out,
     }
     first = false;
   }
-  if (delta_sum.stats.sum.num_objects_misplaced) {
-    double pc = (double)delta_sum.stats.sum.num_objects_misplaced /
-      (double)delta_sum.stats.sum.num_object_copies * (double)100.0;
-    char b[20];
-    snprintf(b, sizeof(b), "%.3lf", pc);
-    if (f) {
-      f->dump_unsigned("misplaced_objects", delta_sum.stats.sum.num_objects_misplaced);
-      f->dump_unsigned("misplaced_total", delta_sum.stats.sum.num_object_copies);
-      f->dump_string("misplaced_ratio", b);
-    } else {
-      if (!first)
-	*out << "; ";
-      *out << delta_sum.stats.sum.num_objects_misplaced
-	   << "/" << delta_sum.stats.sum.num_object_copies << " objects misplaced (" << b << "%)";
-    }
-    first = false;
-  }
   if (delta_sum.stats.sum.num_objects_unfound) {
     double pc = (double)delta_sum.stats.sum.num_objects_unfound /
       (double)delta_sum.stats.sum.num_objects * (double)100.0;
@@ -933,6 +895,7 @@ void PGMap::recovery_summary(Formatter *f, ostream *out,
       *out << delta_sum.stats.sum.num_objects_unfound
 	   << "/" << delta_sum.stats.sum.num_objects << " unfound (" << b << "%)";
     }
+    first = false;
   }
 }
 

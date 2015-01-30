@@ -101,11 +101,8 @@ int main(int argc, const char **argv)
 
   const char *oid = "bar";
 
-  int r = rados.pool_create("foo");
-  cout << "pool_create result = " << r << std::endl;
-
   IoCtx io_ctx;
-  r = rados.ioctx_create("foo", io_ctx);
+  int r = rados.ioctx_create("data", io_ctx);
   cout << "ioctx_create result = " << r << std::endl;
 
   r = io_ctx.write(oid, bl, bl.length(), 0);
@@ -304,10 +301,6 @@ int main(int argc, const char **argv)
 
   r = io_ctx.remove(oid);
   cout << "remove result=" << r << std::endl;
-
-  r = rados.pool_delete("foo");
-  cout << "pool_delete result=" << r << std::endl;
-
   rados.shutdown();
 
   return 0;

@@ -29,49 +29,51 @@
 #include "common/Cond.h"
 #include "common/Timer.h"
 #include "common/LogClient.h"
-#include "common/TrackedOp.h"
-#include "common/Finisher.h"
 
 #include "MDSMap.h"
 
 #include "SessionMap.h"
-#include "Beacon.h"
 
 
-#define CEPH_MDS_PROTOCOL    24 /* cluster internal */
+#define CEPH_MDS_PROTOCOL    23 /* cluster internal */
+
 
 enum {
   l_mds_first = 2000,
-  l_mds_request,
+  l_mds_req,
   l_mds_reply,
-  l_mds_reply_latency,
-  l_mds_forward,
-  l_mds_dir_fetch,
-  l_mds_dir_commit,
-  l_mds_dir_split,
-  l_mds_inode_max,
-  l_mds_inodes,
-  l_mds_inodes_top,
-  l_mds_inodes_bottom,
-  l_mds_inodes_pin_tail,
-  l_mds_inodes_pinned,
-  l_mds_inodes_expired,
-  l_mds_inodes_with_caps,
-  l_mds_caps,
-  l_mds_subtrees,
-  l_mds_traverse,
-  l_mds_traverse_hit,
-  l_mds_traverse_forward,
-  l_mds_traverse_discover,
-  l_mds_traverse_dir_fetch,
-  l_mds_traverse_remote_ino,
-  l_mds_traverse_lock,
-  l_mds_load_cent,
-  l_mds_dispatch_queue_len,
-  l_mds_exported,
-  l_mds_exported_inodes,
-  l_mds_imported,
-  l_mds_imported_inodes,
+  l_mds_replyl,
+  l_mds_fw,
+  l_mds_dir_f,
+  l_mds_dir_c,
+  l_mds_dir_sp,
+  l_mds_dir_ffc,
+  l_mds_imax,
+  l_mds_i,
+  l_mds_itop,
+  l_mds_ibot,
+  l_mds_iptail,
+  l_mds_ipin,
+  l_mds_iex,
+  l_mds_icap,
+  l_mds_cap,
+  l_mds_dis,
+  l_mds_t,
+  l_mds_thit,
+  l_mds_tfw,
+  l_mds_tdis,
+  l_mds_tdirf,
+  l_mds_trino,
+  l_mds_tlock,
+  l_mds_l,
+  l_mds_q,
+  l_mds_popanyd,
+  l_mds_popnest,
+  l_mds_sm,
+  l_mds_ex,
+  l_mds_iexp,
+  l_mds_im,
+  l_mds_iim,
   l_mds_last,
 };
 
@@ -80,7 +82,6 @@ enum {
   l_mdc_last,
 };
 
-// memory utilization
 enum {
   l_mdm_first = 2500,
   l_mdm_ino,
@@ -104,13 +105,11 @@ enum {
 
 
 
-namespace ceph {
-  struct heartbeat_handle_d;
-}
 class filepath;
 
 class MonClient;
 
+class OSDMap;
 class Objecter;
 class Filer;
 
@@ -119,7 +118,6 @@ class Locker;
 class MDCache;
 class MDLog;
 class MDBalancer;
-class MDSInternalContextBase;
 
 class CInode;
 class CDir;
@@ -136,24 +134,18 @@ class MMDSBeacon;
 class InoTable;
 class SnapServer;
 class SnapClient;
+class AnchorServer;
+class AnchorClient;
 
 class MDSTableServer;
 class MDSTableClient;
 
 class AuthAuthorizeHandlerRegistry;
 
-class MDS : public Dispatcher, public md_config_obs_t {
+class MDS : public Dispatcher {
  public:
   Mutex        mds_lock;
   SafeTimer    timer;
-
- private:
-  ceph::heartbeat_handle_d *hb;  // Heartbeat for threads using mds_lock
-  void heartbeat_reset();
-  Beacon  beacon;
-  void set_want_state(MDSMap::DaemonState newstate);
- public:
-  utime_t get_laggy_until() {return beacon.get_laggy_until();}
 
   AuthAuthorizeHandlerRegistry *authorize_handler_cluster_registry;
   AuthAuthorizeHandlerRegistry *authorize_handler_service_registry;
@@ -163,17 +155,17 @@ class MDS : public Dispatcher, public md_config_obs_t {
   int incarnation;
 
   int standby_for_rank;
-  MDSMap::DaemonState standby_type;  // one of STANDBY_REPLAY, ONESHOT_REPLAY
+  int standby_type;
   string standby_for_name;
   bool standby_replaying;  // true if current replay pass is in standby-replay mode
 
   Messenger    *messenger;
   MonClient    *monc;
   MDSMap       *mdsmap;
+  OSDMap       *osdmap;
   Objecter     *objecter;
   Filer        *filer;       // for reading/writing to/from osds
-  LogClient    log_client;
-  LogChannelRef clog;
+  LogClient    clog;
 
   // sub systems
   Server       *server;
@@ -184,6 +176,9 @@ class MDS : public Dispatcher, public md_config_obs_t {
 
   InoTable     *inotable;
 
+  AnchorServer *anchorserver;
+  AnchorClient *anchorclient;
+
   SnapServer   *snapserver;
   SnapClient   *snapclient;
 
@@ -191,54 +186,51 @@ class MDS : public Dispatcher, public md_config_obs_t {
   MDSTableServer *get_table_server(int t);
 
   PerfCounters       *logger, *mlogger;
-  OpTracker    op_tracker;
-
-  Finisher finisher;
 
   int orig_argc;
   const char **orig_argv;
 
  protected:
   // -- MDS state --
-  MDSMap::DaemonState last_state;
-  MDSMap::DaemonState state;         // my confirmed state
-  MDSMap::DaemonState want_state;    // the state i want
+  int last_state;
+  int state;         // my confirmed state
+  int want_state;    // the state i want
 
-  list<MDSInternalContextBase*> waiting_for_active, waiting_for_replay, waiting_for_reconnect, waiting_for_resolve;
-  list<MDSInternalContextBase*> replay_queue;
-  map<int, list<MDSInternalContextBase*> > waiting_for_active_peer;
+  list<Context*> waiting_for_active, waiting_for_replay, waiting_for_reconnect, waiting_for_resolve;
+  list<Context*> replay_queue;
+  map<int, list<Context*> > waiting_for_active_peer;
   list<Message*> waiting_for_nolaggy;
-  map<epoch_t, list<MDSInternalContextBase*> > waiting_for_mdsmap;
+  map<epoch_t, list<Context*> > waiting_for_mdsmap;
 
   map<int,version_t> peer_mdsmap_epoch;
 
   ceph_tid_t last_tid;    // for mds-initiated requests (e.g. stray rename)
 
  public:
-  void wait_for_active(MDSInternalContextBase *c) { 
+  void wait_for_active(Context *c) { 
     waiting_for_active.push_back(c); 
   }
-  void wait_for_active_peer(int who, MDSInternalContextBase *c) { 
+  void wait_for_active_peer(int who, Context *c) { 
     waiting_for_active_peer[who].push_back(c);
   }
-  void wait_for_replay(MDSInternalContextBase *c) { 
+  void wait_for_replay(Context *c) { 
     waiting_for_replay.push_back(c); 
   }
-  void wait_for_reconnect(MDSInternalContextBase *c) {
+  void wait_for_reconnect(Context *c) {
     waiting_for_reconnect.push_back(c);
   }
-  void wait_for_resolve(MDSInternalContextBase *c) {
+  void wait_for_resolve(Context *c) {
     waiting_for_resolve.push_back(c);
   }
-  void wait_for_mdsmap(epoch_t e, MDSInternalContextBase *c) {
+  void wait_for_mdsmap(epoch_t e, Context *c) {
     waiting_for_mdsmap[e].push_back(c);
   }
-  void enqueue_replay(MDSInternalContextBase *c) {
+  void enqueue_replay(Context *c) {
     replay_queue.push_back(c);
   }
 
-  MDSMap::DaemonState get_state() { return state; } 
-  MDSMap::DaemonState get_want_state() { return want_state; } 
+  int get_state() { return state; } 
+  int get_want_state() { return want_state; } 
   bool is_creating() { return state == MDSMap::STATE_CREATING; }
   bool is_starting() { return state == MDSMap::STATE_STARTING; }
   bool is_standby()  { return state == MDSMap::STATE_STANDBY; }
@@ -257,24 +249,19 @@ class MDS : public Dispatcher, public md_config_obs_t {
 
   bool is_stopped()  { return mdsmap->is_stopped(whoami); }
 
-  void request_state(MDSMap::DaemonState s);
+  void request_state(int s);
 
   ceph_tid_t issue_tid() { return ++last_tid; }
     
 
   // -- waiters --
-private:
-  list<MDSInternalContextBase*> finished_queue;
-  void _advance_queues();
-public:
+  list<Context*> finished_queue;
 
-  void queue_waiter(MDSInternalContextBase *c) {
+  void queue_waiter(Context *c) {
     finished_queue.push_back(c);
-    progress_thread.signal();
   }
-  void queue_waiters(list<MDSInternalContextBase*>& ls) {
+  void queue_waiters(list<Context*>& ls) {
     finished_queue.splice( finished_queue.end(), ls );
-    progress_thread.signal();
   }
   bool queue_one_replay() {
     if (replay_queue.empty())
@@ -284,10 +271,31 @@ public:
     return true;
   }
   
-  // tick and other timer fun
-  class C_MDS_Tick : public MDSInternalContext {
+  // -- keepalive beacon --
+  version_t               beacon_last_seq;          // last seq sent to monitor
+  map<version_t,utime_t>  beacon_seq_stamp;         // seq # -> time sent
+  utime_t                 beacon_last_acked_stamp;  // last time we sent a beacon that got acked
+  bool was_laggy;
+  utime_t laggy_until;
+
+  bool is_laggy();
+  utime_t get_laggy_until() { return laggy_until; }
+
+  class C_MDS_BeaconSender : public Context {
+    MDS *mds;
   public:
-    C_MDS_Tick(MDS *m) : MDSInternalContext(m) {}
+    C_MDS_BeaconSender(MDS *m) : mds(m) {}
+    void finish(int r) {
+      mds->beacon_sender = 0;
+      mds->beacon_send();
+    }
+  } *beacon_sender;
+
+  // tick and other timer fun
+  class C_MDS_Tick : public Context {
+    MDS *mds;
+  public:
+    C_MDS_Tick(MDS *m) : mds(m) {}
     void finish(int r) {
       mds->tick_event = 0;
       mds->tick();
@@ -324,19 +332,6 @@ public:
   bool ms_handle_reset(Connection *con);
   void ms_handle_remote_reset(Connection *con);
 
-private:
-  class ProgressThread : public Thread {
-    MDS *mds;
-    bool stopping;
-    Cond cond;
-  public:
-    ProgressThread(MDS *mds_) : mds(mds_), stopping(false) {}
-    void * entry(); 
-    void shutdown();
-    void signal() {cond.Signal();}
-  } progress_thread;
-  void _progress_thread();
-
  public:
   MDS(const std::string &n, Messenger *m, MonClient *mc);
   ~MDS();
@@ -345,9 +340,9 @@ private:
   void handle_signal(int signum);
 
   // who am i etc
-  int get_nodeid() const { return whoami; }
-  uint64_t get_metadata_pool() { return mdsmap->get_metadata_pool(); }
+  int get_nodeid() { return whoami; }
   MDSMap *get_mds_map() { return mdsmap; }
+  OSDMap *get_osd_map() { return osdmap; }
 
   void send_message_mds(Message *m, int mds);
   void forward_message_mds(Message *req, int mds);
@@ -365,43 +360,16 @@ private:
   }
 
   // start up, shutdown
-  int init(MDSMap::DaemonState wanted_state=MDSMap::STATE_BOOT);
+  int init(int wanted_state=MDSMap::STATE_BOOT);
 
-  // admin socket handling
-  friend class MDSSocketHook;
-  class MDSSocketHook *asok_hook;
-  bool asok_command(string command, cmdmap_t& cmdmap, string format,
-		    ostream& ss);
-  void set_up_admin_socket();
-  void clean_up_admin_socket();
-  void check_ops_in_flight(); // send off any slow ops to monitor
-    // config observer bits
-  virtual const char** get_tracked_conf_keys() const;
-  virtual void handle_conf_change(const struct md_config_t *conf,
-				  const std::set <std::string> &changed);
   void create_logger();
 
   void bcast_mds_map();  // to mounted clients
 
   void boot_create();             // i am new mds.
+  void boot_start(int step=0, int r=0);    // starting|replay
 
- private:
-  typedef enum {
-    // The MDSMap is available, configure default layouts and structures
-    MDS_BOOT_INITIAL = 0,
-    // We are ready to open some inodes
-    MDS_BOOT_OPEN_ROOT,
-    // We are ready to do a replay if needed
-    MDS_BOOT_PREPARE_LOG,
-    // Replay is complete
-    MDS_BOOT_REPLAY_DONE
-  } BootStep;
-
-  friend class C_MDS_BootStart;
-  friend class C_MDS_InternalBootStart;
-  void boot_start(BootStep step=MDS_BOOT_INITIAL, int r=0);    // starting|replay
   void calc_recovery_set();
- public:
 
   void replay_start();
   void creating_done();
@@ -436,6 +404,11 @@ private:
 
   void tick();
   
+  void beacon_start();
+  void beacon_send();
+  void handle_mds_beacon(MMDSBeacon *m);
+
+  void request_osdmap(Context *c);
 
   void inc_dispatch_depth() { ++dispatch_depth; }
   void dec_dispatch_depth() { --dispatch_depth; }
@@ -457,12 +430,14 @@ private:
 /* This expects to be given a reference which it is responsible for.
  * The finish function calls functions which
  * will put the Message exactly once.*/
-class C_MDS_RetryMessage : public MDSInternalContext {
+class C_MDS_RetryMessage : public Context {
   Message *m;
+  MDS *mds;
 public:
-  C_MDS_RetryMessage(MDS *mds, Message *m) : MDSInternalContext(mds) {
+  C_MDS_RetryMessage(MDS *mds, Message *m) {
     assert(m);
     this->m = m;
+    this->mds = mds;
   }
   virtual void finish(int r) {
     mds->inc_dispatch_depth();

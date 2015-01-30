@@ -29,6 +29,7 @@
 #include <set>
 #include <map>
 #include <string>
+using namespace std;
 
 
 #include "CInode.h"
@@ -36,6 +37,7 @@
 class CDentry;
 class MDCache;
 class MDCluster;
+class Context;
 class bloom_filter;
 
 struct ObjectOperation;
@@ -169,7 +171,7 @@ public:
 
   fnode_t fnode;
   snapid_t first;
-  std::map<snapid_t,old_rstat_t> dirty_old_rstat;  // [value.first,key]
+  map<snapid_t,old_rstat_t> dirty_old_rstat;  // [value.first,key]
 
   // my inodes with dirty rstat data
   elist<CInode*> dirty_rstat_inodes;     
@@ -181,7 +183,7 @@ public:
 
 protected:
   version_t projected_version;
-  std::list<fnode_t*> projected_fnode;
+  list<fnode_t*> projected_fnode;
 
 public:
   elist<CDir*>::item item_dirty, item_new;
@@ -221,7 +223,7 @@ public:
   void mark_new(LogSegment *ls);
 
 public:
-  typedef std::map<dentry_key_t, CDentry*> map_t;
+  typedef map<dentry_key_t, CDentry*> map_t;
 protected:
 
   // contents of this directory
@@ -246,9 +248,11 @@ protected:
   int nested_auth_pins, dir_auth_pins;
   int request_pins;
 
+  int nested_anchors;
+
   // cache control  (defined for authority; hints for replicas)
   __s32      dir_rep;
-  std::set<__s32> dir_rep_by;      // if dir_rep == REP_LIST
+  set<__s32> dir_rep_by;      // if dir_rep == REP_LIST
 
   // popularity
   dirfrag_load_vec_t pop_me;
@@ -275,9 +279,9 @@ protected:
 
   friend class CDirDiscover;
   friend class CDirExport;
-  friend class C_IO_Dir_TMAP_Fetched;
-  friend class C_IO_Dir_OMAP_Fetched;
-  friend class C_IO_Dir_Committed;
+  friend class C_Dir_TMAP_Fetched;
+  friend class C_Dir_OMAP_Fetched;
+  friend class C_Dir_Committed;
 
   bloom_filter *bloom;
   /* If you set up the bloom filter, you must keep it accurate!
@@ -325,22 +329,22 @@ protected:
 
   // -- dentries and inodes --
  public:
-  CDentry* lookup_exact_snap(const std::string& dname, snapid_t last) {
+  CDentry* lookup_exact_snap(const string& dname, snapid_t last) {
     map_t::iterator p = items.find(dentry_key_t(last, dname.c_str()));
     if (p == items.end())
       return NULL;
     return p->second;
   }
-  CDentry* lookup(const std::string& n, snapid_t snap=CEPH_NOSNAP) {
+  CDentry* lookup(const string& n, snapid_t snap=CEPH_NOSNAP) {
     return lookup(n.c_str(), snap);
   }
   CDentry* lookup(const char *n, snapid_t snap=CEPH_NOSNAP);
 
-  CDentry* add_null_dentry(const std::string& dname, 
+  CDentry* add_null_dentry(const string& dname, 
 			   snapid_t first=2, snapid_t last=CEPH_NOSNAP);
-  CDentry* add_primary_dentry(const std::string& dname, CInode *in, 
+  CDentry* add_primary_dentry(const string& dname, CInode *in, 
 			      snapid_t first=2, snapid_t last=CEPH_NOSNAP);
-  CDentry* add_remote_dentry(const std::string& dname, inodeno_t ino, unsigned char d_type, 
+  CDentry* add_remote_dentry(const string& dname, inodeno_t ino, unsigned char d_type, 
 			     snapid_t first=2, snapid_t last=CEPH_NOSNAP);
   void remove_dentry( CDentry *dn );         // delete dentry
   void link_remote_inode( CDentry *dn, inodeno_t ino, unsigned char d_type);
@@ -350,22 +354,22 @@ protected:
   void try_remove_unlinked_dn(CDentry *dn);
 
   void add_to_bloom(CDentry *dn);
-  bool is_in_bloom(const std::string& name);
+  bool is_in_bloom(const string& name);
   bool has_bloom() { return (bloom ? true : false); }
   void remove_bloom();
 private:
   void link_inode_work( CDentry *dn, CInode *in );
   void unlink_inode_work( CDentry *dn );
   void remove_null_dentries();
-  void purge_stale_snap_data(const std::set<snapid_t>& snaps);
+  void purge_stale_snap_data(const set<snapid_t>& snaps);
 public:
   void touch_dentries_bottom();
-  bool try_trim_snap_dentry(CDentry *dn, const std::set<snapid_t>& snaps);
+  bool try_trim_snap_dentry(CDentry *dn, const set<snapid_t>& snaps);
 
 
 public:
-  void split(int bits, list<CDir*>& subs, list<MDSInternalContextBase*>& waiters, bool replay);
-  void merge(list<CDir*>& subs, list<MDSInternalContextBase*>& waiters, bool replay);
+  void split(int bits, list<CDir*>& subs, list<Context*>& waiters, bool replay);
+  void merge(list<CDir*>& subs, list<Context*>& waiters, bool replay);
 
   bool should_split() {
     return (int)get_frag_size() > g_conf->mds_bal_split_size;
@@ -378,7 +382,7 @@ private:
   void prepare_new_fragment(bool replay);
   void prepare_old_fragment(bool replay);
   void steal_dentry(CDentry *dn);  // from another dir.  used by merge/split.
-  void finish_old_fragment(list<MDSInternalContextBase*>& waiters, bool replay);
+  void finish_old_fragment(list<Context*>& waiters, bool replay);
   void init_fragment_pins();
 
 
@@ -414,9 +418,9 @@ private:
 
 
   // for giving to clients
-  void get_dist_spec(std::set<int>& ls, int auth) {
+  void get_dist_spec(set<int>& ls, int auth) {
     if (is_rep()) {
-      for (std::map<int,unsigned>::iterator p = replicas_begin();
+      for (map<int,unsigned>::iterator p = replicas_begin();
 	   p != replicas_end(); 
 	   ++p)
 	ls.insert(p->first);
@@ -430,7 +434,7 @@ private:
      */
     frag_t frag = get_frag();
     __s32 auth;
-    std::set<__s32> dist;
+    set<__s32> dist;
     
     auth = dir_auth.first;
     if (is_auth()) 
@@ -483,27 +487,25 @@ private:
   object_t get_ondisk_object() { 
     return file_object_t(ino(), frag);
   }
-  void fetch(MDSInternalContextBase *c, bool ignore_authpinnability=false);
-  void fetch(MDSInternalContextBase *c, const std::string& want_dn, bool ignore_authpinnability=false);
+  void fetch(Context *c, bool ignore_authpinnability=false);
+  void fetch(Context *c, const string& want_dn, bool ignore_authpinnability=false);
 protected:
-  void _omap_fetch(const std::string& want_dn);
-  void _omap_fetched(bufferlist& hdrbl, std::map<std::string, bufferlist>& omap,
-		     const std::string& want_dn, int r);
-  void _tmap_fetch(const std::string& want_dn);
-  void _tmap_fetched(bufferlist &bl, const std::string& want_dn, int r);
+  void _omap_fetch(const string& want_dn);
+  void _omap_fetched(bufferlist& hdrbl, map<string, bufferlist>& omap,
+		     const string& want_dn, int r);
+  void _tmap_fetch(const string& want_dn);
+  void _tmap_fetched(bufferlist &bl, const string& want_dn, int r);
 
   // -- commit --
-  std::map<version_t, std::list<MDSInternalContextBase*> > waiting_for_commit;
+  map<version_t, list<Context*> > waiting_for_commit;
   void _commit(version_t want, int op_prio);
   void _omap_commit(int op_prio);
-  void _encode_dentry(CDentry *dn, bufferlist& bl, const std::set<snapid_t> *snaps);
+  void _encode_dentry(CDentry *dn, bufferlist& bl, const set<snapid_t> *snaps);
   void _committed(version_t v);
 public:
-#if 0  // unused?
   void wait_for_commit(Context *c, version_t v=0);
-#endif
   void commit_to(version_t want);
-  void commit(version_t want, MDSInternalContextBase *c,
+  void commit(version_t want, Context *c,
 	      bool ignore_authpinnability=false, int op_prio=-1);
 
   // -- dirtyness --
@@ -530,18 +532,26 @@ public:
     
   // -- waiters --
 protected:
-  std::map< string_snap_t, std::list<MDSInternalContextBase*> > waiting_on_dentry;
+  map< string_snap_t, list<Context*> > waiting_on_dentry;
+  map< inodeno_t, list<Context*> > waiting_on_ino;
 
 public:
-  bool is_waiting_for_dentry(const std::string& dname, snapid_t snap) {
+  bool is_waiting_for_dentry(const string& dname, snapid_t snap) {
     return waiting_on_dentry.count(string_snap_t(dname, snap));
   }
-  void add_dentry_waiter(const std::string& dentry, snapid_t snap, MDSInternalContextBase *c);
-  void take_dentry_waiting(const std::string& dentry, snapid_t first, snapid_t last, std::list<MDSInternalContextBase*>& ls);
-  void take_sub_waiting(std::list<MDSInternalContextBase*>& ls);  // dentry or ino
+  void add_dentry_waiter(const string& dentry, snapid_t snap, Context *c);
+  void take_dentry_waiting(const string& dentry, snapid_t first, snapid_t last, list<Context*>& ls);
 
-  void add_waiter(uint64_t mask, MDSInternalContextBase *c);
-  void take_waiting(uint64_t mask, std::list<MDSInternalContextBase*>& ls);  // may include dentry waiters
+  bool is_waiting_for_ino(inodeno_t ino) {
+    return waiting_on_ino.count(ino);
+  }
+  void add_ino_waiter(inodeno_t ino, Context *c);
+  void take_ino_waiting(inodeno_t ino, list<Context*>& ls);
+
+  void take_sub_waiting(list<Context*>& ls);  // dentry or ino
+
+  void add_waiter(uint64_t mask, Context *c);
+  void take_waiting(uint64_t mask, list<Context*>& ls);  // may include dentry waiters
   void finish_waiting(uint64_t mask, int result = 0);    // ditto
   
 
@@ -565,6 +575,9 @@ public:
 
   void adjust_nested_auth_pins(int inc, int dirinc, void *by);
   void verify_fragstat();
+
+  int get_nested_anchors() { return nested_anchors; }
+  void adjust_nested_anchors(int by);
 
   // -- freezing --
   bool freeze_tree();

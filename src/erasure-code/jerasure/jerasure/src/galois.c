@@ -47,7 +47,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 
 #include "galois.h"
 
@@ -169,34 +168,24 @@ gf_t* galois_init_composite_field(int w,
   return gfp;
 }
 
-int galois_init_default_field(int w)
-{
-  if (gfp_array[w] == NULL) {
-    gfp_array[w] = (gf_t*)malloc(sizeof(gf_t));
-    if(gfp_array[w] == NULL)
-      return ENOMEM;
-    if (!gf_init_easy(gfp_array[w], w))
-      return EINVAL;
-  }
-  return 0;
-}
-
-static void galois_init(int w)
+static void galois_init_default_field(int w)
 {
   if (w <= 0 || w > 32) {
     fprintf(stderr, "ERROR -- cannot init default Galois field for w=%d\n", w);
     exit(1);
   }
 
-  switch (galois_init_default_field(w)) {
-  case ENOMEM:
-    fprintf(stderr, "ERROR -- cannot allocate memory for Galois field w=%d\n", w);
-    exit(1);
-    break;
-  case EINVAL:
+  if (gfp_array[w] == NULL) {
+    gfp_array[w] = (gf_t*)malloc(sizeof(gf_t));
+    if (gfp_array[w] == NULL) {
+      fprintf(stderr, "ERROR -- cannot allocate memory for Galois field w=%d\n", w);
+      exit(1);
+    }
+  }
+
+  if (!gf_init_easy(gfp_array[w], w)) {
     fprintf(stderr, "ERROR -- cannot init default Galois field for w=%d\n", w);
     exit(1);
-    break;
   }
 }
 
@@ -254,7 +243,7 @@ int galois_single_multiply(int x, int y, int w)
   if (x == 0 || y == 0) return 0;
   
   if (gfp_array[w] == NULL) {
-    galois_init(w);
+    galois_init_default_field(w);
   }
 
   if (w <= 32) {
@@ -271,7 +260,7 @@ int galois_single_divide(int x, int y, int w)
   if (y == 0) return -1;
 
   if (gfp_array[w] == NULL) {
-    galois_init(w);
+    galois_init_default_field(w);
   }
 
   if (w <= 32) {
@@ -289,7 +278,7 @@ void galois_w08_region_multiply(char *region,      /* Region to multiply */
                                   int add)
 {
   if (gfp_array[8] == NULL) {
-    galois_init(8);
+    galois_init_default_field(8);
   }
   gfp_array[8]->multiply_region.w32(gfp_array[8], region, r2, multby, nbytes, add);
 }
@@ -301,7 +290,7 @@ void galois_w16_region_multiply(char *region,      /* Region to multiply */
                                   int add)
 {
   if (gfp_array[16] == NULL) {
-    galois_init(16);
+    galois_init_default_field(16);
   }
   gfp_array[16]->multiply_region.w32(gfp_array[16], region, r2, multby, nbytes, add);
 }
@@ -314,7 +303,7 @@ void galois_w32_region_multiply(char *region,      /* Region to multiply */
                                   int add)
 {
   if (gfp_array[32] == NULL) {
-    galois_init(32);
+    galois_init_default_field(32);
   }
   gfp_array[32]->multiply_region.w32(gfp_array[32], region, r2, multby, nbytes, add);
 }
@@ -322,7 +311,7 @@ void galois_w32_region_multiply(char *region,      /* Region to multiply */
 void galois_w8_region_xor(void *src, void *dest, int nbytes)
 {
   if (gfp_array[8] == NULL) {
-    galois_init(8);
+    galois_init_default_field(8);
   }
   gfp_array[8]->multiply_region.w32(gfp_array[32], src, dest, 1, nbytes, 1);
 }
@@ -330,7 +319,7 @@ void galois_w8_region_xor(void *src, void *dest, int nbytes)
 void galois_w16_region_xor(void *src, void *dest, int nbytes)
 {
   if (gfp_array[16] == NULL) {
-    galois_init(16);
+    galois_init_default_field(16);
   }
   gfp_array[16]->multiply_region.w32(gfp_array[16], src, dest, 1, nbytes, 1);
 }
@@ -338,7 +327,7 @@ void galois_w16_region_xor(void *src, void *dest, int nbytes)
 void galois_w32_region_xor(void *src, void *dest, int nbytes)
 {
   if (gfp_array[32] == NULL) {
-    galois_init(32);
+    galois_init_default_field(32);
   }
   gfp_array[32]->multiply_region.w32(gfp_array[32], src, dest, 1, nbytes, 1);
 }

@@ -20,27 +20,16 @@
 
 
 class MWatchNotify : public Message {
-  static const int HEAD_VERSION = 2;
-  static const int COMPAT_VERSION = 1;
-
  public:
-  uint64_t cookie;     ///< client unique id for this watch or notify
-  uint64_t ver;        ///< unused
-  uint64_t notify_id;  ///< osd unique id for a notify notification
-  uint8_t opcode;      ///< always WATCH_NOTIFY
-  bufferlist bl;       ///< notify payload (osd->client)
-  int32_t return_code; ///< notify result (osd->client)
+  uint64_t cookie;
+  uint64_t ver;
+  uint64_t notify_id;
+  uint8_t opcode;
+  bufferlist bl;
 
-  MWatchNotify()
-    : Message(CEPH_MSG_WATCH_NOTIFY, HEAD_VERSION, COMPAT_VERSION) { }
-  MWatchNotify(uint64_t c, uint64_t v, uint64_t i, uint8_t o, bufferlist b)
-    : Message(CEPH_MSG_WATCH_NOTIFY, HEAD_VERSION, COMPAT_VERSION),
-      cookie(c),
-      ver(v),
-      notify_id(i),
-      opcode(o),
-      bl(b),
-      return_code(0) { }
+  MWatchNotify() : Message(CEPH_MSG_WATCH_NOTIFY) { }
+  MWatchNotify(uint64_t c, uint64_t v, uint64_t i, uint8_t o, bufferlist b) : Message(CEPH_MSG_WATCH_NOTIFY),
+					cookie(c), ver(v), notify_id(i), opcode(o), bl(b) { }
 private:
   ~MWatchNotify() {}
 
@@ -55,10 +44,6 @@ public:
     ::decode(notify_id, p);
     if (msg_ver >= 1)
       ::decode(bl, p);
-    if (header.version >= 2)
-      ::decode(return_code, p);
-    else
-      return_code = 0;
   }
   void encode_payload(uint64_t features) {
     uint8_t msg_ver = 1;
@@ -68,12 +53,11 @@ public:
     ::encode(ver, payload);
     ::encode(notify_id, payload);
     ::encode(bl, payload);
-    ::encode(return_code, payload);
   }
 
   const char *get_type_name() const { return "watch-notify"; }
   void print(ostream& out) const {
-    out << "watch-notify(c=" << cookie << " v=" << ver << " i=" << notify_id << " opcode=" << (int)opcode << " r = " << return_code << ")";
+    out << "watch-notify(c=" << cookie << " v=" << ver << " i=" << notify_id << " opcode=" << (int)opcode << ")";
   }
 };
 

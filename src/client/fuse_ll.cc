@@ -64,10 +64,8 @@ static dev_t new_decode_dev(uint32_t dev)
 class CephFuse::Handle {
 public:
   Handle(Client *c, int fd);
-  ~Handle();
 
   int init(int argc, const char *argv[]);
-  int start();
   int loop();
   void finalize();
 
@@ -90,7 +88,6 @@ public:
   ceph::unordered_map<uint64_t,int> snap_stag_map;
   ceph::unordered_map<int,uint64_t> stag_snap_map;
 
-  struct fuse_args args;
 };
 
 static void fuse_ll_lookup(fuse_req_t req, fuse_ino_t parent, const char *name)
@@ -777,12 +774,6 @@ CephFuse::Handle::Handle(Client *c, int fd) :
 {
   snap_stag_map[CEPH_NOSNAP] = 0;
   stag_snap_map[0] = CEPH_NOSNAP;
-  memset(&args, 0, sizeof(args));
-}
-
-CephFuse::Handle::~Handle()
-{
-  fuse_opt_free_args(&args);
 }
 
 void CephFuse::Handle::finalize()
@@ -834,41 +825,36 @@ int CephFuse::Handle::init(int argc, const char *argv[])
   for (int argctr = 1; argctr < argc; argctr++)
     newargv[newargc++] = argv[argctr];
 
-  derr << "init, newargv = " << newargv << " newargc=" << newargc << dendl;
-  struct fuse_args a = FUSE_ARGS_INIT(newargc, (char**)newargv);
-  args = a;  // Roundabout construction b/c FUSE_ARGS_INIT is for initialization not assignment
+  struct fuse_args args = FUSE_ARGS_INIT(newargc, (char**)newargv);
+  int ret = 0;
 
+  char *mountpoint;
   if (fuse_parse_cmdline(&args, &mountpoint, NULL, NULL) == -1) {
     derr << "fuse_parse_cmdline failed." << dendl;
-    fuse_opt_free_args(&args);
-    free(newargv);
-    return EINVAL;
+    ret = EINVAL;
+    goto done;
   }
 
-  assert(args.allocated);  // Checking fuse has realloc'd args so we can free newargv
-  free(newargv);
-  return 0;
-}
-
-int CephFuse::Handle::start()
-{
   ch = fuse_mount(mountpoint, &args);
   if (!ch) {
     derr << "fuse_mount(mountpoint=" << mountpoint << ") failed." << dendl;
-    return EIO;
+    ret = EIO;
+    goto done;
   }
 
   se = fuse_lowlevel_new(&args, &fuse_ll_oper, sizeof(fuse_ll_oper), this);
   if (!se) {
     derr << "fuse_lowlevel_new failed" << dendl;
-    return EDOM;
+    ret = EDOM;
+    goto done;
   }
 
   signal(SIGTERM, SIG_DFL);
   signal(SIGINT, SIG_DFL);
   if (fuse_set_signal_handlers(se) == -1) {
     derr << "fuse_set_signal_handlers failed" << dendl;
-    return ENOSYS;
+    ret = ENOSYS;
+    goto done;
   }
 
   fuse_session_add_chan(se, ch);
@@ -891,7 +877,10 @@ int CephFuse::Handle::start()
   if (client->cct->_conf->fuse_use_invalidate_cb)
     client->ll_register_ino_invalidate_cb(ino_invalidate_cb, this);
 
-  return 0;
+done:
+  fuse_opt_free_args(&args);
+  free(newargv);
+  return ret;
 }
 
 int CephFuse::Handle::loop()
@@ -962,11 +951,6 @@ int CephFuse::init(int argc, const char *argv[])
   return _handle->init(argc, argv);
 }
 
-int CephFuse::start()
-{
-  return _handle->start();
-}
-
 int CephFuse::loop()
 {
   return _handle->loop();
@@ -975,13 +959,4 @@ int CephFuse::loop()
 void CephFuse::finalize()
 {
   return _handle->finalize();
-}
-
-std::string CephFuse::get_mount_point() const
-{
-  if (_handle->mountpoint) {
-    return _handle->mountpoint;
-  } else {
-    return "";
-  }
 }

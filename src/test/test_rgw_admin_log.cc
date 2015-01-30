@@ -717,7 +717,8 @@ unsigned get_datalog_shard_id(const char *bucket_name, int max_shards) {
 
 TEST(TestRGWAdmin, datalog_list) {
   string start_time, 
-         end_time;
+         end_time,
+         start_time_2;
   const char *cname = "datalog",
              *perm = "*";
   string rest_req;
@@ -790,7 +791,7 @@ TEST(TestRGWAdmin, datalog_list) {
     list<rgw_data_change>::iterator it = (entries.begin());
     EXPECT_EQ((*it).entity_type, ENTITY_TYPE_BUCKET);
     EXPECT_EQ((*it).key.compare(TEST_BUCKET_NAME), 0);
-    ++it; 
+    it++; 
     EXPECT_EQ((*it).entity_type, ENTITY_TYPE_BUCKET);
     EXPECT_EQ((*it).key.compare(TEST_BUCKET_NAME), 0);
   }
@@ -999,7 +1000,7 @@ TEST(TestRGWAdmin, datalog_trim) {
   EXPECT_EQ(200U, g_test->get_resp_code());
   entries.clear();
   get_datalog_list(entries);
-  EXPECT_TRUE(!entries.empty());
+  EXPECT_TRUE(entries.size() > 0);
 
   ss.str("");
   ss << "/admin/log?type=data&id=" << shard_id << "&start-time=" << start_time 
@@ -1016,7 +1017,7 @@ TEST(TestRGWAdmin, datalog_trim) {
   EXPECT_EQ(200U, g_test->get_resp_code());
   entries.clear();
   get_datalog_list(entries);
-  EXPECT_TRUE(entries.empty());
+  EXPECT_TRUE(entries.size() == 0);
 
   ASSERT_EQ(0, caps_rm(cname, perm));
   perm = "write";
@@ -1081,15 +1082,15 @@ TEST(TestRGWAdmin, mdlog_list) {
     EXPECT_TRUE(it->section.compare("user") == 0);
     EXPECT_TRUE(it->name.compare(uid) == 0);
     EXPECT_TRUE(it->log_data.status.compare("write") == 0);
-    ++it;
+    it++;
     EXPECT_TRUE(it->section.compare("user") == 0);
     EXPECT_TRUE(it->name.compare(uid) == 0);
     EXPECT_TRUE(it->log_data.status.compare("complete") == 0);
-    ++it;
+    it++;
     EXPECT_TRUE(it->section.compare("user") == 0);
     EXPECT_TRUE(it->name.compare(uid) == 0);
     EXPECT_TRUE(it->log_data.status.compare("write") == 0);
-    ++it;
+    it++;
     EXPECT_TRUE(it->section.compare("user") == 0);
     EXPECT_TRUE(it->name.compare(uid) == 0);
     EXPECT_TRUE(it->log_data.status.compare("complete") == 0);
@@ -1115,15 +1116,15 @@ TEST(TestRGWAdmin, mdlog_list) {
     EXPECT_TRUE(it->section.compare("user") == 0);
     EXPECT_TRUE(it->name.compare(uid) == 0);
     EXPECT_TRUE(it->log_data.status.compare("write") == 0);
-    ++it;
+    it++;
     EXPECT_TRUE(it->section.compare("user") == 0);
     EXPECT_TRUE(it->name.compare(uid) == 0);
     EXPECT_TRUE(it->log_data.status.compare("complete") == 0);
-    ++it;
+    it++;
     EXPECT_TRUE(it->section.compare("user") == 0);
     EXPECT_TRUE(it->name.compare(uid) == 0);
     EXPECT_TRUE(it->log_data.status.compare("write") == 0);
-    ++it;
+    it++;
     EXPECT_TRUE(it->section.compare("user") == 0);
     EXPECT_TRUE(it->name.compare(uid) == 0);
     EXPECT_TRUE(it->log_data.status.compare("complete") == 0);
@@ -1151,14 +1152,14 @@ TEST(TestRGWAdmin, mdlog_list) {
     EXPECT_TRUE(it->section.compare("user") == 0);
     EXPECT_TRUE(it->name.compare(uid) == 0);
     EXPECT_TRUE(it->log_data.status.compare("remove") == 0);
-    ++it;
+    it++;
     EXPECT_TRUE(it->section.compare("user") == 0);
     EXPECT_TRUE(it->name.compare(uid) == 0);
-    ++it;
+    it++;
     EXPECT_TRUE(it->section.compare("user") == 0);
     EXPECT_TRUE(it->name.compare(uid) == 0);
     EXPECT_TRUE(it->log_data.status.compare("write") == 0);
-    ++it;
+    it++;
     EXPECT_TRUE(it->section.compare("user") == 0);
     EXPECT_TRUE(it->name.compare(uid) == 0);
     EXPECT_TRUE(it->log_data.status.compare("complete") == 0);
@@ -1219,7 +1220,8 @@ TEST(TestRGWAdmin, mdlog_list) {
 
 TEST(TestRGWAdmin, mdlog_trim) {
   string start_time, 
-         end_time;
+         end_time,
+         start_time_2;
   const char *cname = "mdlog",
              *perm = "*";
   string rest_req;
@@ -1415,7 +1417,7 @@ TEST(TestRGWAdmin, bilog_list) {
     EXPECT_EQ(it->object.compare(TEST_BUCKET_OBJECT), 0);
     EXPECT_EQ(it->status.compare("pending"), 0);
     EXPECT_EQ(it->index_ver, 1U);
-    ++it;
+    it++;
     EXPECT_EQ(it->op.compare("write"), 0);
     EXPECT_EQ(it->object.compare(TEST_BUCKET_OBJECT), 0);
     EXPECT_EQ(it->status.compare("complete"), 0);
@@ -1442,12 +1444,12 @@ TEST(TestRGWAdmin, bilog_list) {
   if (entries.size() == 4) {
     list<cls_bilog_entry>::iterator it = entries.begin();
 
-    ++it; ++it;
+    it++; it++;
     EXPECT_EQ(it->op.compare("write"), 0);
     EXPECT_EQ(it->object.compare(TEST_BUCKET_OBJECT_1), 0);
     EXPECT_EQ(it->status.compare("pending"), 0);
     EXPECT_EQ(it->index_ver, 3U);
-    ++it;
+    it++;
     EXPECT_EQ(it->op.compare("write"), 0);
     EXPECT_EQ(it->object.compare(TEST_BUCKET_OBJECT_1), 0);
     EXPECT_EQ(it->status.compare("complete"), 0);
@@ -1466,13 +1468,13 @@ TEST(TestRGWAdmin, bilog_list) {
   if (entries.size() == 6) {
     list<cls_bilog_entry>::iterator it = entries.begin();
     
-    ++it; ++it; ++it; ++it;
+    it++; it++; it++; it++;
     marker = it->op_id;
     EXPECT_EQ(it->op.compare("del"), 0);
     EXPECT_EQ(it->object.compare(TEST_BUCKET_OBJECT), 0);
     EXPECT_EQ(it->status.compare("pending"), 0);
     EXPECT_EQ(it->index_ver, 5U);
-    ++it;
+    it++;
     EXPECT_EQ(it->op.compare("del"), 0);
     EXPECT_EQ(it->object.compare(TEST_BUCKET_OBJECT), 0);
     EXPECT_EQ(it->status.compare("complete"), 0);
@@ -1490,7 +1492,7 @@ TEST(TestRGWAdmin, bilog_list) {
   if (entries.size() == 2U) {
     list<cls_bilog_entry>::iterator it = entries.begin();
     EXPECT_EQ(it->index_ver, 5U);
-    ++it;
+    it++;
     EXPECT_EQ(it->index_ver, 6U);
     EXPECT_EQ(it->op.compare("del"), 0);
   }
@@ -1553,7 +1555,7 @@ TEST(TestRGWAdmin, bilog_trim) {
 
   list<cls_bilog_entry>::iterator it = entries.begin();
   start_marker = it->op_id;
-  ++it;
+  it++;
   end_marker = it->op_id;
 
   rest_req = "/admin/log?type=bucket-index&bucket="TEST_BUCKET_NAME;

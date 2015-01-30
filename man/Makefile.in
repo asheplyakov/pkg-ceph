@@ -47,7 +47,6 @@ am__aclocal_m4_deps = $(top_srcdir)/m4/ac_check_classpath.m4 \
 	$(top_srcdir)/m4/ax_c_pretty_func.m4 \
 	$(top_srcdir)/m4/ax_c_var_func.m4 \
 	$(top_srcdir)/m4/ax_check_compile_flag.m4 \
-	$(top_srcdir)/m4/ax_cxx_compile_stdcxx_11.m4 \
 	$(top_srcdir)/m4/ax_cxx_static_cast.m4 \
 	$(top_srcdir)/m4/ax_intel.m4 $(top_srcdir)/m4/libtool.m4 \
 	$(top_srcdir)/m4/ltoptions.m4 $(top_srcdir)/m4/ltsugar.m4 \
@@ -109,7 +108,6 @@ AUTOHEADER = @AUTOHEADER@
 AUTOMAKE = @AUTOMAKE@
 AWK = @AWK@
 BOOST_PROGRAM_OPTIONS_LIBS = @BOOST_PROGRAM_OPTIONS_LIBS@
-BOOST_THREAD_LIBS = @BOOST_THREAD_LIBS@
 CC = @CC@
 CCAS = @CCAS@
 CCASDEPMODE = @CCASDEPMODE@
@@ -142,7 +140,6 @@ FGREP = @FGREP@
 GCOV_PREFIX_STRIP = @GCOV_PREFIX_STRIP@
 GIT_CHECK = @GIT_CHECK@
 GREP = @GREP@
-HAVE_CXX11 = @HAVE_CXX11@
 INSTALL = @INSTALL@
 INSTALL_DATA = @INSTALL_DATA@
 INSTALL_PROGRAM = @INSTALL_PROGRAM@
@@ -167,8 +164,6 @@ LIBEDIT_CFLAGS = @LIBEDIT_CFLAGS@
 LIBEDIT_LIBS = @LIBEDIT_LIBS@
 LIBFUSE = @LIBFUSE@
 LIBOBJS = @LIBOBJS@
-LIBROCKSDB_CFLAGS = @LIBROCKSDB_CFLAGS@
-LIBROCKSDB_LIBS = @LIBROCKSDB_LIBS@
 LIBS = @LIBS@
 LIBTCMALLOC = @LIBTCMALLOC@
 LIBTOOL = @LIBTOOL@
@@ -177,8 +172,6 @@ LIBZFS_LIBS = @LIBZFS_LIBS@
 LIPO = @LIPO@
 LN_S = @LN_S@
 LTLIBOBJS = @LTLIBOBJS@
-LTTNG_GEN_TP_CHECK = @LTTNG_GEN_TP_CHECK@
-LTTNG_GEN_TP_PROG = @LTTNG_GEN_TP_PROG@
 MAKEINFO = @MAKEINFO@
 MANIFEST_TOOL = @MANIFEST_TOOL@
 MKDIR_P = @MKDIR_P@
@@ -287,6 +280,7 @@ dist_man_MANS = \
 	ceph-osd.8 \
 	ceph-mds.8 \
 	ceph-mon.8 \
+	mkcephfs.8 \
 	ceph-fuse.8 \
 	ceph-syn.8 \
 	crushtool.8 \
@@ -309,9 +303,7 @@ dist_man_MANS = \
 	ceph-rest-api.8 \
 	ceph-rbdnamer.8 \
 	ceph-post-file.8 \
-	rbd-fuse.8 \
-	rbd-replay.8 \
-	rbd-replay-prep.8
+	rbd-fuse.8
 
 all: all-am
 

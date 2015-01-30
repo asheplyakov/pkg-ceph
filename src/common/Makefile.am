@@ -39,7 +39,6 @@ libcommon_la_SOURCES = \
 	common/ceph_argparse.cc \
 	common/ceph_context.cc \
 	common/buffer.cc \
-	common/types.cc \
 	common/code_environment.cc \
 	common/dout.cc \
 	common/histogram.cc \
@@ -71,8 +70,7 @@ libcommon_la_SOURCES = \
 	common/addr_parsing.c \
 	common/hobject.cc \
 	common/bloom_filter.cc \
-	common/linux_version.c \
-	common/module.c
+	common/linux_version.c
 
 # these should go out of libcommon
 libcommon_la_SOURCES += \
@@ -196,22 +194,15 @@ noinst_HEADERS += \
 	common/utf8.h \
 	common/mime.h \
 	common/pick_address.h \
+	common/secret.h \
 	common/strtol.h \
 	common/static_assert.h \
 	common/AsyncReserver.h \
 	common/sync_filesystem.h \
 	common/cmdparse.h \
 	common/hobject.h \
-	common/linux_version.h \
-	common/module.h
+	common/linux_version.h
 
 noinst_LTLIBRARIES += libcommon.la
 
 
-libsecret_la_SOURCES = common/secret.c
-libsecret_la_LIBADD = $(KEYUTILS_LIB)
-if LINUX
-noinst_LTLIBRARIES += libsecret.la
-endif
-
-noinst_HEADERS += common/secret.h

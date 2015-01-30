@@ -1,6 +1,3 @@
-// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
-// vim: ts=8 sw=2 smarttab
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -507,6 +504,8 @@ int RGWSwift::validate_keystone_token(RGWRados *store, const string& token, stru
     url.append(token);
 
     validate.append_header("X-Auth-Token", admin_token);
+
+    validate.set_send_length(0);
 
     int ret = validate.process(url.c_str());
     if (ret < 0)

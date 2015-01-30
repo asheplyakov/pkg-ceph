@@ -516,12 +516,12 @@ static void crush_choose_indep(const struct crush_map *map,
 	for (ftotal = 0; left > 0 && ftotal < tries; ftotal++) {
 #ifdef DEBUG_INDEP
 		if (out2 && ftotal) {
-			printf("%u %d a: ", ftotal, left);
+			printf("%d %d a: ", ftotal, left);
 			for (rep = outpos; rep < endpos; rep++) {
 				printf(" %d", out[rep]);
 			}
 			printf("\n");
-			printf("%u %d b: ", ftotal, left);
+			printf("%d %d b: ", ftotal, left);
 			for (rep = outpos; rep < endpos; rep++) {
 				printf(" %d", out2[rep]);
 			}
@@ -646,12 +646,12 @@ static void crush_choose_indep(const struct crush_map *map,
 	}
 #ifdef DEBUG_INDEP
 	if (out2) {
-		printf("%u %d a: ", ftotal, left);
+		printf("%d %d a: ", ftotal, left);
 		for (rep = outpos; rep < endpos; rep++) {
 			printf(" %d", out[rep]);
 		}
 		printf("\n");
-		printf("%u %d b: ", ftotal, left);
+		printf("%d %d b: ", ftotal, left);
 		for (rep = outpos; rep < endpos; rep++) {
 			printf(" %d", out2[rep]);
 		}

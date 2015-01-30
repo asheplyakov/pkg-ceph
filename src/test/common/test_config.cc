@@ -131,16 +131,8 @@ public:
       config_option *opt = config_optionsp + i;
       if (opt->type == OPT_STR) {
         std::string *str = (std::string *)opt->conf_ptr(this);
-
-        size_t pos = 0;
-        while ((pos = str->find("$", pos)) != string::npos) {
-          if (str->substr(pos, 8) != "$channel") {
-            std::cout << "unexpected meta-variable found at pos " << pos
-                      << " of '" << *str << "'" << std::endl;
-            after_count++;
-          }
-          pos++;
-        }
+        if (str->find("$") != string::npos)
+          after_count++;
       }
     }
     ASSERT_EQ(0, after_count);

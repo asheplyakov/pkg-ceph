@@ -1,5 +1,4 @@
-// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
-// vim: ts=8 sw=2 smarttab
+
 
 #include "rgw_fcgi.h"
 
@@ -48,7 +47,7 @@ int RGWFCGX::send_100_continue()
 int RGWFCGX::send_content_length(uint64_t len)
 {
   char buf[21];
-  snprintf(buf, sizeof(buf), "%" PRIu64, len);
+  snprintf(buf, sizeof(buf), "%"PRIu64, len);
   return print("Content-Length: %s\n", buf);
 }
 

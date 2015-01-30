@@ -141,7 +141,7 @@ static char putenvBufG[256];
 
 // util ----------------------------------------------------------------------
 
-static void S3_init(void)
+static void S3_init()
 {
     S3Status status;
     const char *hostname = getenv("S3_HOSTNAME");
@@ -155,7 +155,7 @@ static void S3_init(void)
 }
 
 
-static void printError(void)
+static void printError()
 {
     if (statusG < S3StatusErrorAccessDenied) {
         fprintf(stderr, "\nERROR: %s\n", S3_get_status_name(statusG));
@@ -376,7 +376,7 @@ static int growbuffer_append(growbuffer **gb, const char *data, int dataLen)
             }
             buf->size = 0;
             buf->start = 0;
-            if (*gb && (*gb)->prev) {
+            if (*gb) {
                 buf->prev = (*gb)->prev;
                 buf->next = *gb;
                 (*gb)->prev->next = buf;
@@ -675,7 +675,7 @@ static int convert_simple_acl(char *aclXml, char *ownerId,
     return 1;
 }
 
-static int should_retry(void)
+static int should_retry()
 {
     if (retriesG--) {
         // Sleep before next retry; start out with a 1 second sleep

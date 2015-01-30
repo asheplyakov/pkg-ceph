@@ -84,20 +84,6 @@ public:
       // 0 the stats for the osd
       osd_stat_updates[osd] = osd_stat_t();
     }
-    void stat_osd_down_up(int32_t osd, PGMap& pg_map) {
-      // 0 the op_queue_age_hist for this osd
-      map<int32_t,osd_stat_t>::iterator p = osd_stat_updates.find(osd);
-      if (p != osd_stat_updates.end()) {
-	p->second.op_queue_age_hist.clear();
-	return;
-      }
-      ceph::unordered_map<int32_t,osd_stat_t>::iterator q =
-	pg_map.osd_stat.find(osd);
-      if (q != pg_map.osd_stat.end()) {
-	osd_stat_t& t = osd_stat_updates[osd] = q->second;
-	t.op_queue_age_hist.clear();
-      }
-    }
     void rm_stat(int32_t osd) {
       osd_stat_rm.insert(osd);
       osd_epochs.erase(osd);
@@ -120,7 +106,6 @@ public:
   pool_stat_t pg_sum;
   osd_stat_t osd_sum;
   mutable epoch_t min_last_epoch_clean;
-  ceph::unordered_map<int,int> blocked_by_sum;
 
   utime_t stamp;
 
@@ -186,8 +171,6 @@ public:
   enum StuckPG {
     STUCK_INACTIVE,
     STUCK_UNCLEAN,
-    STUCK_UNDERSIZED,
-    STUCK_DEGRADED,
     STUCK_STALE,
     STUCK_NONE
   };
@@ -279,9 +262,6 @@ public:
 
   void dump_osd_perf_stats(Formatter *f) const;
   void print_osd_perf_stats(std::ostream *ss) const;
-
-  void dump_osd_blocked_by_stats(Formatter *f) const;
-  void print_osd_blocked_by_stats(std::ostream *ss) const;
 
   void recovery_summary(Formatter *f, ostream *out,
                         const pool_stat_t& delta_sum) const;

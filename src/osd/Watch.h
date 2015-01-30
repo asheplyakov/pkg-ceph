@@ -58,7 +58,6 @@ class Notify {
   unsigned in_progress_watchers;
   bool complete;
   bool discarded;
-  bool timed_out;  ///< true if the notify timed out
   set<WatchRef> watchers;
 
   bufferlist payload;

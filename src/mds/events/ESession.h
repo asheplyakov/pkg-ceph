@@ -29,19 +29,14 @@ class ESession : public LogEvent {
   interval_set<inodeno_t> inos;
   version_t inotablev;
 
-  // Client metadata stored during open
-  std::map<std::string, std::string> client_metadata;
-
  public:
   ESession() : LogEvent(EVENT_SESSION), open(false) { }
-  ESession(const entity_inst_t& inst, bool o, version_t v,
-      const std::map<std::string, std::string> &cm) :
+  ESession(const entity_inst_t& inst, bool o, version_t v) :
     LogEvent(EVENT_SESSION),
     client_inst(inst),
     open(o),
     cmapv(v),
-    inotablev(0),
-    client_metadata(cm) {
+    inotablev(0) {
   }
   ESession(const entity_inst_t& inst, bool o, version_t v,
 	   const interval_set<inodeno_t>& i, version_t iv) :
@@ -66,8 +61,7 @@ class ESession : public LogEvent {
   }
   
   void update_segment();
-  void replay(MDS *mds);
-  entity_inst_t get_client_inst() const {return client_inst;}
+  void replay(MDS *mds);  
 };
 
 #endif

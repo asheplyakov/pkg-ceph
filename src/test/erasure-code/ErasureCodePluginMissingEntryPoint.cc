@@ -1,6 +1,4 @@
-#include "ceph_ver.h"
+// missing int __erasure_code_init(char *plugin_name) {}
 
-// missing int __erasure_code_init(char *plugin_name, char *directory) {}
-
-extern "C" const char *__erasure_code_version() { return CEPH_GIT_NICE_VER; }
-
+// avoid warnings about library containing no symbols
+int __this_is_an_used_variable_to_avoid_warnings;

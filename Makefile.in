@@ -50,7 +50,6 @@ am__aclocal_m4_deps = $(top_srcdir)/m4/ac_check_classpath.m4 \
 	$(top_srcdir)/m4/ax_c_pretty_func.m4 \
 	$(top_srcdir)/m4/ax_c_var_func.m4 \
 	$(top_srcdir)/m4/ax_check_compile_flag.m4 \
-	$(top_srcdir)/m4/ax_cxx_compile_stdcxx_11.m4 \
 	$(top_srcdir)/m4/ax_cxx_static_cast.m4 \
 	$(top_srcdir)/m4/ax_intel.m4 $(top_srcdir)/m4/libtool.m4 \
 	$(top_srcdir)/m4/ltoptions.m4 $(top_srcdir)/m4/ltsugar.m4 \
@@ -137,7 +136,6 @@ AUTOHEADER = @AUTOHEADER@
 AUTOMAKE = @AUTOMAKE@
 AWK = @AWK@
 BOOST_PROGRAM_OPTIONS_LIBS = @BOOST_PROGRAM_OPTIONS_LIBS@
-BOOST_THREAD_LIBS = @BOOST_THREAD_LIBS@
 CC = @CC@
 CCAS = @CCAS@
 CCASDEPMODE = @CCASDEPMODE@
@@ -170,7 +168,6 @@ FGREP = @FGREP@
 GCOV_PREFIX_STRIP = @GCOV_PREFIX_STRIP@
 GIT_CHECK = @GIT_CHECK@
 GREP = @GREP@
-HAVE_CXX11 = @HAVE_CXX11@
 INSTALL = @INSTALL@
 INSTALL_DATA = @INSTALL_DATA@
 INSTALL_PROGRAM = @INSTALL_PROGRAM@
@@ -195,8 +192,6 @@ LIBEDIT_CFLAGS = @LIBEDIT_CFLAGS@
 LIBEDIT_LIBS = @LIBEDIT_LIBS@
 LIBFUSE = @LIBFUSE@
 LIBOBJS = @LIBOBJS@
-LIBROCKSDB_CFLAGS = @LIBROCKSDB_CFLAGS@
-LIBROCKSDB_LIBS = @LIBROCKSDB_LIBS@
 LIBS = @LIBS@
 LIBTCMALLOC = @LIBTCMALLOC@
 LIBTOOL = @LIBTOOL@
@@ -205,8 +200,6 @@ LIBZFS_LIBS = @LIBZFS_LIBS@
 LIPO = @LIPO@
 LN_S = @LN_S@
 LTLIBOBJS = @LTLIBOBJS@
-LTTNG_GEN_TP_CHECK = @LTTNG_GEN_TP_CHECK@
-LTTNG_GEN_TP_PROG = @LTTNG_GEN_TP_PROG@
 MAKEINFO = @MAKEINFO@
 MANIFEST_TOOL = @MANIFEST_TOOL@
 MKDIR_P = @MKDIR_P@
@@ -564,9 +557,6 @@ distdir: $(DISTFILES)
 	      || exit 1; \
 	  fi; \
 	done
-	$(MAKE) $(AM_MAKEFLAGS) \
-	  top_distdir="$(top_distdir)" distdir="$(distdir)" \
-	  dist-hook
 	-test -n "$(am__skip_mode_fix)" \
 	|| find "$(distdir)" -type d ! -perm -755 \
 		-exec chmod u+rwx,go+rx {} \; -o \
@@ -809,19 +799,19 @@ uninstall-am:
 .PHONY: $(RECURSIVE_CLEAN_TARGETS) $(RECURSIVE_TARGETS) CTAGS GTAGS \
 	all all-am all-local am--refresh check check-am check-local \
 	clean clean-generic clean-libtool clean-local ctags \
-	ctags-recursive dist dist-all dist-bzip2 dist-gzip dist-hook \
-	dist-lzip dist-lzma dist-shar dist-tarZ dist-xz dist-zip \
-	distcheck distclean distclean-generic distclean-libtool \
-	distclean-tags distcleancheck distdir distuninstallcheck dvi \
-	dvi-am html html-am info info-am install install-am \
-	install-data install-data-am install-data-local install-dvi \
-	install-dvi-am install-exec install-exec-am install-html \
-	install-html-am install-info install-info-am install-man \
-	install-pdf install-pdf-am install-ps install-ps-am \
-	install-strip installcheck installcheck-am installdirs \
-	installdirs-am maintainer-clean maintainer-clean-generic \
-	mostlyclean mostlyclean-generic mostlyclean-libtool pdf pdf-am \
-	ps ps-am tags tags-recursive uninstall uninstall-am
+	ctags-recursive dist dist-all dist-bzip2 dist-gzip dist-lzip \
+	dist-lzma dist-shar dist-tarZ dist-xz dist-zip distcheck \
+	distclean distclean-generic distclean-libtool distclean-tags \
+	distcleancheck distdir distuninstallcheck dvi dvi-am html \
+	html-am info info-am install install-am install-data \
+	install-data-am install-data-local install-dvi install-dvi-am \
+	install-exec install-exec-am install-html install-html-am \
+	install-info install-info-am install-man install-pdf \
+	install-pdf-am install-ps install-ps-am install-strip \
+	installcheck installcheck-am installdirs installdirs-am \
+	maintainer-clean maintainer-clean-generic mostlyclean \
+	mostlyclean-generic mostlyclean-libtool pdf pdf-am ps ps-am \
+	tags tags-recursive uninstall uninstall-am
 
 
 # why is it so hard to make autotools to this?
@@ -853,28 +843,6 @@ clean-local:
 	fi
 
 	@rm -rf src/test/virtualenv
-
-# NOTE: This only works when enough dependencies are installed for
-# autoconf to be happy.  These commands should be run manually to
-# bootstrap.
-install-deps:
-	if test -x /usr/bin/apt-get; then \
-	  sudo apt-get -y --no-install-recommends install `cat deps.deb.txt`; \
-	else \
-	  sudo yum -y install `cat deps.rpm.txt`; \
-	fi
-
-dist-hook:
-#	Generates the full list of contributors
-	if test -d $(srcdir)/.git; then \
-	  cd $(srcdir); \
-	  git log --format='%aN <%aE>' | sort -u >$(distdir)/AUTHORS; \
-	fi
-#	Generates ChangeLog from git
-	if test -d $(srcdir)/.git; then \
-	  cd $(srcdir); \
-	  git log --oneline --decorate --no-merges > $(distdir)/ChangeLog; \
-	fi
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.

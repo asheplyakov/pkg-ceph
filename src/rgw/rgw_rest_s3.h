@@ -1,6 +1,3 @@
-// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
-// vim: ts=8 sw=2 smarttab
-
 #ifndef CEPH_RGW_REST_S3_H
 #define CEPH_RGW_REST_S3_H
 #define TIME_BUF_SIZE 128
@@ -53,14 +50,6 @@ class RGWGetBucketLogging_ObjStore_S3 : public RGWGetBucketLogging {
 public:
   RGWGetBucketLogging_ObjStore_S3() {}
   ~RGWGetBucketLogging_ObjStore_S3() {}
-
-  void send_response();
-};
-
-class RGWGetBucketLocation_ObjStore_S3 : public RGWGetBucketLocation {
-public:
-  RGWGetBucketLocation_ObjStore_S3() {}
-  ~RGWGetBucketLocation_ObjStore_S3() {}
 
   void send_response();
 };

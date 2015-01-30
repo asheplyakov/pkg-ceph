@@ -24,11 +24,10 @@
 ObjectStore *ObjectStore::create(CephContext *cct,
 				 const string& type,
 				 const string& data,
-				 const string& journal,
-			         osflagbits_t flags)
+				 const string& journal)
 {
   if (type == "filestore") {
-    return new FileStore(data, journal, flags);
+    return new FileStore(data, journal);
   }
   if (type == "memstore") {
     return new MemStore(cct, data);
@@ -112,7 +111,6 @@ int ObjectStore::queue_transactions(
   return queue_transactions(osr, tls, _onreadable, _oncommit,
 			    onreadable_sync, op);
 }
-
 
 int ObjectStore::collection_list(coll_t c, vector<hobject_t>& o)
 {

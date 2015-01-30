@@ -313,7 +313,7 @@ loser:
 int ceph_decode_cms(CephContext *cct, bufferlist& cms_bl, bufferlist& decoded_bl)
 {
     NSSCMSMessage *cmsg = NULL;
-    struct decodeOptionsStr decodeOptions = { };
+    struct decodeOptionsStr decodeOptions = { 0 };
     struct optionsStr options;
     SECItem input;
 

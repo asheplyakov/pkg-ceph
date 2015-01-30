@@ -23,16 +23,17 @@
 #include "messages/MAuthReply.h"
 #include "messages/MMonGlobalID.h"
 
+#include "include/str_list.h"
 #include "common/Timer.h"
-#include "common/config.h"
-#include "common/cmdparse.h"
 
 #include "auth/AuthServiceHandler.h"
 #include "auth/KeyRing.h"
 
 #include "osd/osd_types.h"
 
+#include "common/config.h"
 #include "include/assert.h"
+#include "common/cmdparse.h"
 #include "include/str_list.h"
 
 #define dout_subsys ceph_subsys_mon
@@ -189,8 +190,8 @@ void AuthMonitor::update_from_paxos(bool *need_bootstrap)
     mon->key_server.set_ver(keys_ver);
 
     if (keys_ver == 1 && mon->is_keyring_required()) {
-      MonitorDBStore::TransactionRef t(new MonitorDBStore::Transaction);
-      t->erase("mkfs", "keyring");
+      MonitorDBStore::Transaction t;
+      t.erase("mkfs", "keyring");
       mon->store->apply_transaction(t);
     }
   }
@@ -227,7 +228,7 @@ void AuthMonitor::create_pending()
   dout(10) << "create_pending v " << (get_last_committed() + 1) << dendl;
 }
 
-void AuthMonitor::encode_pending(MonitorDBStore::TransactionRef t)
+void AuthMonitor::encode_pending(MonitorDBStore::Transaction *t)
 {
   dout(10) << __func__ << " v " << (get_last_committed() + 1) << dendl;
 
@@ -244,7 +245,7 @@ void AuthMonitor::encode_pending(MonitorDBStore::TransactionRef t)
   put_last_committed(t, version);
 }
 
-void AuthMonitor::encode_full(MonitorDBStore::TransactionRef t)
+void AuthMonitor::encode_full(MonitorDBStore::Transaction *t)
 {
   version_t version = mon->key_server.get_ver();
   // do not stash full version 0 as it will never be removed nor read
@@ -859,11 +860,6 @@ bool AuthMonitor::prepare_command(MMonCommand *m)
 	     !entity_name.empty()) {
     // auth get-or-create <name> [mon osdcapa osd osdcapb ...]
 
-    if (!valid_caps(caps_vec, &ss)) {
-      err = -EINVAL;
-      goto done;
-    }
-
     // do we have it?
     EntityAuth entity_auth;
     if (mon->key_server.get_auth(entity, entity_auth)) {
@@ -954,11 +950,6 @@ bool AuthMonitor::prepare_command(MMonCommand *m)
     if (!mon->key_server.get_auth(auth_inc.name, auth_inc.auth)) {
       ss << "couldn't find entry " << auth_inc.name;
       err = -ENOENT;
-      goto done;
-    }
-
-    if (!valid_caps(caps_vec, &ss)) {
-      err = -EINVAL;
       goto done;
     }
 

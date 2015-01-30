@@ -27,23 +27,11 @@
 /* Define to 1 if you have the <arpa/nameser_compat.h> header file. */
 #undef HAVE_ARPA_NAMESER_COMPAT_H
 
-/* Define to 1 if you have the <babeltrace/babeltrace.h> header file. */
-#undef HAVE_BABELTRACE_BABELTRACE_H
-
-/* Define to 1 if you have the <babeltrace/ctf/events.h> header file. */
-#undef HAVE_BABELTRACE_CTF_EVENTS_H
-
-/* yasm can also build the isa-l */
-#undef HAVE_BETTER_YASM_ELF64
-
 /* have boost::random::discrete_distribution */
 #undef HAVE_BOOST_RANDOM_DISCRETE_DISTRIBUTION
 
 /* Define if have curl_multi_wait() */
 #undef HAVE_CURL_MULTI_WAIT
-
-/* define if the compiler supports basic C++11 syntax */
-#undef HAVE_CXX11
 
 /* Define to 1 if you have the declaration of `strerror_r', and to 0 if you
    don't. */
@@ -86,9 +74,6 @@
 /* Define to 1 if you have the <inttypes.h> header file. */
 #undef HAVE_INTTYPES_H
 
-/* Defined if you have kinetic enabled */
-#undef HAVE_KINETIC
-
 /* Defined if LevelDB supports bloom filters */
 #undef HAVE_LEVELDB_FILTER_POLICY
 
@@ -122,9 +107,6 @@
 
 /* Define to 1 if you have the `profiler' library (-lprofiler). */
 #undef HAVE_LIBPROFILER
-
-/* Defined if you have librocksdb enabled */
-#undef HAVE_LIBROCKSDB
 
 /* Define if you have tcmalloc */
 #undef HAVE_LIBTCMALLOC
@@ -397,14 +379,5 @@
 /* Version number of package */
 #undef VERSION
 
-/* Define if you want to use Babeltrace */
-#undef WITH_BABELTRACE
-
-/* Define if you want to use LTTng */
-#undef WITH_LTTNG
-
 /* define if radosgw enabled */
 #undef WITH_RADOSGW
-
-/* LTTng is disabled, so define this macro to be nothing. */
-#undef tracepoint

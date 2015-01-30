@@ -167,8 +167,7 @@ COMMAND("auth import", "auth import: read keyring file from -i <file>", \
 COMMAND("auth add " \
 	"name=entity,type=CephString " \
 	"name=caps,type=CephString,n=N,req=false", \
-	"add auth info for <entity> from input file, or random key if no " \
-        "input is given, and/or any caps specified in the command",
+	"add auth info for <entity> from input file, or random key if no input given, and/or any caps specified in the command",
 	"auth", "rwx", "cli,rest")
 COMMAND("auth get-or-create-key " \
 	"name=entity,type=CephString " \
@@ -293,22 +292,8 @@ COMMAND("mds newfs " \
 	"name=metadata,type=CephInt,range=0 " \
 	"name=data,type=CephInt,range=0 " \
 	"name=sure,type=CephChoices,strings=--yes-i-really-mean-it,req=false", \
-	"make new filesystem using pools <metadata> and <data>", \
+	"make new filesystom using pools <metadata> and <data>", \
 	"mds", "rw", "cli,rest")
-COMMAND("fs new " \
-	"name=fs_name,type=CephString " \
-	"name=metadata,type=CephString " \
-	"name=data,type=CephString ", \
-	"make new filesystem using named pools <metadata> and <data>", \
-	"fs", "rw", "cli,rest")
-COMMAND("fs rm " \
-	"name=fs_name,type=CephString " \
-	"name=sure,type=CephChoices,strings=--yes-i-really-mean-it,req=false", \
-	"disable the named filesystem", \
-	"fs", "rw", "cli,rest")
-COMMAND("fs ls ", \
-	"list filesystems", \
-	"fs", "r", "cli,rest")
 /*
  * Monmap commands
  */
@@ -353,9 +338,6 @@ COMMAND("osd perf", \
         "osd", \
         "r", \
         "cli,rest")
-COMMAND("osd blocked-by", \
-	"print histogram of which OSDs are blocking their peers", \
-	"osd", "r", "cli,rest")
 COMMAND("osd getmaxosd", "show largest OSD id", "osd", "r", "cli,rest")
 COMMAND("osd find " \
 	"name=id,type=CephInt,range=0", \
@@ -448,11 +430,6 @@ COMMAND("osd crush reweight " \
 	"name=weight,type=CephFloat,range=0.0", \
 	"change <name>'s weight to <weight> in crush map", \
 	"osd", "rw", "cli,rest")
-COMMAND("osd crush reweight-subtree " \
-	"name=name,type=CephString,goodchars=[A-Za-z0-9-_.] " \
-	"name=weight,type=CephFloat,range=0.0", \
-	"change all leaf items beneath <name> to <weight> in crush map", \
-	"osd", "rw", "cli,rest")
 COMMAND("osd crush tunables " \
 	"name=profile,type=CephChoices,strings=legacy|argonaut|bobtail|firefly|optimal|default", \
 	"set crush tunables values to <profile>", "osd", "rw", "cli,rest")
@@ -480,7 +457,7 @@ COMMAND("osd pause", "pause osd", "osd", "rw", "cli,rest")
 COMMAND("osd unpause", "unpause osd", "osd", "rw", "cli,rest")
 COMMAND("osd erasure-code-profile set " \
 	"name=name,type=CephString,goodchars=[A-Za-z0-9-_.] " \
-	"name=profile,type=CephString,n=N,req=false", \
+	"name=profile,type=CephString,n=N,req=false,goodchars=[A-Za-z0-9-_.=]", \
 	"create erasure code profile <name> with [<key[=value]> ...] pairs. Add a --force at the end to override an existing profile (VERY DANGEROUS)", \
 	"osd", "rw", "cli,rest")
 COMMAND("osd erasure-code-profile get " \
@@ -560,9 +537,8 @@ COMMAND("osd pool create " \
 	"name=pg_num,type=CephInt,range=0 " \
 	"name=pgp_num,type=CephInt,range=0,req=false " \
         "name=pool_type,type=CephChoices,strings=replicated|erasure,req=false " \
-	"name=erasure_code_profile,type=CephString,req=false,goodchars=[A-Za-z0-9-_.] " \
-	"name=ruleset,type=CephString,req=false " \
-        "name=expected_num_objects,type=CephInt,req=false", \
+	"name=erasure_code_profile,type=CephString,req=false,goodchars=[A-Za-z0-9-_.=] " \
+	"name=ruleset,type=CephString,req=false,goodchars=[A-Za-z0-9-_.=]", \
 	"create pool", "osd", "rw", "cli,rest")
 COMMAND("osd pool delete " \
 	"name=pool,type=CephPoolname " \
@@ -576,11 +552,11 @@ COMMAND("osd pool rename " \
 	"rename <srcpool> to <destpool>", "osd", "rw", "cli,rest")
 COMMAND("osd pool get " \
 	"name=pool,type=CephPoolname " \
-	"name=var,type=CephChoices,strings=size|min_size|crash_replay_interval|pg_num|pgp_num|crush_ruleset|hit_set_type|hit_set_period|hit_set_count|hit_set_fpp|auid|target_max_objects|target_max_bytes|cache_target_dirty_ratio|cache_target_full_ratio|cache_min_flush_age|cache_min_evict_age|erasure_code_profile|min_read_recency_for_promote", \
+	"name=var,type=CephChoices,strings=size|min_size|crash_replay_interval|pg_num|pgp_num|crush_ruleset|hit_set_type|hit_set_period|hit_set_count|hit_set_fpp|auid|target_max_objects|target_max_bytes|cache_target_dirty_ratio|cache_target_full_ratio|cache_min_flush_age|cache_min_evict_age|erasure_code_profile", \
 	"get pool parameter <var>", "osd", "r", "cli,rest")
 COMMAND("osd pool set " \
 	"name=pool,type=CephPoolname " \
-	"name=var,type=CephChoices,strings=size|min_size|crash_replay_interval|pg_num|pgp_num|crush_ruleset|hashpspool|hit_set_type|hit_set_period|hit_set_count|hit_set_fpp|debug_fake_ec_pool|target_max_bytes|target_max_objects|cache_target_dirty_ratio|cache_target_full_ratio|cache_min_flush_age|cache_min_evict_age|auid|min_read_recency_for_promote " \
+	"name=var,type=CephChoices,strings=size|min_size|crash_replay_interval|pg_num|pgp_num|crush_ruleset|hashpspool|hit_set_type|hit_set_period|hit_set_count|hit_set_fpp|debug_fake_ec_pool|target_max_bytes|target_max_objects|cache_target_dirty_ratio|cache_target_full_ratio|cache_min_flush_age|cache_min_evict_age|auid " \
 	"name=val,type=CephString " \
 	"name=force,type=CephChoices,strings=--yes-i-really-mean-it,req=false", \
 	"set pool parameter <var> to <val>", "osd", "rw", "cli,rest")
@@ -604,11 +580,6 @@ COMMAND("osd reweight-by-utilization " \
 	"name=oload,type=CephInt,range=100,req=false", \
 	"reweight OSDs by utilization [overload-percentage-for-consideration, default 120]", \
 	"osd", "rw", "cli,rest")
-COMMAND("osd reweight-by-pg " \
-	"name=oload,type=CephInt,range=100 " \
-	"name=pools,type=CephPoolname,n=N,req=false", \
-	"reweight OSDs by PG distribution [overload-percentage-for-consideration, default 120]", \
-	"osd", "rw", "cli,rest")
 COMMAND("osd thrash " \
 	"name=num_epochs,type=CephInt,range=0", \
 	"thrash OSDs for <num_epochs>", "osd", "rw", "cli,rest")
@@ -627,7 +598,7 @@ COMMAND("osd tier remove " \
 	"osd", "rw", "cli,rest")
 COMMAND("osd tier cache-mode " \
 	"name=pool,type=CephPoolname " \
-	"name=mode,type=CephChoices,strings=none|writeback|forward|readonly|readforward", \
+	"name=mode,type=CephChoices,strings=none|writeback|forward|readonly", \
 	"specify the caching mode for cache tier <pool>", "osd", "rw", "cli,rest")
 COMMAND("osd tier set-overlay " \
 	"name=pool,type=CephPoolname " \

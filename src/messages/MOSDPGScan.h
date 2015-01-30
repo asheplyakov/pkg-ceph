@@ -63,8 +63,8 @@ public:
     } else {
       from = pg_shard_t(
 	get_source().num(),
-	shard_id_t::NO_SHARD);
-      pgid.shard = shard_id_t::NO_SHARD;
+	ghobject_t::NO_SHARD);
+      pgid.shard = ghobject_t::NO_SHARD;
     }
   }
 

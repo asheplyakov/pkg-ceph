@@ -13,14 +13,14 @@
 namespace librbd {
 
   struct SnapInfo {
-    std::string name;
+    librados::snap_t id;
     uint64_t size;
     uint64_t features;
     parent_info parent;
     uint8_t protection_status;
-    SnapInfo(std::string _name, uint64_t _size, uint64_t _features,
+    SnapInfo(librados::snap_t _id, uint64_t _size, uint64_t _features,
 	     parent_info _parent, uint8_t _protection_status) :
-      name(_name), size(_size), features(_features), parent(_parent),
+      id(_id), size(_size), features(_features), parent(_parent),
       protection_status(_protection_status) {}
   };
 }

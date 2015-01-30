@@ -470,7 +470,6 @@ void ECBackend::continue_recovery_op(
       assert(!op.recovery_progress.data_complete);
       set<int> want(op.missing_on_shards.begin(), op.missing_on_shards.end());
       set<pg_shard_t> to_read;
-      uint64_t recovery_max_chunk = get_recovery_chunk_size();
       int r = get_min_avail_to_read_shards(
 	op.hoid, want, true, &to_read);
       if (r != 0) {
@@ -482,15 +481,16 @@ void ECBackend::continue_recovery_op(
 	recovery_ops.erase(op.hoid);
 	return;
       }
+      assert(r == 0);
       m->read(
 	this,
 	op.hoid,
 	op.recovery_progress.data_recovered_to,
-	recovery_max_chunk,
+	get_recovery_chunk_size(),
 	to_read,
 	op.recovery_progress.first);
       op.extent_requested = make_pair(op.recovery_progress.data_recovered_to,
-				      recovery_max_chunk);
+				      get_recovery_chunk_size());
       dout(10) << __func__ << ": IDLE return " << op << dendl;
       return;
     }
@@ -500,7 +500,7 @@ void ECBackend::continue_recovery_op(
       assert(op.returned_data.size());
       op.state = RecoveryOp::WRITING;
       ObjectRecoveryProgress after_progress = op.recovery_progress;
-      after_progress.data_recovered_to += op.extent_requested.second;
+      after_progress.data_recovered_to += get_recovery_chunk_size();
       after_progress.first = false;
       if (after_progress.data_recovered_to >= op.obc->obs.oi.size) {
 	after_progress.data_recovered_to =
@@ -1092,11 +1092,11 @@ void ECBackend::filter_read_op(
   }
 
   if (op.in_progress.empty()) {
-    get_parent()->schedule_recovery_work(
+    get_parent()->schedule_work(
       get_parent()->bless_gencontext(
 	new FinishReadOp(this, op.tid)));
   }
-}
+};
 
 void ECBackend::check_recovery_sources(const OSDMapRef osdmap)
 {
@@ -1245,10 +1245,18 @@ void ECBackend::submit_transaction(
   for (set<hobject_t>::iterator i = need_hinfos.begin();
        i != need_hinfos.end();
        ++i) {
+    ECUtil::HashInfoRef ref = get_hash_info(*i);
+    if (!ref) {
+      derr << __func__ << ": get_hash_info(" << *i << ")"
+	   << " returned a null pointer and there is no "
+	   << " way to recover from such an error in this "
+	   << " context" << dendl;
+      assert(0);
+    }
     op->unstable_hash_infos.insert(
       make_pair(
 	*i,
-	get_hash_info(*i)));
+	ref));
   }
 
   for (vector<pg_log_entry_t>::iterator i = op->log_entries.begin();
@@ -1350,8 +1358,8 @@ int ECBackend::get_min_avail_to_read_shards(
   for (set<int>::iterator i = need.begin();
        i != need.end();
        ++i) {
-    assert(shards.count(shard_id_t(*i)));
-    to_read->insert(shards[shard_id_t(*i)]);
+    assert(shards.count(*i));
+    to_read->insert(shards[*i]);
   }
   return 0;
 }
@@ -1456,9 +1464,9 @@ ECUtil::HashInfoRef ECBackend::get_hash_info(
       if (r >= 0) {
 	bufferlist::iterator bp = bl.begin();
 	::decode(hinfo, bp);
-	assert(hinfo.get_total_chunk_size() == (uint64_t)st.st_size);
+	assert(hinfo.get_total_chunk_size() == (unsigned)st.st_size);
       } else {
-	assert(0 == "missing hash attr");
+	return ECUtil::HashInfoRef();
       }
     }
     ref = unstable_hashinfo_registry.lookup_or_create(hoid, hinfo);
@@ -1656,11 +1664,9 @@ void ECBackend::objects_read_async(
       sinfo.offset_len_to_stripe_bounds(i->first));
   }
 
-  const vector<int> &chunk_mapping = ec_impl->get_chunk_mapping();
   set<int> want_to_read;
   for (int i = 0; i < (int)ec_impl->get_data_chunk_count(); ++i) {
-    int chunk = (int)chunk_mapping.size() > i ? chunk_mapping[i] : i;
-    want_to_read.insert(chunk);
+    want_to_read.insert(i);
   }
   set<pg_shard_t> shards;
   int r = get_min_avail_to_read_shards(
@@ -1756,31 +1762,37 @@ void ECBackend::be_deep_scrub(
       break;
   }
 
-  ECUtil::HashInfoRef hinfo = get_hash_info(poid);
   if (r == -EIO) {
     dout(0) << "_scan_list  " << poid << " got "
 	    << r << " on read, read_error" << dendl;
     o.read_error = true;
   }
 
-  if (hinfo->get_chunk_hash(get_parent()->whoami_shard().shard) != h.digest()) {
-    dout(0) << "_scan_list  " << poid << " got incorrect hash on read" << dendl;
+  ECUtil::HashInfoRef hinfo = get_hash_info(poid);
+  if (!hinfo) {
+    dout(0) << "_scan_list  " << poid << " could not retrieve hash info" << dendl;
     o.read_error = true;
-  }
+    o.digest_present = false;
+  } else {
+    if (hinfo->get_chunk_hash(get_parent()->whoami_shard().shard) != h.digest()) {
+      dout(0) << "_scan_list  " << poid << " got incorrect hash on read" << dendl;
+      o.read_error = true;
+    }
 
-  if (hinfo->get_total_chunk_size() != pos) {
-    dout(0) << "_scan_list  " << poid << " got incorrect size on read" << dendl;
-    o.read_error = true;
-  }
+    if (hinfo->get_total_chunk_size() != pos) {
+      dout(0) << "_scan_list  " << poid << " got incorrect size on read" << dendl;
+      o.read_error = true;
+    }
 
-  /* We checked above that we match our own stored hash.  We cannot
-   * send a hash of the actual object, so instead we simply send
-   * our locally stored hash of shard 0 on the assumption that if
-   * we match our chunk hash and our recollection of the hash for
-   * chunk 0 matches that of our peers, there is likely no corruption.
-   */
-  o.digest = hinfo->get_chunk_hash(0);
-  o.digest_present = true;
+    /* We checked above that we match our own stored hash.  We cannot
+     * send a hash of the actual object, so instead we simply send
+     * our locally stored hash of shard 0 on the assumption that if
+     * we match our chunk hash and our recollection of the hash for
+     * chunk 0 matches that of our peers, there is likely no corruption.
+     */
+    o.digest = hinfo->get_chunk_hash(0);
+    o.digest_present = true;
+  }
 
   o.omap_digest = 0;
   o.omap_digest_present = true;

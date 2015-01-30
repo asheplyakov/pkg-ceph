@@ -1775,6 +1775,7 @@ JNIEXPORT jint JNICALL Java_com_ceph_fs_CephMount_native_1ceph_1fstat
 {
 	struct ceph_mount_info *cmount = get_ceph_mount(j_mntp);
 	CephContext *cct = ceph_get_mount_context(cmount);
+	long long time;
 	struct stat st;
 	int ret;
 
@@ -1792,7 +1793,22 @@ JNIEXPORT jint JNICALL Java_com_ceph_fs_CephMount_native_1ceph_1fstat
 		return ret;
 	}
 
-	fill_cephstat(env, j_cephstat, &st);
+	env->SetIntField(j_cephstat, cephstat_mode_fid, st.st_mode);
+	env->SetIntField(j_cephstat, cephstat_uid_fid, st.st_uid);
+	env->SetIntField(j_cephstat, cephstat_gid_fid, st.st_gid);
+	env->SetLongField(j_cephstat, cephstat_size_fid, st.st_size);
+	env->SetLongField(j_cephstat, cephstat_blksize_fid, st.st_blksize);
+	env->SetLongField(j_cephstat, cephstat_blocks_fid, st.st_blocks);
+
+	time = st.st_mtim.tv_sec;
+	time *= 1000;
+	time += st.st_mtim.tv_nsec / 1000;
+	env->SetLongField(j_cephstat, cephstat_m_time_fid, time);
+
+	time = st.st_atim.tv_sec;
+	time *= 1000;
+	time += st.st_atim.tv_nsec / 1000;
+	env->SetLongField(j_cephstat, cephstat_a_time_fid, time);
 
 	return ret;
 }

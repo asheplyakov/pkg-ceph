@@ -1,7 +1,6 @@
 #include "common/config.h"
 #include "common/signal.h"
 #include "global/signal_handler.h"
-#include "common/debug.h"
 
 #include "test/unit.h"
 
@@ -9,8 +8,6 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <unistd.h>
-
-#include "include/assert.h"
 
 static volatile sig_atomic_t got_sigusr1 = 0;
 
@@ -113,13 +110,6 @@ TEST(SignalHandler, Multiple)
   unregister_async_signal_handler(SIGUSR2, testhandler);
   shutdown_async_signal_handler();
 }
-
-TEST(SignalHandler, LogInternal)
-{
-  g_ceph_context->_log->inject_segv();
-  ASSERT_DEATH(derr << "foo" << dendl, ".*");
-}
-
 
 /*
 TEST(SignalHandler, MultipleBigFd)

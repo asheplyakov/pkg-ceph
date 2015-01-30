@@ -225,7 +225,7 @@ int test_ls(rados_ioctx_t io_ctx, size_t num_expected, ...)
   va_list ap;
   size_t max_size = 1024;
 
-  names = (char *) malloc(sizeof(char) * 1024);
+  names = (char *) malloc(sizeof(char *) * 1024);
   int len = rbd_list(io_ctx, names, &max_size);
 
   for (i = 0, num_images = 0, cur_name = names; cur_name < names + len; i++) {
@@ -1037,7 +1037,9 @@ TEST(LibRBD, TestClone)
   EXPECT_NE(0, rbd_clone(ioctx, "parent", NULL, ioctx, "child", features, &order));
 
   // verify that there is no parent info on "parent"
-  ASSERT_EQ(-ENOENT, rbd_get_parent_info(parent, NULL, 0, NULL, 0, NULL, 0));
+  char ppool[1], pname[1], psnapname[1];
+  ASSERT_EQ(-ENOENT, rbd_get_parent_info(parent, ppool, sizeof(ppool),
+	    pname, sizeof(pname), psnapname, sizeof(psnapname)));
   printf("parent has no parent info\n");
 
   // create a snapshot, reopen as the parent we're interested in
@@ -1151,7 +1153,9 @@ TEST(LibRBD, TestClone2)
   EXPECT_NE(0, rbd_clone(ioctx, "parent", NULL, ioctx, "child", features, &order));
 
   // verify that there is no parent info on "parent"
-  ASSERT_EQ(-ENOENT, rbd_get_parent_info(parent, NULL, 0, NULL, 0, NULL, 0));
+  char ppool[1], pname[1], psnapname[1];
+  ASSERT_EQ(-ENOENT, rbd_get_parent_info(parent, ppool, sizeof(ppool),
+	    pname, sizeof(pname), psnapname, sizeof(psnapname)));
   printf("parent has no parent info\n");
 
   // create a snapshot, reopen as the parent we're interested in

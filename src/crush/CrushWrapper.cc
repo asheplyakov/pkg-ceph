@@ -171,8 +171,8 @@ bool CrushWrapper::_search_item_exists(int item) const
     if (!crush->buckets[i])
       continue;
     crush_bucket *b = crush->buckets[i];
-    for (unsigned i=0; i<b->size; ++i) {
-      if (b->items[i] == item)
+    for (unsigned j=0; j<b->size; ++j) {
+      if (b->items[j] == item)
 	return true;
     }
   }
@@ -585,7 +585,7 @@ int CrushWrapper::create_or_move_item(CephContext *cct, int item, float weight, 
   if (check_item_loc(cct, item, loc, &old_iweight)) {
     ldout(cct, 5) << "create_or_move_item " << item << " already at " << loc << dendl;
   } else {
-    if (item_exists(item)) {
+    if (_search_item_exists(item)) {
       weight = get_item_weightf(item);
       ldout(cct, 10) << "create_or_move_item " << item << " exists with weight " << weight << dendl;
       remove_item(cct, item, true);
@@ -673,33 +673,6 @@ int CrushWrapper::adjust_item_weight(CephContext *cct, int id, int weight)
   }
   if (!changed)
     return -ENOENT;
-  return changed;
-}
-
-int CrushWrapper::adjust_subtree_weight(CephContext *cct, int id, int weight)
-{
-  ldout(cct, 5) << "adjust_item_weight " << id << " weight " << weight << dendl;
-  crush_bucket *b = get_bucket(id);
-  if (IS_ERR(b))
-    return PTR_ERR(b);
-  int changed = 0;
-  list<crush_bucket*> q;
-  q.push_back(b);
-  while (!q.empty()) {
-    b = q.front();
-    q.pop_front();
-    for (unsigned i=0; i<b->size; ++i) {
-      int n = b->items[i];
-      if (n >= 0) {
-	crush_bucket_adjust_item_weight(b, n, weight);
-      } else {
-	crush_bucket *sub = get_bucket(n);
-	if (IS_ERR(sub))
-	  continue;
-	q.push_back(sub);
-      }
-    }
-  }
   return changed;
 }
 
@@ -874,13 +847,14 @@ int CrushWrapper::get_rule_weight_osd_map(unsigned ruleno, map<int,float> *pmap)
 	  assert(b);
 	  for (unsigned j=0; j<b->size; ++j) {
 	    int item_id = b->items[j];
-	    if (item_id >= 0) { //it's an OSD
+	    if (item_id >= 0) //it's an OSD
+	    {
 	      float w = crush_get_bucket_item_weight(b, j);
 	      m[item_id] = w;
 	      sum += w;
-	    } else { //not an OSD, expand the child later
-	      q.push_back(item_id);
 	    }
+	    else //not an OSD, expand the child later
+	      q.push_back(item_id);
 	  }
 	}
       }
@@ -1130,7 +1104,7 @@ void CrushWrapper::decode_crush_bucket(crush_bucket** bptr, bufferlist::iterator
     ::decode(bucket->items[j], blp);
   }
 
-  bucket->perm = (__u32*)calloc(1, bucket->size * sizeof(__u32));
+  bucket->perm = (__u32*)calloc(1, bucket->size * sizeof(__s32));
   bucket->perm_n = 0;
 
   switch (bucket->alg) {
@@ -1275,9 +1249,6 @@ void CrushWrapper::dump_tunables(Formatter *f) const
 
   f->dump_int("require_feature_tunables", (int)has_nondefault_tunables());
   f->dump_int("require_feature_tunables2", (int)has_nondefault_tunables2());
-  f->dump_int("require_feature_tunables3", (int)has_nondefault_tunables3());
-  f->dump_int("has_v2_rules", (int)has_v2_rules());
-  f->dump_int("has_v3_rules", (int)has_v3_rules());
 }
 
 void CrushWrapper::dump_rules(Formatter *f) const

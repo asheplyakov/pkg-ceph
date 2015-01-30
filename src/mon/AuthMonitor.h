@@ -124,20 +124,6 @@ private:
     pending_auth.push_back(inc);
   }
 
-  /* validate mon caps ; don't care about caps for other services as
-   * we don't know how to validate them */
-  bool valid_caps(const vector<string>& caps, ostream *out) {
-    for (vector<string>::const_iterator p = caps.begin();
-         p != caps.end(); p += 2) {
-      if (!p->empty() && *p != "mon")
-        continue;
-      MonCap tmp;
-      if (!tmp.parse(*(p+1), out))
-        return false;
-    }
-    return true;
-  }
-
   void on_active();
   bool should_propose(double& delay);
   void create_initial();
@@ -147,8 +133,8 @@ private:
   void increase_max_global_id();
   uint64_t assign_global_id(MAuth *m, bool should_increase_max);
   // propose pending update to peers
-  void encode_pending(MonitorDBStore::TransactionRef t);
-  virtual void encode_full(MonitorDBStore::TransactionRef t);
+  void encode_pending(MonitorDBStore::Transaction *t);
+  virtual void encode_full(MonitorDBStore::Transaction *t);
   version_t get_trim_to();
 
   bool preprocess_query(PaxosServiceMessage *m);  // true if processed.
@@ -176,6 +162,6 @@ private:
 };
 
 
-WRITE_CLASS_ENCODER_FEATURES(AuthMonitor::Incremental)
+WRITE_CLASS_ENCODER_FEATURES(AuthMonitor::Incremental);
 
 #endif

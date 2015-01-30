@@ -28,12 +28,26 @@ public:
 private:
   void handle_prepare(MMDSTableRequest *m);
   void _prepare_logged(MMDSTableRequest *m, version_t tid);
-  friend class C_Prepare;
+  struct C_Prepare : public Context {
+    MDSTableServer *server;
+    MMDSTableRequest *req;
+    version_t tid;
+    C_Prepare(MDSTableServer *s, MMDSTableRequest *r, version_t v) : server(s), req(r), tid(v) {}
+    void finish(int r) {
+      server->_prepare_logged(req, tid);
+    }
+  };
 
   void handle_commit(MMDSTableRequest *m);
   void _commit_logged(MMDSTableRequest *m);
-  friend class C_Commit;
-
+  struct C_Commit : public Context {
+    MDSTableServer *server;
+    MMDSTableRequest *req;
+    C_Commit(MDSTableServer *s, MMDSTableRequest *r) : server(s), req(r) {}
+    void finish(int r) {
+      server->_commit_logged(req);
+    }
+  };
 
   void handle_rollback(MMDSTableRequest *m);
 

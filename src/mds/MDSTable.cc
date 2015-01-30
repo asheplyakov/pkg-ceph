@@ -22,8 +22,6 @@
 #include "include/types.h"
 
 #include "common/config.h"
-#include "common/Finisher.h"
-
 #include "include/assert.h"
 
 
@@ -32,28 +30,17 @@
 #define dout_prefix *_dout << "mds." << (mds ? mds->get_nodeid() : -1) << "." << table_name << ": "
 
 
-class MDSTableIOContext : public MDSIOContextBase
-{
-  protected:
-    MDSTable *ida;
-    MDS *get_mds() {return ida->mds;}
-  public:
-    MDSTableIOContext(MDSTable *ida_) : ida(ida_) {
-      assert(ida != NULL);
-    }
-};
-
-
-class C_IO_MT_Save : public MDSTableIOContext {
+class C_MT_Save : public Context {
+  MDSTable *ida;
   version_t version;
 public:
-  C_IO_MT_Save(MDSTable *i, version_t v) : MDSTableIOContext(i), version(v) {}
+  C_MT_Save(MDSTable *i, version_t v) : ida(i), version(v) {}
   void finish(int r) {
     ida->save_2(r, version);
   }
 };
 
-void MDSTable::save(MDSInternalContextBase *onfinish, version_t v)
+void MDSTable::save(Context *onfinish, version_t v)
 {
   if (v > 0 && v <= committing_version) {
     dout(10) << "save v " << version << " - already saving "
@@ -81,9 +68,7 @@ void MDSTable::save(MDSInternalContextBase *onfinish, version_t v)
   mds->objecter->write_full(oid, oloc,
 			    snapc,
 			    bl, ceph_clock_now(g_ceph_context), 0,
-			    NULL,
-			    new C_OnFinisher(new C_IO_MT_Save(this, version),
-					     &mds->finisher));
+			    NULL, new C_MT_Save(this, version));
 }
 
 void MDSTable::save_2(int r, version_t v)
@@ -100,7 +85,7 @@ void MDSTable::save_2(int r, version_t v)
   assert(r >= 0);
   committed_version = v;
   
-  list<MDSInternalContextBase*> ls;
+  list<Context*> ls;
   while (!waitfor_save.empty()) {
     if (waitfor_save.begin()->first > v) break;
     ls.splice(ls.end(), waitfor_save.begin()->second);
@@ -120,11 +105,12 @@ void MDSTable::reset()
 
 // -----------------------
 
-class C_IO_MT_Load : public MDSTableIOContext {
+class C_MT_Load : public Context {
 public:
+  MDSTable *ida;
   Context *onfinish;
   bufferlist bl;
-  C_IO_MT_Load(MDSTable *i, Context *o) : MDSTableIOContext(i), onfinish(o) {}
+  C_MT_Load(MDSTable *i, Context *o) : ida(i), onfinish(o) {}
   void finish(int r) {
     ida->load_2(r, bl, onfinish);
   }
@@ -140,18 +126,17 @@ object_t MDSTable::get_object_name()
   return object_t(n);
 }
 
-void MDSTable::load(MDSInternalContextBase *onfinish)
+void MDSTable::load(Context *onfinish)
 { 
   dout(10) << "load" << dendl;
 
   assert(is_undef());
   state = STATE_OPENING;
 
-  C_IO_MT_Load *c = new C_IO_MT_Load(this, onfinish);
+  C_MT_Load *c = new C_MT_Load(this, onfinish);
   object_t oid = get_object_name();
   object_locator_t oloc(mds->mdsmap->get_metadata_pool());
-  mds->objecter->read_full(oid, oloc, CEPH_NOSNAP, &c->bl, 0,
-			   new C_OnFinisher(c, &mds->finisher));
+  mds->objecter->read_full(oid, oloc, CEPH_NOSNAP, &c->bl, 0, c);
 }
 
 void MDSTable::load_2(int r, bufferlist& bl, Context *onfinish)

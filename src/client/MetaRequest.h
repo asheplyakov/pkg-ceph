@@ -16,7 +16,7 @@
 #include "messages/MClientRequest.h"
 
 class MClientReply;
-struct Inode;
+class Inode;
 class Dentry;
 
 struct MetaRequest {
@@ -27,7 +27,6 @@ private:
   Dentry *_old_dentry; //associated with path2
 public:
   uint64_t tid;
-  utime_t  op_stamp;
   ceph_mds_request_head head;
   filepath path, path2;
   bufferlist data;
@@ -76,7 +75,7 @@ public:
 
   Inode *target;
 
-  MetaRequest(int op) :
+  MetaRequest(int op) : 
     _inode(NULL), _old_inode(NULL), _other_inode(NULL),
     _dentry(NULL), _old_dentry(NULL),
     tid(0),

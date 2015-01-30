@@ -1,6 +1,3 @@
-// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
-// vim: ts=8 sw=2 smarttab
-
 #include <errno.h>
 #include <limits.h>
 
@@ -1227,21 +1224,10 @@ int RGWREST::preprocess(struct req_state *s, RGWClientIO *cio)
   url_decode(s->info.request_uri, s->decoded_uri);
   s->length = info.env->get("CONTENT_LENGTH");
   if (s->length) {
-    if (*s->length == '\0') {
+    if (*s->length == '\0')
       s->content_length = 0;
-    } else {
-      string err;
-      s->content_length = strict_strtol(s->length, 10, &err);
-      if (!err.empty()) {
-        ldout(s->cct, 10) << "bad content length, aborting" << dendl;
-        return -EINVAL;
-      }
-    }
-  }
-
-  if (s->content_length < 0) {
-    ldout(s->cct, 10) << "negative content length, aborting" << dendl;
-    return -EINVAL;
+    else
+      s->content_length = atoll(s->length);
   }
 
   map<string, string>::iterator giter;

@@ -110,7 +110,6 @@ TEST(LibCephFS, UnmountUnmounted) {
   ASSERT_EQ(0, ceph_conf_parse_env(cmount, NULL));
   ASSERT_EQ(0, ceph_conf_read_file(cmount, NULL));
   ASSERT_EQ(-ENOTCONN, ceph_unmount(cmount));
-  ceph_shutdown(cmount);
 }
 
 TEST(LibCephFS, ReleaseUnmounted) {
@@ -132,6 +131,7 @@ TEST(LibCephFS, ReleaseMounted) {
   ASSERT_EQ(0, ceph_conf_read_file(cmount, NULL));
   ASSERT_EQ(0, ceph_mount(cmount, "/"));
   ASSERT_EQ(-EISCONN, ceph_release(cmount));
+  ceph_shutdown(cmount);
 }
 
 TEST(LibCephFS, UnmountRelease) {
@@ -1138,6 +1138,7 @@ TEST(LibCephFS, GetOsdCrushLocation) {
     }
   }
 
+  ceph_close(cmount, fd);
   ceph_shutdown(cmount);
 }
 

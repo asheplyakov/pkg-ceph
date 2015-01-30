@@ -12,7 +12,7 @@
 #include "messages/MClientCapRelease.h"
 
 struct Cap;
-struct Inode;
+class Inode;
 struct CapSnap;
 struct MetaRequest;
 class MClientCapRelease;

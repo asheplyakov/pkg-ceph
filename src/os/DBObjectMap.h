@@ -16,8 +16,6 @@
 #include "osd/osd_types.h"
 #include "common/Mutex.h"
 #include "common/Cond.h"
-#include "common/simple_cache.hpp"
-#include <boost/optional.hpp>
 
 /**
  * DBObjectMap: Implements ObjectMap in terms of KeyValueDB
@@ -70,52 +68,8 @@ public:
   set<uint64_t> in_use;
   set<ghobject_t> map_header_in_use;
 
-  /**
-   * Takes the map_header_in_use entry in constructor, releases in
-   * destructor
-   */
-  class MapHeaderLock {
-    DBObjectMap *db;
-    boost::optional<ghobject_t> locked;
-
-    MapHeaderLock(const MapHeaderLock &);
-    MapHeaderLock &operator=(const MapHeaderLock &);
-  public:
-    MapHeaderLock(DBObjectMap *db) : db(db) {}
-    MapHeaderLock(DBObjectMap *db, const ghobject_t &oid) : db(db), locked(oid) {
-      Mutex::Locker l(db->header_lock);
-      while (db->map_header_in_use.count(*locked))
-	db->map_header_cond.Wait(db->header_lock);
-      db->map_header_in_use.insert(*locked);
-    }
-
-    const ghobject_t &get_locked() const {
-      assert(locked);
-      return *locked;
-    }
-
-    void swap(MapHeaderLock &o) {
-      assert(db == o.db);
-
-      // centos6's boost optional doesn't seem to have swap :(
-      boost::optional<ghobject_t> _locked = o.locked;
-      o.locked = locked;
-      locked = _locked;
-    }
-
-    ~MapHeaderLock() {
-      if (locked) {
-	Mutex::Locker l(db->header_lock);
-	assert(db->map_header_in_use.count(*locked));
-	db->map_header_cond.Signal();
-	db->map_header_in_use.erase(*locked);
-      }
-    }
-  };
-
-  DBObjectMap(KeyValueDB *db) : db(db), header_lock("DBOBjectMap"),
-                                cache_lock("DBObjectMap::CacheLock"),
-                                caches(g_conf->filestore_omap_header_cache_size)
+  DBObjectMap(KeyValueDB *db) : db(db),
+				header_lock("DBOBjectMap")
     {}
 
   int set_keys(
@@ -327,8 +281,6 @@ public:
 private:
   /// Implicit lock on Header->seq
   typedef ceph::shared_ptr<_Header> Header;
-  Mutex cache_lock;
-  SimpleLRU<ghobject_t, _Header> caches;
 
   string map_header_key(const ghobject_t &oid);
   string header_key(uint64_t seq);
@@ -360,8 +312,6 @@ private:
   public:
     DBObjectMap *map;
 
-    /// NOTE: implicit lock hlock->get_locked() when returned out of the class
-    MapHeaderLock hlock;
     /// NOTE: implicit lock on header->seq AND for all ancestors
     Header header;
 
@@ -380,7 +330,7 @@ private:
     bool invalid;
 
     DBObjectMapIteratorImpl(DBObjectMap *map, Header header) :
-      map(map), hlock(map), header(header), r(0), ready(false), invalid(true) {}
+      map(map), header(header), r(0), ready(false), invalid(true) {}
     int seek_to_first();
     int seek_to_last();
     int upper_bound(const string &after);
@@ -424,17 +374,13 @@ private:
   void set_header(Header input, KeyValueDB::Transaction t);
 
   /// Remove leaf node corresponding to oid in c
-  void remove_map_header(
-    const MapHeaderLock &l,
-    const ghobject_t &oid,
-    Header header,
-    KeyValueDB::Transaction t);
+  void remove_map_header(const ghobject_t &oid,
+			 Header header,
+			 KeyValueDB::Transaction t);
 
   /// Set leaf node for c and oid to the value of header
-  void set_map_header(
-    const MapHeaderLock &l,
-    const ghobject_t &oid, _Header header,
-    KeyValueDB::Transaction t);
+  void set_map_header(const ghobject_t &oid, _Header header,
+		      KeyValueDB::Transaction t);
 
   /// Set leaf node for c and oid to the value of header
   bool check_spos(const ghobject_t &oid,
@@ -442,10 +388,8 @@ private:
 		  const SequencerPosition *spos);
 
   /// Lookup or create header for c oid
-  Header lookup_create_map_header(
-    const MapHeaderLock &l,
-    const ghobject_t &oid,
-    KeyValueDB::Transaction t);
+  Header lookup_create_map_header(const ghobject_t &oid,
+				  KeyValueDB::Transaction t);
 
   /**
    * Generate new header for c oid with new seq number
@@ -459,14 +403,10 @@ private:
   }
 
   /// Lookup leaf header for c oid
-  Header _lookup_map_header(
-    const MapHeaderLock &l,
-    const ghobject_t &oid);
-  Header lookup_map_header(
-    const MapHeaderLock &l2,
-    const ghobject_t &oid) {
+  Header _lookup_map_header(const ghobject_t &oid);
+  Header lookup_map_header(const ghobject_t &oid) {
     Mutex::Locker l(header_lock);
-    return _lookup_map_header(l2, oid);
+    return _lookup_map_header(oid);
   }
 
   /// Lookup header node for input
@@ -507,8 +447,25 @@ private:
 		   KeyValueDB::Transaction t);
 
   /** 
-   * Removes header seq lock and possibly object lock
-   * once Header is out of scope
+   * Removes map header lock once Header is out of scope
+   * @see lookup_map_header
+   */
+  class RemoveMapHeaderOnDelete {
+  public:
+    DBObjectMap *db;
+    ghobject_t oid;
+    RemoveMapHeaderOnDelete(DBObjectMap *db, const ghobject_t &oid) :
+      db(db), oid(oid) {}
+    void operator() (_Header *header) {
+      Mutex::Locker l(db->header_lock);
+      db->map_header_in_use.erase(oid);
+      db->map_header_cond.Signal();
+      delete header;
+    }
+  };
+
+  /** 
+   * Removes header seq lock once Header is out of scope
    * @see lookup_parent
    * @see generate_new_header
    */
@@ -519,7 +476,6 @@ private:
       db(db) {}
     void operator() (_Header *header) {
       Mutex::Locker l(db->header_lock);
-      assert(db->in_use.count(header->seq));
       db->in_use.erase(header->seq);
       db->header_cond.Signal();
       delete header;

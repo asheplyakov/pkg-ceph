@@ -1,6 +1,3 @@
-// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
-// vim: ts=8 sw=2 smarttab
-
 #include <errno.h>
 #include <string.h>
 
@@ -299,23 +296,6 @@ void RGWGetBucketLogging_ObjStore_S3::send_response()
   s->formatter->open_object_section_in_ns("BucketLoggingStatus",
 					  "http://doc.s3.amazonaws.com/doc/2006-03-01/");
   s->formatter->close_section();
-  rgw_flush_formatter_and_reset(s, s->formatter);
-}
-
-void RGWGetBucketLocation_ObjStore_S3::send_response()
-{
-  dump_errno(s);
-  end_header(s, this);
-  dump_start(s);
-
-  string location_constraint(s->bucket_info.region);
-  if (s->bucket_info.region == "default")
-    location_constraint.clear();
-
-  s->formatter->dump_format_ns("LocationConstraint",
-			       "http://doc.s3.amazonaws.com/doc/2006-03-01/",
-			       "%s",location_constraint.c_str());
-
   rgw_flush_formatter_and_reset(s, s->formatter);
 }
 
@@ -1733,8 +1713,6 @@ RGWOp *RGWHandler_ObjStore_Bucket_S3::op_get()
 {
   if (s->info.args.sub_resource_exists("logging"))
     return new RGWGetBucketLogging_ObjStore_S3;
-  else if (s->info.args.sub_resource_exists("location"))
-    return new RGWGetBucketLocation_ObjStore_S3;
   if (is_acl_op()) {
     return new RGWGetACLs_ObjStore_S3;
   } else if (is_cors_op()) {
@@ -2120,7 +2098,7 @@ int RGW_Auth_S3::authorize(RGWRados *store, struct req_state *s)
     if (strncmp(s->http_auth, "AWS ", 4))
       return -EINVAL;
     string auth_str(s->http_auth + 4);
-    int pos = auth_str.rfind(':');
+    int pos = auth_str.find(':');
     if (pos < 0)
       return -EINVAL;
 

@@ -38,8 +38,6 @@ public:
     out << metablob;
   }
 
-  EMetaBlob *get_metablob() { return &metablob; }
-
   void encode(bufferlist& bl) const;
   void decode(bufferlist::iterator& bl);
   void dump(Formatter *f) const;
@@ -47,7 +45,6 @@ public:
 
   void update_segment();
   void replay(MDS *mds);
-  EMetaBlob const *get_metablob() const {return &metablob;}
 };
 
 #endif

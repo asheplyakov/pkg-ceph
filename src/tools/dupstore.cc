@@ -11,10 +11,13 @@
  * Foundation.  See file COPYING.
  * 
  */
+
+#include <iostream>
+#include "os/FileStore.h"
 #include "common/ceph_argparse.h"
 #include "global/global_init.h"
+
 #include "include/unordered_map.h"
-#include "os/FileStore.h"
 
 int dupstore(ObjectStore* src, ObjectStore* dst)
 {

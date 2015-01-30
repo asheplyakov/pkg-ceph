@@ -129,9 +129,6 @@ class GenericObjectMap {
   int submit_transaction(KeyValueDB::Transaction t) {
     return db->submit_transaction(t);
   }
-  int submit_transaction_sync(KeyValueDB::Transaction t) {
-    return db->submit_transaction_sync(t);
-  }
 
   /// persistent state for store @see generate_header
   struct State {
@@ -220,7 +217,7 @@ class GenericObjectMap {
     KeyValueDB::Transaction t);
 
   /// Set leaf node for c and oid to the value of header
-  void set_header(const coll_t &cid, const ghobject_t &oid, _Header &header,
+  void set_header(const coll_t &cid, const ghobject_t &oid, _Header header,
     KeyValueDB::Transaction t);
 
   // Move all modify member function to "protect", in order to indicate these

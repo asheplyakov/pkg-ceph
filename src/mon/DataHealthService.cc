@@ -94,7 +94,7 @@ void DataHealthService::get_health(
       health_detail = "low disk space";
     }
 
-    if (stats.store_stats.bytes_total >= g_conf->mon_data_size_warn) {
+    if (stats.store_stats.bytes_total >= g_conf->mon_leveldb_size_warn) {
       if (health_status > HEALTH_WARN)
         health_status = HEALTH_WARN;
       if (!health_detail.empty())
@@ -102,7 +102,7 @@ void DataHealthService::get_health(
       stringstream ss;
       ss << "store is getting too big! "
          << prettybyte_t(stats.store_stats.bytes_total)
-         << " >= " << prettybyte_t(g_conf->mon_data_size_warn);
+         << " >= " << prettybyte_t(g_conf->mon_leveldb_size_warn);
       health_detail.append(ss.str());
     }
 
@@ -221,7 +221,7 @@ void DataHealthService::service_tick()
   // already low available disk space.
   if (ours.fs_stats.avail_percent <= g_conf->mon_data_avail_warn) {
     if (ours.fs_stats.avail_percent != last_warned_percent)
-      mon->clog->warn()
+      mon->clog.warn()
 	<< "reached concerning levels of available space on local monitor storage"
 	<< " (" << ours.fs_stats.avail_percent << "% free)\n";
     last_warned_percent = ours.fs_stats.avail_percent;

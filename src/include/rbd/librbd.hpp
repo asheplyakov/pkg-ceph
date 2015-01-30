@@ -6,7 +6,7 @@
  * Copyright (C) 2011 New Dream Network
  *
  * This is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
+ * modify it under the terms of the GNU General Public
  * License version 2.1, as published by the Free Software
  * Foundation.	See file COPYING.
  *
@@ -60,9 +60,6 @@ public:
   RBD();
   ~RBD();
 
-  // This must be dynamically allocated with new, and
-  // must be released with release().
-  // Do not use delete.
   struct AioCompletion {
     void *pc;
     AioCompletion(void *cb_arg, callback_t complete_cb);

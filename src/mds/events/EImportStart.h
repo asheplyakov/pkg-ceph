@@ -43,8 +43,6 @@ protected:
   void print(ostream& out) const {
     out << "EImportStart " << base << " " << metablob;
   }
-
-  EMetaBlob *get_metablob() { return &metablob; }
   
   void encode(bufferlist &bl) const;
   void decode(bufferlist::iterator &bl);

@@ -1122,52 +1122,6 @@ TEST(BufferList, contents_equal) {
   ASSERT_FALSE(bl1.contents_equal(bl3)); // same length different content
 }
 
-TEST(BufferList, is_aligned) {
-  const int SIMD_ALIGN = 32;
-  {
-    bufferlist bl;
-    EXPECT_TRUE(bl.is_aligned(SIMD_ALIGN));
-  }
-  {
-    bufferlist bl;
-    bufferptr ptr(buffer::create_aligned(2, SIMD_ALIGN));
-    ptr.set_offset(1);
-    ptr.set_length(1);
-    bl.append(ptr);
-    EXPECT_FALSE(bl.is_aligned(SIMD_ALIGN));
-    bl.rebuild_aligned(SIMD_ALIGN);
-    EXPECT_TRUE(bl.is_aligned(SIMD_ALIGN));
-  }
-  {
-    bufferlist bl;
-    bufferptr ptr(buffer::create_aligned(SIMD_ALIGN + 1, SIMD_ALIGN));
-    ptr.set_offset(1);
-    ptr.set_length(SIMD_ALIGN);
-    bl.append(ptr);
-    EXPECT_FALSE(bl.is_aligned(SIMD_ALIGN));
-    bl.rebuild_aligned(SIMD_ALIGN);
-    EXPECT_TRUE(bl.is_aligned(SIMD_ALIGN));
-  }
-}
-
-TEST(BufferList, is_n_align_sized) {
-  const int SIMD_ALIGN = 32;
-  {
-    bufferlist bl;
-    EXPECT_TRUE(bl.is_n_align_sized(SIMD_ALIGN));
-  }
-  {
-    bufferlist bl;
-    bl.append_zero(1);
-    EXPECT_FALSE(bl.is_n_align_sized(SIMD_ALIGN));
-  }
-  {
-    bufferlist bl;
-    bl.append_zero(SIMD_ALIGN);
-    EXPECT_TRUE(bl.is_n_align_sized(SIMD_ALIGN));
-  }
-}
-
 TEST(BufferList, is_page_aligned) {
   {
     bufferlist bl;
@@ -1367,14 +1321,6 @@ TEST(BufferList, rebuild_page_aligned) {
     bl.rebuild_page_aligned();
     EXPECT_TRUE(bl.is_page_aligned());
     EXPECT_EQ((unsigned)1, bl.buffers().size());
-  }
-  {
-    bufferlist bl;
-    bufferptr ptr(buffer::create_page_aligned(1));
-    char *p = ptr.c_str();
-    bl.append(ptr);
-    bl.rebuild_page_aligned();
-    EXPECT_EQ(p, bl.buffers().front().c_str());
   }
   {
     bufferlist bl;

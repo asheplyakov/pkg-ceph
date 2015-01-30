@@ -30,7 +30,7 @@ using namespace std;
 #include "common/Thread.h"
 #include "common/Throttle.h"
 
-#include "SimplePolicyMessenger.h"
+#include "Messenger.h"
 #include "Message.h"
 #include "include/assert.h"
 #include "DispatchQueue.h"
@@ -69,7 +69,7 @@ using namespace std;
  *               IncomingQueue::lock
  */
 
-class SimpleMessenger : public SimplePolicyMessenger {
+class SimpleMessenger : public Messenger {
   // First we have the public Messenger interface implementation...
 public:
   /**
@@ -112,6 +112,27 @@ public:
     cluster_protocol = p;
   }
 
+  void set_default_policy(Policy p) {
+    Mutex::Locker l(policy_lock);
+    default_policy = p;
+  }
+
+  void set_policy(int type, Policy p) {
+    Mutex::Locker l(policy_lock);
+    policy_map[type] = p;
+  }
+
+  void set_policy_throttlers(int type, Throttle *byte_throttle, Throttle *msg_throttle) {
+    Mutex::Locker l(policy_lock);
+    if (policy_map.count(type)) {
+      policy_map[type].throttler_bytes = byte_throttle;
+      policy_map[type].throttler_messages = msg_throttle;
+    } else {
+      default_policy.throttler_bytes = byte_throttle;
+      default_policy.throttler_messages = msg_throttle;
+    }
+  }
+
   int bind(const entity_addr_t& bind_addr);
   int rebind(const set<int>& avoid_ports);
 
@@ -132,13 +153,20 @@ public:
    * @{
    */
   virtual int send_message(Message *m, const entity_inst_t& dest) {
-    return _send_message(m, dest);
+    return _send_message(m, dest, false);
   }
 
-  int send_message(Message *m, Connection *con) {
-    return _send_message(m, con);
+  virtual int send_message(Message *m, Connection *con) {
+    return _send_message(m, con, false);
   }
 
+  virtual int lazy_send_message(Message *m, const entity_inst_t& dest) {
+    return _send_message(m, dest, true);
+  }
+
+  virtual int lazy_send_message(Message *m, Connection *con) {
+    return _send_message(m, con, true);
+  }
   /** @} // Messaging */
 
   /**
@@ -147,10 +175,12 @@ public:
    */
   virtual ConnectionRef get_connection(const entity_inst_t& dest);
   virtual ConnectionRef get_loopback_connection();
-  int send_keepalive(Connection *con);
+  virtual int send_keepalive(const entity_inst_t& addr);
+  virtual int send_keepalive(Connection *con);
   virtual void mark_down(const entity_addr_t& addr);
-  void mark_down(Connection *con);
-  void mark_disposable(Connection *con);
+  virtual void mark_down(Connection *con);
+  virtual void mark_down_on_empty(Connection *con);
+  virtual void mark_disposable(Connection *con);
   virtual void mark_down_all();
   /** @} // Connection Management */
 protected:
@@ -181,10 +211,6 @@ public:
    * @param sd socket
    */
   Pipe *add_accept_pipe(int sd);
-
-  Connection *create_anon_connection() {
-    return new PipeConnection(cct, NULL);
-  }
 
 private:
 
@@ -224,18 +250,17 @@ private:
    * @return a pointer to the newly-created Pipe. Caller does not own a
    * reference; take one if you need it.
    */
-  Pipe *connect_rank(const entity_addr_t& addr, int type, PipeConnection *con,
-		     Message *first);
+  Pipe *connect_rank(const entity_addr_t& addr, int type, Connection *con, Message *first);
   /**
    * Send a message, lazily or not.
-   * This just glues send_message together and passes
+   * This just glues [lazy_]send_message together and passes
    * the input on to submit_message.
    */
-  int _send_message(Message *m, const entity_inst_t& dest);
+  int _send_message(Message *m, const entity_inst_t& dest, bool lazy);
   /**
    * Same as above, but for the Connection-based variants.
    */
-  int _send_message(Message *m, Connection *con);
+  int _send_message(Message *m, Connection *con, bool lazy);
   /**
    * Queue up a Message for delivery to the entity specified
    * by addr and dest_type.
@@ -246,15 +271,11 @@ private:
    * @param con The existing Connection to use, or NULL if you don't know of one.
    * @param addr The address to send the Message to.
    * @param dest_type The peer type of the address we're sending to
+   * @param lazy If true, do not establish or fix a Connection to send the Message;
    * just drop silently under failure.
-   * @param already_locked If false, submit_message() will acquire the
-   * SimpleMessenger lock before accessing shared data structures; otherwise
-   * it will assume the lock is held. NOTE: if you are making a request
-   * without locking, you MUST have filled in the con with a valid pointer.
    */
-  void submit_message(Message *m, PipeConnection *con,
-		      const entity_addr_t& addr, int dest_type,
-		      bool already_locked);
+  void submit_message(Message *m, Connection *con,
+                      const entity_addr_t& addr, int dest_type, bool lazy);
   /**
    * Look through the pipes in the pipe_reap_queue and tear them down.
    */
@@ -264,6 +285,8 @@ private:
    */
 
   // SimpleMessenger stuff
+  /// the peer type of our endpoint
+  int my_type;
   /// approximately unique ID set by the Constructor for use in entity_addr_t
   uint64_t nonce;
   /// overall lock used for SimpleMessenger data structures
@@ -307,6 +330,13 @@ private:
 
   /// internal cluster protocol version, if any, for talking to entities of the same type.
   int cluster_protocol;
+
+  /// lock protecting policy
+  Mutex policy_lock;
+  /// the default Policy we use for Pipes
+  Policy default_policy;
+  /// map specifying different Policies for specific peer types
+  map<int, Policy> policy_map; // entity_name_t::type -> Policy
 
   /// Throttle preventing us from building up a big backlog waiting for dispatch
   Throttle dispatch_throttler;
@@ -386,6 +416,31 @@ public:
   void learned_addr(const entity_addr_t& peer_addr_for_me);
 
   /**
+   * Tell the SimpleMessenger its address is no longer known
+   *
+   * This happens when we rebind to a new port.
+   */
+  void unlearn_addr();
+
+  /**
+   * Get the Policy associated with a type of peer.
+   * @param t The peer type to get the default policy for.
+   *
+   * @return A const Policy reference.
+   */
+  Policy get_policy(int t) {
+    Mutex::Locker l(policy_lock);
+    if (policy_map.count(t))
+      return policy_map[t];
+    else
+      return default_policy;
+  }
+  Policy get_default_policy() {
+    Mutex::Locker l(policy_lock);
+    return default_policy;
+  }
+
+  /**
    * Release memory accounting back to the dispatch throttler.
    *
    * @param msize The amount of memory to release.
@@ -414,4 +469,4 @@ public:
    */
 } ;
 
-#endif /* CEPH_SIMPLEMESSENGER_H */
+#endif

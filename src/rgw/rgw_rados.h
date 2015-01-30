@@ -1,13 +1,9 @@
-// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
-// vim: ts=8 sw=2 smarttab
-
 #ifndef CEPH_RGWRADOS_H
 #define CEPH_RGWRADOS_H
 
 #include "include/rados/librados.hpp"
 #include "include/Context.h"
 #include "common/RefCountedObj.h"
-#include "common/RWLock.h"
 #include "rgw_common.h"
 #include "cls/rgw/cls_rgw_types.h"
 #include "cls/version/cls_version_types.h"
@@ -120,7 +116,7 @@ struct RGWObjManifestPart {
   void dump(Formatter *f) const;
   static void generate_test_instances(list<RGWObjManifestPart*>& o);
 };
-WRITE_CLASS_ENCODER(RGWObjManifestPart)
+WRITE_CLASS_ENCODER(RGWObjManifestPart);
 
 /*
  The manifest defines a set of rules for structuring the object parts.
@@ -171,7 +167,7 @@ struct RGWObjManifestRule {
   }
   void dump(Formatter *f) const;
 };
-WRITE_CLASS_ENCODER(RGWObjManifestRule)
+WRITE_CLASS_ENCODER(RGWObjManifestRule);
 
 class RGWObjManifest {
 protected:
@@ -222,10 +218,6 @@ public:
     end_iter.seek(rhs.end_iter.get_ofs());
 
     return *this;
-  }
-
-  map<uint64_t, RGWObjManifestPart>& get_explicit_objs() {
-    return objs;
   }
 
 
@@ -408,15 +400,11 @@ public:
     }
     obj_iterator(RGWObjManifest *_m) : manifest(_m) {
       init();
-      if (!manifest->empty()) {
-        seek(0);
-      }
+      seek(0);
     }
     obj_iterator(RGWObjManifest *_m, uint64_t _ofs) : manifest(_m) {
       init();
-      if (!manifest->empty()) {
-        seek(_ofs);
-      }
+      seek(_ofs);
     }
     void seek(uint64_t ofs);
 
@@ -507,7 +495,7 @@ public:
     }
   };
 };
-WRITE_CLASS_ENCODER(RGWObjManifest)
+WRITE_CLASS_ENCODER(RGWObjManifest);
 
 struct RGWUploadPartInfo {
   uint32_t num;
@@ -564,7 +552,7 @@ public:
     store = _store;
     obj_ctx = _o;
     return 0;
-  }
+  };
   virtual int handle_data(bufferlist& bl, off_t ofs, MD5 *hash, void **phandle, bool *again) = 0;
   virtual int throttle_data(void *handle, bool need_to_wait) = 0;
   virtual void complete_hash(MD5 *hash) {
@@ -705,31 +693,6 @@ struct RGWObjState {
   RGWObjState() : is_atomic(false), has_attrs(0), exists(false),
                   size(0), mtime(0), epoch(0), fake_tag(false), has_manifest(false),
                   has_data(false), prefetch_data(false), keep_tail(false) {}
-  RGWObjState(const RGWObjState& rhs) {
-    is_atomic = rhs.is_atomic;
-    has_attrs = rhs.has_attrs;
-    exists = rhs.exists;
-    size = rhs.size;
-    mtime = rhs.mtime;
-    epoch = rhs.epoch;
-    if (rhs.obj_tag.length()) {
-      obj_tag = rhs.obj_tag;
-    }
-    write_tag = rhs.write_tag;
-    fake_tag = rhs.fake_tag;
-    if (rhs.has_manifest) {
-      manifest = rhs.manifest;
-    }
-    has_manifest = rhs.has_manifest;
-    shadow_obj = rhs.shadow_obj;
-    has_data = rhs.has_data;
-    if (rhs.data.length()) {
-      data = rhs.data;
-    }
-    prefetch_data = rhs.prefetch_data;
-    keep_tail = rhs.keep_tail;
-    objv_tracker = rhs.objv_tracker;
-  }
 
   bool get_attr(string name, bufferlist& dest) {
     map<string, bufferlist>::iterator iter = attrset.find(name);
@@ -825,7 +788,7 @@ struct RGWZonePlacementInfo {
   void dump(Formatter *f) const;
   void decode_json(JSONObj *obj);
 };
-WRITE_CLASS_ENCODER(RGWZonePlacementInfo)
+WRITE_CLASS_ENCODER(RGWZonePlacementInfo);
 
 struct RGWZoneParams {
   rgw_bucket domain_root;
@@ -896,7 +859,7 @@ struct RGWZoneParams {
   void dump(Formatter *f) const;
   void decode_json(JSONObj *obj);
 };
-WRITE_CLASS_ENCODER(RGWZoneParams)
+WRITE_CLASS_ENCODER(RGWZoneParams);
 
 struct RGWZone {
   string name;
@@ -928,7 +891,7 @@ struct RGWZone {
   void dump(Formatter *f) const;
   void decode_json(JSONObj *obj);
 };
-WRITE_CLASS_ENCODER(RGWZone)
+WRITE_CLASS_ENCODER(RGWZone);
 
 struct RGWDefaultRegionInfo {
   string default_region;
@@ -947,7 +910,7 @@ struct RGWDefaultRegionInfo {
   void dump(Formatter *f) const;
   void decode_json(JSONObj *obj);
 };
-WRITE_CLASS_ENCODER(RGWDefaultRegionInfo)
+WRITE_CLASS_ENCODER(RGWDefaultRegionInfo);
 
 struct RGWRegionPlacementTarget {
   string name;
@@ -984,7 +947,7 @@ struct RGWRegionPlacementTarget {
   void dump(Formatter *f) const;
   void decode_json(JSONObj *obj);
 };
-WRITE_CLASS_ENCODER(RGWRegionPlacementTarget)
+WRITE_CLASS_ENCODER(RGWRegionPlacementTarget);
 
 
 struct RGWRegion {
@@ -1043,7 +1006,7 @@ struct RGWRegion {
   void dump(Formatter *f) const;
   void decode_json(JSONObj *obj);
 };
-WRITE_CLASS_ENCODER(RGWRegion)
+WRITE_CLASS_ENCODER(RGWRegion);
 
 struct RGWRegionMap {
   Mutex lock;
@@ -1069,7 +1032,7 @@ struct RGWRegionMap {
   void dump(Formatter *f) const;
   void decode_json(JSONObj *obj);
 };
-WRITE_CLASS_ENCODER(RGWRegionMap)
+WRITE_CLASS_ENCODER(RGWRegionMap);
 
 class RGWDataChangesLog;
 class RGWReplicaLogger;
@@ -1219,21 +1182,6 @@ struct rgw_rados_ref {
   string oid;
   string key;
   librados::IoCtx ioctx;
-};
-
-class RGWChainedCache {
-public:
-  virtual ~RGWChainedCache() {}
-  virtual void chain_cb(const string& key, void *data) = 0;
-  virtual void invalidate(const string& key) = 0;
-
-  struct Entry {
-    RGWChainedCache *cache;
-    const string& key;
-    void *data;
-
-    Entry(RGWChainedCache *_c, const string& _k, void *_d) : cache(_c), key(_k), data(_d) {}
-  };
 };
 
 
@@ -1591,7 +1539,6 @@ public:
     return clone_objs(ctx, dst_obj, v, attrs, category, pmtime, truncate_dest, exclusive, xattr_cond);
   }
 
-  int rewrite_obj(const string& bucket_owner, rgw_obj& obj);
   /**
    * Copy an object.
    * dest_obj: the object to copy into
@@ -1630,12 +1577,10 @@ public:
                rgw_obj& src_obj,
                uint64_t max_chunk_size,
 	       time_t *mtime,
-	       time_t set_mtime,
                map<string, bufferlist>& attrs,
                RGWObjCategory category,
                string *ptag,
                struct rgw_err *err);
-
   /**
    * Delete a bucket.
    * bucket: the name of the bucket to delete
@@ -1717,11 +1662,9 @@ public:
             struct rgw_err *err);
 
   virtual int get_obj(void *ctx, RGWObjVersionTracker *objv_tracker, void **handle, rgw_obj& obj,
-                      bufferlist& bl, off_t ofs, off_t end, rgw_cache_entry_info *cache_info);
+                      bufferlist& bl, off_t ofs, off_t end);
 
   virtual void finish_get_obj(void **handle);
-
-  virtual bool chain_cache_entry(list<rgw_cache_entry_info *>& cache_info_entries, RGWChainedCache::Entry *chained_entry) { return false; }
 
   int iterate_obj(void *ctx, rgw_obj& obj,
                   off_t ofs, off_t end,
@@ -1804,11 +1747,10 @@ public:
                                  map<string, bufferlist> *pattrs);
   int put_bucket_instance_info(RGWBucketInfo& info, bool exclusive, time_t mtime, map<string, bufferlist> *pattrs);
   int get_bucket_entrypoint_info(void *ctx, const string& bucket_name, RGWBucketEntryPoint& entry_point, RGWObjVersionTracker *objv_tracker, time_t *pmtime,
-                                 map<string, bufferlist> *pattrs, rgw_cache_entry_info *cache_info = NULL);
+                                 map<string, bufferlist> *pattrs);
   int get_bucket_instance_info(void *ctx, const string& meta_key, RGWBucketInfo& info, time_t *pmtime, map<string, bufferlist> *pattrs);
   int get_bucket_instance_info(void *ctx, rgw_bucket& bucket, RGWBucketInfo& info, time_t *pmtime, map<string, bufferlist> *pattrs);
-  int get_bucket_instance_from_oid(void *ctx, string& oid, RGWBucketInfo& info, time_t *pmtime, map<string, bufferlist> *pattrs,
-                                   rgw_cache_entry_info *cache_info = NULL);
+  int get_bucket_instance_from_oid(void *ctx, string& oid, RGWBucketInfo& info, time_t *pmtime, map<string, bufferlist> *pattrs);
 
   int convert_old_bucket_info(void *ctx, string& bucket_name);
   virtual int get_bucket_info(void *ctx, const string& bucket_name, RGWBucketInfo& info,
@@ -1991,44 +1933,6 @@ public:
 
 };
 
-template <class T>
-class RGWChainedCacheImpl : public RGWChainedCache {
-  RWLock lock;
-
-  map<string, T> entries;
-
-public:
-  RGWChainedCacheImpl() : lock("RGWChainedCacheImpl::lock") {}
-
-  bool find(const string& key, T *entry) {
-    RWLock::RLocker rl(lock);
-    typename map<string, T>::iterator iter = entries.find(key);
-    if (iter == entries.end()) {
-      return false;
-    }
-
-    *entry = iter->second;
-    return true;
-  }
-
-  bool put(RGWRados *store, const string& key, T *entry, list<rgw_cache_entry_info *>& cache_info_entries) {
-    Entry chain_entry(this, key, entry);
-
-    /* we need the store cache to call us under its lock to maintain lock ordering */
-    return store->chain_cache_entry(cache_info_entries, &chain_entry);
-  }
-
-  void chain_cb(const string& key, void *data) {
-    T *entry = static_cast<T *>(data);
-    RWLock::WLocker wl(lock);
-    entries[key] = *entry;
-  }
-
-  void invalidate(const string& key) {
-    RWLock::WLocker wl(lock);
-    entries.erase(key);
-  }
-};
 
 
 #endif

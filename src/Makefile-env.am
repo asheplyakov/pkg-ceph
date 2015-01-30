@@ -131,7 +131,6 @@ endif # PROFILER
 
 LIBGLOBAL = libglobal.la
 LIBCOMMON = libcommon.la
-LIBSECRET = libsecret.la
 LIBARCH = libarch.la
 LIBPERFGLUE = libperfglue.la
 LIBAUTH = libauth.la
@@ -150,16 +149,10 @@ LIBMDS = libmds.la
 LIBCLIENT = libclient.la
 LIBCLIENT_FUSE = libclient_fuse.la
 LIBRADOS = librados.la
-LIBRADOSSTRIPER = libradosstriper.la
 LIBRGW = librgw.la
 LIBRBD = librbd.la
-LIBKRBD = libkrbd.la
 LIBCEPHFS = libcephfs.la
 LIBERASURE_CODE = liberasure_code.la
-LIBOSD_TP = tracing/libosd_tp.la
-LIBRADOS_TP = tracing/librados_tp.la
-LIBRBD_TP = tracing/librbd_tp.la
-LIBOS_TP = tracing/libos_tp.la
 
 if WITH_LIBAIO
 LIBOS += -laio
@@ -168,10 +161,6 @@ endif # WITH_LIBAIO
 if WITH_LIBZFS
 LIBOS += libos_zfs.a -lzfs
 endif # WITH_LIBZFS
-
-if WITH_LIBROCKSDB
-LIBOS += libos_rocksdb.la
-endif # WITH_LIBROCKSDB
 
 if WITH_TCMALLOC
 LIBPERFGLUE += -ltcmalloc

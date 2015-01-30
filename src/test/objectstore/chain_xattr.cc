@@ -182,7 +182,6 @@ TEST(chain_xattr, listxattr) {
   ASSERT_EQ(0, chain_removexattr(file, name1.c_str()));
   ASSERT_EQ(0, chain_removexattr(file, name2.c_str()));
 
-  free(expected);
   ::unlink(file);
 }
 

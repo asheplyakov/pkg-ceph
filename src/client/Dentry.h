@@ -4,7 +4,7 @@
 #include "include/lru.h"
 
 class Dir;
-struct Inode;
+class Inode;
 
 class Dentry : public LRUObject {
  public:

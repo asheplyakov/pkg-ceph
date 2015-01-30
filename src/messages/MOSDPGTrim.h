@@ -56,7 +56,7 @@ public:
     if (header.version >= 2)
       ::decode(pgid.shard, p);
     else
-      pgid.shard = shard_id_t::NO_SHARD;
+      pgid.shard = ghobject_t::no_shard();
   }
 };
 

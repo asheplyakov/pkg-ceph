@@ -21,11 +21,6 @@ void JournalingObjectStore::journal_stop()
 {
   dout(10) << "journal_stop" << dendl;
   finisher.stop();
-}
-
-// A journal_replay() makes journal writeable, this closes that out.
-void JournalingObjectStore::journal_write_close()
-{
   if (journal) {
     journal->close();
     delete journal;
@@ -48,10 +43,8 @@ int JournalingObjectStore::journal_replay(uint64_t fs_op_seq)
   uint64_t op_seq = fs_op_seq;
   apply_manager.init_seq(fs_op_seq);
 
-  if (!journal) {
-    submit_manager.set_op_seq(op_seq);
+  if (!journal)
     return 0;
-  }
 
   int err = journal->open(op_seq);
   if (err < 0) {

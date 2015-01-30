@@ -452,6 +452,24 @@ public:
     return true;
   }
 
+  // verify that we describe a legal partition of the namespace.
+  void verify() const {
+    std::map<frag_t,int32_t> copy;
+    std::list<frag_t> q;
+    q.push_back(frag_t());
+    
+    while (1) {
+      frag_t cur = q.front();
+      q.pop_front();
+      int b = get_split(cur);
+      if (!b) continue;
+      copy[cur] = b;
+      cur.split(b, q);
+    }
+    
+    assert(copy == _splits);	
+  }
+  
   // encoding
   void encode(bufferlist& bl) const {
     ::encode(_splits, bl);
@@ -496,12 +514,33 @@ inline std::ostream& operator<<(std::ostream& out, const fragtree_t& ft)
 {
   out << "fragtree_t(";
   
-  for (std::map<frag_t,int32_t>::const_iterator p = ft._splits.begin();
-       p != ft._splits.end();
-       p++) {
-    if (p != ft._splits.begin())
-      out << " ";
-    out << p->first << "^" << p->second;
+  if (0) {
+    std::list<frag_t> q;
+    q.push_back(frag_t());
+    while (!q.empty()) {
+      frag_t t = q.front();
+      q.pop_front();
+      int nb = ft.get_split(t);
+      if (nb) {
+	if (t.bits()) out << ' ';
+	out << t << '%' << nb;
+	t.split(nb, q);   // queue up children
+      }
+    }
+  }
+  if (0) {
+    std::list<frag_t> leaves;
+    ft.get_leaves(leaves);
+    out << leaves;
+  }
+  if (1) {
+    for (std::map<frag_t,int32_t>::const_iterator p = ft._splits.begin();
+	 p != ft._splits.end();
+	 p++) {
+      if (p != ft._splits.begin())
+	out << " ";
+      out << p->first << "^" << p->second;
+    }
   }
   return out << ")";
 }

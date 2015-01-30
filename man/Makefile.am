@@ -4,6 +4,7 @@ dist_man_MANS = \
 	ceph-osd.8 \
 	ceph-mds.8 \
 	ceph-mon.8 \
+	mkcephfs.8 \
 	ceph-fuse.8 \
 	ceph-syn.8 \
 	crushtool.8 \
@@ -26,6 +27,4 @@ dist_man_MANS = \
 	ceph-rest-api.8 \
 	ceph-rbdnamer.8 \
 	ceph-post-file.8 \
-	rbd-fuse.8 \
-	rbd-replay.8 \
-	rbd-replay-prep.8
+	rbd-fuse.8

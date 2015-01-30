@@ -72,10 +72,8 @@ ostream& Pipe::_pipe_prefix(std::ostream *_dout) {
  * Pipe
  */
 
-Pipe::Pipe(SimpleMessenger *r, int st, PipeConnection *con)
-  : RefCountedObject(r->cct),
-    reader_thread(this),
-    writer_thread(this),
+Pipe::Pipe(SimpleMessenger *r, int st, Connection *con)
+  : reader_thread(this), writer_thread(this),
     delay_thread(NULL),
     msgr(r),
     conn_id(r->dispatch_queue.get_id()),
@@ -85,18 +83,18 @@ Pipe::Pipe(SimpleMessenger *r, int st, PipeConnection *con)
     state(st),
     connection_state(NULL),
     reader_running(false), reader_needs_join(false),
-    reader_dispatching(false),
     writer_running(false),
     in_q(&(r->dispatch_queue)),
     send_keepalive(false),
     send_keepalive_ack(false),
+    close_on_empty(false),
     connect_seq(0), peer_global_seq(0),
     out_seq(0), in_seq(0), in_seq_acked(0) {
   if (con) {
     connection_state = con;
     connection_state->reset_pipe(this);
   } else {
-    connection_state = new PipeConnection(msgr->cct, msgr);
+    connection_state = new Connection(msgr);
     connection_state->pipe = get();
   }
 
@@ -128,6 +126,11 @@ void Pipe::handle_ack(uint64_t seq)
     lsubdout(msgr->cct, ms, 10) << "reader got ack seq "
 				<< seq << " >= " << m->get_seq() << " on " << m << " " << *m << dendl;
     m->put();
+  }
+
+  if (sent.empty() && close_on_empty) {
+    lsubdout(msgr->cct, ms, 10) << "reader got last ack, queue empty, closing" << dendl;
+    stop();
   }
 }
 
@@ -188,8 +191,11 @@ void Pipe::DelayedDelivery::flush()
 {
   lgeneric_subdout(pipe->msgr->cct, ms, 20) << pipe->_pipe_prefix(_dout) << "DelayedDelivery::flush" << dendl;
   Mutex::Locker l(delay_lock);
-  flush_count = delay_queue.size();
-  delay_cond.Signal();
+  while (!delay_queue.empty()) {
+    Message *m = delay_queue.front().second;
+    delay_queue.pop_front();
+    pipe->in_q->enqueue(m, m->get_priority(), pipe->conn_id);
+  }
 }
 
 void *Pipe::DelayedDelivery::entry()
@@ -206,50 +212,19 @@ void *Pipe::DelayedDelivery::entry()
     utime_t release = delay_queue.front().first;
     Message *m = delay_queue.front().second;
     string delay_msg_type = pipe->msgr->cct->_conf->ms_inject_delay_msg_type;
-    if (!flush_count &&
-        (release > ceph_clock_now(pipe->msgr->cct) &&
-         (delay_msg_type.empty() || m->get_type_name() == delay_msg_type))) {
+    if (release > ceph_clock_now(pipe->msgr->cct) &&
+	(delay_msg_type.empty() || m->get_type_name() == delay_msg_type)) {
       lgeneric_subdout(pipe->msgr->cct, ms, 10) << pipe->_pipe_prefix(_dout) << "DelayedDelivery::entry sleeping on delay_cond until " << release << dendl;
       delay_cond.WaitUntil(delay_lock, release);
       continue;
     }
     lgeneric_subdout(pipe->msgr->cct, ms, 10) << pipe->_pipe_prefix(_dout) << "DelayedDelivery::entry dequeuing message " << m << " for delivery, past " << release << dendl;
     delay_queue.pop_front();
-    if (flush_count > 0) {
-      --flush_count;
-      active_flush = true;
-    }
-    if (pipe->in_q->can_fast_dispatch(m)) {
-      if (!stop_fast_dispatching_flag) {
-        delay_dispatching = true;
-        delay_lock.Unlock();
-        pipe->in_q->fast_dispatch(m);
-        delay_lock.Lock();
-        delay_dispatching = false;
-        if (stop_fast_dispatching_flag) {
-          // we need to let the stopping thread proceed
-          delay_cond.Signal();
-          delay_lock.Unlock();
-          delay_lock.Lock();
-        }
-      }
-    } else {
-      pipe->in_q->enqueue(m, m->get_priority(), pipe->conn_id);
-    }
-    active_flush = false;
+    pipe->in_q->enqueue(m, m->get_priority(), pipe->conn_id);
   }
   lgeneric_subdout(pipe->msgr->cct, ms, 20) << pipe->_pipe_prefix(_dout) << "DelayedDelivery::entry stop" << dendl;
   return NULL;
 }
-
-void Pipe::DelayedDelivery::stop_fast_dispatching() {
-  Mutex::Locker l(delay_lock);
-  stop_fast_dispatching_flag = true;
-  // we can't block if we're the delay thread; see Pipe::stop_and_wait()
-  while (delay_dispatching && !am_self())
-    delay_cond.Wait(delay_lock);
-}
-
 
 int Pipe::accept()
 {
@@ -631,7 +606,7 @@ int Pipe::accept()
     if (existing->connection_state->clear_pipe(existing))
       msgr->dispatch_queue.queue_reset(existing->connection_state.get());
   } else {
-    // queue a reset on the new connection, which we're dumping for the old
+    // queue a reset on the old connection
     msgr->dispatch_queue.queue_reset(connection_state.get());
 
     // drop my Connection, and take a ref to the existing one. do not
@@ -642,12 +617,9 @@ int Pipe::accept()
     // make existing Connection reference us
     connection_state->reset_pipe(this);
 
-    if (existing->delay_thread) {
-      existing->delay_thread->steal_for_pipe(this);
-      delay_thread = existing->delay_thread;
-      existing->delay_thread = NULL;
-      delay_thread->flush();
-    }
+    // flush/queue any existing delayed messages
+    if (existing->delay_thread)
+      existing->delay_thread->flush();
 
     // steal incoming queue
     uint64_t replaced_conn_id = conn_id;
@@ -668,7 +640,6 @@ int Pipe::accept()
          ++p)
       out_q[p->first].splice(out_q[p->first].begin(), p->second);
   }
-  existing->stop_and_wait();
   existing->pipe_lock.Unlock();
 
  open:
@@ -701,7 +672,6 @@ int Pipe::accept()
 
   // notify
   msgr->dispatch_queue.queue_accept(connection_state.get());
-  msgr->ms_deliver_handle_fast_accept(connection_state.get());
 
   // ok!
   if (msgr->dispatch_queue.stop)
@@ -881,7 +851,7 @@ int Pipe::connect()
     goto fail;
   }
   if (memcmp(banner, CEPH_BANNER, strlen(CEPH_BANNER))) {
-    ldout(msgr->cct,0) << "connect protocol error (bad banner) on peer " << peer_addr << dendl;
+    ldout(msgr->cct,0) << "connect protocol error (bad banner) on peer " << paddr << dendl;
     goto fail;
   }
 
@@ -952,7 +922,7 @@ int Pipe::connect()
 
     ceph_msg_connect connect;
     connect.features = policy.features_supported;
-    connect.host_type = msgr->get_myinst().name.type();
+    connect.host_type = msgr->my_type;
     connect.global_seq = gseq;
     connect.connect_seq = cseq;
     connect.protocol_version = msgr->get_proto_version(peer_type, true);
@@ -1147,7 +1117,6 @@ int Pipe::connect()
       }
 
       msgr->dispatch_queue.queue_connect(connection_state.get());
-      msgr->ms_deliver_handle_fast_connect(connection_state.get());
       
       if (!reader_running) {
 	ldout(msgr->cct,20) << "connect starting reader" << dendl;
@@ -1417,25 +1386,6 @@ void Pipe::stop()
   shutdown_socket();
 }
 
-void Pipe::stop_and_wait()
-{
-  if (state != STATE_CLOSED)
-    stop();
-  
-  // HACK: we work around an annoying deadlock here.  If the fast
-  // dispatch method calls mark_down() on itself, it can block here
-  // waiting for the reader_dispatching flag to clear... which will
-  // clearly never happen.  Avoid the situation by skipping the wait
-  // if we are marking our *own* connect down. Do the same for the
-  // delayed dispatch thread.
-  if (delay_thread) {
-    delay_thread->stop_fast_dispatching();
-  }
-  while (reader_running &&
-	 reader_dispatching &&
-	 !reader_thread.am_self())
-    cond.Wait(pipe_lock);
-}
 
 /* read msgs from socket.
  * also, server.
@@ -1574,30 +1524,19 @@ void Pipe::reader()
       ldout(msgr->cct,10) << "reader got message "
 	       << m->get_seq() << " " << m << " " << *m
 	       << dendl;
-      in_q->fast_preprocess(m);
 
       if (delay_thread) {
-        utime_t release;
-        if (rand() % 10000 < msgr->cct->_conf->ms_inject_delay_probability * 10000.0) {
-          release = m->get_recv_stamp();
-          release += msgr->cct->_conf->ms_inject_delay_max * (double)(rand() % 10000) / 10000.0;
-          lsubdout(msgr->cct, ms, 1) << "queue_received will delay until " << release << " on " << m << " " << *m << dendl;
-        }
-        delay_thread->queue(release, m);
+	utime_t release;
+	if (rand() % 10000 < msgr->cct->_conf->ms_inject_delay_probability * 10000.0) {
+	  release = m->get_recv_stamp();
+	  release += msgr->cct->_conf->ms_inject_delay_max * (double)(rand() % 10000) / 10000.0;
+	  lsubdout(msgr->cct, ms, 1) << "queue_received will delay until " << release << " on " << m << " " << *m << dendl;
+	}
+	delay_thread->queue(release, m);
       } else {
-        if (in_q->can_fast_dispatch(m)) {
-	  reader_dispatching = true;
-          pipe_lock.Unlock();
-          in_q->fast_dispatch(m);
-          pipe_lock.Lock();
-	  reader_dispatching = false;
-	  if (state == STATE_CLOSED) // there might be somebody waiting
-	    cond.Signal();
-        } else {
-          in_q->enqueue(m, m->get_priority(), conn_id);
-        }
+	in_q->enqueue(m, m->get_priority(), conn_id);
       }
-    }
+    } 
     
     else if (tag == CEPH_MSGR_TAG_CLOSE) {
       ldout(msgr->cct,20) << "reader got CLOSE" << dendl;
@@ -1719,7 +1658,7 @@ void Pipe::writer()
       Message *m = _get_next_outgoing();
       if (m) {
 	m->set_seq(++out_seq);
-	if (!policy.lossy) {
+	if (!policy.lossy || close_on_empty) {
 	  // put on sent list
 	  sent.push_back(m); 
 	  m->get();
@@ -1780,6 +1719,12 @@ void Pipe::writer()
       continue;
     }
     
+    if (sent.empty() && close_on_empty) {
+      ldout(msgr->cct,10) << "writer out and sent queues empty, closing" << dendl;
+      stop();
+      continue;
+    }
+
     // wait
     ldout(msgr->cct,20) << "writer sleeping" << dendl;
     cond.Wait(pipe_lock);
@@ -1798,9 +1743,6 @@ void Pipe::unlock_maybe_reap()
   if (!reader_running && !writer_running) {
     shutdown_socket();
     pipe_lock.Unlock();
-    if (delay_thread && delay_thread->is_flushing()) {
-      delay_thread->wait_for_flush();
-    }
     msgr->queue_reap(this);
   } else {
     pipe_lock.Unlock();

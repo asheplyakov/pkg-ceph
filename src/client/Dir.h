@@ -1,7 +1,7 @@
 #ifndef CEPH_CLIENT_DIR_H
 #define CEPH_CLIENT_DIR_H
 
-struct Inode;
+class Inode;
 
 class Dir {
  public:

@@ -19,7 +19,9 @@
 #include "msg/Message.h"
 #include "include/filepath.h"
 
+#include <vector>
 #include <string>
+using namespace std;
 
 
 class MDiscover : public Message {
@@ -28,6 +30,7 @@ class MDiscover : public Message {
 
   snapid_t        snapid;
   filepath        want;   // ... [/]need/this/stuff
+  inodeno_t       want_ino;
 
   bool want_base_dir;
   bool want_xlocked;
@@ -38,7 +41,8 @@ class MDiscover : public Message {
   snapid_t  get_snapid() { return snapid; }
 
   filepath& get_want() { return want; }
-  const std::string& get_dentry(int n) { return want[n]; }
+  inodeno_t get_want_ino() { return want_ino; }
+  const string& get_dentry(int n) { return want[n]; }
 
   bool wants_base_dir() { return want_base_dir; }
   bool wants_xlocked() { return want_xlocked; }
@@ -50,6 +54,7 @@ class MDiscover : public Message {
 	    frag_t base_frag_,
 	    snapid_t s,
             filepath& want_path_,
+	    inodeno_t want_ino_,
             bool want_base_dir_ = true,
 	    bool discover_xlocks_ = false) :
     Message(MSG_MDS_DISCOVER),
@@ -57,6 +62,7 @@ class MDiscover : public Message {
     base_dir_frag(base_frag_),
     snapid(s),
     want(want_path_),
+    want_ino(want_ino_),
     want_base_dir(want_base_dir_),
     want_xlocked(discover_xlocks_) { }
 private:
@@ -66,7 +72,10 @@ public:
   const char *get_type_name() const { return "Dis"; }
   void print(ostream &out) const {
     out << "discover(" << header.tid << " " << base_ino << "." << base_dir_frag
-	<< " " << want << ")";
+	<< " " << want;
+    if (want_ino)
+      out << want_ino;
+    out << ")";
   }
 
   void decode_payload() {
@@ -75,6 +84,7 @@ public:
     ::decode(base_dir_frag, p);
     ::decode(snapid, p);
     ::decode(want, p);
+    ::decode(want_ino, p);
     ::decode(want_base_dir, p);
     ::decode(want_xlocked, p);
   }
@@ -83,6 +93,7 @@ public:
     ::encode(base_dir_frag, payload);
     ::encode(snapid, payload);
     ::encode(want, payload);
+    ::encode(want_ino, payload);
     ::encode(want_base_dir, payload);
     ::encode(want_xlocked, payload);
   }

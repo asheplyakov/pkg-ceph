@@ -17,6 +17,7 @@
 #include "CDentry.h"
 #include "CInode.h"
 #include "CDir.h"
+#include "Anchor.h"
 
 #include "MDS.h"
 #include "MDCache.h"
@@ -143,7 +144,7 @@ pair<int,int> CDentry::authority()
 }
 
 
-void CDentry::add_waiter(uint64_t tag, MDSInternalContextBase *c)
+void CDentry::add_waiter(uint64_t tag, Context *c)
 {
   // wait on the directory?
   if (tag & (WAIT_UNFREEZE|WAIT_SINGLEAUTH)) {
@@ -252,6 +253,20 @@ void CDentry::make_path(string& s, inodeno_t tobase)
   s += name;
 }
 */
+
+/** make_anchor_trace
+ * construct an anchor trace for this dentry, as if it were linked to *in.
+ */
+void CDentry::make_anchor_trace(vector<Anchor>& trace, CInode *in)
+{
+  // start with parent dir inode
+  dir->inode->make_anchor_trace(trace);
+
+  // add this inode (in my dirfrag) to the end
+  trace.push_back(Anchor(in->ino(), dir->ino(), get_hash(), 0, 0));
+  dout(10) << "make_anchor_trace added " << trace.back() << dendl;
+}
+
 
 /*
  * we only add ourselves to remote_parents when the linkage is
@@ -404,6 +419,16 @@ bool CDentry::is_freezing()
   return dir->is_freezing();
 }
 
+
+void CDentry::adjust_nested_anchors(int by)
+{
+  nested_anchors += by;
+  dout(20) << "adjust_nested_anchors by " << by << " -> " << nested_anchors << dendl;
+  assert(nested_anchors >= 0);
+  dir->adjust_nested_anchors(by);
+}
+
+
 void CDentry::decode_replica(bufferlist::iterator& p, bool is_new)
 {
   __u32 nonce;
@@ -544,7 +569,7 @@ void CDentry::remove_client_lease(ClientLease *l, Locker *locker)
 
 void CDentry::_put()
 {
-  if (get_num_ref() <= ((int)is_dirty() + 1)) {
+  if (get_num_ref() <= (int)is_dirty() + 1) {
     CDentry::linkage_t *dnl = get_projected_linkage();
     if (dnl->is_primary()) {
       CInode *in = dnl->get_inode();

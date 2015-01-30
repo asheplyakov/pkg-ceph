@@ -191,7 +191,7 @@ public:
 
   public:
     /// Provide the final size of the copied object to the CopyCallback
-    virtual ~CopyCallback() {}
+    virtual ~CopyCallback() {};
   };
 
   friend class CopyFromCallback;
@@ -389,7 +389,7 @@ public:
     info.stats = stat;
   }
 
-  void schedule_recovery_work(
+  void schedule_work(
     GenContext<ThreadPool::TPHandle&> *c);
 
   pg_shard_t whoami_shard() const {
@@ -417,7 +417,7 @@ public:
 
   ceph_tid_t get_tid() { return osd->get_tid(); }
 
-  LogClientTemp clog_error() { return osd->clog->error(); }
+  LogClientTemp clog_error() { return osd->clog.error(); }
 
   /*
    * Capture all object state associated with an in-progress read or write.
@@ -619,7 +619,6 @@ public:
     bool queue_snap_trimmer;
 
     Context *on_applied;
-    bool log_op_stat;
     
     RepGather(OpContext *c, ObjectContextRef pi, ceph_tid_t rt,
 	      eversion_t lc) :
@@ -633,8 +632,7 @@ public:
       sent_disk(false),
       pg_local_last_complete(lc),
       queue_snap_trimmer(false),
-      on_applied(NULL),
-      log_op_stat(false) { }
+      on_applied(NULL) { }
 
     RepGather *get() {
       nref++;
@@ -802,7 +800,6 @@ protected:
   void hit_set_persist();   ///< persist hit info
   bool hit_set_apply_log(); ///< apply log entries to update in-memory HitSet
   void hit_set_trim(RepGather *repop, unsigned max); ///< discard old HitSets
-  void hit_set_in_memory_trim();                     ///< discard old in memory HitSets
 
   hobject_t get_hit_set_current_object(utime_t stamp);
   hobject_t get_hit_set_archive_object(utime_t start, utime_t end);
@@ -810,8 +807,8 @@ protected:
   // agent
   boost::scoped_ptr<TierAgentState> agent_state;
 
-  friend struct C_AgentFlushStartStop;
-  friend struct C_HitSetFlushing;
+  friend class C_AgentFlushStartStop;
+  friend class C_HitSetFlushing;
 
   void agent_setup();       ///< initialize agent state
   bool agent_work(int max); ///< entry point to do some agent work
@@ -1057,8 +1054,7 @@ protected:
 				 bool write_ordered,
 				 ObjectContextRef obc, int r,
 				 const hobject_t& missing_oid,
-				 bool must_promote,
-				 bool in_hit_set = false);
+				 bool must_promote);
   /**
    * This helper function tells the client to redirect their request elsewhere.
    */
@@ -1276,9 +1272,9 @@ public:
 		 bufferlist& odata);
 
   void do_request(
-    OpRequestRef& op,
+    OpRequestRef op,
     ThreadPool::TPHandle &handle);
-  void do_op(OpRequestRef& op);
+  void do_op(OpRequestRef op);
   bool pg_op_must_wait(MOSDOp *op);
   void do_pg_op(OpRequestRef op);
   void do_sub_op(OpRequestRef op);

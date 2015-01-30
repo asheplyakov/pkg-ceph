@@ -1,6 +1,3 @@
-// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
-// vim: ts=8 sw=2 smarttab
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -208,9 +205,6 @@ protected:
       perfcounter->inc(l_rgw_qactive, -1);
     }
     void _dump_queue() {
-      if (!g_conf->subsys.should_gather(ceph_subsys_rgw, 20)) {
-        return;
-      }
       deque<RGWRequest *>::iterator iter;
       if (process->m_req_queue.empty()) {
         dout(20) << "RGWWQ: empty" << dendl;
@@ -369,7 +363,7 @@ void RGWLoadGenProcess::run()
   int num_buckets;
   conf->get_val("num_buckets", 1, &num_buckets);
 
-  vector<string> buckets(num_buckets);
+  string buckets[num_buckets];
 
   atomic_t failed;
 
@@ -645,6 +639,10 @@ void RGWFCGXProcess::handle_request(RGWRequest *r)
 
   FCGX_Finish_r(fcgx);
 
+  if (store->ctx()->_conf->rgw_fcgi_explicit_free) {
+    FCGX_Free(fcgx, 1);
+  }
+
   delete req;
 }
 
@@ -682,7 +680,7 @@ void RGWLoadGenProcess::handle_request(RGWRequest *r)
 
 static int civetweb_callback(struct mg_connection *conn) {
   struct mg_request_info *req_info = mg_get_request_info(conn);
-  RGWProcessEnv *pe = static_cast<RGWProcessEnv *>(req_info->user_data);
+  RGWProcessEnv *pe = (RGWProcessEnv *)req_info->user_data;
   RGWRados *store = pe->store;
   RGWREST *rest = pe->rest;
   OpsLogSocket *olog = pe->olog;
@@ -730,15 +728,9 @@ int usage()
 {
   cerr << "usage: radosgw [options...]" << std::endl;
   cerr << "options:\n";
-  cerr << "  --rgw-region=<region>     region in which radosgw runs\n";
-  cerr << "  --rgw-zone=<zone>         zone in which radosgw runs\n";
-  cerr << "  --rgw-socket-path=<path>  specify a unix domain socket path\n";
-  cerr << "  -m monaddress[:port]      connect to specified monitor\n";
-  cerr << "  --keyring=<path>          path to radosgw keyring\n";
-  cerr << "  --logfile=<logfile>       file to log debug output\n";
-  cerr << "  --debug-rgw=<log-level>/<memory-level>  set radosgw debug level\n";
+  cerr << "   --rgw-region=<region>     region in which radosgw runs\n";
+  cerr << "   --rgw-zone=<zone>         zone in which radosgw runs\n";
   generic_server_usage();
-
   return 0;
 }
 
@@ -836,7 +828,7 @@ public:
   void *entry() {
     pprocess->run();
     return NULL;
-  }
+  };
 };
 
 class RGWProcessFrontend : public RGWFrontend {
@@ -944,7 +936,6 @@ public:
     memset((void *)&cb, 0, sizeof(cb));
     cb.begin_request = civetweb_callback;
     cb.log_message = rgw_civetweb_log_callback;
-    cb.log_access = rgw_civetweb_log_access_callback;
     ctx = mg_start(&cb, &env, (const char **)&options);
 
     if (!ctx) {
@@ -1101,7 +1092,10 @@ int main(int argc, const char **argv)
   register_async_signal_handler(SIGUSR1, handle_sigterm);
   sighandler_alrm = signal(SIGALRM, godown_alarm);
 
+  string frontend_frameworks = g_conf->rgw_frontends;
+
   list<string> frontends;
+
   get_str_list(g_conf->rgw_frontends, ",", frontends);
 
   multimap<string, RGWFrontendConfig *> fe_map;
@@ -1122,7 +1116,7 @@ int main(int argc, const char **argv)
     configs.push_back(config);
 
     string framework = config->get_framework();
-    fe_map.insert(pair<string, RGWFrontendConfig*>(framework, config));
+    fe_map.insert(make_pair<string, RGWFrontendConfig *>(framework, config));
   }
 
   list<RGWFrontend *> fes;
@@ -1136,6 +1130,8 @@ int main(int argc, const char **argv)
 
       fe = new RGWFCGXFrontend(fcgi_pe, config);
     } else if (framework == "civetweb" || framework == "mongoose") {
+      string err;
+
       int port;
       config->get_val("port", 80, &port);
 

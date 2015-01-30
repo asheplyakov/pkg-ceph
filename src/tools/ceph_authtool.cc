@@ -12,15 +12,18 @@
  * 
  */
 
+#include "common/config.h"
+#include "common/strtol.h"
+
 #include "common/ConfUtils.h"
 #include "common/ceph_argparse.h"
-
 #include "global/global_context.h"
 #include "global/global_init.h"
-
 #include "auth/Crypto.h"
 #include "auth/Auth.h"
 #include "auth/KeyRing.h"
+
+#include <sstream>
 
 void usage()
 {
@@ -81,7 +84,7 @@ int main(int argc, const char **argv)
       gen_print_key = true;
     } else if (ceph_argparse_witharg(args, i, &val, "-a", "--add-key", (char*)NULL)) {
       add_key = val;
-    } else if (ceph_argparse_flag(args, i, "-l", "--list", (char*)NULL)) {
+    } else if (ceph_argparse_flag(args, i, &val, "-l", "--list", (char*)NULL)) {
       list = true;
     } else if (ceph_argparse_witharg(args, i, &val, "--caps", (char*)NULL)) {
       caps_fn = val;

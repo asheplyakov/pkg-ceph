@@ -19,7 +19,6 @@ static sem_t sem;
 
 static void watch_notify_test_cb(uint8_t opcode, uint64_t ver, void *arg)
 {
-  std::cout << __func__ << std::endl;
   sem_post(&sem);
 }
 
@@ -28,7 +27,6 @@ class WatchNotifyTestCtx : public WatchCtx
 public:
     void notify(uint8_t opcode, uint64_t ver, bufferlist& bl)
     {
-      std::cout << __func__ << std::endl;
       sem_post(&sem);
     }
 };

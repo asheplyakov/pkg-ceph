@@ -22,6 +22,7 @@
 #include "include/rados/librados.hpp"
 #include "mon/MonClient.h"
 #include "msg/Dispatcher.h"
+#include "osd/OSDMap.h"
 
 #include "IoCtxImpl.h"
 
@@ -46,6 +47,7 @@ private:
     CONNECTED,
   } state;
 
+  OSDMap osdmap;
   MonClient monclient;
   SimpleMessenger *messenger;
 
@@ -61,7 +63,13 @@ private:
 
   Objecter *objecter;
 
+  map<string, int64_t> pool_cache;
+
+  epoch_t osdmap_epoch;
+  epoch_t pool_cache_epoch;
+
   Mutex lock;
+  RWLock pool_cache_rwl;
   Cond cond;
   SafeTimer timer;
   int refcnt;
@@ -90,6 +98,7 @@ public:
 
   int get_fsid(std::string *s);
   int64_t lookup_pool(const char *name);
+  const char *get_pool_name(int64_t pool_id);
   bool pool_requires_alignment(int64_t pool_id);
   uint64_t pool_required_alignment(int64_t pool_id);
   int pool_get_auid(uint64_t pool_id, unsigned long long *auid);
@@ -107,15 +116,12 @@ public:
   int pool_delete_async(const char *name, PoolAsyncCompletionImpl *c);
 
   // watch/notify
-  uint64_t max_watch_notify_cookie;
-  map<uint64_t, librados::WatchNotifyInfo *> watch_notify_info;
+  uint64_t max_watch_cookie;
+  map<uint64_t, librados::WatchContext *> watchers;
 
-  void register_watch_notify_callback(librados::WatchNotifyInfo *wc,
-				      uint64_t *cookie);
-  void unregister_watch_notify_callback(uint64_t cookie);
-  void handle_watch_notify(MWatchNotify *m);
-  void do_watch_notify(MWatchNotify *m);
-
+  void register_watcher(librados::WatchContext *wc, uint64_t *cookie);
+  void unregister_watcher(uint64_t cookie);
+  void watch_notify(MWatchNotify *m);
   int mon_command(const vector<string>& cmd, const bufferlist &inbl,
 	          bufferlist *outbl, string *outs);
   int mon_command(int rank,

@@ -9,9 +9,8 @@
 # common
 #################################################################################
 Name:		ceph
-Version:	0.87
+Version:	0.80.8
 Release:	0%{?dist}
-Epoch:		1
 Summary:	User space components of the Ceph file system
 License:	GPL-2.0
 Group:		System Environment/Base
@@ -20,13 +19,13 @@ Source0:	http://ceph.com/download/%{name}-%{version}.tar.bz2
 %if 0%{?fedora} || 0%{?centos} || 0%{?rhel}
 Patch0:		init-ceph.in-fedora.patch
 %endif
-Requires:	librbd1 = %{epoch}:%{version}-%{release}
-Requires:	librados2 = %{epoch}:%{version}-%{release}
-Requires:	libcephfs1 = %{epoch}:%{version}-%{release}
-Requires:	ceph-common = %{epoch}:%{version}-%{release}
-Requires:	python-ceph = %{epoch}:%{version}-%{release}
+Requires:	librbd1 = %{version}-%{release}
+Requires:	librados2 = %{version}-%{release}
+Requires:	libcephfs1 = %{version}-%{release}
+Requires:	ceph-common = %{version}-%{release}
 Requires:	python
 Requires:	python-argparse
+Requires:	python-ceph
 Requires:	python-requests
 Requires:	python-flask
 Requires:	xfsprogs
@@ -39,7 +38,6 @@ BuildRequires:	make
 BuildRequires:	gcc-c++
 BuildRequires:	libtool
 BuildRequires:	boost-devel
-BuildRequires:  bzip2-devel
 BuildRequires:	libedit-devel
 BuildRequires:	perl
 BuildRequires:	gdbm
@@ -52,7 +50,6 @@ BuildRequires:	libcurl-devel
 BuildRequires:	libxml2-devel
 BuildRequires:	libuuid-devel
 BuildRequires:	libblkid-devel >= 2.17
-BuildRequires:	libudev-devel
 BuildRequires:	leveldb-devel > 1.2
 BuildRequires:	xfsprogs-devel
 BuildRequires:	yasm
@@ -105,9 +102,9 @@ block and file system storage.
 %package -n ceph-common
 Summary:	Ceph Common
 Group:		System Environment/Base
-Requires:	librbd1 = %{epoch}:%{version}-%{release}
-Requires:	librados2 = %{epoch}:%{version}-%{release}
-Requires:	python-ceph = %{epoch}:%{version}-%{release}
+Requires:	librbd1 = %{version}-%{release}
+Requires:	librados2 = %{version}-%{release}
+Requires:	python-ceph = %{version}-%{release}
 Requires:	python-requests
 Requires:	redhat-lsb-core
 %description -n ceph-common
@@ -125,8 +122,8 @@ FUSE based client for Ceph distributed network file system
 Summary:	Ceph fuse-based client
 Group:		System Environment/Base
 Requires:	%{name}
-Requires:	librados2 = %{epoch}:%{version}-%{release}
-Requires:	librbd1 = %{epoch}:%{version}-%{release}
+Requires:	librados2 = %{version}-%{release}
+Requires:	librbd1 = %{version}-%{release}
 BuildRequires:	fuse-devel
 %description -n rbd-fuse
 FUSE based client to map Ceph rbd images to files
@@ -135,12 +132,11 @@ FUSE based client to map Ceph rbd images to files
 Summary:	Ceph headers
 Group:		Development/Libraries
 License:	LGPL-2.0
-Requires:	%{name} = %{epoch}:%{version}-%{release}
-Requires:	librados2 = %{epoch}:%{version}-%{release}
-Requires:	libradosstriper1 = %{epoch}:%{version}-%{release}
-Requires:	librbd1 = %{epoch}:%{version}-%{release}
-Requires:	libcephfs1 = %{epoch}:%{version}-%{release}
-Requires:	libcephfs_jni1 = %{epoch}:%{version}-%{release}
+Requires:	%{name} = %{version}-%{release}
+Requires:	librados2 = %{version}-%{release}
+Requires:	librbd1 = %{version}-%{release}
+Requires:	libcephfs1 = %{version}-%{release}
+Requires:	libcephfs_jni1 = %{version}-%{release}
 %description devel
 This package contains libraries and headers needed to develop programs
 that use Ceph.
@@ -148,8 +144,8 @@ that use Ceph.
 %package radosgw
 Summary:	Rados REST gateway
 Group:		Development/Libraries
-Requires:	ceph-common = %{epoch}:%{version}-%{release}
-Requires:	librados2 = %{epoch}:%{version}-%{release}
+Requires:	ceph-common = %{version}-%{release}
+Requires:	librados2 = %{version}-%{release}
 %if 0%{defined suse_version}
 BuildRequires:	libexpat-devel
 BuildRequires:	FastCGI-devel
@@ -168,7 +164,7 @@ conjunction with any FastCGI capable web server.
 Summary:	OCF-compliant resource agents for Ceph daemons
 Group:		System Environment/Base
 License:	LGPL-2.0
-Requires:	%{name} = %{epoch}:%{version}
+Requires:	%{name} = %{version}
 Requires:	resource-agents
 %description resource-agents
 Resource agents for monitoring and managing Ceph daemons
@@ -181,7 +177,7 @@ Summary:	RADOS distributed object store client library
 Group:		System Environment/Libraries
 License:	LGPL-2.0
 %if 0%{?rhel} || 0%{?centos} || 0%{?fedora}
-Obsoletes:	ceph-libs < %{epoch}:%{version}-%{release}
+Obsoletes:	ceph-libs < %{version}-%{release}
 %endif
 %description -n librados2
 RADOS is a reliable, autonomic distributed object storage cluster
@@ -189,23 +185,13 @@ developed as part of the Ceph distributed storage system. This is a
 shared library allowing applications to access the distributed object
 store using a simple file-like interface.
 
-%package -n libradosstriper1
-Summary:	RADOS striping interface
-Group:		System Environment/Libraries
-License:	LGPL-2.0
-Requires:	librados2 = %{epoch}:%{version}
-%description -n libradosstriper1
-Striping interface built on top of the rados library, allowing
-to stripe bigger objects onto several standard rados objects using
-an interface very similar to the rados one.
-
 %package -n librbd1
 Summary:	RADOS block device client library
 Group:		System Environment/Libraries
 License:	LGPL-2.0
-Requires:	librados2 = %{epoch}:%{version}-%{release}
+Requires:	librados2 = %{version}-%{release}
 %if 0%{?rhel} || 0%{?centos} || 0%{?fedora}
-Obsoletes:	ceph-libs < %{epoch}:%{version}-%{release}
+Obsoletes:	ceph-libs < %{version}-%{release}
 %endif
 %description -n librbd1
 RBD is a block device striped across multiple distributed objects in
@@ -218,7 +204,7 @@ Summary:	Ceph distributed file system client library
 Group:		System Environment/Libraries
 License:	LGPL-2.0
 %if 0%{?rhel} || 0%{?centos} || 0%{?fedora}
-Obsoletes:	ceph-libs < %{epoch}:%{version}-%{release}
+Obsoletes:	ceph-libs < %{version}-%{release}
 Obsoletes:	ceph-libcephfs
 %endif
 %description -n libcephfs1
@@ -231,8 +217,8 @@ POSIX-like interface.
 Summary:	Python libraries for the Ceph distributed filesystem
 Group:		System Environment/Libraries
 License:	LGPL-2.0
-Requires:	librados2 = %{epoch}:%{version}-%{release}
-Requires:	librbd1 = %{epoch}:%{version}-%{release}
+Requires:	librados2 = %{version}-%{release}
+Requires:	librbd1 = %{version}-%{release}
 %if 0%{defined suse_version}
 %py_requires
 %endif
@@ -244,7 +230,7 @@ object storage.
 Summary:	RESTful benchmark
 Group:		System Environment/Libraries
 License:	LGPL-2.0
-Requires:	ceph-common = %{epoch}:%{version}-%{release}
+Requires:	ceph-common = %{version}-%{release}
 %description -n rest-bench
 RESTful bencher that can be used to benchmark radosgw performance.
 
@@ -252,13 +238,9 @@ RESTful bencher that can be used to benchmark radosgw performance.
 Summary:	Ceph benchmarks and test tools
 Group:		System Environment/Libraries
 License:	LGPL-2.0
-Requires:	librados2 = %{epoch}:%{version}-%{release}
-Requires:	librbd1 = %{epoch}:%{version}-%{release}
-Requires:	libcephfs1 = %{epoch}:%{version}-%{release}
-%if (0%{?fedora} >= 20 || 0%{?rhel} == 6)
-BuildRequires:	lttng-ust-devel
-BuildRequires:	libbabeltrace-devel
-%endif
+Requires:	librados2 = %{version}-%{release}
+Requires:	librbd1 = %{version}-%{release}
+Requires:	libcephfs1 = %{version}-%{release}
 %description -n ceph-test
 This package contains Ceph benchmarks and test tools.
 
@@ -267,7 +249,7 @@ Summary:	Java Native Interface library for CephFS Java bindings.
 Group:		System Environment/Libraries
 License:	LGPL-2.0
 Requires:	java
-Requires:	libcephfs1 = %{epoch}:%{version}-%{release}
+Requires:	libcephfs1 = %{version}-%{release}
 BuildRequires:	java-devel
 %description -n libcephfs_jni1
 This package contains the Java Native Interface library for CephFS Java
@@ -278,7 +260,7 @@ Summary:	Java libraries for the Ceph File System.
 Group:		System Environment/Libraries
 License:	LGPL-2.0
 Requires:	java
-Requires:	libcephfs_jni1 = %{epoch}:%{version}-%{release}
+Requires:	libcephfs_jni1 = %{version}-%{release}
 BuildRequires:	java-devel
 Requires:	junit4
 BuildRequires:	junit4
@@ -290,9 +272,9 @@ Summary:	Meta package to include ceph libraries.
 Group:		System Environment/Libraries
 License:	LGPL-2.0
 Obsoletes:	ceph-libs
-Requires:	librados2 = %{epoch}:%{version}-%{release}
-Requires:	librbd1 = %{epoch}:%{version}-%{release}
-Requires:	libcephfs1 = %{epoch}:%{version}-%{release}
+Requires:	librados2 = %{version}-%{release}
+Requires:	librbd1 = %{version}-%{release}
+Requires:	libcephfs1 = %{version}-%{release}
 Provides:	ceph-libs
 
 %description libs-compat
@@ -338,7 +320,6 @@ export RPM_OPT_FLAGS=`echo $RPM_OPT_FLAGS | sed -e 's/i386/i486/'`
 		--with-rest-bench \
 		--with-debug \
 		--enable-cephfs-java \
-		--with-librocksdb-static=check \
 		$MY_CONF_OPT \
 		%{?_with_ocf} \
 		CFLAGS="$RPM_OPT_FLAGS" CXXFLAGS="$RPM_OPT_FLAGS"
@@ -387,6 +368,7 @@ install -m 0644 -D udev/95-ceph-osd.rules $RPM_BUILD_ROOT/lib/udev/rules.d/95-ce
 
 %if 0%{?rhel} >= 7 || 0%{?fedora}
 mv $RPM_BUILD_ROOT/lib/udev/rules.d/95-ceph-osd.rules $RPM_BUILD_ROOT/usr/lib/udev/rules.d/95-ceph-osd.rules
+mv $RPM_BUILD_ROOT/sbin/mkcephfs $RPM_BUILD_ROOT/usr/sbin/mkcephfs
 mv $RPM_BUILD_ROOT/sbin/mount.ceph $RPM_BUILD_ROOT/usr/sbin/mount.ceph
 mv $RPM_BUILD_ROOT/sbin/mount.fuse.ceph $RPM_BUILD_ROOT/usr/sbin/mount.fuse.ceph
 %endif
@@ -456,7 +438,6 @@ fi
 %{_bindir}/ceph-rbdnamer
 %{_bindir}/librados-config
 %{_bindir}/ceph-client-debug
-%{_bindir}/cephfs-journal-tool
 %{_bindir}/ceph-debugpack
 %{_bindir}/ceph-coverage
 %{_bindir}/ceph_mon_store_converter
@@ -474,7 +455,6 @@ fi
 %endif
 %dir %{_libdir}/ceph
 %{_libdir}/ceph/ceph_common.sh
-%{_libexecdir}/ceph/ceph-osd-prestart.sh
 %dir %{_libdir}/rados-classes
 %{_libdir}/rados-classes/libcls_rbd.so*
 %{_libdir}/rados-classes/libcls_hello.so*
@@ -488,7 +468,13 @@ fi
 %{_libdir}/rados-classes/libcls_user.so*
 %{_libdir}/rados-classes/libcls_version.so*
 %dir %{_libdir}/ceph/erasure-code
-%{_libdir}/ceph/erasure-code/libec_*.so*
+%{_libdir}/ceph/erasure-code/libec_example.so*
+%{_libdir}/ceph/erasure-code/libec_fail_to_initialize.so*
+%{_libdir}/ceph/erasure-code/libec_fail_to_register.so*
+%{_libdir}/ceph/erasure-code/libec_hangs.so*
+%{_libdir}/ceph/erasure-code/libec_jerasure*.so*
+%{_libdir}/ceph/erasure-code/libec_test_jerasure*.so*
+%{_libdir}/ceph/erasure-code/libec_missing_entry_point.so*
 %if 0%{?rhel} >= 7 || 0%{?fedora}
 /usr/lib/udev/rules.d/60-ceph-partuuid-workaround.rules
 /usr/lib/udev/rules.d/95-ceph-osd.rules
@@ -502,6 +488,7 @@ fi
 %{_mandir}/man8/ceph-mon.8*
 %{_mandir}/man8/ceph-mds.8*
 %{_mandir}/man8/ceph-osd.8*
+%{_mandir}/man8/mkcephfs.8*
 %{_mandir}/man8/ceph-run.8*
 %{_mandir}/man8/ceph-rest-api.8*
 %{_mandir}/man8/crushtool.8*
@@ -592,9 +579,6 @@ fi
 %{_includedir}/rados/rados_types.h
 %{_includedir}/rados/rados_types.hpp
 %{_includedir}/rados/memory.h
-%dir %{_includedir}/radosstriper
-%{_includedir}/radosstriper/libradosstriper.h
-%{_includedir}/radosstriper/libradosstriper.hpp
 %dir %{_includedir}/rbd
 %{_includedir}/rbd/librbd.h
 %{_includedir}/rbd/librbd.hpp
@@ -602,7 +586,6 @@ fi
 %{_libdir}/libcephfs.so
 %{_libdir}/librbd.so
 %{_libdir}/librados.so
-%{_libdir}/libradosstriper.so
 %{_libdir}/libcephfs_jni.so
 
 #################################################################################
@@ -659,17 +642,6 @@ fi
 /sbin/ldconfig
 
 %postun -n librados2
-/sbin/ldconfig
-
-#################################################################################
-%files -n libradosstriper1
-%defattr(-,root,root,-)
-%{_libdir}/libradosstriper.so.*
-
-%post -n libradosstriper1
-/sbin/ldconfig
-
-%postun -n libradosstriper1
 /sbin/ldconfig
 
 #################################################################################
@@ -734,7 +706,8 @@ ln -sf %{_libdir}/librbd.so.1 /usr/lib64/qemu/librbd.so.1
 %{_bindir}/ceph_smalliobenchdumb
 %{_bindir}/ceph_smalliobenchfs
 %{_bindir}/ceph_smalliobenchrbd
-%{_bindir}/ceph_objectstore_tool
+%{_bindir}/ceph_filestore_dump
+%{_bindir}/ceph_filestore_tool
 %{_bindir}/ceph_streamtest
 %{_bindir}/ceph_test_*
 %{_bindir}/ceph_tpbench
@@ -742,12 +715,6 @@ ln -sf %{_libdir}/librbd.so.1 /usr/lib64/qemu/librbd.so.1
 %{_bindir}/ceph-monstore-tool
 %{_bindir}/ceph-osdomap-tool
 %{_bindir}/ceph-kvstore-tool
-%{_mandir}/man8/rbd-replay.8*
-%{_bindir}/rbd-replay
-%if (0%{?fedora} >= 20 || 0%{?rhel} == 6)
-%{_mandir}/man8/rbd-replay-prep.8*
-%{_bindir}/rbd-replay-prep
-%endif
 
 %files -n libcephfs_jni1
 %defattr(-,root,root,-)

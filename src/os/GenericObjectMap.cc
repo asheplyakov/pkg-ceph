@@ -121,7 +121,10 @@ string GenericObjectMap::header_key(const coll_t &cid, const ghobject_t &oid)
   full_name.append(GHOBJECT_KEY_SEP_S);
 
   t = buf;
-  t += snprintf(t, end - t, "%lld", (long long)oid.hobj.pool);
+  if (oid.hobj.pool == -1)
+    t += snprintf(t, end - t, "none");
+  else
+    t += snprintf(t, end - t, "%llx", (long long unsigned)oid.hobj.pool);
   full_name += string(buf);
   full_name.append(GHOBJECT_KEY_SEP_S);
 
@@ -142,7 +145,7 @@ string GenericObjectMap::header_key(const coll_t &cid, const ghobject_t &oid)
   full_name += string(buf);
 
   if (oid.generation != ghobject_t::NO_GEN) {
-    assert(oid.shard_id != shard_id_t::NO_SHARD);
+    assert(oid.shard_id != ghobject_t::NO_SHARD);
     full_name.append(GHOBJECT_KEY_SEP_S);
 
     t = buf;
@@ -172,7 +175,7 @@ bool GenericObjectMap::parse_header_key(const string &long_name,
   snapid_t snap;
   uint64_t pool;
   gen_t generation = ghobject_t::NO_GEN;
-  shard_id_t shard_id = shard_id_t::NO_SHARD;
+  shard_t shard_id = ghobject_t::NO_SHARD;
 
   string::const_iterator current = long_name.begin();
   string::const_iterator end;
@@ -246,7 +249,7 @@ bool GenericObjectMap::parse_header_key(const string &long_name,
       return false;
     shardstring = string(current, end);
 
-    shard_id = (shard_id_t)strtoul(shardstring.c_str(), NULL, 16);
+    shard_id = (shard_t)strtoul(shardstring.c_str(), NULL, 16);
   }
 
   if (out) {
@@ -1025,7 +1028,7 @@ void GenericObjectMap::remove_header(const coll_t &cid,
 }
 
 void GenericObjectMap::set_header(const coll_t &cid, const ghobject_t &oid,
-                                  _Header &header, KeyValueDB::Transaction t)
+                                  _Header header, KeyValueDB::Transaction t)
 {
   dout(20) << __func__ << " setting " << header.seq
            << " cid " << cid << " oid " << oid << " parent seq "

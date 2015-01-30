@@ -223,17 +223,6 @@ public:
      * Leader proposing an old value
      */
     STATE_UPDATING_PREVIOUS,
-    /*
-     * Leader/Peon is writing a new commit.  readable, but not
-     * writeable.
-     */
-    STATE_WRITING,
-    /*
-     * Leader/Peon is writing a new commit from a previous round.
-     */
-    STATE_WRITING_PREVIOUS,
-    // leader: refresh following a commit
-    STATE_REFRESH,
   };
 
   /**
@@ -255,12 +244,6 @@ public:
       return "updating";
     case STATE_UPDATING_PREVIOUS:
       return "updating-previous";
-    case STATE_WRITING:
-      return "writing";
-    case STATE_WRITING_PREVIOUS:
-      return "writing-previous";
-    case STATE_REFRESH:
-      return "refresh";
     default:
       return "UNKNOWN";
     }
@@ -301,15 +284,6 @@ public:
    */
   bool is_updating_previous() const { return state == STATE_UPDATING_PREVIOUS; }
 
-  /// @return 'true' if we are writing an update to disk
-  bool is_writing() const { return state == STATE_WRITING; }
-
-  /// @return 'true' if we are writing an update-previous to disk
-  bool is_writing_previous() const { return state == STATE_WRITING_PREVIOUS; }
-
-  /// @return 'true' if we are refreshing an update just committed
-  bool is_refresh() const { return state == STATE_REFRESH; }
-
 private:
   /**
    * @defgroup Paxos_h_recovery_vars Common recovery-related member variables
@@ -346,7 +320,7 @@ private:
   /**
    * Last committed value's time.
    *
-   * When the commit finished.
+   * When the commit happened.
    */
   utime_t last_commit_time;
   /**
@@ -896,10 +870,6 @@ private:
    * @}
    */
 
-
-  utime_t commit_start_stamp;
-  friend struct C_Committed;
-
   /**
    * Commit a value throughout the system.
    *
@@ -913,8 +883,7 @@ private:
    * @post Value locally stored
    * @post Quorum members instructed to commit the new value.
    */
-  void commit_start();
-  void commit_finish();   ///< finish a commit after txn becomes durable
+  void commit();
   /**
    * Commit the new value to stable storage as being the latest available
    * version.
@@ -1102,8 +1071,7 @@ public:
 
   void dispatch(PaxosServiceMessage *m);
 
-  void read_and_prepare_transactions(MonitorDBStore::TransactionRef tx,
-				     version_t from, version_t last);
+  void read_and_prepare_transactions(MonitorDBStore::Transaction *tx, version_t from, version_t last);
 
   void init();
 
@@ -1191,12 +1159,12 @@ public:
    * @param t The transaction to which we will append the operations
    * @param bl A bufferlist containing an encoded transaction
    */
-  static void decode_append_transaction(MonitorDBStore::TransactionRef t,
-					bufferlist& bl) {
-    MonitorDBStore::TransactionRef vt(new MonitorDBStore::Transaction);
+  static void decode_append_transaction(MonitorDBStore::Transaction& t,
+				 bufferlist& bl) {
+    MonitorDBStore::Transaction vt;
     bufferlist::iterator it = bl.begin();
-    vt->decode(it);
-    t->append(vt);
+    vt.decode(it);
+    t.append(vt);
   }
 
   /**
@@ -1385,11 +1353,11 @@ inline ostream& operator<<(ostream& out, Paxos::C_Proposal& p)
   out << " " << proposed
       << " queued " << (ceph_clock_now(NULL) - p.proposal_time)
       << " tx dump:\n";
-  MonitorDBStore::TransactionRef t(new MonitorDBStore::Transaction);
+  MonitorDBStore::Transaction t;
   bufferlist::iterator p_it = p.bl.begin();
-  t->decode(p_it);
+  t.decode(p_it);
   JSONFormatter f(true);
-  t->dump(&f);
+  t.dump(&f);
   f.flush(out);
   return out;
 }

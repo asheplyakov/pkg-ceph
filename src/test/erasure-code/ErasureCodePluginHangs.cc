@@ -1,10 +1,9 @@
 // -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*- 
 // vim: ts=8 sw=2 smarttab
 /*
- * Ceph distributed storage system
+ * Ceph - scalable distributed file system
  *
  * Copyright (C) 2013 Cloudwatt <libre.licensing@cloudwatt.com>
- * Copyright (C) 2014 Red Hat <contact@redhat.com>
  *
  * Author: Loic Dachary <loic@dachary.org>
  *
@@ -16,11 +15,9 @@
  */
 
 #include <unistd.h>
-#include "ceph_ver.h"
+#include "erasure-code/ErasureCodePlugin.h"
 
-extern "C" const char *__erasure_code_version() { return CEPH_GIT_NICE_VER; }
-
-extern "C" int __erasure_code_init(char *plugin_name, char *directory)
+int __erasure_code_init(char *plugin_name)
 {
   sleep(1000);
   return 0;

@@ -18,6 +18,7 @@
 #define CEPH_CINODE_H
 
 #include "common/config.h"
+#include "include/dlist.h"
 #include "include/elist.h"
 #include "include/types.h"
 #include "include/lru.h"
@@ -33,9 +34,11 @@
 #include "SnapRealm.h"
 
 #include <list>
+#include <vector>
 #include <set>
 #include <map>
-//#include <iostream>
+#include <iostream>
+using namespace std;
 
 class Context;
 class CDentry;
@@ -60,44 +63,8 @@ struct cinode_lock_info_t {
 extern cinode_lock_info_t cinode_lock_info[];
 extern int num_cinode_locks;
 
-
-/**
- * Base class for CInode, containing the backing store data and
- * serialization methods.  This exists so that we can read and
- * handle CInodes from the backing store without hitting all
- * the business logic in CInode proper.
- */
-class InodeStore {
-public:
-  inode_t                    inode;        // the inode itself
-  std::string                symlink;      // symlink dest, if symlink
-  std::map<std::string, bufferptr> xattrs;
-  fragtree_t                 dirfragtree;  // dir frag tree, if any.  always consistent with our dirfrag map.
-  std::map<snapid_t, old_inode_t> old_inodes;   // key = last, value.first = first
-  bufferlist		     snap_blob;    // Encoded copy of SnapRealm, because we can't
-                                           // rehydrate it without full MDCache
-
-  /* Helpers */
-  bool is_file() const    { return inode.is_file(); }
-  bool is_symlink() const { return inode.is_symlink(); }
-  bool is_dir() const     { return inode.is_dir(); }
-  static object_t get_object_name(inodeno_t ino, frag_t fg, const char *suffix);
-
-  /* Full serialization for use in ".inode" root inode objects */
-  void encode(bufferlist &bl) const;
-  void decode(bufferlist::iterator &bl);
-
-  /* Serialization without ENCODE_START/FINISH blocks for use embedded in dentry */
-  void encode_bare(bufferlist &bl) const;
-  void decode_bare(bufferlist::iterator &bl, __u8 struct_v=4);
-
-  /* For use in debug and ceph-dencoder */
-  void dump(Formatter *f) const;
-  static void generate_test_instances(std::list<InodeStore*>& ls);
-};
-
 // cached inode wrapper
-class CInode : public MDSCacheObject, public InodeStore {
+class CInode : public MDSCacheObject {
   /*
    * This class uses a boost::pool to handle allocation. This is *not*
    * thread-safe, so don't do allocations from multiple threads!
@@ -124,6 +91,8 @@ public:
   static const int PIN_DIRFRAG =         -1; 
   static const int PIN_CAPS =             2;  // client caps
   static const int PIN_IMPORTING =       -4;  // importing
+  static const int PIN_ANCHORING =        5;
+  static const int PIN_UNANCHORING =      6;
   static const int PIN_OPENINGDIR =       7;
   static const int PIN_REMOTEPARENT =     8;
   static const int PIN_BATCHOPENJOURNAL = 9;
@@ -148,6 +117,8 @@ public:
     case PIN_DIRFRAG: return "dirfrag";
     case PIN_CAPS: return "caps";
     case PIN_IMPORTING: return "importing";
+    case PIN_ANCHORING: return "anchoring";
+    case PIN_UNANCHORING: return "unanchoring";
     case PIN_OPENINGDIR: return "openingdir";
     case PIN_REMOTEPARENT: return "remoteparent";
     case PIN_BATCHOPENJOURNAL: return "batchopenjournal";
@@ -172,6 +143,8 @@ public:
 
   // -- state --
   static const int STATE_EXPORTING =   (1<<2);   // on nonauth bystander.
+  static const int STATE_ANCHORING =   (1<<3);
+  static const int STATE_UNANCHORING = (1<<4);
   static const int STATE_OPENINGDIR =  (1<<5);
   static const int STATE_FREEZING =    (1<<7);
   static const int STATE_FROZEN =      (1<<8);
@@ -195,9 +168,11 @@ public:
 
   // -- waiters --
   static const uint64_t WAIT_DIR         = (1<<0);
-  static const uint64_t WAIT_FROZEN      = (1<<1);
-  static const uint64_t WAIT_TRUNC       = (1<<2);
-  static const uint64_t WAIT_FLOCK       = (1<<3);
+  static const uint64_t WAIT_ANCHORED    = (1<<1);
+  static const uint64_t WAIT_UNANCHORED  = (1<<2);
+  static const uint64_t WAIT_FROZEN      = (1<<3);
+  static const uint64_t WAIT_TRUNC       = (1<<4);
+  static const uint64_t WAIT_FLOCK       = (1<<5);
   
   static const uint64_t WAIT_ANY_MASK	= (uint64_t)(-1);
 
@@ -209,10 +184,17 @@ public:
  public:
   MDCache *mdcache;
 
+  // inode contents proper
+  inode_t          inode;        // the inode itself
+  string           symlink;      // symlink dest, if symlink
+  map<string, bufferptr> xattrs;
+  fragtree_t       dirfragtree;  // dir frag tree, if any.  always consistent with our dirfrag map.
   SnapRealm        *snaprealm;
+
   SnapRealm        *containing_realm;
   snapid_t          first, last;
-  std::set<snapid_t> dirty_old_rstats;
+  map<snapid_t, old_inode_t> old_inodes;  // key = last, value.first = first
+  set<snapid_t> dirty_old_rstats;
 
   bool is_multiversion() {
     return snaprealm ||  // other snaprealms will link to me
@@ -254,19 +236,19 @@ public:
 
   struct projected_inode_t {
     inode_t *inode;
-    std::map<std::string,bufferptr> *xattrs;
+    map<string,bufferptr> *xattrs;
     sr_t *snapnode;
 
     projected_inode_t()
       : inode(NULL), xattrs(NULL), snapnode(NULL) {}
     projected_inode_t(inode_t *in, sr_t *sn)
       : inode(in), xattrs(NULL), snapnode(sn) {}
-    projected_inode_t(inode_t *in, std::map<std::string, bufferptr> *xp = NULL, sr_t *sn = NULL)
+    projected_inode_t(inode_t *in, map<string, bufferptr> *xp = NULL, sr_t *sn = NULL)
       : inode(in), xattrs(xp), snapnode(sn) {}
   };
-  std::list<projected_inode_t*> projected_nodes;   // projected values (only defined while dirty)
+  list<projected_inode_t*> projected_nodes;   // projected values (only defined while dirty)
   
-  inode_t *project_inode(std::map<std::string,bufferptr> *px=0);
+  inode_t *project_inode(map<string,bufferptr> *px=0);
   void pop_and_dirty_projected_inode(LogSegment *ls);
 
   projected_inode_t *get_projected_node() {
@@ -294,7 +276,7 @@ public:
   }
   inode_t *get_previous_projected_inode() {
     assert(!projected_nodes.empty());
-    std::list<projected_inode_t*>::reverse_iterator p = projected_nodes.rbegin();
+    list<projected_inode_t*>::reverse_iterator p = projected_nodes.rbegin();
     ++p;
     if (p != projected_nodes.rend())
       return (*p)->inode;
@@ -302,17 +284,17 @@ public:
       return &inode;
   }
 
-  std::map<std::string,bufferptr> *get_projected_xattrs() {
-    for (std::list<projected_inode_t*>::reverse_iterator p = projected_nodes.rbegin();
+  map<string,bufferptr> *get_projected_xattrs() {
+    for (list<projected_inode_t*>::reverse_iterator p = projected_nodes.rbegin();
 	 p != projected_nodes.rend();
 	 ++p)
       if ((*p)->xattrs)
 	return (*p)->xattrs;
     return &xattrs;
   }
-  std::map<std::string,bufferptr> *get_previous_projected_xattrs() {
-      std::list<projected_inode_t*>::reverse_iterator p = projected_nodes.rbegin();
-    for (++p;  // skip the most recent projected value
+  map<string,bufferptr> *get_previous_projected_xattrs() {
+    list<projected_inode_t*>::reverse_iterator p = projected_nodes.rbegin();
+    for (p++;  // skip the most recent projected value
 	 p != projected_nodes.rend();
 	 ++p)
       if ((*p)->xattrs)
@@ -328,7 +310,7 @@ public:
       else
 	return NULL;
     } else {
-      for (std::list<projected_inode_t*>::reverse_iterator p = projected_nodes.rbegin();
+      for (list<projected_inode_t*>::reverse_iterator p = projected_nodes.rbegin();
           p != projected_nodes.rend();
           ++p)
         if ((*p)->snapnode)
@@ -345,16 +327,16 @@ public:
   old_inode_t& cow_old_inode(snapid_t follows, bool cow_head);
   old_inode_t *pick_old_inode(snapid_t last);
   void pre_cow_old_inode();
-  void purge_stale_snap_data(const std::set<snapid_t>& snaps);
+  void purge_stale_snap_data(const set<snapid_t>& snaps);
 
   // -- cache infrastructure --
 private:
-  std::map<frag_t,CDir*> dirfrags; // cached dir fragments under this Inode
+  map<frag_t,CDir*> dirfrags; // cached dir fragments under this Inode
   int stickydir_ref;
 
 public:
-  __u32 hash_dentry_name(const std::string &dn);
-  frag_t pick_dirfrag(const std::string &dn);
+  __u32 hash_dentry_name(const string &dn);
+  frag_t pick_dirfrag(const string &dn);
   bool has_dirfrags() { return !dirfrags.empty(); }
   CDir* get_dirfrag(frag_t fg) {
     if (dirfrags.count(fg)) {
@@ -363,11 +345,11 @@ public:
     } else
       return NULL;
   }
-  bool get_dirfrags_under(frag_t fg, std::list<CDir*>& ls);
+  bool get_dirfrags_under(frag_t fg, list<CDir*>& ls);
   CDir* get_approx_dirfrag(frag_t fg);
-  void get_dirfrags(std::list<CDir*>& ls);
-  void get_nested_dirfrags(std::list<CDir*>& ls);
-  void get_subtree_dirfrags(std::list<CDir*>& ls);
+  void get_dirfrags(list<CDir*>& ls);
+  void get_nested_dirfrags(list<CDir*>& ls);
+  void get_subtree_dirfrags(list<CDir*>& ls);
   CDir *get_or_open_dirfrag(MDCache *mdcache, frag_t fg);
   CDir *add_dirfrag(CDir *dir);
   void close_dirfrag(frag_t fg);
@@ -384,22 +366,22 @@ public:
  protected:
   // parent dentries in cache
   CDentry         *parent;             // primary link
-  std::set<CDentry*>    remote_parents;     // if hard linked
+  set<CDentry*>    remote_parents;     // if hard linked
 
-  std::list<CDentry*>   projected_parent;   // for in-progress rename, (un)link, etc.
+  list<CDentry*>   projected_parent;   // for in-progress rename, (un)link, etc.
 
   pair<int,int> inode_auth;
 
   // -- distributed state --
 protected:
   // file capabilities
-  std::map<client_t, Capability*> client_caps;         // client -> caps
-  std::map<int32_t, int32_t>      mds_caps_wanted;     // [auth] mds -> caps wanted
+  map<client_t, Capability*> client_caps;         // client -> caps
+  map<int32_t, int32_t>      mds_caps_wanted;     // [auth] mds -> caps wanted
   int                   replica_caps_wanted; // [replica] what i've requested from auth
 
-  std::map<int, std::set<client_t> > client_snap_caps;     // [auth] [snap] dirty metadata we still need from the head
+  map<int, set<client_t> > client_snap_caps;     // [auth] [snap] dirty metadata we still need from the head
 public:
-  std::map<snapid_t, std::set<client_t> > client_need_snapflush;
+  map<snapid_t, set<client_t> > client_need_snapflush;
 
   void add_need_snapflush(CInode *snapin, snapid_t snapid, client_t client);
   void remove_need_snapflush(CInode *snapin, snapid_t snapid, client_t client);
@@ -414,7 +396,7 @@ protected:
     flock_locks.clear();
   }
 
-  // LogSegment lists i (may) belong to
+  // LogSegment dlists i (may) belong to
 public:
   elist<CInode*>::item item_dirty;
   elist<CInode*>::item item_caps;
@@ -434,6 +416,10 @@ public:
 #endif
   int auth_pin_freeze_allowance;
 
+private:
+  int nested_anchors;   // _NOT_ including me!
+
+ public:
   inode_load_vec_t pop;
 
   // friends
@@ -444,6 +430,7 @@ public:
   friend class CDir;
   friend class CInodeExport;
 
+ public:
   // ---------------------------
   CInode(MDCache *c, bool auth=true, snapid_t f=2, snapid_t l=CEPH_NOSNAP) : 
     mdcache(c),
@@ -461,6 +448,7 @@ public:
     item_dirty_dirfrag_dirfragtree(this), 
     auth_pins(0), nested_auth_pins(0),
     auth_pin_freeze_allowance(0),
+    nested_anchors(0),
     pop(ceph_clock_now(g_ceph_context)),
     versionlock(this, &versionlock_type),
     authlock(this, &authlock_type),
@@ -478,7 +466,7 @@ public:
     g_num_inoa++;
     state = 0;  
     if (auth) state_set(STATE_AUTH);
-  }
+  };
   ~CInode() {
     g_num_ino--;
     g_num_inos++;
@@ -488,6 +476,14 @@ public:
   
 
   // -- accessors --
+  bool is_file()    { return inode.is_file(); }
+  bool is_symlink() { return inode.is_symlink(); }
+  bool is_dir()     { return inode.is_dir(); }
+
+  bool is_anchored() { return inode.anchored; }
+  bool is_anchoring() { return state_test(STATE_ANCHORING); }
+  bool is_unanchoring() { return state_test(STATE_UNANCHORING); }
+  
   bool is_root() { return inode.ino == MDS_INO_ROOT; }
   bool is_stray() { return MDS_INO_IS_STRAY(inode.ino); }
   bool is_mdsdir() { return MDS_INO_IS_MDSDIR(inode.ino); }
@@ -504,7 +500,7 @@ public:
   void set_ambiguous_auth() {
     state_set(STATE_AMBIGUOUSAUTH);
   }
-  void clear_ambiguous_auth(std::list<MDSInternalContextBase*>& finished);
+  void clear_ambiguous_auth(list<Context*>& finished);
   void clear_ambiguous_auth();
 
   inodeno_t ino() const { return inode.ino; }
@@ -526,10 +522,15 @@ public:
 
   // -- misc -- 
   bool is_projected_ancestor_of(CInode *other);
-  void make_path_string(std::string& s, bool force=false, CDentry *use_parent=NULL);
-  void make_path_string_projected(std::string& s);  
+  void make_path_string(string& s, bool force=false, CDentry *use_parent=NULL);
+  void make_path_string_projected(string& s);  
   void make_path(filepath& s);
-  void name_stray_dentry(std::string& dname);
+  void make_anchor_trace(vector<class Anchor>& trace);
+  void name_stray_dentry(string& dname);
+
+
+  static object_t get_object_name(inodeno_t ino, frag_t fg, const char *suffix);
+
   
   // -- dirtyness --
   version_t get_version() { return inode.version; }
@@ -539,21 +540,19 @@ public:
   void mark_dirty(version_t projected_dirv, LogSegment *ls);
   void mark_clean();
 
-  void store(MDSInternalContextBase *fin);
+  void store(Context *fin);
   void _stored(version_t cv, Context *fin);
-  void fetch(MDSInternalContextBase *fin);
+  void fetch(Context *fin);
   void _fetched(bufferlist& bl, bufferlist& bl2, Context *fin);  
 
   void build_backtrace(int64_t pool, inode_backtrace_t& bt);
-  void store_backtrace(MDSInternalContextBase *fin, int op_prio=-1);
+  void store_backtrace(Context *fin);
   void _stored_backtrace(version_t v, Context *fin);
   void _mark_dirty_parent(LogSegment *ls, bool dirty_pool=false);
   void clear_dirty_parent();
   bool is_dirty_parent() { return state_test(STATE_DIRTYPARENT); }
   bool is_dirty_pool() { return state_test(STATE_DIRTYPOOL); }
 
-  void encode_snap_blob(bufferlist &bl);
-  void decode_snap_blob(bufferlist &bl);
   void encode_store(bufferlist& bl);
   void decode_store(bufferlist::iterator& bl);
 
@@ -581,15 +580,15 @@ public:
 
   // -- waiting --
 protected:
-  std::map<frag_t, std::list<MDSInternalContextBase*> > waiting_on_dir;
+  map<frag_t, list<Context*> > waiting_on_dir;
 public:
-  void add_dir_waiter(frag_t fg, MDSInternalContextBase *c);
-  void take_dir_waiting(frag_t fg, std::list<MDSInternalContextBase*>& ls);
+  void add_dir_waiter(frag_t fg, Context *c);
+  void take_dir_waiting(frag_t fg, list<Context*>& ls);
   bool is_waiting_for_dir(frag_t fg) {
     return waiting_on_dir.count(fg);
   }
-  void add_waiter(uint64_t tag, MDSInternalContextBase *c);
-  void take_waiting(uint64_t tag, std::list<MDSInternalContextBase*>& ls);
+  void add_waiter(uint64_t tag, Context *c);
+  void take_waiting(uint64_t tag, list<Context*>& ls);
 
   // -- encode/decode helpers --
   void _encode_base(bufferlist& bl);
@@ -599,8 +598,8 @@ public:
   void _encode_locks_state_for_replica(bufferlist& bl);
   void _encode_locks_state_for_rejoin(bufferlist& bl, int rep);
   void _decode_locks_state(bufferlist::iterator& p, bool is_new);
-  void _decode_locks_rejoin(bufferlist::iterator& p, std::list<MDSInternalContextBase*>& waiters,
-			    std::list<SimpleLock*>& eval_locks);
+  void _decode_locks_rejoin(bufferlist::iterator& p, list<Context*>& waiters,
+			    list<SimpleLock*>& eval_locks);
 
   // -- import/export --
   void encode_export(bufferlist& bl);
@@ -680,6 +679,8 @@ public:
   void open_snaprealm(bool no_split=false);
   void close_snaprealm(bool no_join=false);
   SnapRealm *find_snaprealm();
+  void encode_snap_blob(bufferlist &bl);
+  void decode_snap_blob(bufferlist &bl);
   void encode_snap(bufferlist& bl);
   void decode_snap(bufferlist::iterator& p);
 
@@ -710,7 +711,7 @@ public:
 
   int count_nonstale_caps() {
     int n = 0;
-    for (std::map<client_t,Capability*>::iterator it = client_caps.begin();
+    for (map<client_t,Capability*>::iterator it = client_caps.begin();
          it != client_caps.end();
          ++it) 
       if (!it->second->is_stale())
@@ -719,7 +720,7 @@ public:
   }
   bool multiple_nonstale_caps() {
     int n = 0;
-    for (std::map<client_t,Capability*>::iterator it = client_caps.begin();
+    for (map<client_t,Capability*>::iterator it = client_caps.begin();
          it != client_caps.end();
          ++it) 
       if (!it->second->is_stale()) {
@@ -733,9 +734,9 @@ public:
   bool is_any_caps() { return !client_caps.empty(); }
   bool is_any_nonstale_caps() { return count_nonstale_caps(); }
 
-  std::map<int32_t,int32_t>& get_mds_caps_wanted() { return mds_caps_wanted; }
+  map<int32_t,int32_t>& get_mds_caps_wanted() { return mds_caps_wanted; }
 
-  std::map<client_t,Capability*>& get_client_caps() { return client_caps; }
+  map<client_t,Capability*>& get_client_caps() { return client_caps; }
   Capability *get_client_cap(client_t client) {
     if (client_caps.count(client))
       return client_caps[client];
@@ -753,7 +754,7 @@ public:
 
   Capability *reconnect_cap(client_t client, ceph_mds_cap_reconnect& icr, Session *session);
   void clear_client_caps_after_export();
-  void export_client_caps(std::map<client_t,Capability::Export>& cl);
+  void export_client_caps(map<client_t,Capability::Export>& cl);
 
   // caps allowed
   int get_caps_liked();
@@ -785,6 +786,9 @@ public:
   void auth_pin(void *by);
   void auth_unpin(void *by);
 
+  void adjust_nested_anchors(int by);
+  int get_nested_anchors() { return nested_anchors; }
+
   // -- freeze --
   bool is_freezing_inode() { return state_test(STATE_FREEZING); }
   bool is_frozen_inode() { return state_test(STATE_FROZEN); }
@@ -796,7 +800,7 @@ public:
   /* Freeze the inode. auth_pin_allowance lets the caller account for any
    * auth_pins it is itself holding/responsible for. */
   bool freeze_inode(int auth_pin_allowance=0);
-  void unfreeze_inode(std::list<MDSInternalContextBase*>& finished);
+  void unfreeze_inode(list<Context*>& finished);
   void unfreeze_inode();
 
   void freeze_auth_pin();

@@ -149,8 +149,10 @@ public:
 private:
   friend struct ECRecoveryHandle;
   uint64_t get_recovery_chunk_size() const {
-    return ROUND_UP_TO(cct->_conf->osd_recovery_max_chunk,
-			sinfo.get_stripe_width());
+    uint64_t max = cct->_conf->osd_recovery_max_chunk;
+    max -= max % sinfo.get_stripe_width();
+    max += sinfo.get_stripe_width();
+    return max;
   }
 
   /**
@@ -389,7 +391,7 @@ public:
     ErasureCodeInterfaceRef ec_impl;
   public:
     ECRecPred(ErasureCodeInterfaceRef ec_impl) : ec_impl(ec_impl) {
-      for (unsigned i = 0; i < ec_impl->get_chunk_count(); ++i) {
+      for (unsigned i = 0; i < ec_impl->get_data_chunk_count(); ++i) {
 	want.insert(i);
       }
     }

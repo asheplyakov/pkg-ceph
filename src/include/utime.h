@@ -33,6 +33,8 @@ public:
     __u32 tv_sec, tv_nsec;
   } tv;
 
+  friend class Clock;
+ 
  public:
   bool is_zero() const {
     return (tv.tv_sec == 0) && (tv.tv_nsec == 0);

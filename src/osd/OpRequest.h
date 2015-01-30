@@ -79,7 +79,6 @@ struct OpRequest : public TrackedOp {
   }
 
 private:
-  Message *request; /// the logical request we are tracking
   osd_reqid_t reqid;
   uint8_t hit_flag_points;
   uint8_t latest_flag_point;
@@ -93,17 +92,7 @@ private:
 
   OpRequest(Message *req, OpTracker *tracker);
 
-protected:
-  void _dump_op_descriptor_unlocked(ostream& stream) const;
-  void _unregistered();
-
 public:
-  ~OpRequest() {
-    request->put();
-  }
-  bool send_map_update;
-  epoch_t sent_epoch;
-  Message *get_req() const { return request; }
   bool been_queued_for_pg() { return hit_flag_points & flag_queued_for_pg; }
   bool been_reached_pg() { return hit_flag_points & flag_reached_pg; }
   bool been_delayed() { return hit_flag_points & flag_delayed; }
@@ -131,22 +120,40 @@ public:
   }
 
   void mark_queued_for_pg() {
-    mark_flag_point(flag_queued_for_pg, "queued_for_pg");
+    mark_event("queued_for_pg");
+    current = "queued for pg";
+    hit_flag_points |= flag_queued_for_pg;
+    latest_flag_point = flag_queued_for_pg;
   }
   void mark_reached_pg() {
-    mark_flag_point(flag_reached_pg, "reached_pg");
+    mark_event("reached_pg");
+    current = "reached pg";
+    hit_flag_points |= flag_reached_pg;
+    latest_flag_point = flag_reached_pg;
   }
   void mark_delayed(string s) {
-    mark_flag_point(flag_delayed, s);
+    mark_event(s);
+    current = s;
+    hit_flag_points |= flag_delayed;
+    latest_flag_point = flag_delayed;
   }
   void mark_started() {
-    mark_flag_point(flag_started, "started");
+    mark_event("started");
+    current = "started";
+    hit_flag_points |= flag_started;
+    latest_flag_point = flag_started;
   }
   void mark_sub_op_sent(string s) {
-    mark_flag_point(flag_sub_op_sent, s);
+    mark_event(s);
+    current = s;
+    hit_flag_points |= flag_sub_op_sent;
+    latest_flag_point = flag_sub_op_sent;
   }
   void mark_commit_sent() {
-    mark_flag_point(flag_commit_sent, "commit_sent");
+    mark_event("commit_sent");
+    current = "commit sent";
+    hit_flag_points |= flag_commit_sent;
+    latest_flag_point = flag_commit_sent;
   }
 
   utime_t get_dequeued_time() const {
@@ -160,11 +167,9 @@ public:
     return reqid;
   }
 
-  typedef ceph::shared_ptr<OpRequest> Ref;
+  void init_from_message();
 
-private:
-  void set_rmw_flags(int flags);
-  void mark_flag_point(uint8_t flag, string s);
+  typedef ceph::shared_ptr<OpRequest> Ref;
 };
 
 typedef OpRequest::Ref OpRequestRef;

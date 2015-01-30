@@ -58,13 +58,15 @@ ostream& operator<<(ostream& out, const SnapRealm& realm)
 }
 
 
+
+
 void SnapRealm::add_open_past_parent(SnapRealm *parent)
 {
   open_past_parents[parent->inode->ino()] = parent;
   parent->inode->get(CInode::PIN_PASTSNAPPARENT);
 }
 
-bool SnapRealm::_open_parents(MDSInternalContextBase *finish, snapid_t first, snapid_t last)
+bool SnapRealm::_open_parents(Context *finish, snapid_t first, snapid_t last)
 {
   dout(10) << "open_parents [" << first << "," << last << "]" << dendl;
   if (open) 
@@ -89,7 +91,7 @@ bool SnapRealm::_open_parents(MDSInternalContextBase *finish, snapid_t first, sn
 	       << p->second.ino << dendl;
       CInode *parent = mdcache->get_inode(p->second.ino);
       if (!parent) {
-	mdcache->open_ino(p->second.ino, mdcache->mds->mdsmap->get_metadata_pool(), finish);
+	mdcache->open_remote_ino(p->second.ino, finish);
 	return false;
       }
       assert(parent->snaprealm);  // hmm!

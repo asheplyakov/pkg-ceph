@@ -11,14 +11,16 @@
 #include "include/int_types.h"
 
 #include "mon/MonClient.h"
+#include "mon/MonMap.h"
 #include "common/config.h"
 
+#include "auth/KeyRing.h"
 #include "common/errno.h"
 #include "common/ceph_argparse.h"
 #include "common/strtol.h"
 #include "global/global_init.h"
 #include "common/safe_io.h"
-#include "include/krbd.h"
+#include "common/secret.h"
 #include "include/stringify.h"
 #include "include/rados/librados.hpp"
 #include "include/rbd/librbd.hpp"
@@ -29,8 +31,8 @@
 #include "include/compat.h"
 #include "common/blkdev.h"
 
-#include <boost/scope_exit.hpp>
 #include <boost/scoped_ptr.hpp>
+#include <dirent.h>
 #include <errno.h>
 #include <iostream>
 #include <memory>
@@ -46,7 +48,6 @@
 #include "include/util.h"
 
 #include "common/Formatter.h"
-#include "common/Throttle.h"
 
 #if defined(__linux__)
 #include <linux/fs.h>
@@ -56,6 +57,8 @@
 #include <sys/param.h>
 #endif
 
+#include <blkid/blkid.h>
+
 #define MAX_SECRET_LEN 1000
 #define MAX_POOL_NAME_SIZE 128
 
@@ -64,6 +67,7 @@
 static string dir_oid = RBD_DIRECTORY;
 static string dir_info_oid = RBD_INFO;
 
+bool udevadm_settle = true;
 bool progress = true;
 bool resize_allow_shrink = false;
 
@@ -149,6 +153,7 @@ void usage()
 "  --shared <tag>                     take a shared (rather than exclusive) lock\n"
 "  --format <output-format>           output format (default: plain, json, xml)\n"
 "  --pretty-format                    make json or xml output more readable\n"
+"  --no-settle                        do not wait for udevadm to settle on map/unmap\n"
 "  --no-progress                      do not show progress for long-running commands\n"
 "  -o, --options <map-options>        options to use when mapping an image\n"
 "  --read-only                        set device readonly when mapping image\n"
@@ -481,7 +486,7 @@ static int do_show_info(const char *imgname, librbd::Image& image,
   string parent_pool, parent_name, parent_snapname;
   uint8_t old_format;
   uint64_t overlap, features;
-  bool snap_protected = false;
+  bool snap_protected;
   int r;
 
   r = image.stat(info, sizeof(info));
@@ -926,7 +931,7 @@ static int do_bench_write(librbd::Image& image, uint64_t io_size,
 
   printf("  SEC       OPS   OPS/SEC   BYTES/SEC\n");
   uint64_t off;
-  for (off = 0; off < io_bytes; ) {
+  for (off = 0; off < io_bytes; off += io_size) {
     b.wait_for(io_threads - 1);
     i = 0;
     while (i < io_threads && off < io_bytes &&
@@ -984,125 +989,92 @@ struct ExportContext {
   {}
 };
 
-class AioExportContext : public Context
+static int export_read_cb(uint64_t ofs, size_t len, const char *buf, void *arg)
 {
-public:
-  AioExportContext(SimpleThrottle &simple_throttle, librbd::Image &image,
-                   uint64_t offset, uint64_t length, int fd)
-    : m_aio_completion(
-        new librbd::RBD::AioCompletion(this, &AioExportContext::aio_callback)),
-      m_throttle(simple_throttle),
-      m_offset(offset),
-      m_fd(fd)
-  {
-    m_throttle.start_op();
-    int r = image.aio_read(offset, length, m_bufferlist, m_aio_completion);
-    if (r < 0) {
-      cerr << "rbd: error requesting read from source image" << std::endl;
-      m_throttle.end_op(r);
-    }
-  }
+  ssize_t ret;
+  ExportContext *ec = static_cast<ExportContext *>(arg);
+  int fd = ec->fd;
+  static char *localbuf = NULL;
+  static size_t maplen = 0;
 
-  virtual ~AioExportContext()
-  {
-    m_aio_completion->release();
-  }
+  if (fd == 1) {
+    if (!buf) {
+      // can't seek stdout; need actual data to write
+      if (maplen < len) {
+	// never mapped, or need to map larger
+	int r;
+	if (localbuf != NULL){
+	  if ((r = munmap(localbuf, len)) < 0) {
+	    cerr << "rbd: error " << r << "munmap'ing buffer" << std::endl;
+	    return errno;
+	  }
+	}
 
-  virtual void finish(int r)
-  {
-    BOOST_SCOPE_EXIT((&m_throttle) (&r))
-    {
-      m_throttle.end_op(r);
-    } BOOST_SCOPE_EXIT_END
-
-    if (r < 0) {
-      cerr << "rbd: error reading from source image at offset "
-           << m_offset << ": " << cpp_strerror(r) << std::endl;
-      return;
-    }
-
-    assert(m_bufferlist.length() == static_cast<size_t>(r));
-    if (m_fd != STDOUT_FILENO) {
-      if (m_bufferlist.is_zero()) {
-        return;
+	maplen = len;
+	localbuf = (char *)mmap(NULL, maplen, PROT_READ,
+			        MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+	if (localbuf == MAP_FAILED) {
+	  cerr << "rbd: MAP_FAILED mmap'ing buffer for zero writes"
+	       << std::endl;
+	  return -ENOMEM;
+	}
       }
-
-      r = lseek64(m_fd, m_offset, SEEK_SET);
-      if (static_cast<uint64_t>(r) != m_offset) {
-        cerr << "rbd: error seeking destination image to offset "
-             << m_offset << std::endl;
-        r = -errno;
-        return;
-      }
+      ret = write(fd, localbuf, len);
+    } else {
+      ret = write(fd, buf, len);
+    }
+  } else {		// not stdout
+    if (!buf || buf_is_zero(buf, len)) {
+      /* a hole */
+      return 0;
     }
 
-    r = m_bufferlist.write_fd(m_fd);
-    if (r < 0) {
-      cerr << "rbd: error writing to destination image at offset "
-           << m_offset << std::endl;
-    }
+    ret = lseek64(fd, ofs, SEEK_SET);
+    if (ret < 0)
+      return -errno;
+    ret = write(fd, buf, len);
+    ec->pc.update_progress(ofs, ec->totalsize);
   }
 
-  static void aio_callback(librbd::completion_t completion, void *arg)
-  {
-    librbd::RBD::AioCompletion *aio_completion =
-      reinterpret_cast<librbd::RBD::AioCompletion*>(completion);
-    AioExportContext *export_context = reinterpret_cast<AioExportContext*>(arg);
-    export_context->complete(aio_completion->get_return_value());
-  }
+  if (ret < 0)
+    return -errno;
 
-private:
-  librbd::RBD::AioCompletion *m_aio_completion;
-  SimpleThrottle &m_throttle;
-  bufferlist m_bufferlist;
-  uint64_t m_offset;
-  int m_fd;
-};
+  return 0;
+}
 
 static int do_export(librbd::Image& image, const char *path)
 {
+  int64_t r;
   librbd::image_info_t info;
-  int64_t r = image.stat(info, sizeof(info));
+  int fd;
+
+  r = image.stat(info, sizeof(info));
   if (r < 0)
     return r;
 
-  int fd;
-  int max_concurrent_ops;
-  bool to_stdout = (strcmp(path, "-") == 0);
-  if (to_stdout) {
-    fd = STDOUT_FILENO;
-    max_concurrent_ops = 1;
-  } else {
-    max_concurrent_ops = max(g_conf->rbd_concurrent_management_ops, 1);
+  if (strcmp(path, "-") == 0)
+    fd = 1;
+  else
     fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 0644);
-    if (fd < 0) {
-      return -errno;
-    }
-  }
+  if (fd < 0)
+    return -errno;
 
-  MyProgressContext pc("Exporting image");
+  ExportContext ec(&image, fd, info.size);
+  r = image.read_iterate2(0, info.size, export_read_cb, (void *)&ec);
+  if (r < 0)
+    goto out;
 
-  SimpleThrottle throttle(max_concurrent_ops, false);
-  uint64_t period = image.get_stripe_count() * (1ull << info.order);
-  for (uint64_t offset = 0; offset < info.size; offset += period) {
-    uint64_t length = min(period, info.size - offset);
-    new AioExportContext(throttle, image, offset, length, fd);
-    pc.update_progress(offset, info.size);
-  }
+  if (fd != 1)
+    r = ftruncate(fd, info.size);
+  if (r < 0)
+    goto out;
 
-  r = throttle.wait_for_ret();
-  if (!to_stdout) {
-    if (r >= 0) {
-      r = ftruncate(fd, info.size);
-    }
-    close(fd);
-  }
-
-  if (r < 0) {
-    pc.fail();
-  } else {
-    pc.finish();
-  }
+ out:
+  close(fd);
+  if (r < 0)
+    ec.pc.fail();
+  else
+    ec.pc.finish();
   return r;
 }
 
@@ -1298,8 +1270,8 @@ static void update_snap_name(char *imgname, char **snap)
     *snap = s;
 }
 
-static void set_pool_image_name(const char *orig_img, char **new_pool, 
-				char **new_img, char **snap)
+static void set_pool_image_name(const char *orig_pool, const char *orig_img,
+                                char **new_pool, char **new_img, char **snap)
 {
   const char *sep;
 
@@ -1322,53 +1294,6 @@ static void set_pool_image_name(const char *orig_img, char **new_pool,
 done_img:
   update_snap_name(*new_img, snap);
 }
-
-class AioImportContext : public Context
-{
-public:
-  AioImportContext(SimpleThrottle &simple_throttle, librbd::Image &image,
-                   bufferlist &bl, uint64_t offset)
-    : m_throttle(simple_throttle),
-      m_aio_completion(
-        new librbd::RBD::AioCompletion(this, &AioImportContext::aio_callback)),
-      m_offset(offset)
-  {
-    m_throttle.start_op();
-
-    int r = image.aio_write(m_offset, bl.length(), bl, m_aio_completion);
-    if (r < 0) {
-      cerr << "rbd: error requesting write to destination image" << std::endl;
-      m_throttle.end_op(r);
-    }
-  }
-
-  virtual ~AioImportContext()
-  {
-    m_aio_completion->release();
-  }
-
-  virtual void finish(int r)
-  {
-    if (r < 0) {
-      cerr << "rbd: error writing to destination image at offset "
-           << m_offset << ": " << cpp_strerror(r) << std::endl;
-    }
-    m_throttle.end_op(r);
-  }
-
-  static void aio_callback(librbd::completion_t completion, void *arg)
-  {
-    librbd::RBD::AioCompletion *aio_completion =
-      reinterpret_cast<librbd::RBD::AioCompletion*>(completion);
-    AioImportContext *import_context = reinterpret_cast<AioImportContext*>(arg);
-    import_context->complete(aio_completion->get_return_value());
-  }
-
-private:
-  SimpleThrottle &m_throttle;
-  librbd::RBD::AioCompletion *m_aio_completion;
-  uint64_t m_offset;
-};
 
 static int do_import(librbd::RBD &rbd, librados::IoCtx& io_ctx,
 		     const char *imgname, int *order, const char *path,
@@ -1393,15 +1318,11 @@ static int do_import(librbd::RBD &rbd, librados::IoCtx& io_ctx,
   size_t blklen = 0;		// amount accumulated from reads to fill blk
   librbd::Image image;
 
-  boost::scoped_ptr<SimpleThrottle> throttle;
   bool from_stdin = !strcmp(path, "-");
   if (from_stdin) {
-    throttle.reset(new SimpleThrottle(1, false));
     fd = 0;
     size = 1ULL << *order;
   } else {
-    throttle.reset(new SimpleThrottle(
-      max(g_conf->rbd_concurrent_management_ops, 1), false));
     if ((fd = open(path, O_RDONLY)) < 0) {
       r = -errno;
       cerr << "rbd: error opening " << path << std::endl;
@@ -1469,9 +1390,13 @@ static int do_import(librbd::RBD &rbd, librados::IoCtx& io_ctx,
     // write as much as we got; perhaps less than imgblklen
     // but skip writing zeros to create sparse images
     if (!bl.is_zero()) {
-      new AioImportContext(*throttle, image, bl, image_pos);
+      r = image.write(image_pos, blklen, bl);
+      if (r < 0) {
+	cerr << "rbd: error writing to image position " << image_pos
+	     << std::endl;
+	goto done;
+      }
     }
-
     // done with whole block, whether written or not
     image_pos += blklen;
     // if read had returned 0, we're at EOF and should quit
@@ -1480,11 +1405,6 @@ static int do_import(librbd::RBD &rbd, librados::IoCtx& io_ctx,
     blklen = 0;
     reqlen = imgblklen;
   }
-  r = throttle->wait_for_ret();
-  if (r < 0) {
-    goto done;
-  }
-
   if (from_stdin) {
     r = image.resize(image_pos);
     if (r < 0) {
@@ -1736,17 +1656,58 @@ static int do_watch(librados::IoCtx& pp, const char *imgname)
   return 0;
 }
 
-static int do_kernel_map(const char *poolname, const char *imgname,
+static int do_kernel_add(const char *poolname, const char *imgname,
 			 const char *snapname)
 {
-  struct krbd_ctx *krbd;
-  ostringstream oss;
-  char *devnode;
-  int r;
-
-  r = krbd_create_from_context(g_ceph_context, &krbd);
+  MonMap monmap;
+  int r = monmap.build_initial(g_ceph_context, cerr);
   if (r < 0)
     return r;
+
+  map<string, entity_addr_t>::const_iterator it = monmap.mon_addr.begin();
+  ostringstream oss;
+  for (size_t i = 0; i < monmap.mon_addr.size(); ++i, ++it) {
+    oss << it->second.addr;
+    if (i + 1 < monmap.mon_addr.size())
+      oss << ",";
+  }
+
+  const char *user = g_conf->name.get_id().c_str();
+  oss << " name=" << user;
+
+  char key_name[strlen(user) + strlen("client.") + 1];
+  snprintf(key_name, sizeof(key_name), "client.%s", user);
+
+  KeyRing keyring;
+  r = keyring.from_ceph_context(g_ceph_context);
+  if (r == -ENOENT && !(g_conf->keyfile.length() ||
+			g_conf->key.length()))
+    r = 0;
+  if (r < 0) {
+    cerr << "rbd: failed to get secret: " << cpp_strerror(r) << std::endl;
+    return r;
+  }
+  CryptoKey secret;
+  if (keyring.get_secret(g_conf->name, secret)) {
+    string secret_str;
+    secret.encode_base64(secret_str);
+
+    r = set_kernel_secret(secret_str.c_str(), key_name);
+    if (r >= 0) {
+      if (r == 0)
+	cerr << "rbd: warning: secret has length 0" << std::endl;
+      oss << ",key=" << key_name;
+    } else if (r == -ENODEV || r == -ENOSYS) {
+      /* running against older kernel; fall back to secret= in options */
+      oss << ",secret=" << secret_str;
+    } else {
+      cerr << "rbd: failed to add ceph secret key '" << key_name
+	   << "' to kernel: " << cpp_strerror(r) << std::endl;
+      return r;
+    }
+  } else if (is_kernel_secret(key_name)) {
+    oss << ",key=" << key_name;
+  }
 
   for (map<string, string>::const_iterator it = map_options.begin();
        it != map_options.end();
@@ -1757,50 +1718,371 @@ static int do_kernel_map(const char *poolname, const char *imgname,
     if (it->first == "rw" && it->second == "rw")
       continue;
 
-    if (it != map_options.begin())
-      oss << ",";
-    oss << it->second;
+    oss << "," << it->second;
   }
 
-  r = krbd_map(krbd, poolname, imgname, snapname, oss.str().c_str(), &devnode);
-  if (r < 0)
-    goto out;
+  oss << " " << poolname << " " << imgname;
 
-  cout << devnode << std::endl;
+  if (snapname) {
+    oss << " " << snapname;
+  }
 
-  free(devnode);
-out:
-  krbd_destroy(krbd);
+  // modprobe the rbd module if /sys/bus/rbd doesn't exist
+  struct stat sb;
+  if ((stat("/sys/bus/rbd", &sb) < 0) || (!S_ISDIR(sb.st_mode))) {
+    // turn on single-major device number allocation scheme if the
+    // kernel supports it
+    const char *cmd = "/sbin/modprobe rbd";
+    r = system("/sbin/modinfo -F parm rbd | /bin/grep -q ^single_major:");
+    if (r == 0) {
+      cmd = "/sbin/modprobe rbd single_major=Y";
+    } else if (r < 0) {
+      cerr << "rbd: error executing modinfo as shell command!" << std::endl;
+    }
+
+    r = system(cmd);
+    if (r) {
+      if (r < 0)
+        cerr << "rbd: error executing modprobe as shell command!" << std::endl;
+      else
+        cerr << "rbd: modprobe rbd failed! (" << r << ")" <<std::endl;
+      return r;
+    }
+  }
+
+  // 'add' interface is deprecated, use 'add_single_major' if it's
+  // available
+  //
+  // ('add' and 'add_single_major' interfaces are identical, except
+  // that if rbd kernel module is new enough and is configured to use
+  // single-major scheme, 'add' is disabled in order to prevent old
+  // userspace from doing weird things at unmap time)
+  int fd = open("/sys/bus/rbd/add_single_major", O_WRONLY);
+  if (fd < 0) {
+    if (errno == ENOENT) {
+      fd = open("/sys/bus/rbd/add", O_WRONLY);
+      if (fd < 0) {
+        r = -errno;
+        if (r == -ENOENT) {
+          cerr << "rbd: /sys/bus/rbd/add does not exist!" << std::endl
+               << "Did you run 'modprobe rbd' or is your rbd module too old?"
+               << std::endl;
+        }
+        return r;
+      }
+    } else {
+      return -errno;
+    }
+  }
+
+  string add = oss.str();
+  r = safe_write(fd, add.c_str(), add.size());
+  close(fd);
+
+  // let udevadm do its job before we return
+  if (udevadm_settle) {
+    int r = system("/sbin/udevadm settle");
+    if (r) {
+      if (r < 0)
+        cerr << "rbd: error executing udevadm as shell command!" << std::endl;
+      else
+        cerr << "rbd: '/sbin/udevadm settle' failed! (" << r << ")" <<std::endl;
+      return r;
+    }
+  }
+
   return r;
+}
+
+static int read_file(const char *filename, char *buf, size_t bufsize)
+{
+    int fd = open(filename, O_RDONLY);
+    if (fd < 0)
+      return -errno;
+
+    int r = safe_read(fd, buf, bufsize);
+    if (r < 0) {
+      cerr << "rbd: could not read " << filename << ": "
+	   << cpp_strerror(-r) << std::endl;
+      close(fd);
+      return r;
+    }
+
+    char *end = buf;
+    while (end < buf + bufsize && *end && *end != '\n') {
+      end++;
+    }
+    *end = '\0';
+
+    close(fd);
+    return r;
+}
+
+void do_closedir(DIR *dp)
+{
+  if (dp)
+    closedir(dp);
 }
 
 static int do_kernel_showmapped(Formatter *f)
 {
-  struct krbd_ctx *krbd;
   int r;
+  bool have_output = false;
+  TextTable tbl;
 
-  r = krbd_create_from_context(g_ceph_context, &krbd);
-  if (r < 0)
+  const char *devices_path = "/sys/bus/rbd/devices";
+  ceph::shared_ptr<DIR> device_dir(opendir(devices_path), do_closedir);
+  if (!device_dir.get()) {
+    r = -errno;
+    cerr << "rbd: could not open " << devices_path << ": "
+	 << cpp_strerror(-r) << std::endl;
     return r;
+  }
 
-  r = krbd_showmapped(krbd, f);
+  struct dirent *dent;
+  dent = readdir(device_dir.get());
+  if (!dent) {
+    r = -errno;
+    cerr << "rbd: error reading " << devices_path << ": "
+	 << cpp_strerror(-r) << std::endl;
+    return r;
+  }
 
-  krbd_destroy(krbd);
-  return r;
+  if (f) {
+    f->open_object_section("devices");
+  } else {
+    tbl.define_column("id", TextTable::LEFT, TextTable::LEFT);
+    tbl.define_column("pool", TextTable::LEFT, TextTable::LEFT);
+    tbl.define_column("image", TextTable::LEFT, TextTable::LEFT);
+    tbl.define_column("snap", TextTable::LEFT, TextTable::LEFT);
+    tbl.define_column("device", TextTable::LEFT, TextTable::LEFT);
+  }
+
+  do {
+    if (strcmp(dent->d_name, ".") == 0 || strcmp(dent->d_name, "..") == 0)
+      continue;
+
+    char fn[PATH_MAX];
+
+    char dev[PATH_MAX];
+    snprintf(dev, sizeof(dev), "/dev/rbd%s", dent->d_name);
+
+    char name[RBD_MAX_IMAGE_NAME_SIZE];
+    snprintf(fn, sizeof(fn), "%s/%s/name", devices_path, dent->d_name);
+    r = read_file(fn, name, sizeof(name));
+    if (r < 0) {
+      cerr << "rbd: could not read name from " << fn << ": "
+	   << cpp_strerror(-r) << std::endl;
+      continue;
+    }
+
+    char pool[4096];
+    snprintf(fn, sizeof(fn), "%s/%s/pool", devices_path, dent->d_name);
+    r = read_file(fn, pool, sizeof(pool));
+    if (r < 0) {
+      cerr << "rbd: could not read name from " << fn << ": "
+	   << cpp_strerror(-r) << std::endl;
+      continue;
+    }
+
+    char snap[4096];
+    snprintf(fn, sizeof(fn), "%s/%s/current_snap", devices_path, dent->d_name);
+    r = read_file(fn, snap, sizeof(snap));
+    if (r < 0) {
+      cerr << "rbd: could not read name from " << fn << ": "
+	   << cpp_strerror(-r) << std::endl;
+      continue;
+    }
+
+    if (f) {
+      f->open_object_section(dent->d_name);
+      f->dump_string("pool", pool);
+      f->dump_string("name", name);
+      f->dump_string("snap", snap);
+      f->dump_string("device", dev);
+      f->close_section();
+    } else {
+      tbl << dent->d_name << pool << name << snap << dev << TextTable::endrow;
+    }
+    have_output = true;
+
+  } while ((dent = readdir(device_dir.get())));
+
+  if (f) {
+    f->close_section();
+    f->flush(cout);
+  } else {
+    if (have_output)
+      cout << tbl;
+  }
+
+  return 0;
 }
 
-static int do_kernel_unmap(const char *dev)
+static int get_rbd_seq(dev_t devno, string &seq)
 {
-  struct krbd_ctx *krbd;
-  int r;
+  // convert devno, which might be a partition major:minor pair, into
+  // a whole disk major:minor pair
+  dev_t wholediskno;
+  int r = blkid_devno_to_wholedisk(devno, NULL, 0, &wholediskno);
+  if (r) {
+    cerr << "rbd: could not compute wholediskno: " << r << std::endl;
+    // ignore the error: devno == wholediskno most of the time, and if
+    // it turns out it's not we will fail with -ENOENT later anyway
+    wholediskno = devno;
+  }
 
-  r = krbd_create_from_context(g_ceph_context, &krbd);
+  const char *devices_path = "/sys/bus/rbd/devices";
+  DIR *device_dir = opendir(devices_path);
+  if (!device_dir) {
+    r = -errno;
+    cerr << "rbd: could not open " << devices_path << ": " << cpp_strerror(-r)
+	 << std::endl;
+    return r;
+  }
+
+  struct dirent *dent;
+  dent = readdir(device_dir);
+  if (!dent) {
+    r = -errno;
+    cerr << "Error reading " << devices_path << ": " << cpp_strerror(-r)
+	 << std::endl;
+    closedir(device_dir);
+    return r;
+  }
+
+  int match_minor = -1;
+  do {
+    char fn[strlen(devices_path) + strlen(dent->d_name) + strlen("//major") + 1];
+    char buf[32];
+
+    if (strcmp(dent->d_name, ".") == 0 || strcmp(dent->d_name, "..") == 0)
+      continue;
+
+    snprintf(fn, sizeof(fn), "%s/%s/major", devices_path, dent->d_name);
+    r = read_file(fn, buf, sizeof(buf));
+    if (r < 0) {
+      cerr << "rbd: could not read major number from " << fn << ": "
+	   << cpp_strerror(-r) << std::endl;
+      continue;
+    }
+    string err;
+    int cur_major = strict_strtol(buf, 10, &err);
+    if (!err.empty()) {
+      cerr << err << std::endl;
+      cerr << "rbd: could not parse major number read from " << fn << ": "
+           << cpp_strerror(-r) << std::endl;
+      continue;
+    }
+    if (cur_major != (int)major(wholediskno))
+      continue;
+
+    if (match_minor == -1) {
+      // matching minors in addition to majors is not necessary unless
+      // single-major scheme is turned on, but, if the kernel supports
+      // it, do it anyway (blkid stuff above ensures that we always have
+      // the correct minor to match with)
+      struct stat sbuf;
+      snprintf(fn, sizeof(fn), "%s/%s/minor", devices_path, dent->d_name);
+      match_minor = (stat(fn, &sbuf) == 0);
+    }
+
+    if (match_minor == 1) {
+      snprintf(fn, sizeof(fn), "%s/%s/minor", devices_path, dent->d_name);
+      r = read_file(fn, buf, sizeof(buf));
+      if (r < 0) {
+        cerr << "rbd: could not read minor number from " << fn << ": "
+             << cpp_strerror(-r) << std::endl;
+        continue;
+      }
+      int cur_minor = strict_strtol(buf, 10, &err);
+      if (!err.empty()) {
+        cerr << err << std::endl;
+        cerr << "rbd: could not parse minor number read from " << fn << ": "
+             << cpp_strerror(-r) << std::endl;
+        continue;
+      }
+      if (cur_minor != (int)minor(wholediskno))
+        continue;
+    } else {
+      assert(match_minor == 0);
+    }
+
+    seq = string(dent->d_name);
+    closedir(device_dir);
+    return 0;
+  } while ((dent = readdir(device_dir)));
+
+  closedir(device_dir);
+  return -ENOENT;
+}
+
+static int do_kernel_rm(const char *dev)
+{
+  struct stat sbuf;
+  if (stat(dev, &sbuf) || !S_ISBLK(sbuf.st_mode)) {
+    cerr << "rbd: " << dev << " is not a block device" << std::endl;
+    return -EINVAL;
+  }
+
+  string seq_num;
+  int r = get_rbd_seq(sbuf.st_rdev, seq_num);
+  if (r == -ENOENT) {
+    cerr << "rbd: " << dev << " is not an rbd device" << std::endl;
+    return -EINVAL;
+  }
   if (r < 0)
     return r;
 
-  r = krbd_unmap(krbd, dev);
+  // let udevadm do its job *before* we try to unmap
+  if (udevadm_settle) {
+    int r = system("/sbin/udevadm settle");
+    if (r) {
+      if (r < 0)
+        cerr << "rbd: error executing udevadm as shell command!" << std::endl;
+      else
+        cerr << "rbd: '/sbin/udevadm settle' failed! (" << r << ")" <<std::endl;
+      // ignore the error, though.
+    }
+  }
 
-  krbd_destroy(krbd);
+  // see comment in do_kernel_add(), same goes for 'remove' vs
+  // 'remove_single_major'
+  int fd = open("/sys/bus/rbd/remove_single_major", O_WRONLY);
+  if (fd < 0) {
+    if (errno == ENOENT) {
+      fd = open("/sys/bus/rbd/remove", O_WRONLY);
+      if (fd < 0)
+        return -errno;
+    } else {
+      return -errno;
+    }
+  }
+
+  r = safe_write(fd, seq_num.c_str(), seq_num.size());
+  if (r < 0) {
+    cerr << "rbd: failed to remove rbd device" << ": " << cpp_strerror(-r)
+	 << std::endl;
+    close(fd);
+    return r;
+  }
+
+  r = close(fd);
+
+  // let udevadm finish, if present
+  if (udevadm_settle){
+    int r = system("/sbin/udevadm settle");
+    if (r) {
+      if (r < 0)
+        cerr << "rbd: error executing udevadm as shell command!" << std::endl;
+      else
+        cerr << "rbd: '/sbin/udevadm settle' failed! (" << r << ")" <<std::endl;
+      return r;
+    }
+  }
+
+  if (r < 0)
+    r = -errno;
   return r;
 }
 
@@ -1810,7 +2092,9 @@ static string map_option_uuid_cb(const char *value_char)
   if (!u.parse(value_char))
     return "";
 
-  return stringify(u);
+  ostringstream oss;
+  oss << u;
+  return oss.str();
 }
 
 static string map_option_ip_cb(const char *value_char)
@@ -1822,7 +2106,9 @@ static string map_option_ip_cb(const char *value_char)
     return "";
   }
 
-  return stringify(a.addr);
+  ostringstream oss;
+  oss << a.addr;
+  return oss.str();
 }
 
 static string map_option_int_cb(const char *value_char)
@@ -1832,7 +2118,9 @@ static string map_option_int_cb(const char *value_char)
   if (!err.empty() || d < 0)
     return "";
 
-  return stringify(d);
+  ostringstream oss;
+  oss << d;
+  return oss.str();
 }
 
 static void put_map_option(const string key, string val)
@@ -2057,8 +2345,7 @@ int main(int argc, const char **argv)
   const char *poolname = NULL;
   uint64_t size = 0;  // in bytes
   int order = 0;
-  bool format_specified = false,
-    output_format_specified = false;
+  bool format_specified = false, output_format_specified = false;
   int format = 1;
   uint64_t features = RBD_FEATURE_LAYERING;
   const char *imgname = NULL, *snapname = NULL, *destname = NULL,
@@ -2072,7 +2359,7 @@ int main(int argc, const char **argv)
   long long bench_io_size = 4096, bench_io_threads = 16, bench_bytes = 1 << 30;
   string bench_pattern = "seq";
 
-  std::string val, parse_err;
+  std::string val;
   std::ostringstream err;
   long long sizell = 0;
   std::vector<const char*>::iterator i;
@@ -2088,15 +2375,13 @@ int main(int argc, const char **argv)
     } else if (ceph_argparse_flag(args, i, "--new-format", (char*)NULL)) {
       format = 2;
       format_specified = true;
-    } else if (ceph_argparse_witharg(args, i, &val, "--image-format",
+    } else if (ceph_argparse_withint(args, i, &format, &err, "--image-format",
 				     (char*)NULL)) {
-      format = strict_strtol(val.c_str(), 10, &parse_err);
-      if (!parse_err.empty()) {
-	cerr << "rbd: error parsing --image-format: " << parse_err << std::endl;
+      if (!err.str().empty()) {
+	cerr << "rbd: " << err.str() << std::endl;
 	return EXIT_FAILURE;
       }
       format_specified = true;
-      g_conf->set_val_or_die("rbd_default_format", val.c_str());
     } else if (ceph_argparse_witharg(args, i, &val, "-p", "--pool", (char*)NULL)) {
       poolname = strdup(val.c_str());
     } else if (ceph_argparse_witharg(args, i, &val, "--dest-pool", (char*)NULL)) {
@@ -2128,17 +2413,10 @@ int main(int argc, const char **argv)
 	return EXIT_FAILURE;
       }
     } else if (ceph_argparse_withlonglong(args, i, &bench_io_size, &err, "--io-size", (char*)NULL)) {
-      if (!err.str().empty()) {
-	cerr << "rbd: " << err.str() << std::endl;
-	return EXIT_FAILURE;
-      }
-      if (bench_io_size == 0) {
-	cerr << "rbd: io-size must be > 0" << std::endl;
-	return EXIT_FAILURE;
-      }
     } else if (ceph_argparse_withlonglong(args, i, &bench_io_threads, &err, "--io-threads", (char*)NULL)) {
     } else if (ceph_argparse_withlonglong(args, i, &bench_bytes, &err, "--io-total", (char*)NULL)) {
     } else if (ceph_argparse_witharg(args, i, &bench_pattern, &err, "--io-pattern", (char*)NULL)) {
+    } else if (ceph_argparse_withlonglong(args, i, &stripe_count, &err, "--stripe-count", (char*)NULL)) {
     } else if (ceph_argparse_witharg(args, i, &val, "--path", (char*)NULL)) {
       path = strdup(val.c_str());
     } else if (ceph_argparse_witharg(args, i, &val, "--dest", (char*)NULL)) {
@@ -2148,7 +2426,7 @@ int main(int argc, const char **argv)
     } else if (ceph_argparse_witharg(args, i, &val, "--shared", (char *)NULL)) {
       lock_tag = strdup(val.c_str());
     } else if (ceph_argparse_flag(args, i, "--no-settle", (char *)NULL)) {
-      cerr << "rbd: --no-settle is deprecated" << std::endl;
+      udevadm_settle = false;
     } else if (ceph_argparse_witharg(args, i, &val, "-o", "--options", (char*)NULL)) {
       char *map_options = strdup(val.c_str());
       if (parse_map_options(map_options)) {
@@ -2163,9 +2441,9 @@ int main(int argc, const char **argv)
     } else if (ceph_argparse_flag(args, i , "--allow-shrink", (char *)NULL)) {
       resize_allow_shrink = true;
     } else if (ceph_argparse_witharg(args, i, &val, "--format", (char *) NULL)) {
-      long long ret = strict_strtoll(val.c_str(), 10, &parse_err);
-      if (parse_err.empty()) {
-	g_conf->set_val_or_die("rbd_default_format", val.c_str());
+      std::string err;
+      long long ret = strict_strtoll(val.c_str(), 10, &err);
+      if (err.empty()) {
 	format = ret;
 	format_specified = true;
 	cerr << "rbd: using --format for specifying the rbd image format is"
@@ -2279,19 +2557,6 @@ if (!set_conf_param(v, p1, p2, p3)) { \
     }
   }
 
-  g_conf->set_val_or_die("rbd_cache_writethrough_until_flush", "false");
-
-  /* get defaults from rbd_default_* options to keep behavior consistent with
-     manual short-form options */
-  if (!format_specified)
-    format = g_conf->rbd_default_format;
-  if (!order)
-    order = g_conf->rbd_default_order;
-  if (!stripe_unit)
-    stripe_unit = g_conf->rbd_default_stripe_unit;
-  if (!stripe_count)
-    stripe_count = g_conf->rbd_default_stripe_count;
-
   if (format_specified && opt_cmd != OPT_IMPORT && opt_cmd != OPT_CREATE) {
     cerr << "rbd: image format can only be set when "
 	 << "creating or importing an image" << std::endl;
@@ -2368,7 +2633,7 @@ if (!set_conf_param(v, p1, p2, p3)) { \
 
   // do this unconditionally so we can parse pool/image@snapshot into
   // the relevant parts
-  set_pool_image_name(imgname, (char **)&poolname,
+  set_pool_image_name(poolname, imgname, (char **)&poolname,
 		      (char **)&imgname, (char **)&snapname);
   if (snapname && opt_cmd != OPT_SNAP_CREATE && opt_cmd != OPT_SNAP_ROLLBACK &&
       opt_cmd != OPT_SNAP_REMOVE && opt_cmd != OPT_INFO &&
@@ -2388,7 +2653,7 @@ if (!set_conf_param(v, p1, p2, p3)) { \
     return EXIT_FAILURE;
   }
 
-  set_pool_image_name(destname, (char **)&dest_poolname,
+  set_pool_image_name(dest_poolname, destname, (char **)&dest_poolname,
 		      (char **)&destname, (char **)&dest_snapname);
 
   if (opt_cmd == OPT_IMPORT) {
@@ -2798,17 +3063,17 @@ if (!set_conf_param(v, p1, p2, p3)) { \
     break;
 
   case OPT_MAP:
-    r = do_kernel_map(poolname, imgname, snapname);
+    r = do_kernel_add(poolname, imgname, snapname);
     if (r < 0) {
-      cerr << "rbd: map failed: " << cpp_strerror(-r) << std::endl;
+      cerr << "rbd: add failed: " << cpp_strerror(-r) << std::endl;
       return -r;
     }
     break;
 
   case OPT_UNMAP:
-    r = do_kernel_unmap(devpath);
+    r = do_kernel_rm(devpath);
     if (r < 0) {
-      cerr << "rbd: unmap failed: " << cpp_strerror(-r) << std::endl;
+      cerr << "rbd: remove failed: " << cpp_strerror(-r) << std::endl;
       return -r;
     }
     break;
