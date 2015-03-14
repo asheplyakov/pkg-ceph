@@ -14,6 +14,8 @@
 
 #include <time.h>
 
+#include <boost/algorithm/string.hpp>
+
 #include "common/admin_socket.h"
 #include "common/perf_counters.h"
 #include "common/Thread.h"
@@ -153,6 +155,67 @@ public:
 };
 
 
+// cct config watcher
+class CephContextObs : public md_config_obs_t {
+  CephContext *cct;
+
+public:
+  CephContextObs(CephContext *cct) : cct(cct) {}
+
+  const char** get_tracked_conf_keys() const {
+    static const char *KEYS[] = {
+      "enable_experimental_unrecoverable_data_corrupting_features",
+      NULL
+    };
+    return KEYS;
+  }
+
+  void handle_conf_change(const md_config_t *conf,
+                          const std::set <std::string> &changed) {
+    ceph_spin_lock(&cct->_feature_lock);
+    get_str_set(conf->enable_experimental_unrecoverable_data_corrupting_features,
+		cct->_experimental_features);
+    ceph_spin_unlock(&cct->_feature_lock);
+    if (!cct->_experimental_features.empty())
+      lderr(cct) << "WARNING: the following dangerous and experimental features are enabled: "
+		 << cct->_experimental_features << dendl;
+  }
+};
+
+bool CephContext::check_experimental_feature_enabled(const std::string& feat)
+{
+  stringstream message;
+  bool enabled = check_experimental_feature_enabled(feat, &message);
+  lderr(this) << message.str() << dendl;
+  return enabled;
+}
+
+bool CephContext::check_experimental_feature_enabled(const std::string& feat,
+						     std::ostream *message)
+{
+  ceph_spin_lock(&_feature_lock);
+  bool enabled = _experimental_features.count(feat);
+  ceph_spin_unlock(&_feature_lock);
+
+  if (enabled) {
+    (*message) << "WARNING: experimental feature '" << feat << "' is enabled\n";
+    (*message) << "Please be aware that this feature is experimental, untested,\n";
+    (*message) << "unsupported, and may result in data corruption, data loss,\n";
+    (*message) << "and/or irreparable damage to your cluster.  Do not use\n";
+    (*message) << "feature with important data.\n";
+  } else {
+    (*message) << "*** experimental feature '" << feat << "' is not enabled ***\n";
+    (*message) << "This feature is marked as experimental, which means it\n";
+    (*message) << " - is untested\n";
+    (*message) << " - is unsupported\n";
+    (*message) << " - may corrupt your data\n";
+    (*message) << " - may break your cluster is an unrecoverable fashion\n";
+    (*message) << "To enable this feature, add this to your ceph.conf:\n";
+    (*message) << "  enable experimental unrecoverable data corrupting features = " << feat << "\n";
+  }
+  return enabled;
+}
+
 // perfcounter hooks
 
 class CephContextHook : public AdminSocketHook {
@@ -171,9 +234,7 @@ public:
 void CephContext::do_command(std::string command, cmdmap_t& cmdmap,
 			     std::string format, bufferlist *out)
 {
-  Formatter *f = new_formatter(format);
-  if (!f)
-    f = new_formatter("json-pretty");
+  Formatter *f = Formatter::create(format, "json-pretty", "json-pretty");
   stringstream ss;
   for (cmdmap_t::iterator it = cmdmap.begin(); it != cmdmap.end(); ++it) {
     if (it->first != "prefix") {
@@ -184,14 +245,29 @@ void CephContext::do_command(std::string command, cmdmap_t& cmdmap,
 			 << ss.str() << dendl;
   if (command == "perfcounters_dump" || command == "1" ||
       command == "perf dump") {
-    _perf_counters_collection->dump_formatted(f, false);
+    std::string logger;
+    std::string counter;
+    cmd_getval(this, cmdmap, "logger", logger);
+    cmd_getval(this, cmdmap, "counter", counter);
+    _perf_counters_collection->dump_formatted(f, false, logger, counter);
   }
   else if (command == "perfcounters_schema" || command == "2" ||
     command == "perf schema") {
     _perf_counters_collection->dump_formatted(f, true);
   }
+  else if (command == "perf reset") {
+    std::string var;
+    if (!cmd_getval(this, cmdmap, "var", var)) {
+      f->dump_string("error", "syntax error: 'perf reset <var>'");
+    } else {
+     if(!_perf_counters_collection->reset(var))
+        f->dump_stream("error") << "Not find: " << var;
+    }
+  }
   else {
-    f->open_object_section(command.c_str());
+    string section = command;
+    boost::replace_all(section, " ", "_");
+    f->open_object_section(section.c_str());
     if (command == "config show") {
       _conf->show_config(f);
     }
@@ -297,12 +373,17 @@ CephContext::CephContext(uint32_t module_type_)
     _crypto_aes(NULL)
 {
   ceph_spin_init(&_service_thread_lock);
+  ceph_spin_init(&_associated_objs_lock);
+  ceph_spin_init(&_feature_lock);
 
   _log = new ceph::log::Log(&_conf->subsys);
   _log->start();
 
   _log_obs = new LogObs(_log);
   _conf->add_observer(_log_obs);
+
+  _cct_obs = new CephContextObs(this);
+  _conf->add_observer(_cct_obs);
 
   _perf_counters_collection = new PerfCountersCollection(this);
   _admin_socket = new AdminSocket(this);
@@ -311,10 +392,11 @@ CephContext::CephContext(uint32_t module_type_)
   _admin_hook = new CephContextHook(this);
   _admin_socket->register_command("perfcounters_dump", "perfcounters_dump", _admin_hook, "");
   _admin_socket->register_command("1", "1", _admin_hook, "");
-  _admin_socket->register_command("perf dump", "perf dump", _admin_hook, "dump perfcounters value");
+  _admin_socket->register_command("perf dump", "perf dump name=logger,type=CephString,req=false name=counter,type=CephString,req=false", _admin_hook, "dump perfcounters value");
   _admin_socket->register_command("perfcounters_schema", "perfcounters_schema", _admin_hook, "");
   _admin_socket->register_command("2", "2", _admin_hook, "");
   _admin_socket->register_command("perf schema", "perf schema", _admin_hook, "dump perfcounters schema");
+  _admin_socket->register_command("perf reset", "perf reset name=var,type=CephString", _admin_hook, "perf reset <name>: perf reset all or one perfcounter name");
   _admin_socket->register_command("config show", "config show", _admin_hook, "dump current config settings");
   _admin_socket->register_command("config set", "config set name=var,type=CephString name=val,type=CephString,n=N",  _admin_hook, "config set <field> <val> [<val> ...]: set a config variable");
   _admin_socket->register_command("config get", "config get name=var,type=CephString", _admin_hook, "config get <field>: get the config value");
@@ -333,6 +415,10 @@ CephContext::~CephContext()
 {
   join_service_thread();
 
+  for (map<string, AssociatedSingletonObject*>::iterator it = _associated_objs.begin();
+       it != _associated_objs.end(); ++it)
+    delete it->second;
+
   if (_conf->lockdep) {
     lockdep_unregister_ceph_context(this);
   }
@@ -343,6 +429,7 @@ CephContext::~CephContext()
   _admin_socket->unregister_command("perfcounters_schema");
   _admin_socket->unregister_command("perf schema");
   _admin_socket->unregister_command("2");
+  _admin_socket->unregister_command("perf reset");
   _admin_socket->unregister_command("config show");
   _admin_socket->unregister_command("config set");
   _admin_socket->unregister_command("config get");
@@ -365,12 +452,18 @@ CephContext::~CephContext()
   delete _log_obs;
   _log_obs = NULL;
 
+  _conf->remove_observer(_cct_obs);
+  delete _cct_obs;
+  _cct_obs = NULL;
+
   _log->stop();
   delete _log;
   _log = NULL;
 
   delete _conf;
   ceph_spin_destroy(&_service_thread_lock);
+  ceph_spin_destroy(&_associated_objs_lock);
+  ceph_spin_destroy(&_feature_lock);
 
   delete _crypto_none;
   delete _crypto_aes;

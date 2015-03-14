@@ -1,7 +1,4 @@
 ## Backported / Upstream
-0latest-giant.patch
-bug-9814.patch
-bug-10059.patch
 sleep-recover.patch
 
 ## Debian
@@ -9,7 +6,7 @@ rbdmap3-lazyumount.patch
 arch.patch
 modules.patch
 sample.ceph.conf.patch
-tests-disable.patch
-tests-disable-ceph-disk.patch
-#use_system_gtest.patch
 virtualenv-never-download.patch
+ceph-osd-prestart-path.patch
+fix-argparse-defaults.patch
+fix-cycles-arch.patch

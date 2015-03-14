@@ -19,11 +19,7 @@ extraopts += --with-ocf --with-rest-bench --with-nss
 extraopts += --with-debug
 extraopts += --enable-cephfs-java
 extraopts += --with-babeltrace
-## do not build with lttng just yet, see #765842.
-extraopts += --without-lttng
-
-## build bundled RocksDB
-extraopts += --with-librocksdb-static=check
+extraopts += --with-lttng
 
 ifeq ($(DEB_HOST_ARCH), armel)
   # armel supports ARMv4t or above instructions sets.
@@ -64,7 +60,6 @@ override_dh_auto_build:
 override_dh_auto_clean:
 	#$(RM) -rv src/gtest
 	$(RM) -rv src/test/fake_home src/mkfs src/test-ceph-disk/osd
-	dh_auto_clean --sourcedirectory=src/rocksdb
 	dh_auto_clean
 	rm -fv debian/*.upstart
 

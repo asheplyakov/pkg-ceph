@@ -18,6 +18,7 @@ const char *crush_bucket_alg_name(int alg)
 	case CRUSH_BUCKET_LIST: return "list";
 	case CRUSH_BUCKET_TREE: return "tree";
 	case CRUSH_BUCKET_STRAW: return "straw";
+	case CRUSH_BUCKET_STRAW2: return "straw2";
 	default: return "unknown";
 	}
 }
@@ -141,6 +142,9 @@ int crush_addition_is_unsafe(__u32 a, __u32 b)
 
 int crush_multiplication_is_unsafe(__u32  a, __u32 b)
 {
+  // prevent division by zero 
+  if (!b)
+    return 1;
   if ((((__u32)(-1)) / b) < a)
     return 1;
   else

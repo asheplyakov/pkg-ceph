@@ -27,6 +27,9 @@ ADMIN_AUID = 0
 
 RBD_FEATURE_LAYERING = 1
 RBD_FEATURE_STRIPINGV2 = 2
+RBD_FEATURE_EXCLUSIVE_LOCK = 4
+
+RBD_FLAG_OBJECT_MAP_INVALID = 1
 
 class Error(Exception):
     pass
@@ -450,6 +453,13 @@ class Image(object):
             }
 
     def parent_info(self):
+        """
+        Get information about a cloned image's parent (if any)
+
+        :returns: tuple - ``(pool name, image name, snapshot name)`` components
+                  of the parent image
+        :raises: :class:`ImageNotFound` if the image doesn't have a parent
+        """
         ret = -errno.ERANGE
         size = 8
         while ret == -errno.ERANGE and size <= 4096:
@@ -466,6 +476,11 @@ class Image(object):
         return (pool.value, name.value, snapname.value)
 
     def old_format(self):
+        """
+        Find out whether the image uses the old RBD format.
+
+        :returns: bool - whether the image uses the old RBD format
+        """
         old = c_uint8()
         ret = self.librbd.rbd_get_old_format(self.image, byref(old))
         if (ret != 0):
@@ -486,6 +501,11 @@ class Image(object):
         return image_size.value
 
     def features(self):
+        """
+        Gets the features bitmask of the image.
+
+        :returns: int - the features bitmask of the image
+        """
         features = c_uint64()
         ret = self.librbd.rbd_get_features(self.image, byref(features))
         if (ret != 0):
@@ -493,11 +513,43 @@ class Image(object):
         return features.value
 
     def overlap(self):
+        """
+        Gets the number of overlapping bytes between the image and its parent
+        image. If open to a snapshot, returns the overlap between the snapshot
+        and the parent image.
+
+        :returns: int - the overlap in bytes
+        :raises: :class:`ImageNotFound` if the image doesn't have a parent
+        """
         overlap = c_uint64()
         ret = self.librbd.rbd_get_overlap(self.image, byref(overlap))
         if (ret != 0):
             raise make_ex(ret, 'error getting overlap for image' % (self.name))
         return overlap.value
+
+    def flags(self):
+        """
+        Gets the flags bitmask of the image.
+
+        :returns: int - the flags bitmask of the image
+        """
+        flags = c_uint64()
+        ret = self.librbd.rbd_get_flags(self.image, byref(flags))
+        if (ret != 0):
+            raise make_ex(ret, 'error getting flags for image' % (self.name))
+        return flags.value
+
+    def is_exclusive_lock_owner(self):
+        """
+        Gets the status of the image exclusive lock.
+
+        :returns: bool - true if the image is exclusively locked
+        """
+        owner = c_int()
+        ret = self.librbd.rbd_is_exclusive_lock_owner(self.image, byref(owner))
+        if (ret != 0):
+            raise make_ex(ret, 'error getting lock status for image' % (self.name))
+        return owner.value == 1
 
     def copy(self, dest_ioctx, dest_name):
         """
@@ -630,7 +682,7 @@ class Image(object):
         if ret != 0:
             raise make_ex(ret, 'error setting image %s to snapshot %s' % (self.name, name))
 
-    def read(self, offset, length):
+    def read(self, offset, length, fadvise_flags=0):
         """
         Read data from the image. Raises :class:`InvalidArgument` if
         part of the range specified is outside the image.
@@ -639,12 +691,18 @@ class Image(object):
         :type offset: int
         :param length: how many bytes to read
         :type length: int
+	:param fadvise_flags: fadvise flags for this read
+	:type fadvise_flags: int
         :returns: str - the data read
         :raises: :class:`InvalidArgument`, :class:`IOError`
         """
         ret_buf = create_string_buffer(length)
-        ret = self.librbd.rbd_read(self.image, c_uint64(offset),
-                                   c_size_t(length), byref(ret_buf))
+	if fadvise_flags == 0:
+	  ret = self.librbd.rbd_read(self.image, c_uint64(offset),
+				      c_size_t(length), byref(ret_buf))
+	else:
+	  ret = self.librbd.rbd_read2(self.image, c_uint64(offset),
+					c_size_t(length), byref(ret_buf), c_int(fadvise_flags))
         if ret < 0:
             raise make_ex(ret, 'error reading %s %ld~%ld' % (self.image, offset, length))
         return ctypes.string_at(ret_buf, ret)
@@ -701,7 +759,7 @@ class Image(object):
             msg = 'error generating diff from snapshot %s' % from_snapshot
             raise make_ex(ret, msg)
 
-    def write(self, data, offset):
+    def write(self, data, offset, fadvise_flags=0):
         """
         Write data to the image. Raises :class:`InvalidArgument` if
         part of the write would fall outside the image.
@@ -710,6 +768,8 @@ class Image(object):
         :type data: str
         :param offset: where to start writing data
         :type offset: int
+	:param fadvise_flags: fadvise flags for this write
+	:type fadvise_flags: int
         :returns: int - the number of bytes written
         :raises: :class:`IncompleteWriteError`, :class:`LogicError`,
                  :class:`InvalidArgument`, :class:`IOError`
@@ -717,8 +777,13 @@ class Image(object):
         if not isinstance(data, str):
             raise TypeError('data must be a string')
         length = len(data)
-        ret = self.librbd.rbd_write(self.image, c_uint64(offset),
-                                    c_size_t(length), c_char_p(data))
+	if fadvise_flags == 0:
+	  ret = self.librbd.rbd_write(self.image, c_uint64(offset),
+	                              c_size_t(length), c_char_p(data))
+	else:
+	  ret = self.librbd.rbd_write2(self.image, c_uint64(offset),
+	                              c_size_t(length), c_char_p(data), c_int(fadvise_flags))
+
         if ret == length:
             return ret
         elif ret < 0:

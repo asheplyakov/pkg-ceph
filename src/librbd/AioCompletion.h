@@ -11,6 +11,7 @@
 #include "include/utime.h"
 #include "include/rbd/librbd.hpp"
 
+#include "librbd/AsyncOperation.h"
 #include "librbd/ImageCtx.h"
 #include "librbd/internal.h"
 
@@ -61,6 +62,8 @@ namespace librbd {
     char *read_buf;
     size_t read_buf_len;
 
+    AsyncOperation async_op;
+
     AioCompletion() : lock("AioCompletion::lock", true),
 		      done(false), rval(0), complete_cb(NULL),
 		      complete_arg(NULL), rbd_comp(NULL),
@@ -86,9 +89,13 @@ namespace librbd {
     void finish_adding_requests(CephContext *cct);
 
     void init_time(ImageCtx *i, aio_type_t t) {
-      ictx = i;
-      aio_type = t;
-      start_time = ceph_clock_now(ictx->cct);
+      if (ictx == NULL) {
+        ictx = i;
+        aio_type = t;
+        start_time = ceph_clock_now(ictx->cct);
+
+	async_op.start_op(*ictx);
+      }
     }
 
     void complete();

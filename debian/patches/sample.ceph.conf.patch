@@ -8,8 +8,7 @@ Description: sample.ceph.conf updates:
 
 --- a/src/sample.ceph.conf
 +++ b/src/sample.ceph.conf
-@@ -30,9 +30,9 @@
- # $name       ; Expands to $type.$id.
+@@ -31,7 +31,7 @@
  #             ; Example: /var/run/ceph/$cluster-$name.asok
  
  [global]
@@ -18,9 +17,7 @@ Description: sample.ceph.conf updates:
  
      ;fsid                       = {UUID}    # use `uuidgen` to generate your own UUID
      ;public network             = 192.168.0.0/24
-     ;cluster network            = 192.168.0.0/24
-@@ -50,10 +50,10 @@
-     # (Default: 0)
+@@ -51,8 +51,8 @@
      ;max open files             = 131072
  
  
@@ -31,9 +28,7 @@ Description: sample.ceph.conf updates:
  
      # If enabled, the Ceph Storage Cluster daemons (i.e., ceph-mon, ceph-osd,
      # and ceph-mds) must authenticate with each other.
-     # Type: String (optional); Valid settings are "cephx" or "none".
-@@ -89,9 +89,9 @@
-     # Default: /etc/ceph/$cluster.$name.keyring,/etc/ceph/$cluster.keyring,/etc/ceph/keyring,/etc/ceph/keyring.bin
+@@ -90,7 +90,7 @@
      ;keyring                  = /etc/ceph/$cluster.$name.keyring
  
  
@@ -42,9 +37,7 @@ Description: sample.ceph.conf updates:
  
  
      ## Replication level, number of data copies.
-     # Type: 32-bit Integer
-@@ -138,9 +138,9 @@
-     # (Default: 1) Typically a host containing one or more Ceph OSD Daemons.
+@@ -139,7 +139,7 @@
      ;osd crush chooseleaf type = 1
  
  
@@ -53,9 +46,7 @@ Description: sample.ceph.conf updates:
  
      # The location of the logging file for your cluster.
      # Type: String
-     # Required: No
-@@ -153,9 +153,9 @@
-     # (Default: false)
+@@ -154,7 +154,7 @@
      ;log to syslog              = true
  
  
@@ -64,9 +55,7 @@ Description: sample.ceph.conf updates:
  
      # Enable if you want your daemons to bind to IPv6 address instead of
      # IPv4 ones. (Not required if you specify a daemon or cluster IP.)
-     # Type: Boolean
-@@ -166,10 +166,10 @@
- ## Monitors
+@@ -167,8 +167,8 @@
  ## You need at least one. You need at least three if you want to
  ## tolerate any node failures. Always create an odd number.
  [mon]
@@ -77,9 +66,7 @@ Description: sample.ceph.conf updates:
  
      # The IDs of initial monitors in a cluster during startup.
      # If specified, Ceph requires an odd number of monitors to form an
-     # initial quorum (e.g., 3).
-@@ -215,9 +215,9 @@
-     # Type: 32-bit Integer
+@@ -216,7 +216,7 @@
      # (Default: 900)
      ;mon osd report timeout          = 300
  
@@ -88,9 +75,7 @@ Description: sample.ceph.conf updates:
  
      # logging, for debugging monitor crashes, in order of
      # their likelihood of being helpful :)
-     ;debug ms                   = 1
-@@ -237,16 +237,20 @@
- ;[mon.gamma]
+@@ -238,6 +238,10 @@
  ;    host                       = gamma
  ;    mon addr                   = 192.168.0.12:6789
  
@@ -101,7 +86,7 @@ Description: sample.ceph.conf updates:
  
  ##################
  ## Metadata servers
- # You must deploy at least one metadata server to use CephFS. There is
+@@ -245,7 +249,7 @@
  # experimental support for running multiple metadata servers. Do not run
  # multiple metadata servers in production.
  [mds]
@@ -110,9 +95,7 @@ Description: sample.ceph.conf updates:
  
      # where the mds keeps it's secret encryption keys
      ;keyring                    = /var/lib/ceph/mds/$name/keyring
- 
-@@ -278,9 +282,9 @@
- ## osd
+@@ -279,7 +283,7 @@
  # You need at least one.  Two or more if you want data to be replicated.
  # Define as many as you like.
  [osd]
@@ -121,9 +104,7 @@ Description: sample.ceph.conf updates:
  
      # The path to the OSDs data.
      # You must create the directory when deploying Ceph.
-     # You should mount a drive for OSD data at this mount point.
-@@ -338,9 +342,9 @@
-     # Type: Boolean
+@@ -339,7 +343,7 @@
      # (Default: false)
      ;osd check for log corruption = true
  
@@ -132,9 +113,7 @@ Description: sample.ceph.conf updates:
  
      # The size of the journal in megabytes. If this is 0,
      # and the journal is a block device, the entire block device is used.
-     # Since v0.54, this is ignored if the journal is a block device,
-@@ -364,9 +368,9 @@
-     ;debug osd                    = 20
+@@ -365,7 +369,7 @@
      ;debug filestore              = 20
      ;debug journal                = 20
  
@@ -143,9 +122,7 @@ Description: sample.ceph.conf updates:
  
      # The maximum interval in seconds for synchronizing the filestore.
      # Type: Double (optional)
-     # (Default: 5)
-@@ -377,14 +381,8 @@
-     # Required: No. Only used for btrfs.
+@@ -378,12 +382,6 @@
      # (Default: true)
      ;filestore btrfs snap        = false
  
@@ -158,9 +135,7 @@ Description: sample.ceph.conf updates:
      # Defines the maximum number of in progress operations the file store
      # accepts before blocking on queuing new operations.
      # Type: Integer
-     # Required: No. Minimal impact on performance.
-@@ -392,9 +390,9 @@
-     ;filestore queue max ops      = 500
+@@ -393,7 +391,7 @@
  
      ## Filestore and OSD settings can be tweak to achieve better performance
  
@@ -169,9 +144,7 @@ Description: sample.ceph.conf updates:
  
      # Min number of files in a subdir before merging into parent NOTE: A negative value means to disable subdir merging
      # Type: Integer
-     # Required: No
-@@ -425,8 +423,9 @@
-     # Required: No;
+@@ -426,6 +424,7 @@
      # (Default: true)
      ;osd crush update on start    = false
  
@@ -179,9 +152,7 @@ Description: sample.ceph.conf updates:
  ;[osd.0]
  ;    host                         = delta
  
- ;[osd.1]
-@@ -442,9 +441,9 @@
- ##################
+@@ -443,7 +442,7 @@
  ## client settings
  [client]
  
@@ -190,9 +161,7 @@ Description: sample.ceph.conf updates:
  
      # Enable caching for RADOS Block Device (RBD).
      # Type: Boolean
-     # Required: No
-@@ -491,9 +490,9 @@
- ##################
+@@ -499,7 +498,7 @@
  ## radosgw client settings
  [client.radosgw.gateway]
  
@@ -201,4 +170,3 @@ Description: sample.ceph.conf updates:
  
      # Sets the location of the data files for Ceph Object Gateway.
      # You must create the directory when deploying Ceph.
-     # We do not recommend changing the default.

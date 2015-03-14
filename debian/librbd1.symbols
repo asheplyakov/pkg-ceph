@@ -1,16 +1,17 @@
 librbd.so.1 librbd1 #MINVER#
  (regex|c++)"^_.*" 0.87
-# (regex)"^__event_desc___.*" 0.87
-# (regex)"^__tp_event_signature___.*" 0.87
-# (regex)"^__tracepoint_.*" 0.87
+ __tracepoint_provider_librbd@Base 0.93
+ ceph_ver__bebf8e9a830d998eeaab55f86bb256d4360dd3c4@Base 0.93
  rbd_aio_create_completion@Base 0.72.2
  rbd_aio_discard@Base 0.72.2
  rbd_aio_flush@Base 0.72.2
  rbd_aio_get_return_value@Base 0.72.2
  rbd_aio_is_complete@Base 0.72.2
+ rbd_aio_read2@Base 0.93
  rbd_aio_read@Base 0.72.2
  rbd_aio_release@Base 0.72.2
  rbd_aio_wait_for_complete@Base 0.72.2
+ rbd_aio_write2@Base 0.93
  rbd_aio_write@Base 0.72.2
  rbd_break_lock@Base 0.72.2
  rbd_clone2@Base 0.72.2
@@ -26,9 +27,9 @@ librbd.so.1 librbd1 #MINVER#
  rbd_diff_iterate@Base 0.72.2
  rbd_discard@Base 0.72.2
  rbd_flatten@Base 0.72.2
- rbd_flatten_with_progress@Base 0.72.2
  rbd_flush@Base 0.72.2
  rbd_get_features@Base 0.72.2
+ rbd_get_flags@Base 0.93
  rbd_get_old_format@Base 0.72.2
  rbd_get_overlap@Base 0.72.2
  rbd_get_parent_info@Base 0.72.2
@@ -36,6 +37,7 @@ librbd.so.1 librbd1 #MINVER#
  rbd_get_stripe_count@Base 0.72.2
  rbd_get_stripe_unit@Base 0.72.2
  rbd_invalidate_cache@Base 0.80.5-2~
+ rbd_is_exclusive_lock_owner@Base 0.93
  rbd_list@Base 0.72.2
  rbd_list_children@Base 0.72.2
  rbd_list_lockers@Base 0.72.2
@@ -43,6 +45,7 @@ librbd.so.1 librbd1 #MINVER#
  rbd_lock_shared@Base 0.72.2
  rbd_open@Base 0.72.2
  rbd_open_read_only@Base 0.72.2
+ rbd_read2@Base 0.93
  rbd_read@Base 0.72.2
  rbd_read_iterate2@Base 0.72.2
  rbd_read_iterate@Base 0.72.2
@@ -64,4 +67,5 @@ librbd.so.1 librbd1 #MINVER#
  rbd_stat@Base 0.72.2
  rbd_unlock@Base 0.72.2
  rbd_version@Base 0.72.2
+ rbd_write2@Base 0.93
  rbd_write@Base 0.72.2

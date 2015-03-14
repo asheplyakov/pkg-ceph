@@ -33,7 +33,8 @@ ObjectStore *ObjectStore::create(CephContext *cct,
   if (type == "memstore") {
     return new MemStore(cct, data);
   }
-  if (type == "keyvaluestore-dev") {
+  if (type == "keyvaluestore" &&
+      cct->check_experimental_feature_enabled("keyvaluestore")) {
     return new KeyValueStore(data);
   }
   return NULL;
@@ -112,7 +113,6 @@ int ObjectStore::queue_transactions(
   return queue_transactions(osr, tls, _onreadable, _oncommit,
 			    onreadable_sync, op);
 }
-
 
 int ObjectStore::collection_list(coll_t c, vector<hobject_t>& o)
 {

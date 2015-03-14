@@ -1,3 +1,65 @@
+ceph (0.93-0ubuntu3) vivid; urgency=medium
+
+  * d/ceph{-common}.install,control: Move ceph_argparse.py down into
+    ceph-common package to fixup ceph cli usage/autopkgtest failure.
+
+ -- James Page <james.page@ubuntu.com>  Sat, 14 Mar 2015 21:27:26 +0000
+
+ceph (0.93-0ubuntu2) vivid; urgency=medium
+
+  * d/p/fix-cycles-arch.patch: Expand highres cycles support to cover
+    PPC architectures, warn and default to return 0 for archs without
+    support, fixing FTBFS.
+
+ -- James Page <james.page@ubuntu.com>  Fri, 13 Mar 2015 19:40:03 +0000
+
+ceph (0.93-0ubuntu1) vivid; urgency=medium
+
+  * New upstream release candidate for Hammer stable release (LP: #1423601).
+    - d/*.symbols: Refresh inline with upstream, removing common code
+      symbols which don't form part of the public API.
+    - d/p/*: Refresh and drop patches as required.
+  * Resync with upstream packaging changes and enable new features:
+    - d/control,ceph-common.install,librbd1.install: Move rbdnamer and
+      associated udev rules into ceph-common package.
+    - d/control,python-*: Split out rbd, rados and cephfs bindings into
+      separate python packages, move some bits into ceph/ceph-common.
+    - d/control: Move python-flask dependency to ceph package, only required
+      for REST API.
+    - d/control: Use google-perftools on arm64.
+    - d/rules,control: Enable use of lttng for userspace tracing.
+
+ -- James Page <james.page@ubuntu.com>  Fri, 13 Mar 2015 07:42:45 +0000
+
+ceph (0.87-0ubuntu5) vivid; urgency=medium
+
+  * d/p/fix-argparse-defaults.patch: Workaround behavioural change in
+    argparse set_defaults in python 2.7.9 (LP: #1413321).
+  * d/rules: Disable build and support for RocksDB over concerns around
+    performance > 1TB in size.
+
+ -- James Page <james.page@ubuntu.com>  Thu, 22 Jan 2015 09:54:19 +0000
+
+ceph (0.87-0ubuntu4) vivid; urgency=medium
+
+  * d/p/ceph-osd-prestart-path.patch: Fixup path for ceph-osd upstart
+    configuration pre-start script.
+
+ -- James Page <james.page@ubuntu.com>  Tue, 13 Jan 2015 12:33:49 +0000
+
+ceph (0.87-0ubuntu3) vivid; urgency=medium
+
+  * d/control: Re-order Recommends to prefer ntp over chrony for Ubuntu. 
+
+ -- James Page <james.page@ubuntu.com>  Tue, 16 Dec 2014 14:59:31 +0000
+
+ceph (0.87-0ubuntu2) vivid; urgency=medium
+
+  * d/rules: Limit rocksdb support to x86 + armhf, fixing FTBFS on
+    unsupported and broken architectures.
+
+ -- James Page <james.page@ubuntu.com>  Mon, 08 Dec 2014 12:36:51 +0000
+
 ceph (0.87-0ubuntu1) vivid; urgency=medium
 
   [ Dmitry Smirnov ]

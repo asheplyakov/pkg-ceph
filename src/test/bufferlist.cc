@@ -37,6 +37,9 @@
 #include "sys/stat.h"
 
 #define MAX_TEST 1000000
+#define FILENAME "bufferlist"
+
+static char cmd[128];
 
 TEST(Buffer, constructors) {
   bool ceph_buffer_track = get_env_bool("CEPH_BUFFER_TRACK");
@@ -150,15 +153,16 @@ TEST(Buffer, constructors) {
     EXPECT_THROW(buffer::create_zero_copy(len, -1, NULL), buffer::error_code);
 
     unsigned zc_len = 4;
-    ::unlink("testfile");
-    ::system("echo ABC > testfile");
-    int fd = ::open("testfile", O_RDONLY);
+    ::unlink(FILENAME);
+    snprintf(cmd, sizeof(cmd), "echo ABC > %s", FILENAME);
+    EXPECT_EQ(0, ::system(cmd));
+    int fd = ::open(FILENAME, O_RDONLY);
     bufferptr ptr(buffer::create_zero_copy(zc_len, fd, NULL));
     EXPECT_EQ(zc_len, ptr.length());
     if (ceph_buffer_track)
       EXPECT_EQ(zc_len, (unsigned)buffer::get_total_alloc());
     ::close(fd);
-    ::unlink("testfile");
+    ::unlink(FILENAME);
   }
 #endif
   if (ceph_buffer_track)
@@ -178,14 +182,15 @@ class TestRawPipe : public ::testing::Test {
 protected:
   virtual void SetUp() {
     len = 4;
-    ::unlink("testfile");
-    ::system("echo ABC > testfile");
-    fd = ::open("testfile", O_RDONLY);
+    ::unlink(FILENAME);
+    snprintf(cmd, sizeof(cmd), "echo ABC > %s", FILENAME);
+    EXPECT_EQ(0, ::system(cmd));
+    fd = ::open(FILENAME, O_RDONLY);
     assert(fd >= 0);
   }
   virtual void TearDown() {
     ::close(fd);
-    ::unlink("testfile");
+    ::unlink(FILENAME);
   }
   int fd;
   unsigned len;
@@ -295,21 +300,21 @@ TEST_F(TestRawPipe, buffer_list_read_fd_zero_copy) {
 }
 
 TEST_F(TestRawPipe, buffer_list_write_fd_zero_copy) {
-  ::unlink("testfile_out");
+  ::unlink(FILENAME);
   bufferlist bl;
   EXPECT_EQ(0, bl.read_fd_zero_copy(fd, len));
   EXPECT_TRUE(bl.can_zero_copy());
-  int out_fd = ::open("testfile_out", O_RDWR|O_CREAT|O_TRUNC, 0600);
+  int out_fd = ::open(FILENAME, O_RDWR|O_CREAT|O_TRUNC, 0600);
   EXPECT_EQ(0, bl.write_fd_zero_copy(out_fd));
   struct stat st;
   memset(&st, 0, sizeof(st));
-  EXPECT_EQ(0, ::stat("testfile_out", &st));
+  EXPECT_EQ(0, ::stat(FILENAME, &st));
   EXPECT_EQ(len, st.st_size);
   char buf[len + 1];
   EXPECT_EQ((int)len, safe_read(out_fd, buf, len + 1));
   EXPECT_EQ(0, memcmp(buf, "ABC\n", len));
   ::close(out_fd);
-  ::unlink("testfile_out");
+  ::unlink(FILENAME);
 }
 #endif // CEPH_HAVE_SPLICE
 
@@ -1076,6 +1081,25 @@ TEST(BufferList, buffers) {
   ASSERT_EQ((unsigned)1, bl.buffers().size());
 }
 
+TEST(BufferList, get_contiguous) {
+  bufferptr a("foobarbaz", 9);
+  bufferptr b("123456789", 9);
+  bufferptr c("ABCDEFGHI", 9);
+  bufferlist bl;
+  ASSERT_EQ(0, bl.get_contiguous(0, 0));
+
+  bl.append(a);
+  bl.append(b);
+  bl.append(c);
+  ASSERT_EQ(3u, bl.buffers().size());
+  ASSERT_EQ(0, memcmp("bar", bl.get_contiguous(3, 3), 3));
+  ASSERT_EQ(0, memcmp("456", bl.get_contiguous(12, 3), 3));
+  ASSERT_EQ(0, memcmp("ABC", bl.get_contiguous(18, 3), 3));
+  ASSERT_EQ(3u, bl.buffers().size());
+  ASSERT_EQ(0, memcmp("789ABC", bl.get_contiguous(15, 6), 6));
+  ASSERT_LT(bl.buffers().size(), 3u);
+}
+
 TEST(BufferList, swap) {
   bufferlist b1;
   b1.append('A');
@@ -1210,6 +1234,52 @@ TEST(BufferList, is_n_page_sized) {
     bl.append_zero(CEPH_PAGE_SIZE);
     EXPECT_TRUE(bl.is_n_page_sized());
   }
+}
+
+TEST(BufferList, rebuild_aligned_size_and_memory) {
+  const unsigned SIMD_ALIGN = 32;
+  const unsigned BUFFER_SIZE = 67;
+
+  bufferlist bl;
+  // These two must be concatenated into one memory + size aligned
+  // bufferptr
+  {
+    bufferptr ptr(buffer::create_aligned(2, SIMD_ALIGN));
+    ptr.set_offset(1);
+    ptr.set_length(1);
+    bl.append(ptr);
+  }
+  {
+    bufferptr ptr(buffer::create_aligned(BUFFER_SIZE - 1, SIMD_ALIGN));
+    bl.append(ptr);
+  }
+  // This one must be left alone
+  {
+    bufferptr ptr(buffer::create_aligned(BUFFER_SIZE, SIMD_ALIGN));
+    bl.append(ptr);
+  }
+  // These two must be concatenated into one memory + size aligned
+  // bufferptr
+  {
+    bufferptr ptr(buffer::create_aligned(2, SIMD_ALIGN));
+    ptr.set_offset(1);
+    ptr.set_length(1);
+    bl.append(ptr);
+  }
+  {
+    bufferptr ptr(buffer::create_aligned(BUFFER_SIZE - 1, SIMD_ALIGN));
+    bl.append(ptr);
+  }
+  EXPECT_FALSE(bl.is_aligned(SIMD_ALIGN));
+  EXPECT_FALSE(bl.is_n_align_sized(BUFFER_SIZE));
+  EXPECT_EQ(BUFFER_SIZE * 3, bl.length());
+  EXPECT_FALSE(bl.buffers().front().is_aligned(SIMD_ALIGN));
+  EXPECT_FALSE(bl.buffers().front().is_n_align_sized(BUFFER_SIZE));
+  EXPECT_EQ(5U, bl.buffers().size());
+  bl.rebuild_aligned_size_and_memory(BUFFER_SIZE, SIMD_ALIGN);
+  EXPECT_TRUE(bl.is_aligned(SIMD_ALIGN));
+  EXPECT_TRUE(bl.is_n_align_sized(BUFFER_SIZE));
+  EXPECT_EQ(3U, bl.buffers().size());
 }
 
 TEST(BufferList, is_zero) {
@@ -1809,13 +1879,16 @@ TEST(BufferList, hexdump) {
 TEST(BufferList, read_file) {
   std::string error;
   bufferlist bl;
-  ::unlink("testfile");
+  ::unlink(FILENAME);
   EXPECT_EQ(-ENOENT, bl.read_file("UNLIKELY", &error));
-  ::system("echo ABC > testfile ; chmod 0 testfile");
-  EXPECT_EQ(-EACCES, bl.read_file("testfile", &error));
-  ::system("chmod +r testfile");
-  EXPECT_EQ(0, bl.read_file("testfile", &error));
-  ::unlink("testfile");
+  snprintf(cmd, sizeof(cmd), "echo ABC > %s ; chmod 0 %s", FILENAME, FILENAME);
+  EXPECT_EQ(0, ::system(cmd));
+  if (getuid() != 0)
+    EXPECT_EQ(-EACCES, bl.read_file(FILENAME, &error));
+  snprintf(cmd, sizeof(cmd), "chmod +r %s", FILENAME);
+  EXPECT_EQ(0, ::system(cmd));
+  EXPECT_EQ(0, bl.read_file(FILENAME, &error));
+  ::unlink(FILENAME);
   EXPECT_EQ((unsigned)4, bl.length());
   std::string actual(bl.c_str(), bl.length());
   EXPECT_EQ("ABC\n", actual);
@@ -1823,36 +1896,37 @@ TEST(BufferList, read_file) {
 
 TEST(BufferList, read_fd) {
   unsigned len = 4;
-  ::unlink("testfile");
-  ::system("echo ABC > testfile");
+  ::unlink(FILENAME);
+  snprintf(cmd, sizeof(cmd), "echo ABC > %s", FILENAME);
+  EXPECT_EQ(0, ::system(cmd));
   int fd = -1;
   bufferlist bl;
   EXPECT_EQ(-EBADF, bl.read_fd(fd, len));
-  fd = ::open("testfile", O_RDONLY);
+  fd = ::open(FILENAME, O_RDONLY);
   EXPECT_EQ(len, (unsigned)bl.read_fd(fd, len));
   EXPECT_EQ(CEPH_PAGE_SIZE - len, bl.buffers().front().unused_tail_length());
   EXPECT_EQ(len, bl.length());
   ::close(fd);
-  ::unlink("testfile");
+  ::unlink(FILENAME);
 }
 
 TEST(BufferList, write_file) {
-  ::unlink("testfile");
+  ::unlink(FILENAME);
   int mode = 0600;
   bufferlist bl;
   EXPECT_EQ(-ENOENT, bl.write_file("un/like/ly", mode));
   bl.append("ABC");
-  EXPECT_EQ(0, bl.write_file("testfile", mode));
+  EXPECT_EQ(0, bl.write_file(FILENAME, mode));
   struct stat st;
   memset(&st, 0, sizeof(st));
-  ::stat("testfile", &st);
+  ::stat(FILENAME, &st);
   EXPECT_EQ((unsigned)(mode | S_IFREG), st.st_mode);
-  ::unlink("testfile");
+  ::unlink(FILENAME);
 }
 
 TEST(BufferList, write_fd) {
-  ::unlink("testfile");
-  int fd = ::open("testfile", O_WRONLY|O_CREAT|O_TRUNC, 0600);
+  ::unlink(FILENAME);
+  int fd = ::open(FILENAME, O_WRONLY|O_CREAT|O_TRUNC, 0600);
   bufferlist bl;
   for (unsigned i = 0; i < IOV_MAX * 2; i++) {
     bufferptr ptr("A", 1);
@@ -1862,9 +1936,9 @@ TEST(BufferList, write_fd) {
   ::close(fd);
   struct stat st;
   memset(&st, 0, sizeof(st));
-  ::stat("testfile", &st);
+  ::stat(FILENAME, &st);
   EXPECT_EQ(IOV_MAX * 2, st.st_size);
-  ::unlink("testfile");
+  ::unlink(FILENAME);
 }
 
 TEST(BufferList, crc32c) {
@@ -2194,6 +2268,48 @@ TEST(BufferList, TestDirectAppend) {
     length = random() % 5 > 0 ? random() % 1000 : 0;
   }
   ASSERT_EQ(memcmp(bl.c_str(), correct, curpos), 0);
+}
+
+TEST(BufferList, TestCloneNonShareable) {
+  bufferlist bl;
+  std::string str = "sharetest";
+  bl.append(str.c_str(), 9);
+  bufferlist bl_share;
+  bl_share.share(bl);
+  bufferlist bl_noshare;
+  buffer::ptr unraw = buffer::create_unshareable(10);
+  unraw.copy_in(0, 9, str.c_str());
+  bl_noshare.append(unraw);
+  bufferlist bl_copied_share = bl_share;
+  bufferlist bl_copied_noshare = bl_noshare;
+
+  // assert shared bufferlist has same buffers
+  bufferlist::iterator iter_bl = bl.begin();
+  bufferlist::iterator iter_bl_share = bl_share.begin();
+  // ok, this considers ptr::off, but it's still a true assertion (and below)
+  ASSERT_TRUE(iter_bl.get_current_ptr().c_str() ==
+	      iter_bl_share.get_current_ptr().c_str());
+
+  // assert copy of shareable bufferlist has same buffers
+  iter_bl = bl.begin();
+  bufferlist::iterator iter_bl_copied_share = bl_copied_share.begin();
+  ASSERT_TRUE(iter_bl.get_current_ptr().c_str() ==
+	      iter_bl_copied_share.get_current_ptr().c_str());
+
+  // assert copy of non-shareable bufferlist has different buffers
+  bufferlist::iterator iter_bl_copied_noshare = bl_copied_noshare.begin();
+  ASSERT_FALSE(iter_bl.get_current_ptr().c_str() ==
+	       iter_bl_copied_noshare.get_current_ptr().c_str());
+
+  // assert that claim with CLAIM_ALLOW_NONSHAREABLE overrides safe-sharing
+  bufferlist bl_claim_noshare_override;
+  void* addr = bl_noshare.begin().get_current_ptr().c_str();
+  bl_claim_noshare_override.claim(bl_noshare,
+				  buffer::list::CLAIM_ALLOW_NONSHAREABLE);
+  bufferlist::iterator iter_bl_noshare_override =
+    bl_claim_noshare_override.begin();
+  ASSERT_TRUE(addr /* the original first segment of bl_noshare() */ ==
+	      iter_bl_noshare_override.get_current_ptr().c_str());
 }
 
 TEST(BufferList, TestCopyAll) {

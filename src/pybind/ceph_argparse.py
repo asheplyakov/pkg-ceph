@@ -727,7 +727,10 @@ def matchnum(args, signature, partial=False):
             word = words.pop(0)
 
             try:
-                validate_one(word, desc, partial)
+                # only allow partial matching if we're on the last supplied
+                # word; avoid matching foo bar and foot bar just because
+                # partial is set
+                validate_one(word, desc, partial and (len(words) == 0))
                 valid = True
             except ArgumentError:
                 # matchnum doesn't care about type of error
@@ -898,6 +901,9 @@ def validate_command(sigdict, args, verbose=False):
     turn args into a valid dictionary ready to be sent off as JSON,
     validated against sigdict.
     """
+    if verbose:
+        print >> sys.stderr, \
+            "validate_command: " + " ".join(args)
     found = []
     valid_dict = {}
     if args:
@@ -1002,6 +1008,30 @@ def find_cmd_target(childargs):
             # pg doesn't need revalidation; the string is fine
             return 'pg', valid_dict['pgid']
 
+    # If we reached this far it must mean that so far we've been unable to
+    # obtain a proper target from childargs.  This may mean that we are not
+    # dealing with a 'tell' command, or that the specified target is invalid.
+    # If the latter, we likely were unable to catch it because we were not
+    # really looking for it: first we tried to parse a 'CephName' (osd, mon,
+    # mds, followed by and id); given our failure to parse, we tried to parse
+    # a 'CephPgid' instead (e.g., 0.4a).  Considering we got this far though
+    # we were unable to do so.
+    #
+    # We will now check if this is a tell and, if so, forcefully validate the
+    # target as a 'CephName'.  This must be so because otherwise we will end
+    # up sending garbage to a monitor, which is the default target when a
+    # target is not explicitly specified.
+    # e.g.,
+    #   'ceph status' -> target is any one monitor
+    #   'ceph tell mon.* status -> target is all monitors
+    #   'ceph tell foo status -> target is invalid!
+    if len(childargs) > 1 and childargs[0] == 'tell':
+        name = CephName()
+        # CephName.valid() raises on validation error; find_cmd_target()'s
+        # caller should handle them
+        name.valid(childargs[1])
+        return name.nametype, name.nameid
+
     sig = parse_funcsig(['pg', {'name':'pgid', 'type':'CephPgid'}])
     try:
         valid_dict = validate(childargs, sig, partial=True)
@@ -1061,6 +1091,25 @@ def send_command(cluster, target=('mon', ''), cmd=None, inbuf='', timeout=0,
                 ret, outbuf, outs = cluster.mon_command(cmd, inbuf, timeout)
             else:
                 ret, outbuf, outs = cluster.mon_command(cmd, inbuf, timeout, target[1])
+        elif target[0] == 'mds':
+            mds_spec = target[1]
+
+            if verbose:
+                print >> sys.stderr, 'submit {0} to mds.{1}'.\
+                    format(cmd, mds_spec)
+
+            try:
+                from cephfs import LibCephFS
+            except ImportError:
+                raise RuntimeError("CephFS unavailable, have you installed libcephfs?")
+
+            filesystem = LibCephFS(cluster.conf_defaults, cluster.conffile)
+            filesystem.conf_parse_argv(cluster.parsed_args)
+
+            filesystem.init()
+            ret, outbuf, outs = \
+                filesystem.mds_command(mds_spec, cmd, inbuf)
+            filesystem.shutdown()
         else:
             raise ArgumentValid("Bad target type '{0}'".format(target[0]))
 
@@ -1109,7 +1158,7 @@ def json_command(cluster, target=('mon', ''), prefix=None, argdict=None,
 
     except Exception as e:
         if not isinstance(e, ArgumentError):
-            raise RuntimeError('"{0}": exception {1}'.format(cmd, e))
+            raise RuntimeError('"{0}": exception {1}'.format(argdict, e))
         else:
             raise
 

@@ -1,7 +1,10 @@
 libcephfs.so.1 libcephfs1 #MINVER#
- (regex)"^ceph_ver__[0-9a-f]{40}@Base$" 0.87
- (regex|c++)"^_.*" 0.87
  CEPH_CONF_FILE_DEFAULT@Base 0.72.2
+ MDS_GID_NONE@Base 0.93
+ MDS_RANK_NONE@Base 0.93
+ (regex|c++)"^_.*" 0.87
+ (regex)"^ceph_ver__[0-9a-f]{40}@Base$" 0.87
+ ceph_arch_arm_probe@Base 0.93
  ceph_arch_intel_pclmul@Base 0.79
  ceph_arch_intel_probe@Base 0.72.2
  ceph_arch_intel_sse2@Base 0.79
@@ -10,11 +13,11 @@ libcephfs.so.1 libcephfs1 #MINVER#
  ceph_arch_intel_sse42@Base 0.72.2
  ceph_arch_intel_ssse3@Base 0.79
  ceph_arch_neon@Base 0.72.2
- ceph_arch_neon_probe@Base 0.72.2
  ceph_arch_probe@Base 0.72.2
  ceph_arch_probed@Base 0.72.2
  ceph_armor@Base 0.72.2
  ceph_armor_line_break@Base 0.72.2
+ ceph_buffer_free@Base 0.93
  ceph_chdir@Base 0.72.2
  ceph_chmod@Base 0.72.2
  ceph_chown@Base 0.72.2
@@ -68,6 +71,7 @@ libcephfs.so.1 libcephfs1 #MINVER#
  ceph_getdents@Base 0.72.2
  ceph_getdnames@Base 0.72.2
  ceph_getxattr@Base 0.72.2
+ ceph_init@Base 0.93
  ceph_is_mounted@Base 0.72.2
  ceph_lchown@Base 0.72.2
  ceph_lgetxattr@Base 0.72.2
@@ -122,6 +126,7 @@ libcephfs.so.1 libcephfs1 #MINVER#
  ceph_lseek@Base 0.72.2
  ceph_lsetxattr@Base 0.72.2
  ceph_lstat@Base 0.72.2
+ ceph_mds_command@Base 0.93
  ceph_mkdir@Base 0.72.2
  ceph_mkdirs@Base 0.72.2
  ceph_mknod@Base 0.72.2
@@ -184,11 +189,13 @@ libcephfs.so.1 libcephfs1 #MINVER#
  crush_add_bucket@Base 0.72.2
  crush_add_list_bucket_item@Base 0.72.2
  crush_add_rule@Base 0.72.2
+ crush_add_straw2_bucket_item@Base 0.93
  crush_add_straw_bucket_item@Base 0.72.2
  crush_add_tree_bucket_item@Base 0.72.2
  crush_add_uniform_bucket_item@Base 0.72.2
  crush_addition_is_unsafe@Base 0.72.2
  crush_adjust_list_bucket_item_weight@Base 0.72.2
+ crush_adjust_straw2_bucket_item_weight@Base 0.93
  crush_adjust_straw_bucket_item_weight@Base 0.72.2
  crush_adjust_tree_bucket_item_weight@Base 0.72.2
  crush_adjust_uniform_bucket_item_weight@Base 0.72.2
@@ -216,15 +223,18 @@ libcephfs.so.1 libcephfs1 #MINVER#
  crush_hash32_4@Base 0.72.2
  crush_hash32_5@Base 0.72.2
  crush_hash_name@Base 0.72.2
+ crush_ln@Base 0.93
  crush_make_bucket@Base 0.72.2
  crush_make_list_bucket@Base 0.72.2
  crush_make_rule@Base 0.72.2
+ crush_make_straw2_bucket@Base 0.93
  crush_make_straw_bucket@Base 0.72.2
  crush_make_tree_bucket@Base 0.72.2
  crush_make_uniform_bucket@Base 0.72.2
  crush_multiplication_is_unsafe@Base 0.72.2
  crush_remove_bucket@Base 0.72.2
  crush_remove_list_bucket_item@Base 0.72.2
+ crush_remove_straw2_bucket_item@Base 0.93
  crush_remove_straw_bucket_item@Base 0.72.2
  crush_remove_tree_bucket_item@Base 0.72.2
  crush_remove_uniform_bucket_item@Base 0.72.2
@@ -241,16 +251,13 @@ libcephfs.so.1 libcephfs1 #MINVER#
  g_lockdep@Base 0.72.2
  get_linux_version@Base 0.79
  get_process_name@Base 0.72.2
-#MISSING: 0.79# get_secret_option@Base 0.72.2
  is_control_character@Base 0.72.2
-#MISSING: 0.79# is_kernel_secret@Base 0.72.2
  mime_decode_from_qp@Base 0.72.2
  mime_encode_as_qp@Base 0.72.2
  module_has_param@Base 0.87
  module_load@Base 0.87
  pem_key@Base 0.72.2
  pipe_cloexec@Base 0.72.2
-#MISSING: 0.79# read_secret_from_file@Base 0.72.2
  resolve_addrs@Base 0.72.2
  safe_cat@Base 0.72.2
  safe_pread@Base 0.72.2
@@ -272,4 +279,3 @@ libcephfs.so.1 libcephfs1 #MINVER#
  sctp_crc_tableil8_o72@Base 0.72.2
  sctp_crc_tableil8_o80@Base 0.72.2
  sctp_crc_tableil8_o88@Base 0.72.2
-#MISSING: 0.79# set_kernel_secret@Base 0.72.2

@@ -14,11 +14,7 @@
 #ifndef CEPH_BUFFER_H
 #define CEPH_BUFFER_H
 
-#if defined(__linux__)
-#include <stdlib.h>
-#include <linux/types.h>
-#elif defined(__FreeBSD__)
-#include <sys/types.h>
+#if defined(__linux__) || defined(__FreeBSD__)
 #include <stdlib.h>
 #endif
 
@@ -56,9 +52,20 @@
 # include <assert.h>
 #endif
 
+#if __GNUC__ >= 4
+  #define CEPH_BUFFER_API  __attribute__ ((visibility ("default")))
+#else
+  #define CEPH_BUFFER_API
+#endif
+
+#if defined(HAVE_XIO)
+struct xio_mempool_obj;
+class XioDispatchHook;
+#endif
+
 namespace ceph {
 
-class buffer {
+class CEPH_BUFFER_API buffer {
   /*
    * exceptions
    */
@@ -130,10 +137,13 @@ private:
   class raw_hack_aligned;
   class raw_char;
   class raw_pipe;
+  class raw_unshareable; // diagnostic, unshareable char buffer
 
   friend std::ostream& operator<<(std::ostream& out, const raw &r);
 
 public:
+  class xio_mempool;
+  class xio_msg_buffer;
 
   /*
    * named constructors 
@@ -147,11 +157,16 @@ public:
   static raw* create_aligned(unsigned len, unsigned align);
   static raw* create_page_aligned(unsigned len);
   static raw* create_zero_copy(unsigned len, int fd, int64_t *offset);
+  static raw* create_unshareable(unsigned len);
+
+#if defined(HAVE_XIO)
+  static raw* create_msg(unsigned len, char *buf, XioDispatchHook *m_hook);
+#endif
 
   /*
    * a buffer pointer.  references (a subsequence of) a raw buffer.
    */
-  class ptr {
+  class CEPH_BUFFER_API ptr {
     raw *_raw;
     unsigned _off, _len;
 
@@ -168,11 +183,12 @@ public:
     ~ptr() {
       release();
     }
-    
+
     bool have_raw() const { return _raw ? true:false; }
 
     raw *clone();
     void swap(ptr& other);
+    ptr& make_shareable();
 
     // misc
     bool at_buffer_head() const { return _off == 0; }
@@ -184,7 +200,7 @@ public:
     bool is_page_aligned() const { return is_aligned(CEPH_PAGE_SIZE); }
     bool is_n_align_sized(unsigned align) const
     {
-      return (length() & (align-1)) == 0;
+      return (length() % align) == 0;
     }
     bool is_n_page_sized() const { return is_n_align_sized(CEPH_PAGE_SIZE); }
 
@@ -237,15 +253,15 @@ public:
    * list - the useful bit!
    */
 
-  class list {
+  class CEPH_BUFFER_API list {
     // my private bits
     std::list<ptr> _buffers;
     unsigned _len;
-
+    unsigned _memcopy_count; //the total of memcopy using rebuild().
     ptr append_buffer;  // where i put small appends.
 
   public:
-    class iterator {
+    class CEPH_BUFFER_API iterator {
       list *bl;
       std::list<ptr> *ls; // meh.. just here to avoid an extra pointer dereference..
       unsigned off;  // in bl
@@ -297,6 +313,8 @@ public:
       iterator& operator++();
       ptr get_current_ptr();
 
+      list& get_bl() { return *bl; }
+
       // copy data out.
       // note that these all _append_ to dest!
       void copy(unsigned len, char *dest);
@@ -317,24 +335,27 @@ public:
 
   public:
     // cons/des
-    list() : _len(0), last_p(this) {}
-    list(unsigned prealloc) : _len(0), last_p(this) {
+    list() : _len(0), _memcopy_count(0), last_p(this) {}
+    list(unsigned prealloc) : _len(0), _memcopy_count(0), last_p(this) {
       append_buffer = buffer::create(prealloc);
       append_buffer.set_length(0);   // unused, so far.
     }
     ~list() {}
-    
-    list(const list& other) : _buffers(other._buffers), _len(other._len), last_p(this) { }
+    list(const list& other) : _buffers(other._buffers), _len(other._len),
+			      _memcopy_count(other._memcopy_count), last_p(this) {
+      make_shareable();
+    }
     list& operator= (const list& other) {
       if (this != &other) {
         _buffers = other._buffers;
         _len = other._len;
+	make_shareable();
       }
       return *this;
     }
 
+    unsigned get_memcopy_count() const {return _memcopy_count; }
     const std::list<ptr>& buffers() const { return _buffers; }
-    
     void swap(list& other);
     unsigned length() const {
 #if 0
@@ -363,6 +384,7 @@ public:
     void clear() {
       _buffers.clear();
       _len = 0;
+      _memcopy_count = 0;
       last_p = begin();
     }
     void push_front(ptr& bp) {
@@ -393,12 +415,37 @@ public:
     void rebuild();
     void rebuild(ptr& nb);
     void rebuild_aligned(unsigned align);
+    void rebuild_aligned_size_and_memory(unsigned align_size,
+					 unsigned align_memory);
     void rebuild_page_aligned();
 
-    // sort-of-like-assignment-op
-    void claim(list& bl);
-    void claim_append(list& bl);
-    void claim_prepend(list& bl);
+    // assignment-op with move semantics
+    const static unsigned int CLAIM_DEFAULT = 0;
+    const static unsigned int CLAIM_ALLOW_NONSHAREABLE = 1;
+
+    void claim(list& bl, unsigned int flags = CLAIM_DEFAULT);
+    void claim_append(list& bl, unsigned int flags = CLAIM_DEFAULT);
+    void claim_prepend(list& bl, unsigned int flags = CLAIM_DEFAULT);
+
+    // clone non-shareable buffers (make shareable)
+    void make_shareable() {
+      std::list<buffer::ptr>::iterator pb;
+      for (pb = _buffers.begin(); pb != _buffers.end(); ++pb) {
+        (void) pb->make_shareable();
+      }
+    }
+
+    // copy with explicit volatile-sharing semantics
+    void share(const list& bl)
+    {
+      if (this != &bl) {
+        clear();
+        std::list<buffer::ptr>::const_iterator pb;
+        for (pb = bl._buffers.begin(); pb != bl._buffers.end(); ++pb) {
+          push_back(*pb);
+        }
+      }
+    }
 
     iterator begin() {
       return iterator(this, 0);
@@ -432,6 +479,11 @@ public:
     const char& operator[](unsigned n) const;
     char *c_str();
     void substr_of(const list& other, unsigned off, unsigned len);
+
+    /// return a pointer to a contiguous extent of the buffer,
+    /// reallocating as needed
+    char *get_contiguous(unsigned off,  ///< offset
+			 unsigned len); ///< length
 
     // funky modifer
     void splice(unsigned off, unsigned len, list *claim_by=0 /*, bufferlist& replace_with */);
@@ -472,6 +524,10 @@ public:
   };
 };
 
+#if defined(HAVE_XIO)
+xio_mempool_obj* get_xio_mp(const buffer::ptr& bp);
+#endif
+
 typedef buffer::ptr bufferptr;
 typedef buffer::list bufferlist;
 typedef buffer::hash bufferhash;
@@ -495,7 +551,7 @@ inline bool operator>=(bufferlist& l, bufferlist& r) {
   }
 }
 
-inline bool operator==(bufferlist &l, bufferlist &r) {
+inline bool operator==(const bufferlist &l, const bufferlist &r) {
   if (l.length() != r.length())
     return false;
   for (unsigned p = 0; p < l.length(); p++) {

@@ -42,6 +42,8 @@ using namespace std;
 
 #include "auth/KeyRing.h"
 
+#include "perfglue/heap_profiler.h"
+
 #include "include/assert.h"
 
 #define dout_subsys ceph_subsys_mds
@@ -92,6 +94,7 @@ int main(int argc, const char **argv)
   env_to_vec(args);
 
   global_init(NULL, args, CEPH_ENTITY_TYPE_MDS, CODE_ENVIRONMENT_DAEMON, 0);
+  ceph_heap_profiler_init();
 
   // mds specific args
   MDSMap::DaemonState shadow = MDSMap::STATE_NULL;
@@ -142,12 +145,19 @@ int main(int argc, const char **argv)
     usage();
   }
 
-  Messenger *messenger = Messenger::create(g_ceph_context,
-					   entity_name_t::MDS(-1), "mds",
-					   getpid());
-  messenger->set_cluster_protocol(CEPH_MDS_PROTOCOL);
+  if (g_conf->name.get_id().empty() ||
+      (g_conf->name.get_id()[0] >= '0' && g_conf->name.get_id()[0] <= '9')) {
+    derr << "deprecation warning: MDS id '" << g_conf->name
+      << "' is invalid and will be forbidden in a future version.  "
+      "MDS names may not start with a numeric digit." << dendl;
+  }
 
-  cout << "starting " << g_conf->name << " at " << messenger->get_myaddr()
+  Messenger *msgr = Messenger::create(g_ceph_context, g_conf->ms_type,
+				      entity_name_t::MDS(-1), "mds",
+				      getpid());
+  msgr->set_cluster_protocol(CEPH_MDS_PROTOCOL);
+
+  cout << "starting " << g_conf->name << " at " << msgr->get_myaddr()
        << std::endl;
   uint64_t supported =
     CEPH_FEATURE_UID |
@@ -156,21 +166,23 @@ int main(int argc, const char **argv)
     CEPH_FEATURE_MDS_INLINE_DATA |
     CEPH_FEATURE_PGID64 |
     CEPH_FEATURE_MSG_AUTH |
-    CEPH_FEATURE_EXPORT_PEER;
+    CEPH_FEATURE_EXPORT_PEER |
+    CEPH_FEATURE_MDS_QUOTA;
   uint64_t required =
     CEPH_FEATURE_OSDREPLYMUX;
-  messenger->set_default_policy(Messenger::Policy::lossy_client(supported, required));
-  messenger->set_policy(entity_name_t::TYPE_MON,
-			Messenger::Policy::lossy_client(supported,
-							CEPH_FEATURE_UID |
-							CEPH_FEATURE_PGID64));
-  messenger->set_policy(entity_name_t::TYPE_MDS,
-			Messenger::Policy::lossless_peer(supported,
-							 CEPH_FEATURE_UID));
-  messenger->set_policy(entity_name_t::TYPE_CLIENT,
-			Messenger::Policy::stateful_server(supported, 0));
 
-  int r = messenger->bind(g_conf->public_addr);
+  msgr->set_default_policy(Messenger::Policy::lossy_client(supported, required));
+  msgr->set_policy(entity_name_t::TYPE_MON,
+                   Messenger::Policy::lossy_client(supported,
+                                                   CEPH_FEATURE_UID |
+                                                   CEPH_FEATURE_PGID64));
+  msgr->set_policy(entity_name_t::TYPE_MDS,
+                   Messenger::Policy::lossless_peer(supported,
+                                                    CEPH_FEATURE_UID));
+  msgr->set_policy(entity_name_t::TYPE_CLIENT,
+                   Messenger::Policy::stateful_server(supported, 0));
+
+  int r = msgr->bind(g_conf->public_addr);
   if (r < 0)
     exit(1);
 
@@ -184,10 +196,10 @@ int main(int argc, const char **argv)
     return -1;
   global_init_chdir(g_ceph_context);
 
-  messenger->start();
+  msgr->start();
 
   // start mds
-  mds = new MDS(g_conf->name.get_id().c_str(), messenger, &mc);
+  mds = new MDS(g_conf->name.get_id().c_str(), msgr, &mc);
 
   // in case we have to respawn...
   mds->orig_argc = argc;
@@ -209,7 +221,7 @@ int main(int argc, const char **argv)
   if (g_conf->inject_early_sigterm)
     kill(getpid(), SIGTERM);
 
-  messenger->wait();
+  msgr->wait();
 
   unregister_async_signal_handler(SIGHUP, sighup_handler);
   unregister_async_signal_handler(SIGINT, handle_mds_signal);

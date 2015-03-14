@@ -1,15 +1,18 @@
 etc/bash_completion.d/rados
 etc/bash_completion.d/rbd
+udev/50-rbd.rules /lib/udev/rules.d
 usr/bin/ceph
 usr/bin/ceph-authtool
 usr/bin/ceph-conf
 usr/bin/ceph-crush-location
 usr/bin/ceph-dencoder
 usr/bin/ceph-post-file
+usr/bin/ceph-rbdnamer
 usr/bin/ceph-rest-api
 usr/bin/ceph-syn
 usr/bin/rados
 usr/bin/rbd
+usr/lib/python*/dist-packages/ceph_argparse.py*
 usr/share/ceph/id_dsa_drop.ceph.com
 usr/share/ceph/id_dsa_drop.ceph.com.pub
 usr/share/ceph/known_hosts_drop.ceph.com
@@ -17,6 +20,7 @@ usr/share/man/man8/ceph-authtool.8
 usr/share/man/man8/ceph-conf.8
 usr/share/man/man8/ceph-dencoder.8
 usr/share/man/man8/ceph-post-file.8
+usr/share/man/man8/ceph-rbdnamer.8
 usr/share/man/man8/ceph-rest-api.8
 usr/share/man/man8/ceph-syn.8
 usr/share/man/man8/ceph.8

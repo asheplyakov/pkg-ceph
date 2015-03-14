@@ -30,6 +30,7 @@
 #include "common/WorkQueue.h"
 #include "common/Timer.h"
 #include "common/Throttle.h"
+#include "common/QueueRing.h"
 #include "common/safe_io.h"
 #include "include/str_list.h"
 #include "rgw_common.h"
@@ -152,7 +153,17 @@ public:
 
 
 struct RGWFCGXRequest : public RGWRequest {
-  FCGX_Request fcgx;
+  FCGX_Request *fcgx;
+  QueueRing<FCGX_Request *> *qr;
+
+  RGWFCGXRequest(QueueRing<FCGX_Request *> *_qr) : qr(_qr) {
+    qr->dequeue(&fcgx);
+  }
+
+  ~RGWFCGXRequest() {
+    FCGX_Finish_r(fcgx);
+    qr->enqueue(fcgx);
+  }
 };
 
 struct RGWProcessEnv {
@@ -252,9 +263,13 @@ public:
 
 
 class RGWFCGXProcess : public RGWProcess {
+  int max_connections;
 public:
   RGWFCGXProcess(CephContext *cct, RGWProcessEnv *pe, int num_threads, RGWFrontendConfig *_conf) :
-    RGWProcess(cct, pe, num_threads, _conf) {}
+    RGWProcess(cct, pe, num_threads, _conf),
+    max_connections(num_threads + (num_threads >> 3)) /* have a bit more connections than threads so that requests
+                                                       are still accepted even if we're still processing older requests */
+    {}
   void run();
   void handle_request(RGWRequest *req);
 };
@@ -306,13 +321,21 @@ void RGWFCGXProcess::run()
 
   m_tp.start();
 
+  FCGX_Request fcgx_reqs[max_connections];
+
+  QueueRing<FCGX_Request *> qr(max_connections);
+  for (int i = 0; i < max_connections; i++) {
+    FCGX_Request *fcgx = &fcgx_reqs[i];
+    FCGX_InitRequest(fcgx, sock_fd, 0);
+    qr.enqueue(fcgx);
+  }
+
   for (;;) {
-    RGWFCGXRequest *req = new RGWFCGXRequest;
+    RGWFCGXRequest *req = new RGWFCGXRequest(&qr);
     req->id = ++max_req_id;
     dout(10) << "allocated request req=" << hex << req << dec << dendl;
-    FCGX_InitRequest(&req->fcgx, sock_fd, 0);
     req_throttle.get(1);
-    int ret = FCGX_Accept_r(&req->fcgx);
+    int ret = FCGX_Accept_r(req->fcgx);
     if (ret < 0) {
       delete req;
       dout(0) << "ERROR: FCGX_Accept_r returned " << ret << dendl;
@@ -325,6 +348,12 @@ void RGWFCGXProcess::run()
 
   m_tp.drain(&req_wq);
   m_tp.stop();
+
+  dout(20) << "cleaning up fcgx connections" << dendl;
+
+  for (int i = 0; i < max_connections; i++) {
+    FCGX_Finish_r(&fcgx_reqs[i]);
+  }
 }
 
 struct RGWLoadGenRequest : public RGWRequest {
@@ -500,13 +529,6 @@ static void godown_alarm(int signum)
   _exit(0);
 }
 
-static int call_log_intent(RGWRados *store, void *ctx, rgw_obj& obj, RGWIntentEvent intent)
-{
-  struct req_state *s = (struct req_state *)ctx;
-  return rgw_log_intent(store, s, obj, intent);
-}
-
-
 static int process_request(RGWRados *store, RGWREST *rest, RGWRequest *req, RGWClientIO *client_io, OpsLogSocket *olog)
 {
   int ret = 0;
@@ -524,9 +546,8 @@ static int process_request(RGWRados *store, RGWREST *rest, RGWRequest *req, RGWC
 
   struct req_state *s = &rstate;
 
-  RGWRadosCtx rados_ctx(store, s);
+  RGWObjectCtx rados_ctx(store, s);
   s->obj_ctx = &rados_ctx;
-  store->set_intent_cb(s->obj_ctx, call_log_intent);
 
   s->req_id = store->unique_id(req->id);
 
@@ -633,7 +654,7 @@ done:
 void RGWFCGXProcess::handle_request(RGWRequest *r)
 {
   RGWFCGXRequest *req = static_cast<RGWFCGXRequest *>(r);
-  FCGX_Request *fcgx = &req->fcgx;
+  FCGX_Request *fcgx = req->fcgx;
   RGWFCGX client_io(fcgx);
 
  
@@ -1015,7 +1036,6 @@ int main(int argc, const char **argv)
   rgw_tools_init(g_ceph_context);
 
   rgw_init_resolver();
-  rgw_rest_init(g_ceph_context);
   
   curl_global_init(CURL_GLOBAL_ALL);
   
@@ -1029,6 +1049,8 @@ int main(int argc, const char **argv)
   }
   if (!r)
     r = rgw_perf_start(g_ceph_context);
+
+  rgw_rest_init(g_ceph_context, store->region);
 
   mutex.Lock();
   init_timer.cancel_all_events();
@@ -1198,13 +1220,13 @@ int main(int argc, const char **argv)
 
   delete olog;
 
-  rgw_perf_stop(g_ceph_context);
-
   RGWStoreManager::close_storage(store);
 
   rgw_tools_cleanup();
   rgw_shutdown_resolver();
   curl_global_cleanup();
+
+  rgw_perf_stop(g_ceph_context);
 
   dout(1) << "final shutdown" << dendl;
   g_ceph_context->put();

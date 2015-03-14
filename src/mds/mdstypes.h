@@ -24,6 +24,7 @@
 #include <boost/pool/pool.hpp>
 #include "include/assert.h"
 #include "include/hash_namespace.h"
+#include <boost/serialization/strong_typedef.hpp>
 
 
 #define CEPH_FS_ONDISK_MAGIC "ceph fs volume v011"
@@ -68,6 +69,12 @@
 #define MDS_TRAVERSE_FORWARD       1
 #define MDS_TRAVERSE_DISCOVER      2    // skips permissions checks etc.
 #define MDS_TRAVERSE_DISCOVERXLOCK 3    // succeeds on (foreign?) null, xlocked dentries.
+
+
+BOOST_STRONG_TYPEDEF(int32_t, mds_rank_t)
+BOOST_STRONG_TYPEDEF(uint64_t, mds_gid_t)
+extern const mds_gid_t MDS_GID_NONE;
+extern const mds_rank_t MDS_RANK_NONE;
 
 
 extern long g_num_ino, g_num_dir, g_num_dn, g_num_cap;
@@ -202,6 +209,14 @@ struct nest_info_t : public scatter_info_t {
     rsnaprealms += cur.rsnaprealms - acc.rsnaprealms;
   }
 
+  bool same_sums(const nest_info_t &o) const {
+    return rctime == o.rctime &&
+        rbytes == o.rbytes &&
+        rfiles == o.rfiles &&
+        rsubdirs == o.rsubdirs &&
+        rsnaprealms == o.rsnaprealms;
+  }
+
   void encode(bufferlist &bl) const;
   void decode(bufferlist::iterator& bl);
   void dump(Formatter *f) const;
@@ -244,6 +259,44 @@ inline bool operator<(const vinodeno_t &l, const vinodeno_t &r) {
     l.ino < r.ino ||
     (l.ino == r.ino && l.snapid < r.snapid);
 }
+
+struct quota_info_t
+{
+  int64_t max_bytes;
+  int64_t max_files;
+ 
+  quota_info_t() : max_bytes(0), max_files(0) {}
+
+  void encode(bufferlist& bl) const {
+    ENCODE_START(1, 1, bl);
+    ::encode(max_bytes, bl);
+    ::encode(max_files, bl);
+    ENCODE_FINISH(bl);
+  }
+  void decode(bufferlist::iterator& p) {
+    DECODE_START_LEGACY_COMPAT_LEN(1, 1, 1, p);
+    ::decode(max_bytes, p);
+    ::decode(max_files, p);
+    DECODE_FINISH(p);
+  }
+
+  void dump(Formatter *f) const;
+  static void generate_test_instances(list<quota_info_t *>& ls);
+
+  bool is_valid() const {
+    return max_bytes >=0 && max_files >=0;
+  }
+  bool is_enable() const {
+    return max_bytes || max_files;
+  }
+};
+WRITE_CLASS_ENCODER(quota_info_t)
+
+inline bool operator==(const quota_info_t &l, const quota_info_t &r) {
+  return memcmp(&l, &r, sizeof(l)) == 0;
+}
+
+ostream& operator<<(ostream &out, const quota_info_t &n);
 
 CEPH_HASH_NAMESPACE_START
   template<> struct hash<vinodeno_t> {
@@ -308,6 +361,11 @@ inline bool operator==(const client_writeable_range_t& l,
  * inode_t
  */
 struct inode_t {
+  /**
+   * ***************
+   * Do not forget to add any new fields to the compare() function.
+   * ***************
+   */
   // base (immutable)
   inodeno_t ino;
   uint32_t   rdev;    // if special file
@@ -344,6 +402,8 @@ struct inode_t {
   frag_info_t dirstat;         // protected by my filelock
   nest_info_t rstat;           // protected by my nestlock
   nest_info_t accounted_rstat; // protected by parent's nestlock
+
+  quota_info_t quota;
  
   // special stuff
   version_t version;           // auth only
@@ -351,6 +411,8 @@ struct inode_t {
   version_t xattr_version;
 
   version_t backtrace_version;
+
+  snapid_t oldest_snap;
 
   inode_t() : ino(0), rdev(0),
 	      mode(0), uid(0), gid(0), nlink(0),
@@ -362,6 +424,7 @@ struct inode_t {
 	      version(0), file_data_version(0), xattr_version(0), backtrace_version(0) {
     clear_layout();
     memset(&dir_layout, 0, sizeof(dir_layout));
+    memset(&quota, 0, sizeof(quota));
   }
 
   // file type
@@ -431,7 +494,7 @@ struct inode_t {
     }
   }
 
-  bool is_backtrace_updated() {
+  bool is_backtrace_updated() const {
     return backtrace_version == version;
   }
   void update_backtrace(version_t pv=0) {
@@ -447,6 +510,21 @@ struct inode_t {
   void decode(bufferlist::iterator& bl);
   void dump(Formatter *f) const;
   static void generate_test_instances(list<inode_t*>& ls);
+  /**
+   * Compare this inode_t with another that represent *the same inode*
+   * at different points in time.
+   * @pre The inodes are the same ino
+   *
+   * @param other The inode_t to compare ourselves with
+   * @param divergent A bool pointer which will be set to true
+   * if the values are different in a way that can't be explained
+   * by one being a newer version than the other.
+   *
+   * @returns 1 if we are newer than the other, 0 if equal, -1 if older.
+   */
+  int compare(const inode_t &other, bool *divergent) const;
+private:
+  bool older_is_consistent(const inode_t &other) const;
 };
 WRITE_CLASS_ENCODER(inode_t)
 
@@ -698,7 +776,8 @@ struct cap_reconnect_t {
   cap_reconnect_t() {
     memset(&capinfo, 0, sizeof(capinfo));
   }
-  cap_reconnect_t(uint64_t cap_id, inodeno_t pino, const string& p, int w, int i, inodeno_t sr) : 
+  cap_reconnect_t(uint64_t cap_id, inodeno_t pino, const string& p, int w, int i,
+		  inodeno_t sr, bufferlist& lb) :
     path(p) {
     capinfo.cap_id = cap_id;
     capinfo.wanted = w;
@@ -706,6 +785,7 @@ struct cap_reconnect_t {
     capinfo.snaprealm = sr;
     capinfo.pathbase = pino;
     capinfo.flock_len = 0;
+    flockbl.claim(lb);
   }
   void encode(bufferlist& bl) const;
   void decode(bufferlist::iterator& bl);
@@ -1040,14 +1120,16 @@ class SimpleLock;
 
 class MDSCacheObject;
 
+typedef std::pair<mds_rank_t, mds_rank_t> mds_authority_t;
 // -- authority delegation --
 // directory authority types
 //  >= 0 is the auth mds
-#define CDIR_AUTH_PARENT   -1   // default
-#define CDIR_AUTH_UNKNOWN  -2
-#define CDIR_AUTH_DEFAULT   pair<int,int>(-1, -2)
-#define CDIR_AUTH_UNDEF     pair<int,int>(-2, -2)
+#define CDIR_AUTH_PARENT   mds_rank_t(-1)   // default
+#define CDIR_AUTH_UNKNOWN  mds_rank_t(-2)
+#define CDIR_AUTH_DEFAULT   mds_authority_t(CDIR_AUTH_PARENT, CDIR_AUTH_UNKNOWN)
+#define CDIR_AUTH_UNDEF     mds_authority_t(CDIR_AUTH_UNKNOWN, CDIR_AUTH_UNKNOWN)
 //#define CDIR_AUTH_ROOTINODE pair<int,int>( 0, -2)
+
 
 
 /*
@@ -1118,7 +1200,7 @@ class MDSCacheObject {
   const static int PIN_TEMPEXPORTING = 1008;  // temp pin between encode_ and finish_export
   static const int PIN_CLIENTLEASE = 1009;
 
-  const char *generic_pin_name(int p) {
+  const char *generic_pin_name(int p) const {
     switch (p) {
     case PIN_REPLICATED: return "replicated";
     case PIN_DIRTY: return "dirty";
@@ -1181,8 +1263,8 @@ class MDSCacheObject {
 
   // --------------------------------------------
   // authority
-  virtual pair<int,int> authority() = 0;
-  bool is_ambiguous_auth() {
+  virtual mds_authority_t authority() const = 0;
+  bool is_ambiguous_auth() const {
     return authority().second != CDIR_AUTH_UNKNOWN;
   }
 
@@ -1195,12 +1277,14 @@ protected:
 #endif
 
  public:
-  int get_num_ref(int by = -1) {
+  int get_num_ref(int by = -1) const {
 #ifdef MDS_REF_SET
     if (by >= 0) {
-      if (ref_map.find(by) == ref_map.end())
+      if (ref_map.find(by) == ref_map.end()) {
 	return 0;
-      return ref_map[by];
+      } else {
+        return ref_map.find(by)->second;
+      }
     }
 #endif
     return ref;
@@ -1214,7 +1298,7 @@ protected:
     return total;
   }
 #endif
-  virtual const char *pin_name(int by) = 0;
+  virtual const char *pin_name(int by) const = 0;
   //bool is_pinned_by(int by) { return ref_set.count(by); }
   //multiset<int>& get_ref_set() { return ref_set; }
 
@@ -1265,9 +1349,9 @@ protected:
 #endif
   }
 
-  void print_pin_set(std::ostream& out) {
+  void print_pin_set(std::ostream& out) const {
 #ifdef MDS_REF_SET
-    std::map<int, int>::iterator it = ref_map.begin();
+    std::map<int, int>::const_iterator it = ref_map.begin();
     while (it != ref_map.end()) {
       out << " " << pin_name(it->first) << "=" << it->second;
       ++it;
@@ -1280,12 +1364,12 @@ protected:
 
   // --------------------------------------------
   // auth pins
-  virtual bool can_auth_pin() = 0;
+  virtual bool can_auth_pin() const = 0;
   virtual void auth_pin(void *who) = 0;
   virtual void auth_unpin(void *who) = 0;
-  virtual bool is_frozen() = 0;
-  virtual bool is_freezing() = 0;
-  virtual bool is_freezing_or_frozen() {
+  virtual bool is_frozen() const = 0;
+  virtual bool is_freezing() const = 0;
+  virtual bool is_freezing_or_frozen() const {
     return is_frozen() || is_freezing();
   }
 
@@ -1294,29 +1378,29 @@ protected:
   // replication (across mds cluster)
  protected:
   unsigned		replica_nonce; // [replica] defined on replica
-  std::map<int,unsigned>	replica_map;   // [auth] mds -> nonce
+  std::map<mds_rank_t,unsigned>	replica_map;   // [auth] mds -> nonce
 
  public:
-  bool is_replicated() { return !replica_map.empty(); }
-  bool is_replica(int mds) { return replica_map.count(mds); }
-  int num_replicas() { return replica_map.size(); }
-  unsigned add_replica(int mds) {
+  bool is_replicated() const { return !replica_map.empty(); }
+  bool is_replica(mds_rank_t mds) const { return replica_map.count(mds); }
+  int num_replicas() const { return replica_map.size(); }
+  unsigned add_replica(mds_rank_t mds) {
     if (replica_map.count(mds)) 
       return ++replica_map[mds];  // inc nonce
     if (replica_map.empty()) 
       get(PIN_REPLICATED);
     return replica_map[mds] = 1;
   }
-  void add_replica(int mds, unsigned nonce) {
+  void add_replica(mds_rank_t mds, unsigned nonce) {
     if (replica_map.empty()) 
       get(PIN_REPLICATED);
     replica_map[mds] = nonce;
   }
-  unsigned get_replica_nonce(int mds) {
+  unsigned get_replica_nonce(mds_rank_t mds) {
     assert(replica_map.count(mds));
     return replica_map[mds];
   }
-  void remove_replica(int mds) {
+  void remove_replica(mds_rank_t mds) {
     assert(replica_map.count(mds));
     replica_map.erase(mds);
     if (replica_map.empty())
@@ -1327,17 +1411,17 @@ protected:
       put(PIN_REPLICATED);
     replica_map.clear();
   }
-  std::map<int,unsigned>::iterator replicas_begin() { return replica_map.begin(); }
-  std::map<int,unsigned>::iterator replicas_end() { return replica_map.end(); }
-  const std::map<int,unsigned>& get_replicas() { return replica_map; }
-  void list_replicas(std::set<int>& ls) {
-    for (std::map<int,unsigned>::const_iterator p = replica_map.begin();
+  std::map<mds_rank_t,unsigned>::iterator replicas_begin() { return replica_map.begin(); }
+  std::map<mds_rank_t,unsigned>::iterator replicas_end() { return replica_map.end(); }
+  const std::map<mds_rank_t,unsigned>& get_replicas() const { return replica_map; }
+  void list_replicas(std::set<mds_rank_t>& ls) const {
+    for (std::map<mds_rank_t,unsigned>::const_iterator p = replica_map.begin();
 	 p != replica_map.end();
 	 ++p) 
       ls.insert(p->first);
   }
 
-  unsigned get_replica_nonce() { return replica_nonce; }
+  unsigned get_replica_nonce() const { return replica_nonce; }
   void set_replica_nonce(unsigned n) { replica_nonce = n; }
 
 
