@@ -46,7 +46,7 @@ am__aclocal_m4_deps = $(top_srcdir)/m4/ac_check_classpath.m4 \
 	$(top_srcdir)/m4/ac_prog_javac.m4 \
 	$(top_srcdir)/m4/ac_prog_javac_works.m4 \
 	$(top_srcdir)/m4/ac_prog_javah.m4 \
-	$(top_srcdir)/m4/acx_pthread.m4 \
+	$(top_srcdir)/m4/acx_pthread.m4 $(top_srcdir)/m4/ax_arm.m4 \
 	$(top_srcdir)/m4/ax_c_pretty_func.m4 \
 	$(top_srcdir)/m4/ax_c_var_func.m4 \
 	$(top_srcdir)/m4/ax_check_compile_flag.m4 \
@@ -132,6 +132,8 @@ AMTAR = @AMTAR@
 AM_CXXFLAGS = @AM_CXXFLAGS@
 AM_DEFAULT_VERBOSITY = @AM_DEFAULT_VERBOSITY@
 AR = @AR@
+ARM_FLAGS = @ARM_FLAGS@
+ARM_NEON_FLAGS = @ARM_NEON_FLAGS@
 AUTOCONF = @AUTOCONF@
 AUTOHEADER = @AUTOHEADER@
 AUTOMAKE = @AUTOMAKE@
@@ -194,6 +196,7 @@ LDFLAGS = @LDFLAGS@
 LIBEDIT_CFLAGS = @LIBEDIT_CFLAGS@
 LIBEDIT_LIBS = @LIBEDIT_LIBS@
 LIBFUSE = @LIBFUSE@
+LIBJEMALLOC = @LIBJEMALLOC@
 LIBOBJS = @LIBOBJS@
 LIBROCKSDB_CFLAGS = @LIBROCKSDB_CFLAGS@
 LIBROCKSDB_LIBS = @LIBROCKSDB_LIBS@
@@ -247,6 +250,8 @@ STRIP = @STRIP@
 VERSION = @VERSION@
 WARN_IGNORED_QUALIFIERS = @WARN_IGNORED_QUALIFIERS@
 WARN_TYPE_LIMITS = @WARN_TYPE_LIMITS@
+XIO_LIBS = @XIO_LIBS@
+YASM_CHECK = @YASM_CHECK@
 abs_builddir = @abs_builddir@
 abs_srcdir = @abs_srcdir@
 abs_top_builddir = @abs_top_builddir@
@@ -312,13 +317,14 @@ top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 AUTOMAKE_OPTIONS = gnu
 ACLOCAL_AMFLAGS = -I m4
-EXTRA_DIST = autogen.sh ceph.spec.in ceph.spec src/test/run-cli-tests \
+EXTRA_DIST = autogen.sh ceph.spec.in ceph.spec install-deps.sh \
+	src/test/run-cli-tests \
 	src/test/run-cli-tests-maybe-unset-ccache src/test/cli \
 	src/test/downloads udev/50-rbd.rules \
 	udev/60-ceph-partuuid-workaround.rules udev/95-ceph-osd.rules \
 	udev/95-ceph-osd-alt.rules share/known_hosts_drop.ceph.com \
 	share/id_dsa_drop.ceph.com share/id_dsa_drop.ceph.com.pub
-# the "." here makes sure check-local builds gtest before it is used
+# the "." here makes sure check-local builds gtest and gmock before they are used
 SUBDIRS = . src man
 all: all-recursive
 
@@ -834,12 +840,14 @@ install-data-local:
 all-local:
 #	We need gtest to build the rados-api tests. We only build those in
 #	a debug build, though.
-@WITH_DEBUG_TRUE@	@cd src/gtest && $(MAKE) $(AM_MAKEFLAGS) lib/libgtest.a lib/libgtest_main.a
+@WITH_DEBUG_TRUE@	@cd src/gmock/gtest && $(MAKE) $(AM_MAKEFLAGS) lib/libgtest.la lib/libgtest_main.la
+@WITH_DEBUG_TRUE@	@cd src/gmock && $(MAKE) $(AM_MAKEFLAGS) lib/libgmock.la lib/libgmock_main.la
 
-check-local:
+check-local: all
 #	We build gtest this way, instead of using SUBDIRS, because with that,
 #	gtest's own tests would be run and that would slow us down.
-	@cd src/gtest && $(MAKE) $(AM_MAKEFLAGS) lib/libgtest.a lib/libgtest_main.a
+	@cd src/gmock/gtest && $(MAKE) $(AM_MAKEFLAGS) lib/libgtest.la lib/libgtest_main.la
+	@cd src/gmock && $(MAKE) $(AM_MAKEFLAGS) lib/libgmock.la lib/libgmock_main.la
 #	exercise cli tools
 	$(srcdir)/src/test/run-cli-tests '$(top_builddir)/src/test'
 
@@ -847,9 +855,9 @@ check-local:
 # gtest is in DIST_SUBDIRS. Take extra care to not fail when
 # effectively cleaned twice.
 clean-local:
-	@if test -e src/gtest/Makefile; then \
-	  echo "Making clean in src/gtest"; \
-	  cd src/gtest && $(MAKE) $(AM_MAKEFLAGS) clean; \
+	@if test -e src/gmock/Makefile; then \
+	  echo "Making clean in src/gmock"; \
+	  cd src/gmock && $(MAKE) $(AM_MAKEFLAGS) clean; \
 	fi
 
 	@rm -rf src/test/virtualenv
@@ -858,11 +866,7 @@ clean-local:
 # autoconf to be happy.  These commands should be run manually to
 # bootstrap.
 install-deps:
-	if test -x /usr/bin/apt-get; then \
-	  sudo apt-get -y --no-install-recommends install `cat deps.deb.txt`; \
-	else \
-	  sudo yum -y install `cat deps.rpm.txt`; \
-	fi
+	./install-deps.sh
 
 dist-hook:
 #	Generates the full list of contributors

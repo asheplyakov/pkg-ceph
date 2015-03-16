@@ -1,6 +1,7 @@
 #!/bin/bash
 #
 # Copyright (C) 2014 Cloudwatt <libre.licensing@cloudwatt.com>
+# Copyright (C) 2014, 2015 Red Hat <contact@redhat.com>
 #
 # Author: Loic Dachary <loic@dachary.org>
 #
@@ -19,12 +20,13 @@ source test/mon/mon-test-helpers.sh
 function run() {
     local dir=$1
 
+    export CEPH_MON="127.0.0.1:7108"
     export CEPH_ARGS
     CEPH_ARGS+="--fsid=$(uuidgen) --auth-supported=none "
-    CEPH_ARGS+="--mon-host=127.0.0.1 "
+    CEPH_ARGS+="--mon-host=$CEPH_MON "
 
     local id=a
-    call_TEST_functions $dir $id --public-addr 127.0.0.1 || return 1
+    call_TEST_functions $dir $id --public-addr $CEPH_MON || return 1
 }
 
 function SHARE_MON_TEST_set() {
@@ -107,13 +109,24 @@ function SHARE_MON_TEST_get() {
     grep -q "unknown erasure code profile 'WRONG'" $dir/out || return 1
 }
 
+function SHARE_MON_TEST_experimental_shec() {
+    local dir=$1
+    local id=$2
+
+    local profile=shec-profile
+
+    ! ./ceph osd erasure-code-profile set $profile plugin=shec > $dir/out 2>&1 || return 1
+    grep "experimental feature 'shec'" $dir/out || return 1
+    ! ./ceph osd erasure-code-profile ls | grep $profile || return 1
+}
+
 function TEST_format_invalid() {
     local dir=$1
 
     local profile=profile
     # osd_pool_default_erasure-code-profile is
     # valid JSON but not of the expected type
-    run_mon $dir a --public-addr 127.0.0.1 \
+    run_mon $dir a --public-addr $CEPH_MON \
         --osd_pool_default_erasure-code-profile 1
     ! ./ceph osd erasure-code-profile set $profile > $dir/out 2>&1 || return 1
     cat $dir/out
@@ -125,7 +138,7 @@ function TEST_format_json() {
 
     # osd_pool_default_erasure-code-profile is JSON
     expected='"plugin":"example"'
-    run_mon $dir a --public-addr 127.0.0.1 \
+    run_mon $dir a --public-addr $CEPH_MON \
         --osd_pool_default_erasure-code-profile "{$expected}"
     ./ceph --format json osd erasure-code-profile get default | \
         grep "$expected" || return 1
@@ -136,7 +149,7 @@ function TEST_format_plain() {
 
     # osd_pool_default_erasure-code-profile is plain text
     expected='"plugin":"example"'
-    run_mon $dir a --public-addr 127.0.0.1 \
+    run_mon $dir a --public-addr $CEPH_MON \
         --osd_pool_default_erasure-code-profile "plugin=example"
     ./ceph --format json osd erasure-code-profile get default | \
         grep "$expected" || return 1

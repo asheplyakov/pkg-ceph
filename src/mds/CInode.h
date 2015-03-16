@@ -49,8 +49,11 @@ class Session;
 class MClientCaps;
 struct ObjectOperation;
 class EMetaBlob;
+struct MDRequestImpl;
+typedef ceph::shared_ptr<MDRequestImpl> MDRequestRef;
 
-ostream& operator<<(ostream& out, CInode& in);
+
+ostream& operator<<(ostream& out, const CInode& in);
 
 struct cinode_lock_info_t {
   int lock;
@@ -76,6 +79,9 @@ public:
   std::map<snapid_t, old_inode_t> old_inodes;   // key = last, value.first = first
   bufferlist		     snap_blob;    // Encoded copy of SnapRealm, because we can't
                                            // rehydrate it without full MDCache
+  snapid_t                  oldest_snap;
+
+  InodeStore() : oldest_snap(CEPH_NOSNAP) { }
 
   /* Helpers */
   bool is_file() const    { return inode.is_file(); }
@@ -89,7 +95,7 @@ public:
 
   /* Serialization without ENCODE_START/FINISH blocks for use embedded in dentry */
   void encode_bare(bufferlist &bl) const;
-  void decode_bare(bufferlist::iterator &bl, __u8 struct_v=4);
+  void decode_bare(bufferlist::iterator &bl, __u8 struct_v=5);
 
   /* For use in debug and ceph-dencoder */
   void dump(Formatter *f) const;
@@ -143,7 +149,7 @@ public:
   static const int PIN_DIRTYPARENT =      23;
   static const int PIN_DIRWAITER =        24;
 
-  const char *pin_name(int p) {
+  const char *pin_name(int p) const {
     switch (p) {
     case PIN_DIRFRAG: return "dirfrag";
     case PIN_CAPS: return "caps";
@@ -214,7 +220,7 @@ public:
   snapid_t          first, last;
   std::set<snapid_t> dirty_old_rstats;
 
-  bool is_multiversion() {
+  bool is_multiversion() const {
     return snaprealm ||  // other snaprealms will link to me
       inode.is_dir() ||  // links to me in other snaps
       inode.nlink > 1 || // there are remote links, possibly snapped, that will need to find me
@@ -276,17 +282,23 @@ public:
       return projected_nodes.back();
   }
 
-  version_t get_projected_version() {
+  version_t get_projected_version() const {
     if (projected_nodes.empty())
       return inode.version;
     else
       return projected_nodes.back()->inode->version;
   }
-  bool is_projected() {
+  bool is_projected() const {
     return !projected_nodes.empty();
   }
 
-  inode_t *get_projected_inode() { 
+  const inode_t *get_projected_inode() const {
+    if (projected_nodes.empty())
+      return &inode;
+    else
+      return projected_nodes.back()->inode;
+  }
+  inode_t *get_projected_inode() {
     if (projected_nodes.empty())
       return &inode;
     else
@@ -321,6 +333,21 @@ public:
   }
 
   sr_t *project_snaprealm(snapid_t snapid=0);
+  const sr_t *get_projected_srnode() const {
+    if (projected_nodes.empty()) {
+      if (snaprealm)
+	return &snaprealm->srnode;
+      else
+	return NULL;
+    } else {
+      for (std::list<projected_inode_t*>::const_reverse_iterator p = projected_nodes.rbegin();
+          p != projected_nodes.rend();
+          ++p)
+        if ((*p)->snapnode)
+          return (*p)->snapnode;
+    }
+    return &snaprealm->srnode;
+  }
   sr_t *get_projected_srnode() {
     if (projected_nodes.empty()) {
       if (snaprealm)
@@ -343,6 +370,7 @@ private:
 
 public:
   old_inode_t& cow_old_inode(snapid_t follows, bool cow_head);
+  void split_old_inode(snapid_t snap);
   old_inode_t *pick_old_inode(snapid_t last);
   void pre_cow_old_inode();
   void purge_stale_snap_data(const std::set<snapid_t>& snaps);
@@ -388,7 +416,7 @@ public:
 
   std::list<CDentry*>   projected_parent;   // for in-progress rename, (un)link, etc.
 
-  pair<int,int> inode_auth;
+  mds_authority_t inode_auth;
 
   // -- distributed state --
 protected:
@@ -403,6 +431,7 @@ public:
 
   void add_need_snapflush(CInode *snapin, snapid_t snapid, client_t client);
   void remove_need_snapflush(CInode *snapin, snapid_t snapid, client_t client);
+  void split_need_snapflush(CInode *cowin, CInode *in);
 
 protected:
 
@@ -455,6 +484,7 @@ public:
     parent(0),
     inode_auth(CDIR_AUTH_DEFAULT),
     replica_caps_wanted(0),
+    fcntl_locks(g_ceph_context), flock_locks(g_ceph_context),
     item_dirty(this), item_caps(this), item_open_file(this), item_dirty_parent(this),
     item_dirty_dirfrag_dir(this), 
     item_dirty_dirfrag_nest(this), 
@@ -488,16 +518,16 @@ public:
   
 
   // -- accessors --
-  bool is_root() { return inode.ino == MDS_INO_ROOT; }
-  bool is_stray() { return MDS_INO_IS_STRAY(inode.ino); }
-  bool is_mdsdir() { return MDS_INO_IS_MDSDIR(inode.ino); }
-  bool is_base() { return is_root() || is_mdsdir(); }
-  bool is_system() { return inode.ino < MDS_INO_SYSTEM_BASE; }
+  bool is_root() const { return inode.ino == MDS_INO_ROOT; }
+  bool is_stray() const { return MDS_INO_IS_STRAY(inode.ino); }
+  bool is_mdsdir() const { return MDS_INO_IS_MDSDIR(inode.ino); }
+  bool is_base() const { return is_root() || is_mdsdir(); }
+  bool is_system() const { return inode.ino < MDS_INO_SYSTEM_BASE; }
 
-  bool is_head() { return last == CEPH_NOSNAP; }
+  bool is_head() const { return last == CEPH_NOSNAP; }
 
   // note: this overloads MDSCacheObject
-  bool is_ambiguous_auth() {
+  bool is_ambiguous_auth() const {
     return state_test(STATE_AMBIGUOUSAUTH) ||
       MDSCacheObject::is_ambiguous_auth();
   }
@@ -513,8 +543,10 @@ public:
 
   inode_t& get_inode() { return inode; }
   CDentry* get_parent_dn() { return parent; }
+  const CDentry* get_projected_parent_dn() const { return !projected_parent.empty() ? projected_parent.back() : parent; }
   CDentry* get_projected_parent_dn() { return !projected_parent.empty() ? projected_parent.back() : parent; }
   CDir *get_parent_dir();
+  const CDir *get_projected_parent_dir() const;
   CDir *get_projected_parent_dir();
   CInode *get_parent_inode();
   
@@ -526,13 +558,13 @@ public:
 
   // -- misc -- 
   bool is_projected_ancestor_of(CInode *other);
-  void make_path_string(std::string& s, bool force=false, CDentry *use_parent=NULL);
-  void make_path_string_projected(std::string& s);  
-  void make_path(filepath& s);
+  void make_path_string(std::string& s, bool force=false, CDentry *use_parent=NULL) const;
+  void make_path_string_projected(std::string& s) const;
+  void make_path(filepath& s) const;
   void name_stray_dentry(std::string& dname);
   
   // -- dirtyness --
-  version_t get_version() { return inode.version; }
+  version_t get_version() const { return inode.version; }
 
   version_t pre_dirty();
   void _mark_dirty(LogSegment *ls);
@@ -540,15 +572,26 @@ public:
   void mark_clean();
 
   void store(MDSInternalContextBase *fin);
-  void _stored(version_t cv, Context *fin);
+  void _stored(int r, version_t cv, Context *fin);
+  /**
+   * Flush a CInode to disk. This includes the backtrace, the parent
+   * directory's link, and the Inode object itself (if a base directory).
+   * @pre is_auth() on both the inode and its containing directory
+   * @pre can_auth_pin()
+   * @param fin The Context to call when the flush is completed.
+   */
+  void flush(MDSInternalContextBase *fin);
   void fetch(MDSInternalContextBase *fin);
   void _fetched(bufferlist& bl, bufferlist& bl2, Context *fin);  
 
+
   void build_backtrace(int64_t pool, inode_backtrace_t& bt);
   void store_backtrace(MDSInternalContextBase *fin, int op_prio=-1);
-  void _stored_backtrace(version_t v, Context *fin);
+  void _stored_backtrace(int r, version_t v, Context *fin);
+  void fetch_backtrace(Context *fin, bufferlist *backtrace);
   void _mark_dirty_parent(LogSegment *ls, bool dirty_pool=false);
   void clear_dirty_parent();
+  void verify_diri_backtrace(bufferlist &bl, int err);
   bool is_dirty_parent() { return state_test(STATE_DIRTYPARENT); }
   bool is_dirty_pool() { return state_test(STATE_DIRTYPOOL); }
 
@@ -557,7 +600,7 @@ public:
   void encode_store(bufferlist& bl);
   void decode_store(bufferlist::iterator& bl);
 
-  void encode_replica(int rep, bufferlist& bl) {
+  void encode_replica(mds_rank_t rep, bufferlist& bl) {
     assert(is_auth());
     
     // relax locks?
@@ -687,11 +730,11 @@ public:
   // client caps
   client_t loner_cap, want_loner_cap;
 
-  client_t get_loner() { return loner_cap; }
-  client_t get_wanted_loner() { return want_loner_cap; }
+  client_t get_loner() const { return loner_cap; }
+  client_t get_wanted_loner() const { return want_loner_cap; }
 
   // this is the loner state our locks should aim for
-  client_t get_target_loner() {
+  client_t get_target_loner() const {
     if (loner_cap == want_loner_cap)
       return loner_cap;
     else
@@ -733,18 +776,22 @@ public:
   bool is_any_caps() { return !client_caps.empty(); }
   bool is_any_nonstale_caps() { return count_nonstale_caps(); }
 
+  const std::map<int32_t,int32_t>& get_mds_caps_wanted() const { return mds_caps_wanted; }
   std::map<int32_t,int32_t>& get_mds_caps_wanted() { return mds_caps_wanted; }
 
-  std::map<client_t,Capability*>& get_client_caps() { return client_caps; }
+  const std::map<client_t,Capability*>& get_client_caps() const { return client_caps; }
   Capability *get_client_cap(client_t client) {
     if (client_caps.count(client))
       return client_caps[client];
     return 0;
   }
-  int get_client_cap_pending(client_t client) {
-    Capability *c = get_client_cap(client);
-    if (c) return c->pending();
-    return 0;
+  int get_client_cap_pending(client_t client) const {
+    if (client_caps.count(client)) {
+      std::map<client_t, Capability*>::const_iterator found = client_caps.find(client);
+      return found->second->pending();
+    } else {
+      return 0;
+    }
   }
 
   Capability *add_client_cap(client_t client, Session *session, SnapRealm *conrealm=0);
@@ -756,42 +803,42 @@ public:
   void export_client_caps(std::map<client_t,Capability::Export>& cl);
 
   // caps allowed
-  int get_caps_liked();
-  int get_caps_allowed_ever();
-  int get_caps_allowed_by_type(int type);
-  int get_caps_careful();
-  int get_xlocker_mask(client_t client);
-  int get_caps_allowed_for_client(client_t client);
+  int get_caps_liked() const;
+  int get_caps_allowed_ever() const;
+  int get_caps_allowed_by_type(int type) const;
+  int get_caps_careful() const;
+  int get_xlocker_mask(client_t client) const;
+  int get_caps_allowed_for_client(client_t client) const;
 
   // caps issued, wanted
   int get_caps_issued(int *ploner = 0, int *pother = 0, int *pxlocker = 0,
 		      int shift = 0, int mask = -1);
-  bool is_any_caps_wanted();
-  int get_caps_wanted(int *ploner = 0, int *pother = 0, int shift = 0, int mask = -1);
+  bool is_any_caps_wanted() const;
+  int get_caps_wanted(int *ploner = 0, int *pother = 0, int shift = 0, int mask = -1) const;
   bool issued_caps_need_gather(SimpleLock *lock);
   void replicate_relax_locks();
 
 
   // -- authority --
-  pair<int,int> authority();
+  mds_authority_t authority() const;
 
 
   // -- auth pins --
-  bool is_auth_pinned() { return auth_pins || nested_auth_pins; }
-  int get_num_auth_pins() { return auth_pins; }
-  int get_num_nested_auth_pins() { return nested_auth_pins; }
+  bool is_auth_pinned() const { return auth_pins || nested_auth_pins; }
+  int get_num_auth_pins() const { return auth_pins; }
+  int get_num_nested_auth_pins() const { return nested_auth_pins; }
   void adjust_nested_auth_pins(int a, void *by);
-  bool can_auth_pin();
+  bool can_auth_pin() const;
   void auth_pin(void *by);
   void auth_unpin(void *by);
 
   // -- freeze --
-  bool is_freezing_inode() { return state_test(STATE_FREEZING); }
-  bool is_frozen_inode() { return state_test(STATE_FROZEN); }
-  bool is_frozen_auth_pin() { return state_test(STATE_FROZENAUTHPIN); }
-  bool is_frozen();
-  bool is_frozen_dir();
-  bool is_freezing();
+  bool is_freezing_inode() const { return state_test(STATE_FREEZING); }
+  bool is_frozen_inode() const { return state_test(STATE_FROZEN); }
+  bool is_frozen_auth_pin() const { return state_test(STATE_FROZENAUTHPIN); }
+  bool is_frozen() const;
+  bool is_frozen_dir() const;
+  bool is_freezing() const;
 
   /* Freeze the inode. auth_pin_allowance lets the caller account for any
    * auth_pins it is itself holding/responsible for. */
@@ -856,6 +903,67 @@ public:
 
   void print(ostream& out);
 
+  /**
+   * @defgroup Scrubbing and fsck
+   * @{
+   */
+
+  /**
+   * Report the results of validation against a particular inode.
+   * Each member is a pair of bools.
+   * <member>.first represents if validation was performed against the member.
+   * <member.second represents if the member passed validation.
+   * performed_validation is set to true if the validation was actually
+   * run. It might not be run if, for instance, the inode is marked as dirty.
+   * passed_validation is set to true if everything that was checked
+   * passed its validation.
+   */
+  struct validated_data {
+    template<typename T>struct member_status {
+      bool checked;
+      bool passed;
+      int ondisk_read_retval;
+      T ondisk_value;
+      T memory_value;
+      std::stringstream error_str;
+      member_status() : checked(false), passed(false),
+          ondisk_read_retval(0) {}
+    };
+
+    bool performed_validation;
+    bool passed_validation;
+
+    member_status<inode_backtrace_t> backtrace;
+    member_status<inode_t> inode;
+    member_status<nest_info_t> raw_rstats;
+
+    validated_data() : performed_validation(false),
+        passed_validation(false) {}
+
+    void dump(Formatter *f) const;
+  };
+
+  /**
+   * Validate that the on-disk state of an inode matches what
+   * we expect from our memory state. Currently this checks that:
+   * 1) The backtrace associated with the file data exists and is correct
+   * 2) For directories, the actual inode metadata matches our memory state,
+   * 3) For directories, the rstats match
+   *
+   * @param results A freshly-created validated_data struct, with values set
+   * as described in the struct documentation.
+   * @param Context The callback to activate once the validation has
+   * been completed.
+   */
+  void validate_disk_state(validated_data *results,
+                           MDRequestRef& mdr);
+  static void dump_validation_results(const validated_data& results,
+                                      Formatter *f);
+private:
+  bool _validate_disk_state(class ValidationContinuation *c,
+                            int rval, int stage);
+  friend class ValidationContinuation;
+  /** @} Scrubbing and fsck */
 };
 
 #endif

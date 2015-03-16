@@ -13,6 +13,8 @@
 
 #ifdef WITH_LTTNG
 #include "tracing/librbd.h"
+#else
+#define tracepoint(...)
 #endif
 
 #define dout_subsys ceph_subsys_rbd
@@ -86,6 +88,9 @@ namespace librbd {
       lderr(ictx->cct) << "completed invalid aio_type: " << aio_type << dendl;
       break;
     }
+
+    async_op.finish_op();
+
     if (complete_cb) {
       complete_cb(rbd_comp, complete_arg);
     }

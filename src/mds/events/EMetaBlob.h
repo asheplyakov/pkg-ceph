@@ -22,7 +22,6 @@
 #include "../CDentry.h"
 #include "../LogSegment.h"
 
-#include "include/triple.h"
 #include "include/interval_set.h"
 
 class MDS;
@@ -70,6 +69,7 @@ public:
     fragtree_t dirfragtree;
     map<string,bufferptr> xattrs;
     string symlink;
+    snapid_t oldest_snap;
     bufferlist snapbl;
     __u8 state;
     typedef map<snapid_t, old_inode_t> old_inodes_t;
@@ -81,18 +81,18 @@ public:
     fullbit(const string& d, snapid_t df, snapid_t dl, 
 	    version_t v, const inode_t& i, const fragtree_t &dft, 
 	    const map<string,bufferptr> &xa, const string& sym,
-	    const bufferlist &sbl, __u8 st,
+	    snapid_t os, const bufferlist &sbl, __u8 st,
 	    const old_inodes_t *oi = NULL) :
-      dn(d), dnfirst(df), dnlast(dl), dnv(v), inode(i), xattrs(xa), state(st)
+      dn(d), dnfirst(df), dnlast(dl), dnv(v), inode(i), xattrs(xa),
+      oldest_snap(os), state(st)
     {
       if (i.is_symlink())
 	symlink = sym;
-      if (i.is_dir()) {
+      if (i.is_dir())
 	dirfragtree = dft;
-	snapbl = sbl;
-      }
       if (oi)
 	old_inodes = *oi;
+      snapbl = sbl;
     }
     fullbit(bufferlist::iterator &p) {
       decode(p);
@@ -431,24 +431,24 @@ private:
     in->last_journaled = event_seq;
     //cout << "journaling " << in->inode.ino << " at " << my_offset << std::endl;
 
-    inode_t *pi = in->get_projected_inode();
+    const inode_t *pi = in->get_projected_inode();
     if ((state & fullbit::STATE_DIRTY) && pi->is_backtrace_updated())
       state |= fullbit::STATE_DIRTYPARENT;
 
     bufferlist snapbl;
-    sr_t *sr = in->get_projected_srnode();
+    const sr_t *sr = in->get_projected_srnode();
     if (sr)
       sr->encode(snapbl);
 
     lump.nfull++;
-    lump.add_dfull(ceph::shared_ptr<fullbit>(new fullbit(dn->get_name(), 
-                                                         dn->first, dn->last,
-                                                         dn->get_projected_version(), 
-                                                         *pi, in->dirfragtree,
-                                                         *in->get_projected_xattrs(),
-                                                         in->symlink, snapbl,
-                                                         state,
-                                                         &in->old_inodes)));
+    lump.add_dfull(ceph::shared_ptr<fullbit>(new fullbit(dn->get_name(),
+							 dn->first, dn->last,
+							 dn->get_projected_version(),
+							 *pi, in->dirfragtree,
+							 *in->get_projected_xattrs(),
+							 in->symlink,
+							 in->oldest_snap, snapbl,
+							 state, &in->old_inodes)));
   }
 
   // convenience: primary or remote?  figure it out.
@@ -479,7 +479,7 @@ private:
     add_primary_dentry(dn, 0, dirty, dirty_parent, dirty_pool);
   }
 
-  void add_root(bool dirty, CInode *in, inode_t *pi=0, fragtree_t *pdft=0, bufferlist *psnapbl=0,
+  void add_root(bool dirty, CInode *in, const inode_t *pi=0, fragtree_t *pdft=0, bufferlist *psnapbl=0,
 		    map<string,bufferptr> *px=0) {
     in->last_journaled = event_seq;
     //cout << "journaling " << in->inode.ino << " at " << my_offset << std::endl;
@@ -503,9 +503,10 @@ private:
 
     string empty;
     roots.push_back(ceph::shared_ptr<fullbit>(new fullbit(empty, in->first, in->last, 0, *pi,
-							      *pdft, *px, in->symlink, snapbl,
-							      dirty ? fullbit::STATE_DIRTY : 0,
-							      &in->old_inodes)));
+							  *pdft, *px, in->symlink,
+							  in->oldest_snap, snapbl,
+							  dirty ? fullbit::STATE_DIRTY : 0,
+							  &in->old_inodes)));
   }
   
   dirlump& add_dir(CDir *dir, bool dirty, bool complete=false) {
@@ -525,7 +526,7 @@ private:
     return add_dir(dir->dirfrag(), dir->get_projected_fnode(), dir->get_projected_version(),
 		   dirty, false, false, false, dirtydft);
   }
-  dirlump& add_dir(dirfrag_t df, fnode_t *pf, version_t pv, bool dirty,
+  dirlump& add_dir(dirfrag_t df, const fnode_t *pf, version_t pv, bool dirty,
 		   bool complete=false, bool isnew=false,
 		   bool importing=false, bool dirty_dft=false) {
     if (lump_map.count(df) == 0)

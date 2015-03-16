@@ -25,7 +25,7 @@ class CephContext;
   class Striper {
   public:
     /*
-     * map (ino, layout, offset, len) to a (list of) OSDExtents (byte
+     * map (ino, layout, offset, len) to a (list of) ObjectExtents (byte
      * ranges in objects on (primary) osds)
      */
     static void file_to_extents(CephContext *cct, const char *object_format,
@@ -64,6 +64,7 @@ class CephContext;
     static uint64_t object_truncate_size(CephContext *cct, const ceph_file_layout *layout,
 					 uint64_t objectno, uint64_t trunc_size);
 
+    static uint64_t get_num_objects(const ceph_file_layout& layout, uint64_t size);
     /*
      * helper to assemble a striped result
      */

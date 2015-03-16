@@ -153,6 +153,7 @@ LIBRADOS = librados.la
 LIBRADOSSTRIPER = libradosstriper.la
 LIBRGW = librgw.la
 LIBRBD = librbd.la
+LIBRBD_TYPES = librbd_types.la
 LIBKRBD = libkrbd.la
 LIBCEPHFS = libcephfs.la
 LIBERASURE_CODE = liberasure_code.la
@@ -176,6 +177,13 @@ endif # WITH_LIBROCKSDB
 if WITH_TCMALLOC
 LIBPERFGLUE += -ltcmalloc
 endif # WITH_TCMALLOC
+
+if WITH_JEMALLOC
+LIBMON += -ljemalloc
+LIBOSD += -ljemalloc
+LIBMDS += -ljemalloc
+LIBRGW += -ljemalloc
+endif # WITH_JEMALLOC
 
 if ENABLE_COVERAGE
 EXTRALIBS += -lgcov

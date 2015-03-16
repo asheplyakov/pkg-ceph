@@ -1,6 +1,8 @@
 AUTOMAKE_OPTIONS = gnu
 
 dist_man_MANS = \
+	ceph-deploy.8 \
+	ceph-disk.8 \
 	ceph-osd.8 \
 	ceph-mds.8 \
 	ceph-mon.8 \
@@ -28,4 +30,5 @@ dist_man_MANS = \
 	ceph-post-file.8 \
 	rbd-fuse.8 \
 	rbd-replay.8 \
+	rbd-replay-many.8 \
 	rbd-replay-prep.8

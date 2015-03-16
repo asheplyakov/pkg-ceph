@@ -8,7 +8,7 @@ AC_PREREQ(2.59)
 # VERSION define is not used by the code.  It gets a version string
 # from 'git describe'; see src/ceph_ver.[ch]
 
-AC_INIT([ceph], [0.87], [ceph-devel@vger.kernel.org])
+AC_INIT([ceph], [0.93], [ceph-devel@vger.kernel.org])
 
 # Create release string.  Used with VERSION for RPMs.
 RPM_RELEASE=0
@@ -23,7 +23,7 @@ AC_MSG_NOTICE([RPM_RELEASE='$RPM_RELEASE'])
 
 AC_CONFIG_MACRO_DIR([m4])
 
-AC_CONFIG_SUBDIRS([src/gtest])
+AC_CONFIG_SUBDIRS([src/gmock])
 
 # Environment
 AC_CANONICAL_HOST
@@ -47,6 +47,7 @@ m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 case "${target_os}" in
 darwin*)
 	AC_DEFINE([DARWIN], [1], [Define if darwin/osx])
+    darwin="yes"
 	;;
 linux*)
 	linux="yes"
@@ -57,6 +58,7 @@ freebsd*)
 esac
 AM_CONDITIONAL(LINUX, test x"$linux" = x"yes")
 AM_CONDITIONAL(FREEBSD, test x"$freebsd" = x"yes")
+AM_CONDITIONAL(DARWIN, test x"$darwin" = x"yes")
 
 # Checks for programs.
 AC_PROG_CXX
@@ -85,35 +87,38 @@ AC_SUBST(AM_CXXFLAGS)
 AM_CXXFLAGS="${AM_CXXFLAGS}"
 
 # Check for yasm
-if yasm -f elf64 src/common/crc32c_intel_fast_asm.S -o /dev/null; then
-   echo 'we have a modern and working yasm'
-   if test `arch` = "x86_64" ; then
-      echo 'we are x86_64'
-      arch_x32=0
-      AC_COMPILE_IFELSE([AC_LANG_PROGRAM([], [[
-        #if defined(__x86_64__) && defined(__ILP32__)
-        #error x32
-        #endif]])], [], [arch_x32=1])
-      if test $arch_x32 -eq 0 ; then
-         echo 'we are not x32'
-         AC_DEFINE([HAVE_GOOD_YASM_ELF64], [1], [we have a recent yasm and are x86_64])
-         with_good_yasm=yes
-
-         if yasm -f elf64 -i src/ceph/src/ceph/src/erasure-code/isa/isa-l/include/ src/erasure-code/isa/isa-l/erasure_code/gf_vect_dot_prod_avx2.asm.s -o /dev/null 2> /dev/null ; then
-            echo 'yasm can also build the isa-l stuff'
-            AC_DEFINE([HAVE_BETTER_YASM_ELF64], [1], [yasm can also build the isa-l])
-	    with_better_yasm=yes
-         else
-            echo "yasm doesn't build the isa-l stuff"
-	 fi
-      else
-         echo 'we are x32; no yasm for you'
-      fi
-   else
-      echo 'we are not x86_64 && !x32'
-   fi
-else
-   echo 'we do not have a modern/working yasm'
+AC_CHECK_PROG(YASM_CHECK, yasm, yes)
+if test x"$YASM_CHECK" = x"yes"; then
+  if yasm -f elf64 src/common/crc32c_intel_fast_asm.S -o /dev/null; then
+     echo 'we have a modern and working yasm'
+     if test `arch` = "x86_64" ; then
+        echo 'we are x86_64'
+        arch_x32=0
+        AC_COMPILE_IFELSE([AC_LANG_PROGRAM([], [[
+          #if defined(__x86_64__) && defined(__ILP32__)
+          #error x32
+          #endif]])], [], [arch_x32=1])
+        if test $arch_x32 -eq 0 ; then
+           echo 'we are not x32'
+           AC_DEFINE([HAVE_GOOD_YASM_ELF64], [1], [we have a recent yasm and are x86_64])
+           with_good_yasm=yes
+  
+           if yasm -f elf64 -i src/ceph/src/ceph/src/erasure-code/isa/isa-l/include/ src/erasure-code/isa/isa-l/erasure_code/gf_vect_dot_prod_avx2.asm.s -o /dev/null 2> /dev/null ; then
+              echo 'yasm can also build the isa-l stuff'
+              AC_DEFINE([HAVE_BETTER_YASM_ELF64], [1], [yasm can also build the isa-l])
+  	    with_better_yasm=yes
+           else
+              echo "yasm doesn't build the isa-l stuff"
+  	 fi
+        else
+           echo 'we are x32; no yasm for you'
+        fi
+     else
+        echo 'we are not x86_64 && !x32'
+     fi
+  else
+     echo 'we do not have a modern/working yasm'
+  fi
 fi
 AM_CONDITIONAL(WITH_GOOD_YASM_ELF64, test "$with_good_yasm" = "yes")
 AM_CONDITIONAL(WITH_BETTER_YASM_ELF64, test "$with_better_yasm" = "yes")
@@ -140,9 +145,6 @@ AC_DEFUN([AC_CHECK_CC_FLAG],
 
 AC_CHECK_CC_FLAG([-Wtype-limits], [WARN_TYPE_LIMITS])
 AC_CHECK_CC_FLAG([-Wignored-qualifiers], [WARN_IGNORED_QUALIFIERS])
-
-# Checks for architecture stuff
-AM_CONDITIONAL([ENABLE_FPU_NEON], [case $target_cpu in arm*) true;; *) false;; esac])
 
 # Check for compiler VTA support
 AX_CHECK_COMPILE_FLAG([-fvar-tracking-assignments], [HAS_VTA_SUPPORT=1], [HAS_VTA_SUPPORT=0])
@@ -209,7 +211,7 @@ dnl check for libkeyutils on linux
 KEYUTILS_LIB=""
 AS_IF([test x"$linux" = x"yes"], [
   AC_CHECK_LIB([keyutils], [add_key], [KEYUTILS_LIB="-lkeyutils"], [
-    AC_MSG_FAILURE([libkeyutils not found])])])
+    AC_MSG_FAILURE([libkeyutils not found (libkeyutils-dev, keyutils-libs-devel)])])])
 AC_SUBST(KEYUTILS_LIB)
 
 AC_CHECK_LIB([m], [pow], [true], AC_MSG_FAILURE([libm not found]))
@@ -277,6 +279,12 @@ else
     AC_MSG_FAILURE([no suitable crypto library found])
 fi
 
+AC_ARG_ENABLE([root-make-check],
+            [AS_HELP_STRING([--enable-root-make-check], [enable make check tests that require root privileges])],
+            [],
+            [enable_root_make_check=no])
+AM_CONDITIONAL(ENABLE_ROOT_MAKE_CHECK, test "x$enable_root_make_check" != xno)
+
 # profiler?
 AC_ARG_WITH([profiler],
             [AS_HELP_STRING([--with-profiler], [build extra profiler binaries])],
@@ -288,7 +296,13 @@ AC_ARG_WITH([profiler],
             [with_profiler=no])
 AS_IF([test "x$with_profiler" = xyes],
 	    [AC_CHECK_LIB([profiler], [ProfilerFlush], [],
-	        	  [AC_MSG_FAILURE([--with-profiler was given but libprofiler (libgoogle-perftools-dev on debian) not found])])],
+	        	  [AC_MSG_FAILURE([--with-profiler was given but libprofiler (libgoogle-perftools-dev on debian) not found])])
+             AC_LANG_PUSH([C++])
+             AC_CHECK_HEADERS([gperftools/heap-profiler.h \
+               gperftools/malloc_extension.h \
+               gperftools/profiler.h])
+             AC_LANG_POP([C++])
+            ],
 	    [])
 AM_CONDITIONAL(WITH_PROFILER, test "$with_profiler" = "yes")
 AS_IF([test "$with_profiler" = "yes"],
@@ -375,11 +389,31 @@ AS_IF([test "x$with_fuse" != xno],
                    [no FUSE found (use --without-fuse to disable)])])])
 AM_CONDITIONAL(WITH_FUSE, [test "$HAVE_LIBFUSE" = "1"])
 
+# jemalloc?
+AC_ARG_WITH([jemalloc],
+	    [AS_HELP_STRING([--with-jemalloc], [enable jemalloc for memory allocations])],
+	    [],
+	    [with_jemalloc=no])
+JEMALLOC=
+AS_IF([test "x$with_jemalloc" = xyes],
+	    [AC_CHECK_LIB([jemalloc], [malloc],
+	     [AC_SUBST([LIBJEMALLOC], ["-ljemalloc"])
+	       AC_DEFINE([HAVE_LIBJEMALLOC], [1],
+                         [Define if you have jemalloc])
+	       HAVE_LIBJEMALLOC=1
+	     ],
+	    [AC_MSG_FAILURE(
+		  [no jemalloc found (do not use --with-jemalloc)])])])
+AM_CONDITIONAL(WITH_JEMALLOC, [test "$HAVE_LIBJEMALLOC" = "1"])
+
 # tcmalloc?
 AC_ARG_WITH([tcmalloc],
 	    [AS_HELP_STRING([--without-tcmalloc], [disable tcmalloc for memory allocations])],
 	    [],
 	    [with_tcmalloc=yes])
+
+AS_IF([test "x$with_jemalloc" = "xyes"],[with_tcmalloc=no],[])
+
 TCMALLOC=
 AS_IF([test "x$with_tcmalloc" != xno],
 	    [AC_CHECK_LIB([tcmalloc], [malloc],
@@ -391,6 +425,13 @@ AS_IF([test "x$with_tcmalloc" != xno],
 	    [AC_MSG_FAILURE(
 		  [no tcmalloc found (use --without-tcmalloc to disable)])])])
 AM_CONDITIONAL(WITH_TCMALLOC, [test "$HAVE_LIBTCMALLOC" = "1"])
+
+# error out if --with-jemalloc and ! --without-tcmalloc
+if test "x$with_jemalloc" = "xyes"; then
+	if test "x$with_tcmalloc" != "xno"; then
+		AC_MSG_FAILURE([--with-jemalloc called without --without-tcmalloc])
+	fi
+fi
 
 #set pg ref debugging?
 AC_ARG_ENABLE([pgrefdebugging],
@@ -484,6 +525,31 @@ fi
 AM_CONDITIONAL(HAVE_JUNIT4, [test "$have_junit4" = "1"])
 
 #
+# Accelio and OFED
+#
+AC_ARG_ENABLE(xio,
+    [AC_HELP_STRING([--enable-xio], [build Ceph Accelio transport])],
+    [], [enable_xio=no])
+
+AM_CONDITIONAL(ENABLE_XIO, [test "x$enable_xio" = "xyes"])
+
+if test "x$enable_xio" = x"yes"; then
+   AC_CHECK_HEADER([libxio.h], [], AC_MSG_ERROR([Cannot find header 'libxio.h'.]))
+   AC_CHECK_LIB([xio], [xio_init], [], AC_MSG_FAILURE([Accelio libxio not found]))
+   AC_CHECK_LIB([ibverbs], [ibv_query_device], [], AC_MSG_FAILURE([libibverbs not found]))
+   AC_CHECK_LIB([rdmacm], [rdma_connect], [], AC_MSG_FAILURE([librdmacm not found]))
+
+   # Also require boost-regex, used in address_helper
+   AC_CHECK_LIB(boost_regex, main, [],
+      AC_MSG_FAILURE(["Boost regex library not found."]))
+
+   AC_DEFINE([HAVE_XIO], [1], [Accelio conditional compilation])
+
+   XIO_LIBS="-lxio -libverbs -lrdmacm"
+   AC_SUBST(XIO_LIBS)
+fi
+
+#
 # FreeBSD has it in base.
 #
 if test x"$freebsd" != x"yes"; then
@@ -537,8 +603,12 @@ AC_LANG_PUSH([C++])
 AC_CHECK_HEADER([leveldb/filter_policy.h], [AC_DEFINE([HAVE_LEVELDB_FILTER_POLICY], [1], [Defined if LevelDB supports bloom filters ])])
 AC_LANG_POP([C++])
 
-# Find supported SIMD / SSE extensions supported by the compiler
+# Find supported SIMD / NEON / SSE extensions supported by the compiler
+AX_ARM_FEATURES()
+AM_CONDITIONAL(HAVE_NEON, [ test "x$ax_cv_support_neon_ext" = "xyes"])
 AX_INTEL_FEATURES()
+AM_CONDITIONAL(HAVE_SSSE3, [ test "x$ax_cv_support_ssse3_ext" = "xyes"])
+AM_CONDITIONAL(HAVE_SSE4_PCLMUL, [ test "x$ax_cv_support_pclmuldq_ext" = "xyes"])
 
 # kinetic osd backend?
 AC_ARG_WITH([kinetic],
@@ -565,7 +635,7 @@ AC_ARG_WITH([librocksdb],
 AS_IF([test "x$with_librocksdb" = "xyes"],
             [PKG_CHECK_MODULES([LIBROCKSDB], [rocksdb], [], [true])])
 AS_IF([test "x$with_librocksdb" = "xyes"],
-            [AC_DEFINE([HAVE_LIBROCKSDB], [1], [Defined if you have librocksdb enabled])])
+            [AC_CHECK_LIB([rocksdb], [open], [], [AC_MSG_FAILURE([librocksdb not found])])])
 AM_CONDITIONAL(WITH_DLIBROCKSDB, [ test "$with_librocksdb" = "yes" ])
 
 AC_ARG_WITH([librocksdb-static],
@@ -580,6 +650,14 @@ AS_IF([test "x$with_librocksdb_static" = "xyes"],
             [AC_DEFINE([HAVE_LIBROCKSDB], [1], [Defined if you have librocksdb enabled])])
 AM_CONDITIONAL(WITH_SLIBROCKSDB, [ test "x$with_librocksdb_static" = "xyes" ])
 AM_CONDITIONAL(WITH_LIBROCKSDB, [ test "x$with_librocksdb_static" = "xyes" -o "x$with_librocksdb" = "xyes" ])
+
+# error out if --with-jemalloc and --with-librocksdb_static as rocksdb uses tcmalloc
+if test "x$with_jemalloc" = "xyes"; then
+	if test "x$with_librocksdb_static" != "xno"; then
+		AC_MSG_FAILURE([--with-jemalloc called with --with-librocksdb_static, turn off
+			        --with-librocksdb-static or --with-jemalloc])
+	fi
+fi
 
 # use system libs3?
 AC_ARG_WITH([system-libs3],
@@ -788,6 +866,24 @@ return fdatasync(0);
 ]])], [
 AC_MSG_RESULT([yes])
 AC_DEFINE([HAVE_FDATASYNC], 1, [Define to 1 if you have fdatasync.])
+], [
+AC_MSG_RESULT([no])
+])
+
+AC_MSG_CHECKING([for sched.h])
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+#define _GNU_SOURCE
+#include <sched.h>
+]], [[
+cpu_set_t cpuset;
+CPU_ZERO(&cpuset);
+CPU_SET(sched_getcpu(), &cpuset);
+sched_setaffinity(0, sizeof(cpuset), &cpuset);
+sched_yield();
+return 0;
+]])], [
+AC_MSG_RESULT([yes])
+AC_DEFINE([HAVE_SCHED], 1, [Define to 1 if you have sched.h.])
 ], [
 AC_MSG_RESULT([no])
 ])

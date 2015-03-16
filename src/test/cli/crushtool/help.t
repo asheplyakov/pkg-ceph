@@ -1,6 +1,7 @@
   $ crushtool --help
   usage: crushtool ...
      --decompile|-d map    decompile a crush map to source
+     --tree                print map summary as a tree
      --compile|-c map.txt  compile a map from source
      [-o outfile [--clobber]]
                            specify output for for (de)compilation
@@ -29,10 +30,13 @@
                            reweight a given item (and adjust ancestor
                            weights as needed)
      -i mapfn --reweight   recalculate all bucket weights
+     -i mapfn --show-location id
+                           show location for given device id
      --show-utilization    show OSD usage
      --show utilization-all
                            include zero weight items
      --show-statistics     show chi squared statistics
+     --show-mappings       show mappings
      --show-bad-mappings   show bad mappings
      --show-choose-tries   show choose tries histogram
      --set-choose-local-tries N

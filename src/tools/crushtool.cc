@@ -41,6 +41,26 @@ using namespace std;
 
 const char *infn = "stdin";
 
+static int get_fd_data(int fd, bufferlist &bl)
+{
+
+  uint64_t total = 0;
+  do {
+    ssize_t bytes = bl.read_fd(fd, 1024*1024);
+    if (bytes < 0) {
+      cerr << "read_fd error " << cpp_strerror(-bytes) << "\n";
+      return -1;
+    }
+
+    if (bytes == 0)
+      break;
+
+    total += bytes;
+  } while(true);
+
+  assert(bl.length() == total);
+  return 0;
+}
 
 ////////////////////////////////////////////////////////////////////////////
 
@@ -86,6 +106,7 @@ void usage()
 {
   cout << "usage: crushtool ...\n";
   cout << "   --decompile|-d map    decompile a crush map to source\n";
+  cout << "   --tree                print map summary as a tree\n";
   cout << "   --compile|-c map.txt  compile a map from source\n";
   cout << "   [-o outfile [--clobber]]\n";
   cout << "                         specify output for for (de)compilation\n";
@@ -114,10 +135,13 @@ void usage()
   cout << "                         reweight a given item (and adjust ancestor\n"
        << "                         weights as needed)\n";
   cout << "   -i mapfn --reweight   recalculate all bucket weights\n";
+  cout << "   -i mapfn --show-location id\n";
+  cout << "                         show location for given device id\n";
   cout << "   --show-utilization    show OSD usage\n";
   cout << "   --show utilization-all\n";
   cout << "                         include zero weight items\n";
   cout << "   --show-statistics     show chi squared statistics\n";
+  cout << "   --show-mappings       show mappings\n";
   cout << "   --show-bad-mappings   show bad mappings\n";
   cout << "   --show-choose-tries   show choose tries histogram\n";
   cout << "   --set-choose-local-tries N\n";
@@ -147,6 +171,7 @@ struct bucket_types_t {
   { "uniform", CRUSH_BUCKET_UNIFORM },
   { "list", CRUSH_BUCKET_LIST },
   { "straw", CRUSH_BUCKET_STRAW },
+  { "straw2", CRUSH_BUCKET_STRAW2 },
   { "tree", CRUSH_BUCKET_TREE },
   { 0, 0 },
 };
@@ -168,6 +193,8 @@ int main(int argc, const char **argv)
   bool decompile = false;
   bool test = false;
   bool display = false;
+  bool tree = false;
+  int full_location = -1;
   bool write_to_file = false;
   int verbose = 0;
   bool unsafe_tunables = false;
@@ -190,6 +217,8 @@ int main(int argc, const char **argv)
   int choose_total_tries = -1;
   int chooseleaf_descend_once = -1;
   int chooseleaf_vary_r = -1;
+  int straw_calc_version = -1;
+  int allowed_bucket_algs = -1;
 
   CrushWrapper crush;
 
@@ -224,6 +253,8 @@ int main(int argc, const char **argv)
       outfn = val;
     } else if (ceph_argparse_flag(args, i, "-v", "--verbose", (char*)NULL)) {
       verbose += 1;
+    } else if (ceph_argparse_flag(args, i, "--tree", (char*)NULL)) {
+      tree = true;
     } else if (ceph_argparse_flag(args, i, "--show_utilization", (char*)NULL)) {
       display = true;
       tester.set_output_utilization(true);
@@ -233,6 +264,9 @@ int main(int argc, const char **argv)
     } else if (ceph_argparse_flag(args, i, "--show_statistics", (char*)NULL)) {
       display = true;
       tester.set_output_statistics(true);
+    } else if (ceph_argparse_flag(args, i, "--show_mappings", (char*)NULL)) {
+      display = true;
+      tester.set_output_mappings(true);
     } else if (ceph_argparse_flag(args, i, "--show_bad_mappings", (char*)NULL)) {
       display = true;
       tester.set_output_bad_mappings(true);
@@ -244,6 +278,7 @@ int main(int argc, const char **argv)
       compile = true;
     } else if (ceph_argparse_flag(args, i, "-t", "--test", (char*)NULL)) {
       test = true;
+    } else if (ceph_argparse_withint(args, i, &full_location, &err, "--show-location", (char*)NULL)) {
     } else if (ceph_argparse_flag(args, i, "-s", "--simulate", (char*)NULL)) {
       tester.set_random_placement();
     } else if (ceph_argparse_flag(args, i, "--enable-unsafe-tunables", (char*)NULL)) {
@@ -262,6 +297,12 @@ int main(int argc, const char **argv)
       adjust = true;
     } else if (ceph_argparse_withint(args, i, &chooseleaf_vary_r, &err,
 				     "--set_chooseleaf_vary_r", (char*)NULL)) {
+      adjust = true;
+    } else if (ceph_argparse_withint(args, i, &straw_calc_version, &err,
+				     "--set_straw_calc_version", (char*)NULL)) {
+      adjust = true;
+    } else if (ceph_argparse_withint(args, i, &allowed_bucket_algs, &err,
+				     "--set_allowed_bucket_algs", (char*)NULL)) {
       adjust = true;
     } else if (ceph_argparse_flag(args, i, "--reweight", (char*)NULL)) {
       reweight = true;
@@ -430,8 +471,8 @@ int main(int argc, const char **argv)
     cerr << "cannot specify more than one of compile, decompile, and build" << std::endl;
     exit(EXIT_FAILURE);
   }
-  if (!compile && !decompile && !build && !test && !reweight && !adjust &&
-      add_item < 0 &&
+  if (!compile && !decompile && !build && !test && !reweight && !adjust && !tree &&
+      add_item < 0 && full_location < 0 &&
       remove_name.empty() && reweight_name.empty()) {
     cerr << "no action specified; -h for help" << std::endl;
     exit(EXIT_FAILURE);
@@ -467,16 +508,39 @@ int main(int argc, const char **argv)
   if (!infn.empty()) {
     bufferlist bl;
     std::string error;
-    int r = bl.read_file(infn.c_str(), &error);
-    if (r < 0) {
-      cerr << me << ": error reading '" << infn << "': " 
-	   << error << std::endl;
-      exit(1);
+
+    int r = 0;
+    if (infn == "-") {
+      if (isatty(STDIN_FILENO)) {
+        cerr << "stdin must not be from a tty" << std::endl;
+        exit(EXIT_FAILURE);
+      }
+      r = get_fd_data(STDIN_FILENO, bl);
+      if (r < 0) {
+        cerr << "error reading data from STDIN" << std::endl;
+        exit(EXIT_FAILURE);
+      }
+    } else {
+      r = bl.read_file(infn.c_str(), &error);
+      if (r < 0) {
+        cerr << me << ": error reading '" << infn << "': " 
+             << error << std::endl;
+        exit(1);
+      }
     }
     bufferlist::iterator p = bl.begin();
     crush.decode(p);
   }
 
+  if (full_location >= 0) {
+    map<string, string> loc = crush.get_full_location(full_location);
+    for (map<string,string>::iterator p = loc.begin();
+	 p != loc.end();
+	 ++p) {
+      cout << p->first << "\t" << p->second << std::endl;
+    }
+    exit(0);
+  }
   if (decompile) {
     CrushCompiler cc(crush, cerr, verbose);
     if (!outfn.empty()) {
@@ -491,6 +555,11 @@ int main(int argc, const char **argv)
     } else {
       cc.decompile(cout);
     }
+  }
+  if (tree) {
+    ostringstream oss;
+    crush.dump_tree(&oss, NULL);
+    dout(1) << "\n" << oss.str() << dendl;
   }
 
   if (compile) {
@@ -610,8 +679,7 @@ int main(int argc, const char **argv)
 
     {
       ostringstream oss;
-      vector<__u32> weights(crush.get_max_devices(), 0x10000);
-      crush.dump_tree(weights, &oss, NULL);
+      crush.dump_tree(&oss, NULL);
       dout(1) << "\n" << oss.str() << dendl;
     }
 
@@ -708,6 +776,14 @@ int main(int argc, const char **argv)
   }
   if (chooseleaf_vary_r >= 0) {
     crush.set_chooseleaf_vary_r(chooseleaf_vary_r);
+    modified = true;
+  }
+  if (straw_calc_version >= 0) {
+    crush.set_straw_calc_version(straw_calc_version);
+    modified = true;
+  }
+  if (allowed_bucket_algs >= 0) {
+    crush.set_allowed_bucket_algs(allowed_bucket_algs);
     modified = true;
   }
   if (modified) {

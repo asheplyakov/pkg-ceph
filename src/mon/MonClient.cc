@@ -12,7 +12,7 @@
  * 
  */
 
-#include "msg/SimpleMessenger.h"
+#include "msg/Messenger.h"
 #include "messages/MMonGetMap.h"
 #include "messages/MMonGetVersion.h"
 #include "messages/MMonGetVersionReply.h"
@@ -114,11 +114,11 @@ int MonClient::get_monmap_privately()
   Mutex::Locker l(monc_lock);
 
   bool temp_msgr = false;
-  SimpleMessenger* smessenger = NULL;
+  Messenger* smessenger = NULL;
   if (!messenger) {
-    messenger = smessenger = new SimpleMessenger(cct,
-                                                 entity_name_t::CLIENT(-1),
-                                                 "temp_mon_client", getpid());
+    messenger = smessenger = Messenger::create(cct, cct->_conf->ms_type,
+					       entity_name_t::CLIENT(-1),
+					       "temp_mon_client", getpid());
     messenger->add_dispatcher_head(this);
     smessenger->start();
     temp_msgr = true;
@@ -218,9 +218,9 @@ int MonClient::ping_monitor(const string &mon_id, string *result_reply)
 
   MonClientPinger *pinger = new MonClientPinger(cct, result_reply);
 
-  Messenger *smsgr = new SimpleMessenger(cct,
-                                         entity_name_t::CLIENT(-1),
-                                         "temp_ping_client", getpid());
+  Messenger *smsgr = Messenger::create(cct, cct->_conf->ms_type,
+				       entity_name_t::CLIENT(-1),
+				       "temp_ping_client", getpid());
   smsgr->add_dispatcher_head(pinger);
   smsgr->start();
 
@@ -354,7 +354,7 @@ int MonClient::init()
   Mutex::Locker l(monc_lock);
 
   string method;
-    if (cct->_conf->auth_supported.length() != 0)
+    if (!cct->_conf->auth_supported.empty())
       method = cct->_conf->auth_supported;
     else if (entity_name.get_type() == CEPH_ENTITY_TYPE_OSD ||
              entity_name.get_type() == CEPH_ENTITY_TYPE_MDS ||
@@ -372,7 +372,7 @@ int MonClient::init()
     r = keyring->from_ceph_context(cct);
     if (r == -ENOENT) {
       auth_supported->remove_supported_auth(CEPH_AUTH_CEPHX);
-      if (auth_supported->get_supported_set().size() > 0) {
+      if (!auth_supported->get_supported_set().empty()) {
 	r = 0;
 	no_keyring_disabled_cephx = true;
       } else {
