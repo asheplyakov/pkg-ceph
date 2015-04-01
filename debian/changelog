@@ -4,7 +4,7 @@ ceph (0.87-2) experimental; urgency=low
 
   [ Gaudenz Steinlin ]
   * README.Debian: added clarification about setting the hashpspool flag.
-    (Closes: #7695960).
+    (Closes: #769596).
 
   [ James Page ]
   * Added new "modules.patch" to mark new erasure coding libraries as
