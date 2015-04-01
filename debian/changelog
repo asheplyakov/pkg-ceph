@@ -1,3 +1,53 @@
+ceph (0.87-2) experimental; urgency=low
+
+  * Team upload.
+
+  [ Gaudenz Steinlin ]
+  * README.Debian: added clarification about setting the hashpspool flag.
+    (Closes: #7695960).
+
+  [ James Page ]
+  * Added new "modules.patch" to mark new erasure coding libraries as
+    modules, wildcard install.
+
+  [ Dmitry Smirnov ]
+  * Recommends: added "ntp" to list of time-daemon alternatives
+    (Closes: #767511).
+  * Introduced native systemd services (except "rbdmap"), (Closes: #769593).
+  * ceph-test: install forgotten files.
+  * Run post-build tests:
+    + updated "virtualenv-never-download.patch" to pass
+      "--system-site-packages" to virtualenv to prevent downloads.
+    + added new patches to disable network-dependent and failing tests.
+  * Patchworks:
+    - bug-9341.patch
+    + bug-10036.patch (to show OSD affinity in "ceph osd tree").
+      Thanks, Mykola Golub.
+    + bug-10059.patch
+    + 0latest-giant.patch (Last-Update: 2014-11-15).
+    + sleep-recover.patch
+    + tests-disable.patch (to disable tests that need cluster).
+    + tests-disable-ceph-disk.patch
+    + use_system_gtest.patch (commented)
+      as first attempt to build with system "libgtest-dev".
+    + use_system_jerasure.patch
+  * Build-Depends:
+    + libjerasure-dev (>= 2.0.0-2~)
+    + virtualenv
+    + valgrind [amd64 armhf i386 powerpc]
+  * rules: pass "--without-lttng" to explicitly disable "lttng" to avoid
+    auto-enable if found.
+  * rules: disabled bundled RocksDB:
+    RocksDB suppose to improve performance of keyvaluestore OSDs but the
+    latter slow down to nearly unusable state when filled over 1 TiB even with
+    RocksDB. Moreover KV backend is experimental and super dangerous -- I lost
+    cluster due to OSD poisoning caused by KV OSD which was plugged only
+    during limited time. LevelDB is good enough, for now I see no reason to
+    use RocksDB especially considering that it is not packaged separately.
+  * Removed myself from Uploaders.
+
+ -- Dmitry Smirnov <onlyjob@debian.org>  Wed, 01 Apr 2015 11:47:38 +1100
+
 ceph (0.87-1) experimental; urgency=medium
 
   * New major upstream release [October 2014].
