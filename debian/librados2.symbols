@@ -1,7 +1,6 @@
 librados.so.2 librados2 #MINVER#
  (regex|c++)"^_.*" 0.87
- (regex)"^ceph_ver__[0-9a-f]{40}@Base$" 0.87
- __tracepoint_provider_librados@Base 0.93
+ (regex)"^ceph_ver__[0-9a-f]{40}@Base$" 0.93
  rados_aio_append@Base 0.72.2
  rados_aio_cancel@Base 0.87
  rados_aio_create_completion@Base 0.72.2

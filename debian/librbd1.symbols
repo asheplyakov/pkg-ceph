@@ -1,7 +1,6 @@
 librbd.so.1 librbd1 #MINVER#
  (regex|c++)"^_.*" 0.87
- __tracepoint_provider_librbd@Base 0.93
- ceph_ver__bebf8e9a830d998eeaab55f86bb256d4360dd3c4@Base 0.93
+ (regex)"^ceph_ver__[0-9a-f]{40}@Base$" 0.93
  rbd_aio_create_completion@Base 0.72.2
  rbd_aio_discard@Base 0.72.2
  rbd_aio_flush@Base 0.72.2

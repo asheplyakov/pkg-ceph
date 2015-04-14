@@ -280,8 +280,12 @@ void PG::proc_master_log(
   peer_info[from] = oinfo;
   dout(10) << " peer osd." << from << " now " << oinfo << " " << omissing << dendl;
   might_have_unfound.insert(from);
-  info.last_epoch_started = oinfo.last_epoch_started;
+
+  // See doc/dev/osd_internals/last_epoch_started
+  if (oinfo.last_epoch_started > info.last_epoch_started)
+    info.last_epoch_started = oinfo.last_epoch_started;
   info.history.merge(oinfo.history);
+  assert(info.last_epoch_started >= info.history.last_epoch_started);
 
   peer_missing[from].swap(omissing);
 }
@@ -893,7 +897,8 @@ map<pg_shard_t, pg_info_t>::const_iterator PG::find_best_info(
   for (map<pg_shard_t, pg_info_t>::const_iterator i = infos.begin();
        i != infos.end();
        ++i) {
-    if (max_last_epoch_started_found < i->second.history.last_epoch_started) {
+    if (!cct->_conf->osd_find_best_info_ignore_history_les &&
+	max_last_epoch_started_found < i->second.history.last_epoch_started) {
       min_last_update_acceptable = eversion_t::max();
       max_last_epoch_started_found = i->second.history.last_epoch_started;
     }
@@ -919,6 +924,9 @@ map<pg_shard_t, pg_info_t>::const_iterator PG::find_best_info(
        ++p) {
     // Only consider peers with last_update >= min_last_update_acceptable
     if (p->second.last_update < min_last_update_acceptable)
+      continue;
+    // disqualify anyone with a too old last_epoch_started
+    if (p->second.last_epoch_started < max_last_epoch_started_found)
       continue;
     // Disquality anyone who is incomplete (not fully backfilled)
     if (p->second.is_incomplete())
@@ -1479,11 +1487,17 @@ void PG::activate(ObjectStore::Transaction& t,
 
   if (is_primary()) {
     // only update primary last_epoch_started if we will go active
-    if (acting.size() >= pool.info.min_size)
+    if (acting.size() >= pool.info.min_size) {
+      assert(cct->_conf->osd_find_best_info_ignore_history_les ||
+	     info.last_epoch_started <= activation_epoch);
       info.last_epoch_started = activation_epoch;
+    }
   } else if (is_acting(pg_whoami)) {
-    // update last_epoch_started on acting replica to whatever the primary sent
-    info.last_epoch_started = activation_epoch;
+    /* update last_epoch_started on acting replica to whatever the primary sent
+     * unless it's smaller (could happen if we are going peered rather than
+     * active, see doc/dev/osd_internals/last_epoch_started.rst) */
+    if (info.last_epoch_started < activation_epoch)
+      info.last_epoch_started = activation_epoch;
   }
 
   const pg_missing_t &missing = pg_log.get_missing();
@@ -2298,7 +2312,7 @@ void PG::_update_calc_stats()
 
     // a degraded objects has fewer replicas or EC shards than the
     // pool specifies
-    uint64_t degraded = 0;
+    int64_t degraded = 0;
 
     // if acting is smaller than desired, add in those missing replicas
     if (actingset.size() < target)
@@ -2320,7 +2334,9 @@ void PG::_update_calc_stats()
       degraded += peer_missing[*i].num_missing();
 
       // not yet backfilled
-      degraded += num_objects - peer_info[*i].stats.stats.sum.num_objects;
+      int64_t diff = num_objects - peer_info[*i].stats.stats.sum.num_objects;
+      if (diff > 0)
+        degraded += diff;
     }
     info.stats.stats.sum.num_objects_degraded = degraded;
     info.stats.stats.sum.num_objects_unfound = get_num_unfound();
@@ -2910,38 +2926,21 @@ void PG::append_log(
 {
   if (transaction_applied)
     update_snap_map(logv, t);
+
+  /* The primary has sent an info updating the history, but it may not
+   * have arrived yet.  We want to make sure that we cannot remember this
+   * write without remembering that it happened in an interval which went
+   * active in epoch history.last_epoch_started.
+   */
+  if (info.last_epoch_started != info.history.last_epoch_started) {
+    info.history.last_epoch_started = info.last_epoch_started;
+  }
   dout(10) << "append_log " << pg_log.get_log() << " " << logv << dendl;
 
   map<string,bufferlist> keys;
   for (vector<pg_log_entry_t>::const_iterator p = logv.begin();
        p != logv.end();
        ++p) {
-    // we might get log entries for missing objects since we can write to
-    // degraded objects
-    if (!transaction_applied) {
-      if (p->is_delete())
-	remove_snap_mapped_object(
-	  t,
-	  p->soid);
-
-      assert(
-	p->soid > info.last_backfill ||
-	pg_log.get_missing().is_missing(p->soid) ||
-	(p->is_clone() || p->is_promote() ||
-	 (p->is_modify() && (p->prior_version == eversion_t())))
-	);
-
-      if (p->soid <= info.last_backfill) {
-	dout(10) << __func__ << ": transaction empty, adding event "
-		 << *p << " to missing"
-		 << dendl;
-	pg_log.missing_add_event(*p);
-      } else {
-	dout(10) << __func__ << ": transaction empty, backfill, "
-		 << "not adding event " << *p << " to missing"
-		 << dendl;
-      }
-    }
     add_log_entry(*p, keys[p->get_key_name()]);
   }
 
@@ -4722,12 +4721,6 @@ void PG::start_peering_interval(
 
   reg_next_scrub();
 
-  // set CREATING bit until we have peered for the first time.
-  if (is_primary() && info.history.last_epoch_started == 0)
-    state_set(PG_STATE_CREATING);
-  else
-    state_clear(PG_STATE_CREATING);
-
   // did acting, up, primary|acker change?
   if (!lastmap) {
     dout(10) << " no lastmap" << dendl;
@@ -5575,6 +5568,10 @@ PG::RecoveryState::Primary::Primary(my_context ctx)
   context< RecoveryMachine >().log_enter(state_name);
   PG *pg = context< RecoveryMachine >().pg;
   assert(pg->want_acting.empty());
+
+  // set CREATING bit until we have peered for the first time.
+  if (pg->info.history.last_epoch_started == 0)
+    pg->state_set(PG_STATE_CREATING);
 }
 
 boost::statechart::result PG::RecoveryState::Primary::react(const MNotifyRec& notevt)
@@ -5608,6 +5605,7 @@ void PG::RecoveryState::Primary::exit()
   utime_t dur = ceph_clock_now(pg->cct) - enter_time;
   pg->osd->recoverystate_perf->tinc(rs_primary_latency, dur);
   pg->clear_primary_state();
+  pg->state_clear(PG_STATE_CREATING);
 }
 
 /*---------Peering--------*/

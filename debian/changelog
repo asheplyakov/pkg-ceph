@@ -1,3 +1,46 @@
+ceph (0.94.1-0ubuntu1) vivid; urgency=high
+
+  * New upstream stable point release (LP: #1443821):
+    - Includes critical fix for communication from pre-0.94 clients
+      during cluster upgrades.
+
+ -- James Page <james.page@ubuntu.com>  Tue, 14 Apr 2015 11:46:12 +0100
+
+ceph (0.94-0ubuntu1) vivid; urgency=low
+
+  * New upstream stable release 'Hammer' (LP: #1423601):
+    - d/p/*: Refresh.
+    - d/*.symbols: Update inline with upstream additions, use regex
+      for ceph version symbol.
+
+ -- James Page <james.page@ubuntu.com>  Wed, 08 Apr 2015 18:57:08 +0100
+
+ceph (0.93-0ubuntu6) vivid; urgency=medium
+
+  * d/control,rules,*.symbols: Disable lttng support until we can make
+    it play a bit nicer with libvirt and apparmor, drop associated
+    symbols (LP: #1432644). 
+
+ -- James Page <james.page@ubuntu.com>  Wed, 01 Apr 2015 10:37:03 +0100
+
+ceph (0.93-0ubuntu5) vivid; urgency=medium
+
+  * d/lib-systemd/system/ceph-create-keys.service: Automatically create
+    admin and bootstrap keys after ceph mon startup (LP: #1435450). 
+  * d/p/vivid-does-systemd.patch: Ensure that disks prepared on vivid
+    or later use systemd for init (LP: #1435464).
+  * d/lib-systemd/system/*.service: Align nofile limits and restart config
+    with equivalent upstart configurations.
+
+ -- James Page <james.page@ubuntu.com>  Tue, 24 Mar 2015 12:30:14 +0000
+
+ceph (0.93-0ubuntu4) vivid; urgency=medium
+
+  * d/p/fix-cycles-arch.patch: Skip initialization of cycles_per_sec
+    if rtdsc (or equivalent) is not supported (LP: #1432786). 
+
+ -- James Page <james.page@ubuntu.com>  Wed, 18 Mar 2015 14:44:39 +0000
+
 ceph (0.93-0ubuntu3) vivid; urgency=medium
 
   * d/ceph{-common}.install,control: Move ceph_argparse.py down into

@@ -209,6 +209,7 @@ libcephfs.so.1 libcephfs1 #MINVER#
  crush_destroy_bucket@Base 0.72.2
  crush_destroy_bucket_list@Base 0.72.2
  crush_destroy_bucket_straw@Base 0.72.2
+ crush_destroy_bucket_straw2@Base 0.94
  crush_destroy_bucket_tree@Base 0.72.2
  crush_destroy_bucket_uniform@Base 0.72.2
  crush_destroy_rule@Base 0.72.2

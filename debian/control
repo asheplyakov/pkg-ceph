@@ -37,7 +37,6 @@ Build-Depends:
  libgoogle-perftools-dev [i386 amd64 powerpc armhf arm64 ppc64el],
  libkeyutils-dev,
  libleveldb-dev,
- liblttng-ust-dev (>= 2.5.0),
  libnss3-dev,
  libs3-dev,
  libsnappy-dev,

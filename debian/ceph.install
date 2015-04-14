@@ -1,6 +1,7 @@
 ## install from source tree
 debian/etc/pm/sleep.d/*    /etc/pm/sleep.d/
 debian/lib-systemd/system-sleep/*    /lib/systemd/system-sleep/
+debian/lib-systemd/system/ceph-create-keys.service /lib/systemd/system/
 debian/lib-systemd/system/ceph-mon.service    /lib/systemd/system/
 debian/lib-systemd/system/ceph-osd@.service   /lib/systemd/system/
 etc/bash_completion.d/ceph

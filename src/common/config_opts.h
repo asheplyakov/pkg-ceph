@@ -251,6 +251,7 @@ OPTION(mon_osd_min_down_reporters, OPT_INT, 1)   // number of OSDs who need to r
 OPTION(mon_osd_min_down_reports, OPT_INT, 3)     // number of times a down OSD must be reported for it to count
 OPTION(mon_osd_force_trim_to, OPT_INT, 0)   // force mon to trim maps to this point, regardless of min_last_epoch_clean (dangerous, use with care)
 OPTION(mon_mds_force_trim_to, OPT_INT, 0)   // force mon to trim mdsmaps to this point (dangerous, use with care)
+OPTION(crushtool, OPT_STR, "crushtool")
 
 // dump transactions
 OPTION(mon_debug_dump_transactions, OPT_BOOL, false)
@@ -467,6 +468,9 @@ OPTION(osd_agent_min_evict_effort, OPT_FLOAT, .1)
 OPTION(osd_agent_quantize_effort, OPT_FLOAT, .1)
 OPTION(osd_agent_delay_time, OPT_FLOAT, 5.0)
 
+// osd ignore history.last_epoch_started in find_best_info
+OPTION(osd_find_best_info_ignore_history_les, OPT_BOOL, false)
+
 // decay atime and hist histograms after how many objects go by
 OPTION(osd_agent_hist_halflife, OPT_INT, 1000)
 
@@ -638,6 +642,7 @@ OPTION(osd_debug_drop_pg_create_probability, OPT_DOUBLE, 0)
 OPTION(osd_debug_drop_pg_create_duration, OPT_INT, 1)
 OPTION(osd_debug_drop_op_probability, OPT_DOUBLE, 0)   // probability of stalling/dropping a client op
 OPTION(osd_debug_op_order, OPT_BOOL, false)
+OPTION(osd_debug_scrub_chance_rewrite_digest, OPT_U64, 0)
 OPTION(osd_debug_verify_snaps_on_info, OPT_BOOL, false)
 OPTION(osd_debug_verify_stray_on_activate, OPT_BOOL, false)
 OPTION(osd_debug_skip_full_check_in_backfill_reservation, OPT_BOOL, false)
@@ -652,7 +657,6 @@ OPTION(osd_failsafe_full_ratio, OPT_FLOAT, .97) // what % full makes an OSD "ful
 OPTION(osd_failsafe_nearfull_ratio, OPT_FLOAT, .90) // what % full makes an OSD near full (failsafe)
 
 OPTION(osd_pg_object_context_cache_count, OPT_INT, 64)
-OPTION(osd_enable_degraded_writes, OPT_BOOL, true)
 
 // determines whether PGLog::check() compares written out log to stored log
 OPTION(osd_debug_pg_log_writeout, OPT_BOOL, false)
