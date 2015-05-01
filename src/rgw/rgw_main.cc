@@ -54,6 +54,7 @@
 #include "rgw_resolve.h"
 #include "rgw_loadgen.h"
 #include "rgw_civetweb.h"
+#include "rgw_civetweb_log.h"
 
 #include "civetweb/civetweb.h"
 
@@ -92,6 +93,8 @@ struct RGWRequest
 
   RGWRequest() : id(0), s(NULL), op(NULL) {
   }
+
+  virtual ~RGWRequest() {}
 
   void init_state(req_state *_s) {
     s = _s;
@@ -140,6 +143,8 @@ public:
   }
   bool get_val(const string& key, const string& def_val, string *out);
   bool get_val(const string& key, int def_val, int *out);
+
+  map<string, string>& get_config_map() { return config_map; }
 
   string get_framework() { return framework; }
 };
@@ -636,6 +641,10 @@ void RGWFCGXProcess::handle_request(RGWRequest *r)
 
   FCGX_Finish_r(fcgx);
 
+  if (store->ctx()->_conf->rgw_fcgi_explicit_free) {
+    FCGX_Free(fcgx, 1);
+  }
+
   delete req;
 }
 
@@ -909,6 +918,12 @@ class RGWMongooseFrontend : public RGWFrontend {
   struct mg_context *ctx;
   RGWProcessEnv env;
 
+  void set_conf_default(map<string, string>& m, const string& key, const string& def_val) {
+    if (m.find(key) == m.end()) {
+      m[key] = def_val;
+    }
+  }
+
 public:
   RGWMongooseFrontend(RGWProcessEnv& pe, RGWFrontendConfig *_conf) : conf(_conf), ctx(NULL), env(pe) {
   }
@@ -921,12 +936,28 @@ public:
     char thread_pool_buf[32];
     snprintf(thread_pool_buf, sizeof(thread_pool_buf), "%d", (int)g_conf->rgw_thread_pool_size);
     string port_str;
+    map<string, string> conf_map = conf->get_config_map();
     conf->get_val("port", "80", &port_str);
-    const char *options[] = {"listening_ports", port_str.c_str(), "enable_keep_alive", "yes", "num_threads", thread_pool_buf, NULL};
+    conf_map.erase("port");
+    conf_map["listening_ports"] = port_str;
+    set_conf_default(conf_map, "enable_keep_alive", "yes");
+    set_conf_default(conf_map, "num_threads", thread_pool_buf);
+    set_conf_default(conf_map, "decode_url", "no");
+
+    const char *options[conf_map.size() * 2 + 1];
+    int i = 0;
+    for (map<string, string>::iterator iter = conf_map.begin(); iter != conf_map.end(); ++iter) {
+      options[i] = iter->first.c_str();
+      options[i + 1] = iter->second.c_str();
+      dout(20)<< "civetweb config: " << options[i] << ": " << (options[i + 1] ? options[i + 1] : "<null>") << dendl;
+      i += 2;
+    }
+    options[i] = NULL;
 
     struct mg_callbacks cb;
     memset((void *)&cb, 0, sizeof(cb));
     cb.begin_request = civetweb_callback;
+    cb.log_message = rgw_civetweb_log_callback;
     ctx = mg_start(&cb, &env, (const char **)&options);
 
     if (!ctx) {
@@ -965,7 +996,7 @@ int main(int argc, const char **argv)
   vector<const char *> def_args;
   def_args.push_back("--debug-rgw=1/5");
   def_args.push_back("--keyring=$rgw_data/keyring");
-  def_args.push_back("--log-file=/var/log/radosgw/$cluster-$name");
+  def_args.push_back("--log-file=/var/log/radosgw/$cluster-$name.log");
 
   vector<const char*> args;
   argv_to_vec(argc, argv, args);

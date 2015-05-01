@@ -1211,7 +1211,7 @@ bool OSDMonitor::preprocess_boot(MOSDBoot *m)
       osdmap.get_info(from).up_from > m->version) {
     dout(7) << "prepare_boot msg from before last up_from, ignoring" << dendl;
     send_latest(m, m->sb.current_epoch+1);
-    goto ignore;
+    return true;
   }
 
   // noup?
@@ -2465,6 +2465,31 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
     }
     ss << "listed " << osdmap.blacklist.size() << " entries";
 
+  } else if (prefix == "osd crush get-tunable") {
+    string tunable;
+    cmd_getval(g_ceph_context, cmdmap, "tunable", tunable);
+    int value;
+    cmd_getval(g_ceph_context, cmdmap, "value", value);
+    ostringstream rss;
+    if (f)
+      f->open_object_section("tunable");
+    if (tunable == "straw_calc_version") {
+      if (f)
+	f->dump_int(tunable.c_str(), osdmap.crush->get_straw_calc_version());
+      else
+	rss << osdmap.crush->get_straw_calc_version() << "\n";
+    } else {
+      r = -EINVAL;
+      goto reply;
+    }
+    if (f) {
+      f->close_section();
+      f->flush(rdata);
+    } else {
+      rdata.append(rss.str());
+    }
+    r = 0;
+
   } else if (prefix == "osd pool get") {
     string poolstr;
     cmd_getval(g_ceph_context, cmdmap, "pool", poolstr);
@@ -3279,11 +3304,38 @@ int OSDMonitor::prepare_pool_crush_ruleset(const unsigned pool_type,
   if (*crush_ruleset < 0) {
     switch (pool_type) {
     case pg_pool_t::TYPE_REPLICATED:
-      *crush_ruleset = osdmap.crush->get_osd_pool_default_crush_replicated_ruleset(g_ceph_context);
-      if (*crush_ruleset < 0) {
-        // Errors may happen e.g. if no valid ruleset is available
-        ss << "No suitable CRUSH ruleset exists";
-        return *crush_ruleset;
+      {
+	if (ruleset_name == "") {
+	  //Use default ruleset
+	  *crush_ruleset = osdmap.crush->get_osd_pool_default_crush_replicated_ruleset(g_ceph_context);
+	  if (*crush_ruleset < 0) {
+	    // Errors may happen e.g. if no valid ruleset is available
+	    ss << "No suitable CRUSH ruleset exists";
+	    return *crush_ruleset;
+	  }
+	} else {
+	  int ret;
+	  ret = osdmap.crush->get_rule_id(ruleset_name);
+	  if (ret != -ENOENT) {
+	    // found it, use it
+	    *crush_ruleset = ret;
+	  } else {
+	    CrushWrapper newcrush;
+	    _get_pending_crush(newcrush);
+
+	    ret = newcrush.get_rule_id(ruleset_name);
+	    if (ret != -ENOENT) {
+	      // found it, wait for it to be proposed
+	      dout(20) << "prepare_pool_crush_ruleset: ruleset "
+		   << ruleset_name << " is pending, try again" << dendl;
+	      return -EAGAIN;
+	    } else {
+	      //Cannot find it , return error
+	      ss << "Specified ruleset " << ruleset_name << " doesn't exist";
+	      return ret;
+	    }
+	  }
+	}
       }
       break;
     case pg_pool_t::TYPE_ERASURE:
@@ -4115,6 +4167,19 @@ bool OSDMonitor::prepare_command_impl(MMonCommand *m,
       }
     } while (false);
 
+  } else if (prefix == "osd crush reweight-all") {
+    // osd crush reweight <name> <weight>
+    CrushWrapper newcrush;
+    _get_pending_crush(newcrush);
+
+    newcrush.reweight(g_ceph_context);
+    pending_inc.crush.clear();
+    newcrush.encode(pending_inc.crush);
+    ss << "reweighted crush hierarchy";
+    getline(ss, rs);
+    wait_for_finished_proposal(new Monitor::C_Command(mon, m, 0, rs,
+						  get_last_committed() + 1));
+    return true;
   } else if (prefix == "osd crush reweight") {
     do {
       // osd crush reweight <name> <weight>
@@ -4186,6 +4251,46 @@ bool OSDMonitor::prepare_command_impl(MMonCommand *m,
     pending_inc.crush.clear();
     newcrush.encode(pending_inc.crush);
     ss << "adjusted tunables profile to " << profile;
+    getline(ss, rs);
+    wait_for_finished_proposal(new Monitor::C_Command(mon, m, 0, rs,
+					      get_last_committed() + 1));
+    return true;
+  } else if (prefix == "osd crush set-tunable") {
+    CrushWrapper newcrush;
+    _get_pending_crush(newcrush);
+
+    err = 0;
+    string tunable;
+    cmd_getval(g_ceph_context, cmdmap, "tunable", tunable);
+
+    int64_t value = -1;
+    if (!cmd_getval(g_ceph_context, cmdmap, "value", value)) {
+      err = -EINVAL;
+      ss << "failed to parse integer value " << cmd_vartype_stringify(cmdmap["value"]);
+      goto reply;
+    }
+
+    if (tunable == "straw_calc_version") {
+      if (value < 0 || value > 2) {
+	ss << "value must be 0 or 1; got " << value;
+	err = -EINVAL;
+	goto reply;
+      }
+      newcrush.set_straw_calc_version(value);
+    } else {
+      ss << "unrecognized tunable '" << tunable << "'";
+      err = -EINVAL;
+      goto reply;
+    }
+
+    if (!validate_crush_against_features(&newcrush, ss)) {
+      err = -EINVAL;
+      goto reply;
+    }
+
+    pending_inc.crush.clear();
+    newcrush.encode(pending_inc.crush);
+    ss << "adjusted tunable " << tunable << " to " << value;
     getline(ss, rs);
     wait_for_finished_proposal(new Monitor::C_Command(mon, m, 0, rs,
 					      get_last_committed() + 1));
@@ -5004,35 +5109,41 @@ done:
     cmd_getval(g_ceph_context, cmdmap, "ruleset", ruleset_name);
     string erasure_code_profile;
     cmd_getval(g_ceph_context, cmdmap, "erasure_code_profile", erasure_code_profile);
-    if (erasure_code_profile == "")
-      erasure_code_profile = "default";
-    if (erasure_code_profile == "default") {
-      if (!osdmap.has_erasure_code_profile(erasure_code_profile)) {
-	if (pending_inc.has_erasure_code_profile(erasure_code_profile)) {
-	  dout(20) << "erasure code profile " << erasure_code_profile << " already pending" << dendl;
-	  goto wait;
-	}
 
-	map<string,string> profile_map;
-	err = osdmap.get_erasure_code_profile_default(g_ceph_context,
+    if (pool_type == pg_pool_t::TYPE_ERASURE) {
+      if (erasure_code_profile == "")
+	erasure_code_profile = "default";
+      //handle the erasure code profile
+      if (erasure_code_profile == "default") {
+	if (!osdmap.has_erasure_code_profile(erasure_code_profile)) {
+	  if (pending_inc.has_erasure_code_profile(erasure_code_profile)) {
+	    dout(20) << "erasure code profile " << erasure_code_profile << " already pending" << dendl;
+	    goto wait;
+	  }
+
+	  map<string,string> profile_map;
+	  err = osdmap.get_erasure_code_profile_default(g_ceph_context,
 						      profile_map,
 						      &ss);
-	if (err)
-	  goto reply;
-	dout(20) << "erasure code profile " << erasure_code_profile << " set" << dendl;
-	pending_inc.set_erasure_code_profile(erasure_code_profile, profile_map);
-	goto wait;
+	  if (err)
+	    goto reply;
+	  dout(20) << "erasure code profile " << erasure_code_profile << " set" << dendl;
+	  pending_inc.set_erasure_code_profile(erasure_code_profile, profile_map);
+	  goto wait;
+	}
       }
-    }
-
-    if (ruleset_name == "") {
-      if (erasure_code_profile == "default") {
-	ruleset_name = "erasure-code";
-      } else {
-	dout(1) << "implicitly use ruleset named after the pool: "
+      if (ruleset_name == "") {
+	if (erasure_code_profile == "default") {
+	  ruleset_name = "erasure-code";
+	} else {
+	  dout(1) << "implicitly use ruleset named after the pool: "
 		<< poolstr << dendl;
-	ruleset_name = poolstr;
+	  ruleset_name = poolstr;
+	}
       }
+    } else {
+      //NOTE:for replicated pool,cmd_map will put ruleset_name to erasure_code_profile field
+      ruleset_name = erasure_code_profile;
     }
 
     err = prepare_new_pool(poolstr, 0, // auid=0 for admin created pool

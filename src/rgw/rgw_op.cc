@@ -33,7 +33,8 @@ using ceph::crypto::MD5;
 static string mp_ns = RGW_OBJ_NS_MULTIPART;
 static string shadow_ns = RGW_OBJ_NS_SHADOW;
 
-#define MULTIPART_UPLOAD_ID_PREFIX "2/" // must contain a unique char that may not come up in gen_rand_alpha()
+#define MULTIPART_UPLOAD_ID_PREFIX_LEGACY "2/"
+#define MULTIPART_UPLOAD_ID_PREFIX "2~" // must contain a unique char that may not come up in gen_rand_alpha()
 
 class MultipartMetaFilter : public RGWAccessListFilter {
 public:
@@ -1438,7 +1439,8 @@ static bool is_v2_upload_id(const string& upload_id)
 {
   const char *uid = upload_id.c_str();
 
-  return (strncmp(uid, MULTIPART_UPLOAD_ID_PREFIX, sizeof(MULTIPART_UPLOAD_ID_PREFIX) - 1) == 0);
+  return (strncmp(uid, MULTIPART_UPLOAD_ID_PREFIX, sizeof(MULTIPART_UPLOAD_ID_PREFIX) - 1) == 0) ||
+         (strncmp(uid, MULTIPART_UPLOAD_ID_PREFIX_LEGACY, sizeof(MULTIPART_UPLOAD_ID_PREFIX_LEGACY) - 1) == 0);
 }
 
 int RGWPutObjProcessor_Multipart::do_complete(string& etag, time_t *mtime, time_t set_mtime, map<string, bufferlist>& attrs)
@@ -1524,63 +1526,17 @@ void RGWPutObj::pre_exec()
   rgw_bucket_object_pre_exec(s);
 }
 
-static int put_obj_user_manifest_iterate_cb(rgw_bucket& bucket, RGWObjEnt& ent, RGWAccessControlPolicy *bucket_policy, off_t start_ofs, off_t end_ofs,
-                                       void *param)
-{
-  RGWPutObj *op = (RGWPutObj *)param;
-  return op->user_manifest_iterate_cb(bucket, ent, bucket_policy, start_ofs, end_ofs);
-}
-
-int RGWPutObj::user_manifest_iterate_cb(rgw_bucket& bucket, RGWObjEnt& ent, RGWAccessControlPolicy *bucket_policy, off_t start_ofs, off_t end_ofs)
-{
-  rgw_obj part(bucket, ent.name);
-
-  map<string, bufferlist> attrs;
-
-  int ret = get_obj_attrs(store, s, part, attrs, NULL, NULL);
-  if (ret < 0) {
-    return ret;
-  }
-  map<string, bufferlist>::iterator iter = attrs.find(RGW_ATTR_ETAG);
-  if (iter == attrs.end()) {
-    return 0;
-  }
-  bufferlist& bl = iter->second;
-  const char *buf = bl.c_str();
-  int len = bl.length();
-  while (len > 0 && buf[len - 1] == '\0') {
-    len--;
-  }
-  if (len > 0) {
-    user_manifest_parts_hash->Update((const byte *)bl.c_str(), len);
-  }
-
-  if (s->cct->_conf->subsys.should_gather(ceph_subsys_rgw, 20)) {
-    string e(bl.c_str(), bl.length());
-    ldout(s->cct, 20) << __func__ << ": appending user manifest etag: " << e << dendl;
-  }
-
-  return 0;
-}
-
 static int put_data_and_throttle(RGWPutObjProcessor *processor, bufferlist& data, off_t ofs,
                                  MD5 *hash, bool need_to_wait)
 {
-  const unsigned char *data_ptr = (hash ? (const unsigned char *)data.c_str() : NULL);
   bool again;
-  uint64_t len = data.length();
 
   do {
     void *handle;
 
-    int ret = processor->handle_data(data, ofs, &handle, &again);
+    int ret = processor->handle_data(data, ofs, hash, &handle, &again);
     if (ret < 0)
       return ret;
-
-    if (hash) {
-      hash->Update(data_ptr, len);
-      hash = NULL; /* only calculate hash once */
-    }
 
     ret = processor->throttle_data(handle, need_to_wait);
     if (ret < 0)
@@ -1719,6 +1675,7 @@ void RGWPutObj::execute()
   }
 
   if (need_calc_md5) {
+    processor->complete_hash(&hash);
     hash.Final(m);
 
     buf_to_hex(m, CEPH_CRYPTO_MD5_DIGESTSIZE, calc_md5);
@@ -1737,7 +1694,6 @@ void RGWPutObj::execute()
     bufferlist manifest_bl;
     string manifest_obj_prefix;
     string manifest_bucket;
-    RGWBucketInfo bucket_info;
 
     char etag_buf[CEPH_CRYPTO_MD5_DIGESTSIZE];
     char etag_buf_str[CEPH_CRYPTO_MD5_DIGESTSIZE * 2 + 16];
@@ -1754,16 +1710,6 @@ void RGWPutObj::execute()
 
     manifest_bucket = prefix_str.substr(0, pos);
     manifest_obj_prefix = prefix_str.substr(pos + 1);
-
-    ret = store->get_bucket_info(NULL, manifest_bucket, bucket_info, NULL, NULL);
-    if (ret < 0) {
-      ldout(s->cct, 0) << "could not get bucket info for bucket=" << manifest_bucket << dendl;
-    }
-    ret = iterate_user_manifest_parts(s->cct, store, 0, -1, bucket_info.bucket, manifest_obj_prefix,
-                                      NULL, NULL, put_obj_user_manifest_iterate_cb, (void *)this);
-    if (ret < 0) {
-      goto done;
-    }
 
     hash.Final((byte *)etag_buf);
     buf_to_hex((const unsigned char *)etag_buf, CEPH_CRYPTO_MD5_DIGESTSIZE, etag_buf_str);
@@ -1940,10 +1886,14 @@ void RGWPutMetadata::execute()
   /* no need to track object versioning, need it for bucket's data only */
   RGWObjVersionTracker *ptracker = (s->object ? NULL : &s->bucket_info.objv_tracker);
 
-  /* check if obj exists, read orig attrs */
-  ret = get_obj_attrs(store, s, obj, orig_attrs, NULL, ptracker);
-  if (ret < 0)
-    return;
+  if (s->object) {
+    /* check if obj exists, read orig attrs */
+    ret = get_obj_attrs(store, s, obj, orig_attrs, NULL, ptracker);
+    if (ret < 0)
+      return;
+  } else {
+    orig_attrs = s->bucket_attrs;
+  }
 
   /* only remove meta attrs */
   for (iter = orig_attrs.begin(); iter != orig_attrs.end(); ++iter) {
@@ -2214,6 +2164,7 @@ void RGWCopyObj::execute()
                         replace_attrs,
                         attrs, RGW_OBJ_CATEGORY_MAIN,
                         &s->req_id, /* use req_id as tag */
+                        &etag,
                         &s->err,
                         copy_obj_progress_cb, (void *)this
                         );
@@ -2277,7 +2228,6 @@ void RGWPutACLs::execute()
   RGWAccessControlPolicy_S3 new_policy(s->cct);
   stringstream ss;
   char *new_data = NULL;
-  ACLOwner owner;
   rgw_obj obj;
 
   ret = 0;
@@ -2287,8 +2237,10 @@ void RGWPutACLs::execute()
     return;
   }
 
-  owner.set_id(s->user.user_id);
-  owner.set_name(s->user.display_name);
+
+  RGWAccessControlPolicy *existing_policy = (s->object == NULL? s->bucket_acl : s->object_acl);
+
+  owner = existing_policy->get_owner();
 
   ret = get_params();
   if (ret < 0)
@@ -2536,7 +2488,7 @@ void RGWInitMultipart::execute()
   do {
     char buf[33];
     gen_rand_alphanumeric(s->cct, buf, sizeof(buf) - 1);
-    upload_id = "2/"; /* v2 upload id */
+    upload_id = MULTIPART_UPLOAD_ID_PREFIX; /* v2 upload id */
     upload_id.append(buf);
 
     string tmp_obj_name;

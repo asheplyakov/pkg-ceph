@@ -595,6 +595,7 @@ int ReplicatedPG::do_command(cmdmap_t cmdmap, ostream& ss,
   if (command == "query") {
     f->open_object_section("pg");
     f->dump_string("state", pg_state_string(get_state()));
+    f->dump_stream("snap_trimq") << snap_trimq;
     f->dump_unsigned("epoch", get_osdmap()->get_epoch());
     f->open_array_section("up");
     for (vector<int>::iterator p = up.begin(); p != up.end(); ++p)
@@ -2072,12 +2073,16 @@ void ReplicatedPG::do_scan(
       }
       peer_backfill_info[from] = bi;
 
-      assert(waiting_on_backfill.find(from) != waiting_on_backfill.end());
-      waiting_on_backfill.erase(from);
+      if (waiting_on_backfill.find(from) != waiting_on_backfill.end()) {
+	waiting_on_backfill.erase(from);
 
-      if (waiting_on_backfill.empty()) {
-        assert(peer_backfill_info.size() == backfill_targets.size());
-        finish_recovery_op(hobject_t::get_max());
+	if (waiting_on_backfill.empty()) {
+	  assert(peer_backfill_info.size() == backfill_targets.size());
+	  finish_recovery_op(hobject_t::get_max());
+	}
+      } else {
+	// we canceled backfill for a while due to a too full, and this
+	// is an extra response from a non-too-full peer
       }
     }
     break;
@@ -2559,10 +2564,6 @@ void ReplicatedPG::snap_trimmer()
 	     last_complete_ondisk.epoch > info.history.last_epoch_started) {
     // replica collection trimming
     snap_trimmer_machine.process_event(SnapTrim());
-  }
-  if (snap_trimmer_machine.requeue) {
-    dout(10) << "snap_trimmer requeue" << dendl;
-    queue_snap_trim();
   }
   unlock();
   return;
@@ -3353,6 +3354,11 @@ int ReplicatedPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
 	    break;
 	}
 	result = _delete_oid(ctx, true);
+	if (result >= 0) {
+	  // mark that this is a cache eviction to avoid triggering normal
+	  // make_writeable() clone or snapdir object creation in finish_ctx()
+	  ctx->cache_evict = true;
+	}
 	osd->logger->inc(l_osd_tier_evict);
       }
       break;
@@ -3645,6 +3651,10 @@ int ReplicatedPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
     case CEPH_OSD_OP_SETALLOCHINT:
       ++ctx->num_write;
       {
+        if (!(get_min_peer_features() & CEPH_FEATURE_OSD_SET_ALLOC_HINT)) { 
+          result = -EOPNOTSUPP;
+          break;
+        }
         if (!obs.exists) {
           ctx->mod_desc.create();
           t->touch(soid);
@@ -4836,6 +4846,7 @@ void ReplicatedPG::make_writeable(OpContext *ctx)
   
   if ((ctx->obs->exists && !ctx->obs->oi.is_whiteout()) && // head exist(ed)
       snapc.snaps.size() &&                 // there are snaps
+      !ctx->cache_evict &&
       snapc.snaps[0] > ctx->new_snapset.seq) {  // existing object is old
     // clone
     hobject_t coid = soid;
@@ -5156,7 +5167,9 @@ void ReplicatedPG::finish_ctx(OpContext *ctx, int log_op_type, bool maintain_ssc
 	  ctx->snapset_obc->obs.exists = false;
 	}
       }
-    } else if (ctx->new_snapset.clones.size()) {
+    } else if (ctx->new_snapset.clones.size() &&
+	       !ctx->cache_evict &&
+	       (!ctx->snapset_obc || !ctx->snapset_obc->obs.exists)) {
       // save snapset on _snap
       hobject_t snapoid(soid.oid, soid.get_key(), CEPH_SNAPDIR, soid.hash,
 			info.pgid.pool(), soid.get_namespace());
@@ -5167,7 +5180,8 @@ void ReplicatedPG::finish_ctx(OpContext *ctx, int log_op_type, bool maintain_ssc
 	                                eversion_t(),
 					0, osd_reqid_t(), ctx->mtime));
 
-      ctx->snapset_obc = get_object_context(snapoid, true);
+      if (!ctx->snapset_obc)
+	ctx->snapset_obc = get_object_context(snapoid, true);
       bool got = ctx->snapset_obc->get_write_greedy(ctx->op);
       assert(got);
       dout(20) << " got greedy write on snapset_obc " << *ctx->snapset_obc << dendl;
@@ -6968,6 +6982,7 @@ void ReplicatedPG::check_blacklisted_obc_watchers(ObjectContextRef obc)
     if (get_osdmap()->is_blacklisted(ea)) {
       dout(10) << "watch: Found blacklisted watcher for " << ea << dendl;
       assert(j->second->get_pg() == this);
+      j->second->unregister_cb();
       handle_watch_timeout(j->second);
     }
   }
@@ -9334,6 +9349,13 @@ void ReplicatedPG::on_removal(ObjectStore::Transaction *t)
   // adjust info to backfill
   info.last_backfill = hobject_t();
   dirty_info = true;
+
+
+  // clear log
+  PGLogEntryHandler rollbacker;
+  pg_log.clear_can_rollback_to(&rollbacker);
+  rollbacker.apply(this, t);
+
   write_if_dirty(*t);
 
   on_shutdown();
@@ -10952,7 +10974,7 @@ void ReplicatedPG::hit_set_persist()
       pg_log_entry_t::MODIFY,
       oid,
       ctx->at_version,
-      ctx->obs->oi.version,
+      eversion_t(),
       0,
       osd_reqid_t(),
       ctx->mtime)
@@ -11974,13 +11996,11 @@ ReplicatedPG::NotTrimming::NotTrimming(my_context ctx)
   : my_base(ctx), 
     NamedState(context< SnapTrimmer >().pg->cct, "NotTrimming")
 {
-  context< SnapTrimmer >().requeue = false;
   context< SnapTrimmer >().log_enter(state_name);
 }
 
 void ReplicatedPG::NotTrimming::exit()
 {
-  context< SnapTrimmer >().requeue = true;
   context< SnapTrimmer >().log_exit(state_name, enter_time);
 }
 
@@ -12040,32 +12060,45 @@ boost::statechart::result ReplicatedPG::TrimmingObjects::react(const SnapTrim&)
 
   dout(10) << "TrimmingObjects: trimming snap " << snap_to_trim << dendl;
 
-  // Get next
-  hobject_t old_pos = pos;
-  int r = pg->snap_mapper.get_next_object_to_trim(snap_to_trim, &pos);
-  if (r != 0 && r != -ENOENT) {
-    derr << __func__ << ": get_next returned " << cpp_strerror(r) << dendl;
-    assert(0);
-  } else if (r == -ENOENT) {
-    // Done!
-    dout(10) << "TrimmingObjects: got ENOENT" << dendl;
-    post_event(SnapTrim());
-    return transit< WaitingOnReplicas >();
+  for (set<RepGather *>::iterator i = repops.begin();
+       i != repops.end(); 
+       ) {
+    if ((*i)->all_applied && (*i)->all_committed) {
+      (*i)->put();
+      repops.erase(i++);
+    } else {
+      ++i;
+    }
   }
 
-  dout(10) << "TrimmingObjects react trimming " << pos << dendl;
-  RepGather *repop = pg->trim_object(pos);
-  if (!repop) {
-    dout(10) << __func__ << " could not get write lock on obj "
-	     << pos << dendl;
-    pos = old_pos;
-    return discard_event();
-  }
-  assert(repop);
-  repop->queue_snap_trimmer = true;
+  while (repops.size() < g_conf->osd_pg_max_concurrent_snap_trims) {
+    // Get next
+    hobject_t old_pos = pos;
+    int r = pg->snap_mapper.get_next_object_to_trim(snap_to_trim, &pos);
+    if (r != 0 && r != -ENOENT) {
+      derr << __func__ << ": get_next returned " << cpp_strerror(r) << dendl;
+      assert(0);
+    } else if (r == -ENOENT) {
+      // Done!
+      dout(10) << "TrimmingObjects: got ENOENT" << dendl;
+      post_event(SnapTrim());
+      return transit< WaitingOnReplicas >();
+    }
 
-  repops.insert(repop->get());
-  pg->simple_repop_submit(repop);
+    dout(10) << "TrimmingObjects react trimming " << pos << dendl;
+    RepGather *repop = pg->trim_object(pos);
+    if (!repop) {
+      dout(10) << __func__ << " could not get write lock on obj "
+	       << pos << dendl;
+      pos = old_pos;
+      return discard_event();
+    }
+    assert(repop);
+    repop->queue_snap_trimmer = true;
+
+    repops.insert(repop->get());
+    pg->simple_repop_submit(repop);
+  }
   return discard_event();
 }
 /* WaitingOnReplicasObjects */
@@ -12074,7 +12107,6 @@ ReplicatedPG::WaitingOnReplicas::WaitingOnReplicas(my_context ctx)
     NamedState(context< SnapTrimmer >().pg->cct, "Trimming/WaitingOnReplicas")
 {
   context< SnapTrimmer >().log_enter(state_name);
-  context< SnapTrimmer >().requeue = false;
 }
 
 void ReplicatedPG::WaitingOnReplicas::exit()
@@ -12099,7 +12131,7 @@ boost::statechart::result ReplicatedPG::WaitingOnReplicas::react(const SnapTrim&
   for (set<RepGather *>::iterator i = repops.begin();
        i != repops.end();
        repops.erase(i++)) {
-    if (!(*i)->all_applied) {
+    if (!(*i)->all_applied || !(*i)->all_committed) {
       return discard_event();
     } else {
       (*i)->put();
@@ -12124,7 +12156,7 @@ boost::statechart::result ReplicatedPG::WaitingOnReplicas::react(const SnapTrim&
   context<SnapTrimmer>().need_share_pg_info = true;
 
   // Back to the start
-  post_event(SnapTrim());
+  pg->queue_snap_trim();
   return transit< NotTrimming >();
 }
 

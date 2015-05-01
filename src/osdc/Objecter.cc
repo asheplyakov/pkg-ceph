@@ -1615,7 +1615,10 @@ void Objecter::finish_op(Op *op)
 
   ops.erase(op->tid);
   logger->set(l_osdc_op_active, ops.size());
-  assert(check_latest_map_ops.find(op->tid) == check_latest_map_ops.end());
+
+  // our reply may have raced with pool deletion resulting in a map
+  // check in flight.
+  op_cancel_map_check(op);
 
   if (op->ontimeout)
     timer.cancel_event(op->ontimeout);
@@ -1640,7 +1643,9 @@ void Objecter::send_op(Op *op)
     ldout(cct, 20) << " revoking rx buffer for " << op->tid << " on " << op->con << dendl;
     op->con->revoke_rx_buffer(op->tid);
   }
-  if (op->outbl && op->outbl->length()) {
+  if (op->outbl &&
+      op->ontimeout == NULL &&  // only post rx_buffer if no timeout; see #9582
+      op->outbl->length()) {
     ldout(cct, 20) << " posting rx buffer for " << op->tid << " on " << op->session->con << dendl;
     op->con = op->session->con;
     op->con->post_rx_buffer(op->tid, *op->outbl);

@@ -161,7 +161,7 @@ done:
   dump_errno(s);
 
   for (riter = response_attrs.begin(); riter != response_attrs.end(); ++riter) {
-    s->cio->print("%s: %s\n", riter->first.c_str(), riter->second.c_str());
+    s->cio->print("%s: %s\r\n", riter->first.c_str(), riter->second.c_str());
   }
 
   if (!content_type)
@@ -303,9 +303,9 @@ static void dump_bucket_metadata(struct req_state *s, RGWBucketEnt& bucket)
 {
   char buf[32];
   snprintf(buf, sizeof(buf), "%lld", (long long)bucket.count);
-  s->cio->print("X-RGW-Object-Count: %s\n", buf);
+  s->cio->print("X-RGW-Object-Count: %s\r\n", buf);
   snprintf(buf, sizeof(buf), "%lld", (long long)bucket.size);
-  s->cio->print("X-RGW-Bytes-Used: %s\n", buf);
+  s->cio->print("X-RGW-Bytes-Used: %s\r\n", buf);
 }
 
 void RGWStatBucket_ObjStore_S3::send_response()
@@ -321,16 +321,16 @@ void RGWStatBucket_ObjStore_S3::send_response()
   dump_start(s);
 }
 
-static int create_s3_policy(struct req_state *s, RGWRados *store, RGWAccessControlPolicy_S3& s3policy)
+static int create_s3_policy(struct req_state *s, RGWRados *store, RGWAccessControlPolicy_S3& s3policy, ACLOwner& owner)
 {
   if (s->has_acl_header) {
     if (!s->canned_acl.empty())
       return -ERR_INVALID_REQUEST;
 
-    return s3policy.create_from_headers(store, s->info.env, s->owner);
+    return s3policy.create_from_headers(store, s->info.env, owner);
   }
 
-  return s3policy.create_canned(s->owner, s->bucket_owner, s->canned_acl);
+  return s3policy.create_canned(owner, s->bucket_owner, s->canned_acl);
 }
 
 class RGWLocationConstraint : public XMLObj
@@ -386,7 +386,7 @@ int RGWCreateBucket_ObjStore_S3::get_params()
 {
   RGWAccessControlPolicy_S3 s3policy(s->cct);
 
-  int r = create_s3_policy(s, store, s3policy);
+  int r = create_s3_policy(s, store, s3policy, s->owner);
   if (r < 0)
     return r;
 
@@ -487,7 +487,7 @@ int RGWPutObj_ObjStore_S3::get_params()
   if (!s->length)
     return -ERR_LENGTH_REQUIRED;
 
-  int r = create_s3_policy(s, store, s3policy);
+  int r = create_s3_policy(s, store, s3policy, s->owner);
   if (r < 0)
     return r;
 
@@ -1198,7 +1198,7 @@ int RGWCopyObj_ObjStore_S3::init_dest_policy()
   RGWAccessControlPolicy_S3 s3policy(s->cct);
 
   /* build a policy for the target object */
-  int r = create_s3_policy(s, store, s3policy);
+  int r = create_s3_policy(s, store, s3policy, s->owner);
   if (r < 0)
     return r;
 
@@ -1264,7 +1264,7 @@ void RGWCopyObj_ObjStore_S3::send_partial_response(off_t ofs)
     set_req_state_err(s, ret);
     dump_errno(s);
 
-    end_header(s, this, "binary/octet-stream");
+    end_header(s, this, "application/xml");
     if (ret == 0) {
       s->formatter->open_object_section("CopyObjectResult");
     }
@@ -1285,13 +1285,8 @@ void RGWCopyObj_ObjStore_S3::send_response()
 
   if (ret == 0) {
     dump_time(s, "LastModified", &mtime);
-    map<string, bufferlist>::iterator iter = attrs.find(RGW_ATTR_ETAG);
-    if (iter != attrs.end()) {
-      bufferlist& bl = iter->second;
-      if (bl.length()) {
-        char *etag = bl.c_str();
-        s->formatter->dump_string("ETag", etag);
-      }
+    if (!etag.empty()) {
+      s->formatter->dump_string("ETag", etag);
     }
     s->formatter->close_section();
     rgw_flush_formatter_and_reset(s, s->formatter);
@@ -1318,7 +1313,7 @@ int RGWPutACLs_ObjStore_S3::get_policy_from_state(RGWRados *store, struct req_st
       s->canned_acl.clear();
   }
 
-  int r = create_s3_policy(s, store, s3policy);
+  int r = create_s3_policy(s, store, s3policy, owner);
   if (r < 0)
     return r;
 
@@ -1460,7 +1455,7 @@ void RGWOptionsCORS_ObjStore_S3::send_response()
 int RGWInitMultipart_ObjStore_S3::get_params()
 {
   RGWAccessControlPolicy_S3 s3policy(s->cct);
-  ret = create_s3_policy(s, store, s3policy);
+  ret = create_s3_policy(s, store, s3policy, s->owner);
   if (ret < 0)
     return ret;
 
@@ -2047,6 +2042,12 @@ int RGW_Auth_S3_Keystone_ValidateToken::validate_s3token(const string& auth_id, 
   return 0;
 }
 
+static void init_anon_user(struct req_state *s)
+{
+  rgw_get_anon_user(s->user);
+  s->perm_mask = RGW_PERM_FULL_CONTROL;
+}
+
 /*
  * verify that a signed request comes from the keyholder
  * by checking the signature against our locally-computed version
@@ -2067,6 +2068,11 @@ int RGW_Auth_S3::authorize(RGWRados *store, struct req_state *s)
     return -EPERM;
   }
 
+  if (s->op == OP_OPTIONS) {
+    init_anon_user(s);
+    return 0;
+  }
+
   if (!s->http_auth || !(*s->http_auth)) {
     auth_id = s->info.args.get("AWSAccessKeyId");
     if (auth_id.size()) {
@@ -2080,8 +2086,7 @@ int RGW_Auth_S3::authorize(RGWRados *store, struct req_state *s)
       qsr = true;
     } else {
       /* anonymous access */
-      rgw_get_anon_user(s->user);
-      s->perm_mask = RGW_PERM_FULL_CONTROL;
+      init_anon_user(s);
       return 0;
     }
   } else {

@@ -1472,6 +1472,8 @@ protected:
   void _maybe_boot(epoch_t oldest, epoch_t newest);
   void _send_boot();
   void _collect_metadata(map<string,string> *pmeta);
+  bool _lsb_release_set(char *buf, const char *str, map<string,string> *pm, const char *key);
+  void _lsb_release_parse (map<string,string> *pm);
 
   void start_waiting_for_healthy();
   bool _is_healthy();
@@ -1738,7 +1740,9 @@ protected:
       pg->put("SnapTrimWQ");
     }
     void _clear() {
-      osd->snap_trim_queue.clear();
+      while (PG *pg = _dequeue()) {
+	pg->put("SnapTrimWQ");
+      }
     }
   } snap_trim_wq;
 

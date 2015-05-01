@@ -3762,6 +3762,53 @@ void OSD::_send_boot()
   monc->send_mon_message(mboot);
 }
 
+bool OSD::_lsb_release_set (char *buf, const char *str, map<string,string> *pm, const char *key)
+{
+  if (strncmp (buf, str, strlen (str)) == 0) {
+    char *value;
+
+    if (buf[strlen(buf)-1] == '\n')
+      buf[strlen(buf)-1] = '\0';
+
+    value = buf + strlen (str) + 1;
+    (*pm)[key] = value;
+
+    return true;
+  }
+  return false;
+}
+
+void OSD::_lsb_release_parse (map<string,string> *pm)
+{
+  FILE *fp = NULL;
+  char buf[512];
+
+  fp = popen("lsb_release -idrc", "r");
+  if (!fp) {
+    int ret = -errno;
+    derr << "lsb_release_parse - failed to call lsb_release binary with error: " << cpp_strerror(ret) << dendl;
+    return;
+  }
+
+  while (fgets(buf, sizeof(buf) - 1, fp) != NULL) {
+    if (_lsb_release_set(buf, "Distributor ID:", pm, "distro")) 
+      continue;
+    if (_lsb_release_set(buf, "Description:", pm, "distro_description"))
+      continue;
+    if (_lsb_release_set(buf, "Release:", pm, "distro_version"))
+      continue;
+    if (_lsb_release_set(buf, "Codename:", pm, "distro_codename"))
+      continue;
+    
+    derr << "unhandled output: " << buf << dendl;
+  }
+
+  if (pclose(fp)) {
+    int ret = -errno;
+    derr << "lsb_release_parse - pclose failed: " << cpp_strerror(ret) << dendl;
+  }
+}
+
 void OSD::_collect_metadata(map<string,string> *pm)
 {
   (*pm)["ceph_version"] = pretty_version_to_str();
@@ -3831,34 +3878,7 @@ void OSD::_collect_metadata(map<string,string> *pm)
   }
 
   // distro info
-  f = fopen("/etc/lsb-release", "r");
-  if (f) {
-    char buf[100];
-    while (!feof(f)) {
-      char *line = fgets(buf, sizeof(buf), f);
-      if (!line)
-	break;
-      char *eq = strchr(buf, '=');
-      if (!eq)
-	break;
-      *eq = '\0';
-      ++eq;
-      while (*eq == '\"')
-	++eq;
-      while (*eq && (eq[strlen(eq)-1] == '\n' ||
-		     eq[strlen(eq)-1] == '\"'))
-	eq[strlen(eq)-1] = '\0';
-      if (strcmp(buf, "DISTRIB_ID") == 0)
-	(*pm)["distro"] = eq;
-      else if (strcmp(buf, "DISTRIB_RELEASE") == 0)
-	(*pm)["distro_version"] = eq;
-      else if (strcmp(buf, "DISTRIB_CODENAME") == 0)
-	(*pm)["distro_codename"] = eq;
-      else if (strcmp(buf, "DISTRIB_DESCRIPTION") == 0)
-	(*pm)["distro_description"] = eq;
-    }
-    fclose(f);
-  }
+  _lsb_release_parse(pm); 
 
   dout(10) << __func__ << " " << *pm << dendl;
 }
@@ -5784,8 +5804,13 @@ bool OSD::advance_pg(
        next_epoch <= osd_epoch && next_epoch <= max;
        ++next_epoch) {
     OSDMapRef nextmap = service.try_get_map(next_epoch);
-    if (!nextmap)
+    if (!nextmap) {
+      dout(20) << __func__ << " missing map " << next_epoch << dendl;
+      // make sure max is bumped up so that we can get past any
+      // gap in maps
+      max = MAX(max, next_epoch + g_conf->osd_map_max_advance);
       continue;
+    }
 
     vector<int> newup, newacting;
     int up_primary, acting_primary;
@@ -5816,7 +5841,7 @@ bool OSD::advance_pg(
   service.pg_update_epoch(pg->info.pgid, lastmap->get_epoch());
   pg->handle_activate_map(rctx);
   if (next_epoch <= osd_epoch) {
-    dout(10) << __func__ << " advanced by max " << g_conf->osd_map_max_advance
+    dout(10) << __func__ << " advanced to max " << max
 	     << " past min epoch " << min_epoch
 	     << " ... will requeue " << *pg << dendl;
     return false;
@@ -5874,10 +5899,7 @@ void OSD::advance_map(ObjectStore::Transaction& t, C_Contexts *tfin)
   while (p != waiting_for_pg.end()) {
     spg_t pgid = p->first;
 
-    vector<int> acting;
-    int nrep = osdmap->pg_to_acting_osds(pgid.pgid, acting);
-    int role = osdmap->calc_pg_role(whoami, acting, nrep);
-    if (role >= 0) {
+    if (osdmap->osd_is_valid_op_target(pgid.pgid, whoami)) {
       ++p;  // still me
     } else {
       dout(10) << " discarding waiting ops for " << pgid << dendl;
@@ -6732,7 +6754,8 @@ void OSD::handle_pg_notify(OpRequestRef op)
       PG::CephPeeringEvtRef(
 	new PG::CephPeeringEvt(
 	  it->first.epoch_sent, it->first.query_epoch,
-	  PG::MNotifyRec(pg_shard_t(from, it->first.from), it->first)))
+	  PG::MNotifyRec(pg_shard_t(from, it->first.from), it->first,
+          op->get_req()->get_connection()->get_features())))
       );
   }
 }
@@ -7564,7 +7587,7 @@ void OSD::handle_op(OpRequestRef op)
   if (!pg) {
     dout(7) << "hit non-existent pg " << pgid << dendl;
 
-    if (osdmap->get_pg_acting_role(pgid.pgid, whoami) >= 0) {
+    if (osdmap->osd_is_valid_op_target(pgid.pgid, whoami)) {
       dout(7) << "we are valid target for op, waiting" << dendl;
       waiting_for_pg[pgid].push_back(op);
       op->mark_delayed("waiting for pg to exist locally");
@@ -7578,7 +7601,7 @@ void OSD::handle_op(OpRequestRef op)
     }
     OSDMapRef send_map = get_map(m->get_map_epoch());
 
-    if (send_map->get_pg_acting_role(pgid.pgid, whoami) >= 0) {
+    if (send_map->osd_is_valid_op_target(pgid.pgid, whoami)) {
       dout(7) << "dropping request; client will resend when they get new map" << dendl;
     } else if (!send_map->have_pg_pool(pgid.pool())) {
       dout(7) << "dropping request; pool did not exist" << dendl;
@@ -7835,7 +7858,9 @@ void OSD::process_peering_events(
       continue;
     }
     if (!advance_pg(curmap->get_epoch(), pg, handle, &rctx, &split_pgs)) {
-      pg->queue_null(curmap->get_epoch(), curmap->get_epoch());
+      // we need to requeue the PG explicitly since we didn't actually
+      // handle an event
+      peering_wq.queue(pg);
     } else if (!pg->peering_queue.empty()) {
       PG::CephPeeringEvtRef evt = pg->peering_queue.front();
       pg->peering_queue.pop_front();
@@ -7931,7 +7956,12 @@ void OSD::set_disk_tp_priority()
 	   << dendl;
   int cls =
     ceph_ioprio_string_to_class(cct->_conf->osd_disk_thread_ioprio_class);
-  disk_tp.set_ioprio(cls, cct->_conf->osd_disk_thread_ioprio_priority);
+  if (cls < 0)
+    derr << __func__ << cpp_strerror(cls) << ": "
+	 << "osd_disk_thread_ioprio_class is " << cct->_conf->osd_disk_thread_ioprio_class
+	 << " but only the following values are allowed: idle, be or rt" << dendl;
+  else
+    disk_tp.set_ioprio(cls, cct->_conf->osd_disk_thread_ioprio_priority);
 }
 
 // --------------------------------

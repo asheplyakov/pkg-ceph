@@ -223,11 +223,11 @@ static void dump_container_metadata(struct req_state *s, RGWBucketEnt& bucket)
 {
   char buf[32];
   snprintf(buf, sizeof(buf), "%lld", (long long)bucket.count);
-  s->cio->print("X-Container-Object-Count: %s\n", buf);
+  s->cio->print("X-Container-Object-Count: %s\r\n", buf);
   snprintf(buf, sizeof(buf), "%lld", (long long)bucket.size);
-  s->cio->print("X-Container-Bytes-Used: %s\n", buf);
+  s->cio->print("X-Container-Bytes-Used: %s\r\n", buf);
   snprintf(buf, sizeof(buf), "%lld", (long long)bucket.size_rounded);
-  s->cio->print("X-Container-Bytes-Used-Actual: %s\n", buf);
+  s->cio->print("X-Container-Bytes-Used-Actual: %s\r\n", buf);
 
   if (!s->object) {
     RGWAccessControlPolicy_SWIFT *swift_policy = static_cast<RGWAccessControlPolicy_SWIFT *>(s->bucket_acl);
@@ -247,13 +247,13 @@ static void dump_account_metadata(struct req_state *s, uint32_t buckets_count,
 {
   char buf[32];
   snprintf(buf, sizeof(buf), "%lld", (long long)buckets_count);
-  s->cio->print("X-Account-Container-Count: %s\n", buf);
+  s->cio->print("X-Account-Container-Count: %s\r\n", buf);
   snprintf(buf, sizeof(buf), "%lld", (long long)buckets_object_count);
-  s->cio->print("X-Account-Object-Count: %s\n", buf);
+  s->cio->print("X-Account-Object-Count: %s\r\n", buf);
   snprintf(buf, sizeof(buf), "%lld", (long long)buckets_size);
-  s->cio->print("X-Account-Bytes-Used: %s\n", buf);
+  s->cio->print("X-Account-Bytes-Used: %s\r\n", buf);
   snprintf(buf, sizeof(buf), "%lld", (long long)buckets_size_rounded);
-  s->cio->print("X-Account-Bytes-Used-Actual: %s\n", buf);
+  s->cio->print("X-Account-Bytes-Used-Actual: %s\r\n", buf);
 }
 
 void RGWStatAccount_ObjStore_SWIFT::send_response()
@@ -552,7 +552,6 @@ void RGWCopyObj_ObjStore_SWIFT::send_response()
 int RGWGetObj_ObjStore_SWIFT::send_response_data(bufferlist& bl, off_t bl_ofs, off_t bl_len)
 {
   const char *content_type = NULL;
-  int orig_ret = ret;
   map<string, string> response_attrs;
   map<string, string>::iterator riter;
 
@@ -593,15 +592,11 @@ int RGWGetObj_ObjStore_SWIFT::send_response_data(bufferlist& bl, off_t bl_ofs, o
     }
   }
 
-  if (partial_content && !ret)
-    ret = -STATUS_PARTIAL_CONTENT;
-
-  if (ret)
-    set_req_state_err(s, ret);
+  set_req_state_err(s, (partial_content && !ret) ? STATUS_PARTIAL_CONTENT : ret);
   dump_errno(s);
 
   for (riter = response_attrs.begin(); riter != response_attrs.end(); ++riter) {
-    s->cio->print("%s: %s\n", riter->first.c_str(), riter->second.c_str());
+    s->cio->print("%s: %s\r\n", riter->first.c_str(), riter->second.c_str());
   }
 
   if (!content_type)
@@ -611,7 +606,7 @@ int RGWGetObj_ObjStore_SWIFT::send_response_data(bufferlist& bl, off_t bl_ofs, o
   sent_header = true;
 
 send_data:
-  if (get_data && !orig_ret) {
+  if (get_data && !ret) {
     int r = s->cio->write(bl.c_str() + bl_ofs, bl_len);
     if (r < 0)
       return r;
@@ -776,7 +771,8 @@ RGWOp *RGWHandler_ObjStore_Obj_SWIFT::op_options()
 
 int RGWHandler_ObjStore_SWIFT::authorize()
 {
-  if (!s->os_auth_token && s->info.args.get("temp_url_sig").empty()) {
+  if ((!s->os_auth_token && s->info.args.get("temp_url_sig").empty()) ||
+      (s->op == OP_OPTIONS)) {
     /* anonymous access */
     rgw_get_anon_user(s->user);
     s->perm_mask = RGW_PERM_FULL_CONTROL;
@@ -786,8 +782,6 @@ int RGWHandler_ObjStore_SWIFT::authorize()
   bool authorized = rgw_swift->verify_swift_token(store, s);
   if (!authorized)
     return -EPERM;
-
-  s->perm_mask = RGW_PERM_FULL_CONTROL;
 
   return 0;
 }
