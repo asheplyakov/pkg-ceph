@@ -26,6 +26,8 @@
 #define CRUSH_MAGIC 0x00010000ul   /* for detecting algorithm revisions */
 
 #define CRUSH_MAX_DEPTH 10  /* max crush hierarchy depth */
+#define CRUSH_MAX_RULESET (1<<8) /*max crush ruleset number*/
+#define CRUSH_MAX_RULES	CRUSH_MAX_RULESET /*max crush rules, shold be the same as max rulesets*/
 
 #define CRUSH_MAX_DEVICE_WEIGHT (100u * 0x10000u)
 #define CRUSH_MAX_BUCKET_WEIGHT (65535u * 0x10000u)
@@ -188,6 +190,12 @@ struct crush_map {
 	 * that want to limit reshuffling, a value of 3 or 4 will make the
 	 * mappings line up a bit better with previous mappings. */
 	__u8 chooseleaf_vary_r;
+
+	/*
+	 * version 0 (original) of straw_calc has various flaws.  version 1
+	 * fixes a few of them.
+	 */
+	__u8 straw_calc_version;
 
 	__u32 *choose_tries;
 };

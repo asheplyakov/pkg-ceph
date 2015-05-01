@@ -69,7 +69,8 @@ bin_PROGRAMS = $(am__EXEEXT_9) $(am__EXEEXT_10) ceph-dencoder$(EXEEXT) \
 	ceph-mon$(EXEEXT) ceph-osd$(EXEEXT) ceph-mds$(EXEEXT) \
 	cephfs$(EXEEXT) librados-config$(EXEEXT) ceph-syn$(EXEEXT) \
 	$(am__EXEEXT_12) $(am__EXEEXT_13)
-noinst_PROGRAMS = get_command_descriptions$(EXEEXT)
+noinst_PROGRAMS = ceph_erasure_code_non_regression$(EXEEXT) \
+	get_command_descriptions$(EXEEXT)
 sbin_PROGRAMS =
 su_sbin_PROGRAMS = $(am__EXEEXT_14)
 check_PROGRAMS = unittest_erasure_code_plugin$(EXEEXT) \
@@ -88,20 +89,21 @@ check_PROGRAMS = unittest_erasure_code_plugin$(EXEEXT) \
 	unittest_base64$(EXEEXT) unittest_ceph_argparse$(EXEEXT) \
 	unittest_ceph_compatset$(EXEEXT) unittest_osd_types$(EXEEXT) \
 	unittest_pglog$(EXEEXT) unittest_ecbackend$(EXEEXT) \
-	unittest_hitset$(EXEEXT) unittest_gather$(EXEEXT) \
-	unittest_run_cmd$(EXEEXT) unittest_signals$(EXEEXT) \
-	unittest_simple_spin$(EXEEXT) unittest_librados$(EXEEXT) \
-	unittest_bufferlist$(EXEEXT) unittest_crc32c$(EXEEXT) \
-	unittest_arch$(EXEEXT) unittest_crypto$(EXEEXT) \
-	unittest_crypto_init$(EXEEXT) unittest_perf_counters$(EXEEXT) \
-	unittest_admin_socket$(EXEEXT) unittest_ceph_crypto$(EXEEXT) \
-	unittest_utf8$(EXEEXT) unittest_mime$(EXEEXT) \
-	unittest_escape$(EXEEXT) unittest_chain_xattr$(EXEEXT) \
-	unittest_flatindex$(EXEEXT) unittest_strtol$(EXEEXT) \
-	unittest_confutils$(EXEEXT) unittest_config$(EXEEXT) \
-	unittest_context$(EXEEXT) unittest_heartbeatmap$(EXEEXT) \
-	unittest_formatter$(EXEEXT) unittest_libcephfs_config$(EXEEXT) \
-	unittest_lfnindex$(EXEEXT) unittest_librados_config$(EXEEXT) \
+	unittest_hitset$(EXEEXT) unittest_io_priority$(EXEEXT) \
+	unittest_gather$(EXEEXT) unittest_run_cmd$(EXEEXT) \
+	unittest_signals$(EXEEXT) unittest_simple_spin$(EXEEXT) \
+	unittest_librados$(EXEEXT) unittest_bufferlist$(EXEEXT) \
+	unittest_crc32c$(EXEEXT) unittest_arch$(EXEEXT) \
+	unittest_crypto$(EXEEXT) unittest_crypto_init$(EXEEXT) \
+	unittest_perf_counters$(EXEEXT) unittest_admin_socket$(EXEEXT) \
+	unittest_ceph_crypto$(EXEEXT) unittest_utf8$(EXEEXT) \
+	unittest_mime$(EXEEXT) unittest_escape$(EXEEXT) \
+	unittest_chain_xattr$(EXEEXT) unittest_flatindex$(EXEEXT) \
+	unittest_strtol$(EXEEXT) unittest_confutils$(EXEEXT) \
+	unittest_config$(EXEEXT) unittest_context$(EXEEXT) \
+	unittest_heartbeatmap$(EXEEXT) unittest_formatter$(EXEEXT) \
+	unittest_libcephfs_config$(EXEEXT) unittest_lfnindex$(EXEEXT) \
+	unittest_librados_config$(EXEEXT) \
 	unittest_daemon_config$(EXEEXT) unittest_osd_osdcap$(EXEEXT) \
 	unittest_mon_moncap$(EXEEXT) unittest_mon_pgmap$(EXEEXT) \
 	unittest_ipaddr$(EXEEXT) unittest_texttable$(EXEEXT) \
@@ -142,7 +144,7 @@ check_PROGRAMS = unittest_erasure_code_plugin$(EXEEXT) \
 @LINUX_TRUE@am__append_32 = -lrt
 @LINUX_TRUE@am__append_33 = -export-symbols-regex '^rados_.*'
 @LINUX_TRUE@am__append_34 = -export-symbols-regex '^rbd_.*'
-@WITH_RADOSGW_TRUE@am__append_35 = librgw.la
+@WITH_RADOSGW_TRUE@am__append_35 = librgw.la libcivetweb.la
 @WITH_RADOSGW_TRUE@am__append_36 = \
 @WITH_RADOSGW_TRUE@	$(LIBRADOS) \
 @WITH_RADOSGW_TRUE@	libcls_rgw_client.la \
@@ -177,36 +179,37 @@ check_PROGRAMS = unittest_erasure_code_plugin$(EXEEXT) \
 @LINUX_TRUE@am__append_43 = -ldl
 @LINUX_TRUE@am__append_44 = -ldl
 @LINUX_TRUE@am__append_45 = -ldl
-@COMPILER_HAS_VTA_TRUE@am__append_46 = -fno-var-tracking-assignments
+@LINUX_TRUE@am__append_46 = -ldl
 @COMPILER_HAS_VTA_TRUE@am__append_47 = -fno-var-tracking-assignments
-@WITH_BUILD_TESTS_TRUE@am__append_48 = test_build_libcommon \
+@COMPILER_HAS_VTA_TRUE@am__append_48 = -fno-var-tracking-assignments
+@WITH_BUILD_TESTS_TRUE@am__append_49 = test_build_libcommon \
 @WITH_BUILD_TESTS_TRUE@	test_build_librados test_build_librgw \
 @WITH_BUILD_TESTS_TRUE@	test_build_libcephfs
-@LINUX_TRUE@am__append_49 = ceph_kvstorebench \
+@LINUX_TRUE@am__append_50 = ceph_kvstorebench \
 @LINUX_TRUE@	ceph_test_rados_list_parallel \
 @LINUX_TRUE@	ceph_test_rados_open_pools_parallel \
 @LINUX_TRUE@	ceph_test_rados_delete_pools_parallel \
 @LINUX_TRUE@	ceph_test_rados_watch_notify
-@LINUX_TRUE@am__append_50 = libsystest.la
-@LINUX_TRUE@am__append_51 = -ldl
-@WITH_RADOSGW_TRUE@am__append_52 = ceph_test_cors \
+@LINUX_TRUE@am__append_51 = libsystest.la
+@LINUX_TRUE@am__append_52 = -ldl
+@WITH_RADOSGW_TRUE@am__append_53 = ceph_test_cors \
 @WITH_RADOSGW_TRUE@	ceph_test_rgw_manifest \
 @WITH_RADOSGW_TRUE@	ceph_test_cls_rgw_meta \
 @WITH_RADOSGW_TRUE@	ceph_test_cls_rgw_log \
 @WITH_RADOSGW_TRUE@	ceph_test_cls_rgw_opstate
-@LINUX_TRUE@am__append_53 = ceph_test_librbd_fsx
-@WITH_RADOSGW_TRUE@am__append_54 = ceph_test_cls_rgw
-@LINUX_TRUE@am__append_55 = ceph_test_objectstore
-@LINUX_TRUE@am__append_56 = -ldl
+@LINUX_TRUE@am__append_54 = ceph_test_librbd_fsx
+@WITH_RADOSGW_TRUE@am__append_55 = ceph_test_cls_rgw
+@LINUX_TRUE@am__append_56 = ceph_test_objectstore
 @LINUX_TRUE@am__append_57 = -ldl
-@WITH_REST_BENCH_TRUE@am__append_58 = rest-bench
-@WITH_REST_BENCH_TRUE@@WITH_SYSTEM_LIBS3_TRUE@am__append_59 = -ls3
-@WITH_REST_BENCH_TRUE@@WITH_SYSTEM_LIBS3_FALSE@am__append_60 = libs3/build/lib/libs3.a -lcurl -lxml2
-@WITH_REST_BENCH_TRUE@@WITH_SYSTEM_LIBS3_FALSE@am__append_61 = libs3
-@LINUX_TRUE@am__append_62 = mount.ceph
-@LINUX_TRUE@am__append_63 = rbd
-@WITH_FUSE_TRUE@am__append_64 = ceph-fuse rbd-fuse
-@ENABLE_CEPHFS_JAVA_TRUE@am__append_65 = libcephfs_jni.la
+@LINUX_TRUE@am__append_58 = -ldl
+@WITH_REST_BENCH_TRUE@am__append_59 = rest-bench
+@WITH_REST_BENCH_TRUE@@WITH_SYSTEM_LIBS3_TRUE@am__append_60 = -ls3
+@WITH_REST_BENCH_TRUE@@WITH_SYSTEM_LIBS3_FALSE@am__append_61 = libs3/build/lib/libs3.a -lcurl -lxml2
+@WITH_REST_BENCH_TRUE@@WITH_SYSTEM_LIBS3_FALSE@am__append_62 = libs3
+@LINUX_TRUE@am__append_63 = mount.ceph
+@LINUX_TRUE@am__append_64 = rbd
+@WITH_FUSE_TRUE@am__append_65 = ceph-fuse rbd-fuse
+@ENABLE_CEPHFS_JAVA_TRUE@am__append_66 = libcephfs_jni.la
 subdir = src
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/ac_check_classpath.m4 \
@@ -357,6 +360,19 @@ libcephfs_jni_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_CXXFLAGS) $(CXXFLAGS) $(libcephfs_jni_la_LDFLAGS) \
 	$(LDFLAGS) -o $@
 @ENABLE_CEPHFS_JAVA_TRUE@am_libcephfs_jni_la_rpath = -rpath $(libdir)
+libcivetweb_la_LIBADD =
+am__libcivetweb_la_SOURCES_DIST = rgw/rgw_civetweb.cc \
+	rgw/rgw_civetweb_log.cc civetweb/src/civetweb.c
+@WITH_RADOSGW_TRUE@am_libcivetweb_la_OBJECTS =  \
+@WITH_RADOSGW_TRUE@	rgw/libcivetweb_la-rgw_civetweb.lo \
+@WITH_RADOSGW_TRUE@	rgw/libcivetweb_la-rgw_civetweb_log.lo \
+@WITH_RADOSGW_TRUE@	civetweb/src/libcivetweb_la-civetweb.lo
+libcivetweb_la_OBJECTS = $(am_libcivetweb_la_OBJECTS)
+libcivetweb_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
+	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
+	$(libcivetweb_la_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
+	$(LDFLAGS) -o $@
+@WITH_RADOSGW_TRUE@am_libcivetweb_la_rpath =
 libclient_la_DEPENDENCIES = $(LIBOSDC) $(am__DEPENDENCIES_1)
 am_libclient_la_OBJECTS = client/Client.lo client/Inode.lo \
 	client/Dentry.lo client/MetaRequest.lo \
@@ -509,7 +525,7 @@ am_libcommon_la_OBJECTS = ceph_ver.lo common/DecayCounter.lo \
 	common/bloom_filter.lo common/linux_version.lo mon/MonCap.lo \
 	mon/MonClient.lo mon/MonMap.lo osd/OSDMap.lo osd/osd_types.lo \
 	osd/ECMsgTypes.lo osd/HitSet.lo mds/MDSMap.lo \
-	mds/inode_backtrace.lo mds/mdstypes.lo
+	mds/inode_backtrace.lo mds/mdstypes.lo mds/flock.lo
 libcommon_la_OBJECTS = $(am_libcommon_la_OBJECTS)
 libcommon_crc_la_LIBADD =
 am__libcommon_crc_la_SOURCES_DIST = common/sctp_crc32.c \
@@ -707,11 +723,11 @@ am_liblog_la_OBJECTS = log/Log.lo log/SubsystemMap.lo
 liblog_la_OBJECTS = $(am_liblog_la_OBJECTS)
 libmds_la_DEPENDENCIES = $(LIBOSDC)
 am_libmds_la_OBJECTS = mds/Anchor.lo mds/Capability.lo mds/Dumper.lo \
-	mds/Resetter.lo mds/MDS.lo mds/flock.lo mds/locks.lo \
-	mds/journal.lo mds/Server.lo mds/Mutation.lo mds/MDCache.lo \
-	mds/Locker.lo mds/Migrator.lo mds/MDBalancer.lo mds/CDentry.lo \
-	mds/CDir.lo mds/CInode.lo mds/LogEvent.lo mds/MDSTable.lo \
-	mds/InoTable.lo mds/MDSTableClient.lo mds/MDSTableServer.lo \
+	mds/Resetter.lo mds/MDS.lo mds/locks.lo mds/journal.lo \
+	mds/Server.lo mds/Mutation.lo mds/MDCache.lo mds/Locker.lo \
+	mds/Migrator.lo mds/MDBalancer.lo mds/CDentry.lo mds/CDir.lo \
+	mds/CInode.lo mds/LogEvent.lo mds/MDSTable.lo mds/InoTable.lo \
+	mds/MDSTableClient.lo mds/MDSTableServer.lo \
 	mds/AnchorServer.lo mds/AnchorClient.lo mds/SnapRealm.lo \
 	mds/SnapServer.lo mds/snap.lo mds/SessionMap.lo mds/MDLog.lo \
 	mds/MDSUtility.lo
@@ -1073,6 +1089,13 @@ ceph_erasure_code_benchmark_OBJECTS =  \
 ceph_erasure_code_benchmark_DEPENDENCIES = $(am__DEPENDENCIES_10) \
 	$(LIBCOMMON) $(am__DEPENDENCIES_1) $(am__DEPENDENCIES_6) \
 	$(am__DEPENDENCIES_1)
+am_ceph_erasure_code_non_regression_OBJECTS =  \
+	test/erasure-code/ceph_erasure_code_non_regression.$(OBJEXT)
+ceph_erasure_code_non_regression_OBJECTS =  \
+	$(am_ceph_erasure_code_non_regression_OBJECTS)
+ceph_erasure_code_non_regression_DEPENDENCIES =  \
+	$(am__DEPENDENCIES_10) $(LIBCOMMON) $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_6) $(am__DEPENDENCIES_1)
 am_ceph_filestore_dump_OBJECTS = tools/ceph_filestore_dump.$(OBJEXT)
 ceph_filestore_dump_OBJECTS = $(am_ceph_filestore_dump_OBJECTS)
 ceph_filestore_dump_DEPENDENCIES = $(am__DEPENDENCIES_10) \
@@ -1774,8 +1797,7 @@ am__radosgw_SOURCES_DIST = rgw/rgw_resolve.cc rgw/rgw_rest.cc \
 	rgw/rgw_rest_log.cc rgw/rgw_rest_opstate.cc \
 	rgw/rgw_rest_replica_log.cc rgw/rgw_rest_config.cc \
 	rgw/rgw_http_client.cc rgw/rgw_swift.cc rgw/rgw_swift_auth.cc \
-	rgw/rgw_loadgen.cc rgw/rgw_civetweb.cc civetweb/src/civetweb.c \
-	rgw/rgw_main.cc
+	rgw/rgw_loadgen.cc rgw/rgw_main.cc
 @WITH_RADOSGW_TRUE@am_radosgw_OBJECTS = rgw/rgw_resolve.$(OBJEXT) \
 @WITH_RADOSGW_TRUE@	rgw/rgw_rest.$(OBJEXT) \
 @WITH_RADOSGW_TRUE@	rgw/rgw_rest_swift.$(OBJEXT) \
@@ -1793,11 +1815,9 @@ am__radosgw_SOURCES_DIST = rgw/rgw_resolve.cc rgw/rgw_rest.cc \
 @WITH_RADOSGW_TRUE@	rgw/rgw_swift.$(OBJEXT) \
 @WITH_RADOSGW_TRUE@	rgw/rgw_swift_auth.$(OBJEXT) \
 @WITH_RADOSGW_TRUE@	rgw/rgw_loadgen.$(OBJEXT) \
-@WITH_RADOSGW_TRUE@	rgw/rgw_civetweb.$(OBJEXT) \
-@WITH_RADOSGW_TRUE@	civetweb/src/radosgw-civetweb.$(OBJEXT) \
 @WITH_RADOSGW_TRUE@	rgw/rgw_main.$(OBJEXT)
 radosgw_OBJECTS = $(am_radosgw_OBJECTS)
-@WITH_RADOSGW_TRUE@radosgw_DEPENDENCIES = $(LIBRGW) \
+@WITH_RADOSGW_TRUE@radosgw_DEPENDENCIES = $(LIBRGW) $(LIBCIVETWEB) \
 @WITH_RADOSGW_TRUE@	$(am__DEPENDENCIES_12) \
 @WITH_RADOSGW_TRUE@	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_6)
 am__radosgw_admin_SOURCES_DIST = rgw/rgw_admin.cc
@@ -1876,7 +1896,7 @@ am__test_build_libcommon_SOURCES_DIST = test/buildtest_skeleton.cc \
 	common/bloom_filter.cc common/linux_version.c mon/MonCap.cc \
 	mon/MonClient.cc mon/MonMap.cc osd/OSDMap.cc osd/osd_types.cc \
 	osd/ECMsgTypes.cc osd/HitSet.cc mds/MDSMap.cc \
-	mds/inode_backtrace.cc mds/mdstypes.cc
+	mds/inode_backtrace.cc mds/mdstypes.cc mds/flock.cc
 am__objects_15 = test_build_libcommon-ceph_ver.$(OBJEXT) \
 	common/test_build_libcommon-DecayCounter.$(OBJEXT) \
 	common/test_build_libcommon-LogClient.$(OBJEXT) \
@@ -1958,7 +1978,8 @@ am__objects_15 = test_build_libcommon-ceph_ver.$(OBJEXT) \
 	osd/test_build_libcommon-HitSet.$(OBJEXT) \
 	mds/test_build_libcommon-MDSMap.$(OBJEXT) \
 	mds/test_build_libcommon-inode_backtrace.$(OBJEXT) \
-	mds/test_build_libcommon-mdstypes.$(OBJEXT)
+	mds/test_build_libcommon-mdstypes.$(OBJEXT) \
+	mds/test_build_libcommon-flock.$(OBJEXT)
 @WITH_BUILD_TESTS_TRUE@am_test_build_libcommon_OBJECTS = test/test_build_libcommon-buildtest_skeleton.$(OBJEXT) \
 @WITH_BUILD_TESTS_TRUE@	$(am__objects_15)
 test_build_libcommon_OBJECTS = $(am_test_build_libcommon_OBJECTS)
@@ -2356,6 +2377,15 @@ unittest_hitset_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(unittest_hitset_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
 	$(LDFLAGS) -o $@
+am_unittest_io_priority_OBJECTS =  \
+	test/common/unittest_io_priority-test_io_priority.$(OBJEXT)
+unittest_io_priority_OBJECTS = $(am_unittest_io_priority_OBJECTS)
+unittest_io_priority_DEPENDENCIES = $(am__DEPENDENCIES_13) \
+	$(am__DEPENDENCIES_6)
+unittest_io_priority_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
+	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
+	$(unittest_io_priority_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
+	$(LDFLAGS) -o $@
 am_unittest_ipaddr_OBJECTS =  \
 	test/unittest_ipaddr-test_ipaddr.$(OBJEXT)
 unittest_ipaddr_OBJECTS = $(am_unittest_ipaddr_OBJECTS)
@@ -2668,11 +2698,12 @@ SOURCES = $(libcls_log_client_a_SOURCES) \
 	$(libcls_version_client_a_SOURCES) $(libos_zfs_a_SOURCES) \
 	$(libarch_la_SOURCES) $(libauth_la_SOURCES) \
 	$(libcephfs_la_SOURCES) $(libcephfs_jni_la_SOURCES) \
-	$(libclient_la_SOURCES) $(libclient_fuse_la_SOURCES) \
-	$(libcls_hello_la_SOURCES) $(libcls_kvs_la_SOURCES) \
-	$(libcls_lock_la_SOURCES) $(libcls_lock_client_la_SOURCES) \
-	$(libcls_log_la_SOURCES) $(libcls_rbd_la_SOURCES) \
-	$(libcls_rbd_client_la_SOURCES) $(libcls_refcount_la_SOURCES) \
+	$(libcivetweb_la_SOURCES) $(libclient_la_SOURCES) \
+	$(libclient_fuse_la_SOURCES) $(libcls_hello_la_SOURCES) \
+	$(libcls_kvs_la_SOURCES) $(libcls_lock_la_SOURCES) \
+	$(libcls_lock_client_la_SOURCES) $(libcls_log_la_SOURCES) \
+	$(libcls_rbd_la_SOURCES) $(libcls_rbd_client_la_SOURCES) \
+	$(libcls_refcount_la_SOURCES) \
 	$(libcls_refcount_client_la_SOURCES) \
 	$(libcls_replica_log_la_SOURCES) $(libcls_rgw_la_SOURCES) \
 	$(libcls_rgw_client_la_SOURCES) $(libcls_statelog_la_SOURCES) \
@@ -2707,6 +2738,7 @@ SOURCES = $(libcls_log_client_a_SOURCES) \
 	$(ceph_syn_SOURCES) $(ceph_bench_log_SOURCES) \
 	$(ceph_dupstore_SOURCES) $(ceph_erasure_code_SOURCES) \
 	$(ceph_erasure_code_benchmark_SOURCES) \
+	$(ceph_erasure_code_non_regression_SOURCES) \
 	$(ceph_filestore_dump_SOURCES) $(ceph_filestore_tool_SOURCES) \
 	$(ceph_kvstorebench_SOURCES) \
 	$(ceph_mon_store_converter_SOURCES) \
@@ -2794,8 +2826,8 @@ SOURCES = $(libcls_log_client_a_SOURCES) \
 	$(unittest_escape_SOURCES) $(unittest_flatindex_SOURCES) \
 	$(unittest_formatter_SOURCES) $(unittest_gather_SOURCES) \
 	$(unittest_heartbeatmap_SOURCES) $(unittest_histogram_SOURCES) \
-	$(unittest_hitset_SOURCES) $(unittest_ipaddr_SOURCES) \
-	$(unittest_lfnindex_SOURCES) \
+	$(unittest_hitset_SOURCES) $(unittest_io_priority_SOURCES) \
+	$(unittest_ipaddr_SOURCES) $(unittest_lfnindex_SOURCES) \
 	$(unittest_libcephfs_config_SOURCES) \
 	$(unittest_librados_SOURCES) \
 	$(unittest_librados_config_SOURCES) $(unittest_log_SOURCES) \
@@ -2821,7 +2853,8 @@ DIST_SOURCES = $(libcls_log_client_a_SOURCES) \
 	$(libcls_version_client_a_SOURCES) \
 	$(am__libos_zfs_a_SOURCES_DIST) $(libarch_la_SOURCES) \
 	$(libauth_la_SOURCES) $(libcephfs_la_SOURCES) \
-	$(am__libcephfs_jni_la_SOURCES_DIST) $(libclient_la_SOURCES) \
+	$(am__libcephfs_jni_la_SOURCES_DIST) \
+	$(am__libcivetweb_la_SOURCES_DIST) $(libclient_la_SOURCES) \
 	$(am__libclient_fuse_la_SOURCES_DIST) \
 	$(libcls_hello_la_SOURCES) $(am__libcls_kvs_la_SOURCES_DIST) \
 	$(libcls_lock_la_SOURCES) $(libcls_lock_client_la_SOURCES) \
@@ -2862,6 +2895,7 @@ DIST_SOURCES = $(libcls_log_client_a_SOURCES) \
 	$(ceph_bench_log_SOURCES) $(ceph_dupstore_SOURCES) \
 	$(ceph_erasure_code_SOURCES) \
 	$(ceph_erasure_code_benchmark_SOURCES) \
+	$(ceph_erasure_code_non_regression_SOURCES) \
 	$(ceph_filestore_dump_SOURCES) $(ceph_filestore_tool_SOURCES) \
 	$(am__ceph_kvstorebench_SOURCES_DIST) \
 	$(ceph_mon_store_converter_SOURCES) \
@@ -2955,8 +2989,8 @@ DIST_SOURCES = $(libcls_log_client_a_SOURCES) \
 	$(unittest_escape_SOURCES) $(unittest_flatindex_SOURCES) \
 	$(unittest_formatter_SOURCES) $(unittest_gather_SOURCES) \
 	$(unittest_heartbeatmap_SOURCES) $(unittest_histogram_SOURCES) \
-	$(unittest_hitset_SOURCES) $(unittest_ipaddr_SOURCES) \
-	$(unittest_lfnindex_SOURCES) \
+	$(unittest_hitset_SOURCES) $(unittest_io_priority_SOURCES) \
+	$(unittest_ipaddr_SOURCES) $(unittest_lfnindex_SOURCES) \
 	$(unittest_libcephfs_config_SOURCES) \
 	$(unittest_librados_SOURCES) \
 	$(unittest_librados_config_SOURCES) $(unittest_log_SOURCES) \
@@ -3219,8 +3253,9 @@ am__noinst_HEADERS_DIST = arch/intel.h arch/neon.h arch/probe.h \
 	rgw/rgw_rest_log.h rgw/rgw_rest_opstate.h \
 	rgw/rgw_rest_replica_log.h rgw/rgw_rest_config.h \
 	rgw/rgw_usage.h rgw/rgw_user.h rgw/rgw_bucket.h \
-	rgw/rgw_keystone.h rgw/rgw_civetweb.h civetweb/civetweb.h \
-	civetweb/include/civetweb.h civetweb/src/md5.h \
+	rgw/rgw_keystone.h rgw/rgw_civetweb.h rgw/rgw_civetweb_log.h \
+	civetweb/civetweb.h civetweb/include/civetweb.h \
+	civetweb/include/civetweb_conf.h civetweb/src/md5.h \
 	cls/lock/cls_lock_types.h cls/lock/cls_lock_ops.h \
 	cls/lock/cls_lock_client.h cls/rbd/cls_rbd.h \
 	cls/rbd/cls_rbd_client.h cls/refcount/cls_refcount_ops.h \
@@ -3485,7 +3520,7 @@ top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 AUTOMAKE_OPTIONS = gnu subdir-objects
-SUBDIRS = ocf java $(am__append_61)
+SUBDIRS = ocf java $(am__append_62)
 DIST_SUBDIRS = gtest ocf libs3 java
 BUILT_SOURCES = init-ceph
 
@@ -3763,8 +3798,9 @@ noinst_HEADERS = arch/intel.h arch/neon.h arch/probe.h \
 	rgw/rgw_rest_log.h rgw/rgw_rest_opstate.h \
 	rgw/rgw_rest_replica_log.h rgw/rgw_rest_config.h \
 	rgw/rgw_usage.h rgw/rgw_user.h rgw/rgw_bucket.h \
-	rgw/rgw_keystone.h rgw/rgw_civetweb.h civetweb/civetweb.h \
-	civetweb/include/civetweb.h civetweb/src/md5.h \
+	rgw/rgw_keystone.h rgw/rgw_civetweb.h rgw/rgw_civetweb_log.h \
+	civetweb/civetweb.h civetweb/include/civetweb.h \
+	civetweb/include/civetweb_conf.h civetweb/src/md5.h \
 	cls/lock/cls_lock_types.h cls/lock/cls_lock_ops.h \
 	cls/lock/cls_lock_client.h cls/rbd/cls_rbd.h \
 	cls/rbd/cls_rbd_client.h cls/refcount/cls_refcount_ops.h \
@@ -3819,7 +3855,7 @@ bin_SCRIPTS = brag/client/ceph-brag ceph ceph-run ceph-rest-api \
 sbin_SCRIPTS = 
 su_sbin_SCRIPTS = mount.fuse.ceph mkcephfs
 dist_bin_SCRIPTS = 
-lib_LTLIBRARIES = librados.la librbd.la libcephfs.la $(am__append_65)
+lib_LTLIBRARIES = librados.la librbd.la libcephfs.la $(am__append_66)
 noinst_LTLIBRARIES = libarch.la libauth.la libcrush.la libmon_types.la \
 	libmon.la libmds.la libos_types.la libos.la libosd_types.la \
 	libosd.la liberasure_code.la libosdc.la libclient.la \
@@ -3827,7 +3863,7 @@ noinst_LTLIBRARIES = libarch.la libauth.la libcrush.la libmon_types.la \
 	libperfglue.la libcommon_crc.la libcommon.la libmsg.la \
 	$(am__append_35) libcls_lock_client.la \
 	libcls_refcount_client.la libcls_rgw_client.la \
-	libcls_rbd_client.la $(am__append_50) libradostest.la
+	libcls_rbd_client.la $(am__append_51) libradostest.la
 noinst_LIBRARIES = $(am__append_17) libcls_version_client.a \
 	libcls_log_client.a libcls_statelog_client.a \
 	libcls_replica_log_client.a libcls_user_client.a
@@ -3842,14 +3878,14 @@ bin_DEBUGPROGRAMS = ceph_test_ioctls $(am__append_38) \
 	ceph_test_signal_handlers ceph_test_rados ceph_test_mutate \
 	ceph_test_rewrite_latency ceph_test_msgr ceph_streamtest \
 	ceph_test_trans ceph_test_crypto ceph_test_keys \
-	$(am__append_48) ceph_smalliobench ceph_smalliobenchfs \
+	$(am__append_49) ceph_smalliobench ceph_smalliobenchfs \
 	ceph_smalliobenchdumb ceph_smalliobenchrbd ceph_tpbench \
-	ceph_omapbench $(am__append_49) ceph_bench_log \
-	$(am__append_52) ceph_multi_stress_watch ceph_test_librbd \
-	$(am__append_53) ceph_test_cls_rbd ceph_test_cls_refcount \
+	ceph_omapbench $(am__append_50) ceph_bench_log \
+	$(am__append_53) ceph_multi_stress_watch ceph_test_librbd \
+	$(am__append_54) ceph_test_cls_rbd ceph_test_cls_refcount \
 	ceph_test_cls_version ceph_test_cls_log ceph_test_cls_statelog \
 	ceph_test_cls_replica_log ceph_test_cls_lock \
-	ceph_test_cls_hello $(am__append_54) ceph_test_mon_workloadgen \
+	ceph_test_cls_hello $(am__append_55) ceph_test_mon_workloadgen \
 	ceph_test_rados_api_cmd ceph_test_rados_api_io \
 	ceph_test_rados_api_c_write_operations \
 	ceph_test_rados_api_c_read_operations ceph_test_rados_api_aio \
@@ -3857,7 +3893,7 @@ bin_DEBUGPROGRAMS = ceph_test_ioctls $(am__append_38) \
 	ceph_test_rados_api_stat ceph_test_rados_api_watch_notify \
 	ceph_test_rados_api_snapshots ceph_test_rados_api_cls \
 	ceph_test_rados_api_misc ceph_test_rados_api_tier \
-	ceph_test_rados_api_lock ceph_test_libcephfs $(am__append_55) \
+	ceph_test_rados_api_lock ceph_test_libcephfs $(am__append_56) \
 	ceph_test_objectstore_workloadgen \
 	ceph_test_filestore_idempotent \
 	ceph_test_filestore_idempotent_sequence ceph_xattr_bench \
@@ -3951,6 +3987,7 @@ LIBCLIENT = libclient.la
 LIBCLIENT_FUSE = libclient_fuse.la
 LIBRADOS = librados.la
 LIBRGW = librgw.la
+LIBCIVETWEB = libcivetweb.la
 LIBRBD = librbd.la
 LIBCEPHFS = libcephfs.la
 LIBERASURE_CODE = liberasure_code.la
@@ -4031,7 +4068,6 @@ libmds_la_SOURCES = \
 	mds/Dumper.cc \
 	mds/Resetter.cc \
 	mds/MDS.cc \
-	mds/flock.cc \
 	mds/locks.c \
 	mds/journal.cc \
 	mds/Server.cc \
@@ -4265,7 +4301,7 @@ libcommon_la_SOURCES = ceph_ver.c common/DecayCounter.cc \
 	common/bloom_filter.cc common/linux_version.c mon/MonCap.cc \
 	mon/MonClient.cc mon/MonMap.cc osd/OSDMap.cc osd/osd_types.cc \
 	osd/ECMsgTypes.cc osd/HitSet.cc mds/MDSMap.cc \
-	mds/inode_backtrace.cc mds/mdstypes.cc
+	mds/inode_backtrace.cc mds/mdstypes.cc mds/flock.cc
 
 # inject crc in common
 libcommon_crc_la_SOURCES = common/sctp_crc32.c common/crc32c.cc \
@@ -4365,6 +4401,14 @@ librbd_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0 $(am__append_34)
 @WITH_RADOSGW_TRUE@	rgw/rgw_dencoder.cc
 
 @WITH_RADOSGW_TRUE@librgw_la_CXXFLAGS = -Woverloaded-virtual ${AM_CXXFLAGS}
+@WITH_RADOSGW_TRUE@CIVETWEB_INCLUDE = --include civetweb/include/civetweb_conf.h
+@WITH_RADOSGW_TRUE@libcivetweb_la_SOURCES = \
+@WITH_RADOSGW_TRUE@	rgw/rgw_civetweb.cc \
+@WITH_RADOSGW_TRUE@	rgw/rgw_civetweb_log.cc \
+@WITH_RADOSGW_TRUE@	civetweb/src/civetweb.c
+
+@WITH_RADOSGW_TRUE@libcivetweb_la_CXXFLAGS = ${CIVETWEB_INCLUDE} -Woverloaded-virtual ${AM_CXXFLAGS}
+@WITH_RADOSGW_TRUE@libcivetweb_la_CFLAGS = -Icivetweb/include ${CIVETWEB_INCLUDE}
 @WITH_RADOSGW_TRUE@radosgw_SOURCES = \
 @WITH_RADOSGW_TRUE@	rgw/rgw_resolve.cc \
 @WITH_RADOSGW_TRUE@	rgw/rgw_rest.cc \
@@ -4383,12 +4427,10 @@ librbd_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0 $(am__append_34)
 @WITH_RADOSGW_TRUE@	rgw/rgw_swift.cc \
 @WITH_RADOSGW_TRUE@	rgw/rgw_swift_auth.cc \
 @WITH_RADOSGW_TRUE@	rgw/rgw_loadgen.cc \
-@WITH_RADOSGW_TRUE@	rgw/rgw_civetweb.cc \
-@WITH_RADOSGW_TRUE@	civetweb/src/civetweb.c \
 @WITH_RADOSGW_TRUE@	rgw/rgw_main.cc
 
-@WITH_RADOSGW_TRUE@radosgw_CFLAGS = -Icivetweb/include
-@WITH_RADOSGW_TRUE@radosgw_LDADD = $(LIBRGW) $(LIBRGW_DEPS) $(RESOLV_LIBS) $(CEPH_GLOBAL)
+@WITH_RADOSGW_TRUE@radosgw_CFLAGS = -I$(srcdir)/civetweb/include
+@WITH_RADOSGW_TRUE@radosgw_LDADD = $(LIBRGW) $(LIBCIVETWEB) $(LIBRGW_DEPS) $(RESOLV_LIBS) $(CEPH_GLOBAL)
 @WITH_RADOSGW_TRUE@radosgw_admin_SOURCES = rgw/rgw_admin.cc
 @WITH_RADOSGW_TRUE@radosgw_admin_LDADD = $(LIBRGW) $(LIBRGW_DEPS) $(CEPH_GLOBAL)
 @WITH_RADOSGW_TRUE@ceph_rgw_multiparser_SOURCES = rgw/rgw_multiparser.cc
@@ -4477,11 +4519,16 @@ ceph_erasure_code_benchmark_SOURCES = \
 
 ceph_erasure_code_benchmark_LDADD = $(LIBOSD) $(LIBCOMMON) \
 	$(BOOST_PROGRAM_OPTIONS_LIBS) $(CEPH_GLOBAL) $(am__append_41)
+ceph_erasure_code_non_regression_SOURCES = \
+	test/erasure-code/ceph_erasure_code_non_regression.cc
+
+ceph_erasure_code_non_regression_LDADD = $(LIBOSD) $(LIBCOMMON) \
+	$(BOOST_PROGRAM_OPTIONS_LIBS) $(CEPH_GLOBAL) $(am__append_42)
 ceph_erasure_code_SOURCES = \
 	test/erasure-code/ceph_erasure_code.cc
 
 ceph_erasure_code_LDADD = $(LIBOSD) $(LIBCOMMON) \
-	$(BOOST_PROGRAM_OPTIONS_LIBS) $(CEPH_GLOBAL) $(am__append_42)
+	$(BOOST_PROGRAM_OPTIONS_LIBS) $(CEPH_GLOBAL) $(am__append_43)
 libec_example_la_SOURCES = test/erasure-code/ErasureCodePluginExample.cc
 libec_example_la_CFLAGS = ${AM_CFLAGS}
 libec_example_la_CXXFLAGS = ${AM_CXXFLAGS}
@@ -4525,7 +4572,7 @@ libec_test_jerasure_generic_la_LDFLAGS = ${AM_LDFLAGS} -export-symbols-regex '.*
 unittest_erasure_code_plugin_SOURCES = test/erasure-code/TestErasureCodePlugin.cc 
 unittest_erasure_code_plugin_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 unittest_erasure_code_plugin_LDADD = $(LIBOSD) $(LIBCOMMON) \
-	$(UNITTEST_LDADD) $(CEPH_GLOBAL) $(am__append_43)
+	$(UNITTEST_LDADD) $(CEPH_GLOBAL) $(am__append_44)
 unittest_erasure_code_jerasure_SOURCES = \
 	test/erasure-code/TestErasureCodeJerasure.cc \
 	${jerasure_sources}
@@ -4539,13 +4586,13 @@ unittest_erasure_code_jerasure_CXXFLAGS = $(UNITTEST_CXXFLAGS) \
 	-Ierasure-code/jerasure/jerasure/include
 
 unittest_erasure_code_jerasure_LDADD = $(LIBOSD) $(LIBCOMMON) \
-	$(UNITTEST_LDADD) $(CEPH_GLOBAL) $(am__append_44)
+	$(UNITTEST_LDADD) $(CEPH_GLOBAL) $(am__append_45)
 unittest_erasure_code_plugin_jerasure_SOURCES = \
 	test/erasure-code/TestErasureCodePluginJerasure.cc
 
 unittest_erasure_code_plugin_jerasure_CXXFLAGS = ${AM_CXXFLAGS} ${UNITTEST_CXXFLAGS}
 unittest_erasure_code_plugin_jerasure_LDADD = $(LIBOSD) $(LIBCOMMON) \
-	$(UNITTEST_LDADD) $(CEPH_GLOBAL) $(am__append_45)
+	$(UNITTEST_LDADD) $(CEPH_GLOBAL) $(am__append_46)
 unittest_erasure_code_example_SOURCES = test/erasure-code/TestErasureCodeExample.cc 
 unittest_erasure_code_example_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 unittest_erasure_code_example_LDADD = $(LIBOSD) $(LIBCOMMON) $(UNITTEST_LDADD) $(CEPH_GLOBAL)
@@ -4588,8 +4635,8 @@ ceph_dencoder_LDADD = \
 
 
 # These should always use explicit _CFLAGS/_CXXFLAGS so avoid basename conflicts
-ceph_dencoder_CFLAGS = ${AM_CFLAGS} $(am__append_46)
-ceph_dencoder_CXXFLAGS = ${AM_CXXFLAGS} $(am__append_47)
+ceph_dencoder_CFLAGS = ${AM_CFLAGS} $(am__append_47)
+ceph_dencoder_CXXFLAGS = ${AM_CXXFLAGS} $(am__append_48)
 get_command_descriptions_SOURCES = test/common/get_command_descriptions.cc
 get_command_descriptions_LDADD = $(LIBMON) $(LIBCOMMON) $(CEPH_GLOBAL)
 
@@ -4792,13 +4839,16 @@ unittest_osd_types_LDADD = $(UNITTEST_LDADD) $(CEPH_GLOBAL)
 unittest_pglog_SOURCES = test/osd/TestPGLog.cc
 unittest_pglog_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 unittest_pglog_LDADD = $(LIBOSD) $(UNITTEST_LDADD) $(CEPH_GLOBAL) \
-	$(am__append_51)
+	$(am__append_52)
 unittest_ecbackend_SOURCES = test/osd/TestECBackend.cc
 unittest_ecbackend_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 unittest_ecbackend_LDADD = $(LIBOSD) $(UNITTEST_LDADD) $(CEPH_GLOBAL)
 unittest_hitset_SOURCES = test/osd/hitset.cc
 unittest_hitset_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 unittest_hitset_LDADD = $(LIBOSD) $(UNITTEST_LDADD) $(CEPH_GLOBAL)
+unittest_io_priority_SOURCES = test/common/test_io_priority.cc
+unittest_io_priority_CXXFLAGS = $(UNITTEST_CXXFLAGS)
+unittest_io_priority_LDADD = $(UNITTEST_LDADD) $(CEPH_GLOBAL)
 unittest_gather_SOURCES = test/gather.cc
 unittest_gather_LDADD = $(UNITTEST_LDADD) $(CEPH_GLOBAL)
 unittest_gather_CXXFLAGS = $(UNITTEST_CXXFLAGS)
@@ -5136,10 +5186,10 @@ ceph_kvstore_tool_LDADD = $(LIBOS) $(CEPH_GLOBAL)
 ceph_kvstore_tool_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 ceph_filestore_tool_SOURCES = tools/ceph_filestore_tool.cc
 ceph_filestore_tool_LDADD = $(LIBOSD) $(LIBOS) $(CEPH_GLOBAL) \
-	-lboost_program_options $(am__append_56)
+	-lboost_program_options $(am__append_57)
 ceph_filestore_dump_SOURCES = tools/ceph_filestore_dump.cc
 ceph_filestore_dump_LDADD = $(LIBOSD) $(LIBOS) $(CEPH_GLOBAL) \
-	$(BOOST_PROGRAM_OPTIONS_LIBS) $(am__append_57)
+	$(BOOST_PROGRAM_OPTIONS_LIBS) $(am__append_58)
 monmaptool_SOURCES = tools/monmaptool.cc
 monmaptool_LDADD = $(CEPH_GLOBAL) $(LIBCOMMON)
 crushtool_SOURCES = tools/crushtool.cc
@@ -5167,7 +5217,7 @@ rados_LDADD = libcls_lock_client.la $(LIBRADOS) $(CEPH_GLOBAL)
 @WITH_REST_BENCH_TRUE@	common/obj_bencher.cc # needs cleanup so \
 @WITH_REST_BENCH_TRUE@	it can go in libcommon.la
 @WITH_REST_BENCH_TRUE@rest_bench_LDADD = $(CEPH_GLOBAL) \
-@WITH_REST_BENCH_TRUE@	$(am__append_59) $(am__append_60)
+@WITH_REST_BENCH_TRUE@	$(am__append_60) $(am__append_61)
 @WITH_REST_BENCH_TRUE@@WITH_SYSTEM_LIBS3_FALSE@rest_bench_CXXFLAGS = ${AM_CXXFLAGS} -I$(top_srcdir)/src/libs3/inc
 ceph_conf_SOURCES = tools/ceph_conf.cc
 ceph_conf_LDADD = $(CEPH_GLOBAL) $(LIBCOMMON)
@@ -5600,6 +5650,26 @@ java/native/libcephfs_jni_la-JniConstants.lo:  \
 	java/native/$(DEPDIR)/$(am__dirstamp)
 libcephfs_jni.la: $(libcephfs_jni_la_OBJECTS) $(libcephfs_jni_la_DEPENDENCIES) $(EXTRA_libcephfs_jni_la_DEPENDENCIES) 
 	$(AM_V_CXXLD)$(libcephfs_jni_la_LINK) $(am_libcephfs_jni_la_rpath) $(libcephfs_jni_la_OBJECTS) $(libcephfs_jni_la_LIBADD) $(LIBS)
+rgw/$(am__dirstamp):
+	@$(MKDIR_P) rgw
+	@: > rgw/$(am__dirstamp)
+rgw/$(DEPDIR)/$(am__dirstamp):
+	@$(MKDIR_P) rgw/$(DEPDIR)
+	@: > rgw/$(DEPDIR)/$(am__dirstamp)
+rgw/libcivetweb_la-rgw_civetweb.lo: rgw/$(am__dirstamp) \
+	rgw/$(DEPDIR)/$(am__dirstamp)
+rgw/libcivetweb_la-rgw_civetweb_log.lo: rgw/$(am__dirstamp) \
+	rgw/$(DEPDIR)/$(am__dirstamp)
+civetweb/src/$(am__dirstamp):
+	@$(MKDIR_P) civetweb/src
+	@: > civetweb/src/$(am__dirstamp)
+civetweb/src/$(DEPDIR)/$(am__dirstamp):
+	@$(MKDIR_P) civetweb/src/$(DEPDIR)
+	@: > civetweb/src/$(DEPDIR)/$(am__dirstamp)
+civetweb/src/libcivetweb_la-civetweb.lo: civetweb/src/$(am__dirstamp) \
+	civetweb/src/$(DEPDIR)/$(am__dirstamp)
+libcivetweb.la: $(libcivetweb_la_OBJECTS) $(libcivetweb_la_DEPENDENCIES) $(EXTRA_libcivetweb_la_DEPENDENCIES) 
+	$(AM_V_CXXLD)$(libcivetweb_la_LINK) $(am_libcivetweb_la_rpath) $(libcivetweb_la_OBJECTS) $(libcivetweb_la_LIBADD) $(LIBS)
 client/$(am__dirstamp):
 	@$(MKDIR_P) client
 	@: > client/$(am__dirstamp)
@@ -5907,6 +5977,7 @@ mds/MDSMap.lo: mds/$(am__dirstamp) mds/$(DEPDIR)/$(am__dirstamp)
 mds/inode_backtrace.lo: mds/$(am__dirstamp) \
 	mds/$(DEPDIR)/$(am__dirstamp)
 mds/mdstypes.lo: mds/$(am__dirstamp) mds/$(DEPDIR)/$(am__dirstamp)
+mds/flock.lo: mds/$(am__dirstamp) mds/$(DEPDIR)/$(am__dirstamp)
 libcommon.la: $(libcommon_la_OBJECTS) $(libcommon_la_DEPENDENCIES) $(EXTRA_libcommon_la_DEPENDENCIES) 
 	$(AM_V_CXXLD)$(CXXLINK)  $(libcommon_la_OBJECTS) $(libcommon_la_LIBADD) $(LIBS)
 common/libcommon_crc_la-sctp_crc32.lo: common/$(am__dirstamp) \
@@ -6232,7 +6303,6 @@ mds/Capability.lo: mds/$(am__dirstamp) mds/$(DEPDIR)/$(am__dirstamp)
 mds/Dumper.lo: mds/$(am__dirstamp) mds/$(DEPDIR)/$(am__dirstamp)
 mds/Resetter.lo: mds/$(am__dirstamp) mds/$(DEPDIR)/$(am__dirstamp)
 mds/MDS.lo: mds/$(am__dirstamp) mds/$(DEPDIR)/$(am__dirstamp)
-mds/flock.lo: mds/$(am__dirstamp) mds/$(DEPDIR)/$(am__dirstamp)
 mds/locks.lo: mds/$(am__dirstamp) mds/$(DEPDIR)/$(am__dirstamp)
 mds/journal.lo: mds/$(am__dirstamp) mds/$(DEPDIR)/$(am__dirstamp)
 mds/Server.lo: mds/$(am__dirstamp) mds/$(DEPDIR)/$(am__dirstamp)
@@ -6477,12 +6547,6 @@ librbd/WatchCtx.lo: librbd/$(am__dirstamp) \
 	librbd/$(DEPDIR)/$(am__dirstamp)
 librbd.la: $(librbd_la_OBJECTS) $(librbd_la_DEPENDENCIES) $(EXTRA_librbd_la_DEPENDENCIES) 
 	$(AM_V_CXXLD)$(librbd_la_LINK) -rpath $(libdir) $(librbd_la_OBJECTS) $(librbd_la_LIBADD) $(LIBS)
-rgw/$(am__dirstamp):
-	@$(MKDIR_P) rgw
-	@: > rgw/$(am__dirstamp)
-rgw/$(DEPDIR)/$(am__dirstamp):
-	@$(MKDIR_P) rgw/$(DEPDIR)
-	@: > rgw/$(DEPDIR)/$(am__dirstamp)
 rgw/librgw_la-librgw.lo: rgw/$(am__dirstamp) \
 	rgw/$(DEPDIR)/$(am__dirstamp)
 rgw/librgw_la-rgw_acl.lo: rgw/$(am__dirstamp) \
@@ -6817,6 +6881,12 @@ test/erasure-code/ceph_erasure_code_benchmark.$(OBJEXT):  \
 ceph_erasure_code_benchmark$(EXEEXT): $(ceph_erasure_code_benchmark_OBJECTS) $(ceph_erasure_code_benchmark_DEPENDENCIES) $(EXTRA_ceph_erasure_code_benchmark_DEPENDENCIES) 
 	@rm -f ceph_erasure_code_benchmark$(EXEEXT)
 	$(AM_V_CXXLD)$(CXXLINK) $(ceph_erasure_code_benchmark_OBJECTS) $(ceph_erasure_code_benchmark_LDADD) $(LIBS)
+test/erasure-code/ceph_erasure_code_non_regression.$(OBJEXT):  \
+	test/erasure-code/$(am__dirstamp) \
+	test/erasure-code/$(DEPDIR)/$(am__dirstamp)
+ceph_erasure_code_non_regression$(EXEEXT): $(ceph_erasure_code_non_regression_OBJECTS) $(ceph_erasure_code_non_regression_DEPENDENCIES) $(EXTRA_ceph_erasure_code_non_regression_DEPENDENCIES) 
+	@rm -f ceph_erasure_code_non_regression$(EXEEXT)
+	$(AM_V_CXXLD)$(CXXLINK) $(ceph_erasure_code_non_regression_OBJECTS) $(ceph_erasure_code_non_regression_LDADD) $(LIBS)
 tools/ceph_filestore_dump.$(OBJEXT): tools/$(am__dirstamp) \
 	tools/$(DEPDIR)/$(am__dirstamp)
 ceph_filestore_dump$(EXEEXT): $(ceph_filestore_dump_OBJECTS) $(ceph_filestore_dump_DEPENDENCIES) $(EXTRA_ceph_filestore_dump_DEPENDENCIES) 
@@ -7533,16 +7603,6 @@ rgw/rgw_swift_auth.$(OBJEXT): rgw/$(am__dirstamp) \
 	rgw/$(DEPDIR)/$(am__dirstamp)
 rgw/rgw_loadgen.$(OBJEXT): rgw/$(am__dirstamp) \
 	rgw/$(DEPDIR)/$(am__dirstamp)
-rgw/rgw_civetweb.$(OBJEXT): rgw/$(am__dirstamp) \
-	rgw/$(DEPDIR)/$(am__dirstamp)
-civetweb/src/$(am__dirstamp):
-	@$(MKDIR_P) civetweb/src
-	@: > civetweb/src/$(am__dirstamp)
-civetweb/src/$(DEPDIR)/$(am__dirstamp):
-	@$(MKDIR_P) civetweb/src/$(DEPDIR)
-	@: > civetweb/src/$(DEPDIR)/$(am__dirstamp)
-civetweb/src/radosgw-civetweb.$(OBJEXT): civetweb/src/$(am__dirstamp) \
-	civetweb/src/$(DEPDIR)/$(am__dirstamp)
 rgw/rgw_main.$(OBJEXT): rgw/$(am__dirstamp) \
 	rgw/$(DEPDIR)/$(am__dirstamp)
 radosgw$(EXEEXT): $(radosgw_OBJECTS) $(radosgw_DEPENDENCIES) $(EXTRA_radosgw_DEPENDENCIES) 
@@ -7752,6 +7812,8 @@ mds/test_build_libcommon-MDSMap.$(OBJEXT): mds/$(am__dirstamp) \
 mds/test_build_libcommon-inode_backtrace.$(OBJEXT):  \
 	mds/$(am__dirstamp) mds/$(DEPDIR)/$(am__dirstamp)
 mds/test_build_libcommon-mdstypes.$(OBJEXT): mds/$(am__dirstamp) \
+	mds/$(DEPDIR)/$(am__dirstamp)
+mds/test_build_libcommon-flock.$(OBJEXT): mds/$(am__dirstamp) \
 	mds/$(DEPDIR)/$(am__dirstamp)
 test_build_libcommon$(EXEEXT): $(test_build_libcommon_OBJECTS) $(test_build_libcommon_DEPENDENCIES) $(EXTRA_test_build_libcommon_DEPENDENCIES) 
 	@rm -f test_build_libcommon$(EXEEXT)
@@ -8082,6 +8144,12 @@ test/osd/unittest_hitset-hitset.$(OBJEXT): test/osd/$(am__dirstamp) \
 unittest_hitset$(EXEEXT): $(unittest_hitset_OBJECTS) $(unittest_hitset_DEPENDENCIES) $(EXTRA_unittest_hitset_DEPENDENCIES) 
 	@rm -f unittest_hitset$(EXEEXT)
 	$(AM_V_CXXLD)$(unittest_hitset_LINK) $(unittest_hitset_OBJECTS) $(unittest_hitset_LDADD) $(LIBS)
+test/common/unittest_io_priority-test_io_priority.$(OBJEXT):  \
+	test/common/$(am__dirstamp) \
+	test/common/$(DEPDIR)/$(am__dirstamp)
+unittest_io_priority$(EXEEXT): $(unittest_io_priority_OBJECTS) $(unittest_io_priority_DEPENDENCIES) $(EXTRA_unittest_io_priority_DEPENDENCIES) 
+	@rm -f unittest_io_priority$(EXEEXT)
+	$(AM_V_CXXLD)$(unittest_io_priority_LINK) $(unittest_io_priority_OBJECTS) $(unittest_io_priority_LDADD) $(LIBS)
 test/unittest_ipaddr-test_ipaddr.$(OBJEXT): test/$(am__dirstamp) \
 	test/$(DEPDIR)/$(am__dirstamp)
 unittest_ipaddr$(EXEEXT): $(unittest_ipaddr_OBJECTS) $(unittest_ipaddr_DEPENDENCIES) $(EXTRA_unittest_ipaddr_DEPENDENCIES) 
@@ -8472,7 +8540,8 @@ mostlyclean-compile:
 	-rm -f auth/none/AuthNoneAuthorizeHandler.lo
 	-rm -f auth/unknown/AuthUnknownAuthorizeHandler.$(OBJEXT)
 	-rm -f auth/unknown/AuthUnknownAuthorizeHandler.lo
-	-rm -f civetweb/src/radosgw-civetweb.$(OBJEXT)
+	-rm -f civetweb/src/libcivetweb_la-civetweb.$(OBJEXT)
+	-rm -f civetweb/src/libcivetweb_la-civetweb.lo
 	-rm -f client/Client.$(OBJEXT)
 	-rm -f client/Client.lo
 	-rm -f client/ClientSnapRealm.$(OBJEXT)
@@ -9032,6 +9101,7 @@ mostlyclean-compile:
 	-rm -f mds/snap.$(OBJEXT)
 	-rm -f mds/snap.lo
 	-rm -f mds/test_build_libcommon-MDSMap.$(OBJEXT)
+	-rm -f mds/test_build_libcommon-flock.$(OBJEXT)
 	-rm -f mds/test_build_libcommon-inode_backtrace.$(OBJEXT)
 	-rm -f mds/test_build_libcommon-mdstypes.$(OBJEXT)
 	-rm -f mon/AuthMonitor.$(OBJEXT)
@@ -9209,6 +9279,10 @@ mostlyclean-compile:
 	-rm -f rgw/ceph_dencoder-rgw_dencoder.$(OBJEXT)
 	-rm -f rgw/ceph_dencoder-rgw_env.$(OBJEXT)
 	-rm -f rgw/ceph_dencoder-rgw_json_enc.$(OBJEXT)
+	-rm -f rgw/libcivetweb_la-rgw_civetweb.$(OBJEXT)
+	-rm -f rgw/libcivetweb_la-rgw_civetweb.lo
+	-rm -f rgw/libcivetweb_la-rgw_civetweb_log.$(OBJEXT)
+	-rm -f rgw/libcivetweb_la-rgw_civetweb_log.lo
 	-rm -f rgw/librgw_la-librgw.$(OBJEXT)
 	-rm -f rgw/librgw_la-librgw.lo
 	-rm -f rgw/librgw_la-rgw_acl.$(OBJEXT)
@@ -9278,7 +9352,6 @@ mostlyclean-compile:
 	-rm -f rgw/librgw_la-rgw_xml.$(OBJEXT)
 	-rm -f rgw/librgw_la-rgw_xml.lo
 	-rm -f rgw/rgw_admin.$(OBJEXT)
-	-rm -f rgw/rgw_civetweb.$(OBJEXT)
 	-rm -f rgw/rgw_common.$(OBJEXT)
 	-rm -f rgw/rgw_env.$(OBJEXT)
 	-rm -f rgw/rgw_http_client.$(OBJEXT)
@@ -9380,6 +9453,7 @@ mostlyclean-compile:
 	-rm -f test/common/unittest_context-test_context.$(OBJEXT)
 	-rm -f test/common/unittest_crc32c-test_crc32c.$(OBJEXT)
 	-rm -f test/common/unittest_histogram-histogram.$(OBJEXT)
+	-rm -f test/common/unittest_io_priority-test_io_priority.$(OBJEXT)
 	-rm -f test/common/unittest_sharedptr_registry-test_sharedptr_registry.$(OBJEXT)
 	-rm -f test/common/unittest_sloppy_crc_map-test_sloppy_crc_map.$(OBJEXT)
 	-rm -f test/common/unittest_str_map-test_str_map.$(OBJEXT)
@@ -9390,6 +9464,7 @@ mostlyclean-compile:
 	-rm -f test/encoding/ceph_dencoder-ceph_dencoder.$(OBJEXT)
 	-rm -f test/erasure-code/ceph_erasure_code.$(OBJEXT)
 	-rm -f test/erasure-code/ceph_erasure_code_benchmark.$(OBJEXT)
+	-rm -f test/erasure-code/ceph_erasure_code_non_regression.$(OBJEXT)
 	-rm -f test/erasure-code/libec_example_la-ErasureCodePluginExample.$(OBJEXT)
 	-rm -f test/erasure-code/libec_example_la-ErasureCodePluginExample.lo
 	-rm -f test/erasure-code/libec_fail_to_initialize_la-ErasureCodePluginFailToInitialize.$(OBJEXT)
@@ -9584,7 +9659,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@auth/cephx/$(DEPDIR)/CephxSessionHandler.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@auth/none/$(DEPDIR)/AuthNoneAuthorizeHandler.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@auth/unknown/$(DEPDIR)/AuthUnknownAuthorizeHandler.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@civetweb/src/$(DEPDIR)/radosgw-civetweb.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@civetweb/src/$(DEPDIR)/libcivetweb_la-civetweb.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@client/$(DEPDIR)/Client.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@client/$(DEPDIR)/ClientSnapRealm.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@client/$(DEPDIR)/Dentry.Plo@am__quote@
@@ -9920,6 +9995,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@mds/$(DEPDIR)/mdstypes.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@mds/$(DEPDIR)/snap.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@mds/$(DEPDIR)/test_build_libcommon-MDSMap.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@mds/$(DEPDIR)/test_build_libcommon-flock.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@mds/$(DEPDIR)/test_build_libcommon-inode_backtrace.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@mds/$(DEPDIR)/test_build_libcommon-mdstypes.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@mon/$(DEPDIR)/AuthMonitor.Plo@am__quote@
@@ -10020,6 +10096,8 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/ceph_dencoder-rgw_dencoder.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/ceph_dencoder-rgw_env.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/ceph_dencoder-rgw_json_enc.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/libcivetweb_la-rgw_civetweb.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/libcivetweb_la-rgw_civetweb_log.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/librgw_la-librgw.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/librgw_la-rgw_acl.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/librgw_la-rgw_acl_s3.Plo@am__quote@
@@ -10055,7 +10133,6 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/librgw_la-rgw_user.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/librgw_la-rgw_xml.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/rgw_admin.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/rgw_civetweb.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/rgw_common.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/rgw_env.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@rgw/$(DEPDIR)/rgw_http_client.Po@am__quote@
@@ -10206,6 +10283,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@test/common/$(DEPDIR)/unittest_context-test_context.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/common/$(DEPDIR)/unittest_crc32c-test_crc32c.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/common/$(DEPDIR)/unittest_histogram-histogram.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@test/common/$(DEPDIR)/unittest_io_priority-test_io_priority.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/common/$(DEPDIR)/unittest_sharedptr_registry-test_sharedptr_registry.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/common/$(DEPDIR)/unittest_sloppy_crc_map-test_sloppy_crc_map.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/common/$(DEPDIR)/unittest_str_map-test_str_map.Po@am__quote@
@@ -10216,6 +10294,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@test/encoding/$(DEPDIR)/ceph_dencoder-ceph_dencoder.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/erasure-code/$(DEPDIR)/ceph_erasure_code.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/erasure-code/$(DEPDIR)/ceph_erasure_code_benchmark.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@test/erasure-code/$(DEPDIR)/ceph_erasure_code_non_regression.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/erasure-code/$(DEPDIR)/libec_example_la-ErasureCodePluginExample.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/erasure-code/$(DEPDIR)/libec_fail_to_initialize_la-ErasureCodePluginFailToInitialize.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/erasure-code/$(DEPDIR)/libec_fail_to_register_la-ErasureCodePluginFailToRegister.Plo@am__quote@
@@ -10376,6 +10455,13 @@ common/libcommon_crc_la-crc32c_intel_fast_zero_asm.lo: common/crc32c_intel_fast_
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='$<' object='$@' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LTCOMPILE) -c -o $@ $<
+
+civetweb/src/libcivetweb_la-civetweb.lo: civetweb/src/civetweb.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcivetweb_la_CFLAGS) $(CFLAGS) -MT civetweb/src/libcivetweb_la-civetweb.lo -MD -MP -MF civetweb/src/$(DEPDIR)/libcivetweb_la-civetweb.Tpo -c -o civetweb/src/libcivetweb_la-civetweb.lo `test -f 'civetweb/src/civetweb.c' || echo '$(srcdir)/'`civetweb/src/civetweb.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) civetweb/src/$(DEPDIR)/libcivetweb_la-civetweb.Tpo civetweb/src/$(DEPDIR)/libcivetweb_la-civetweb.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='civetweb/src/civetweb.c' object='civetweb/src/libcivetweb_la-civetweb.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcivetweb_la_CFLAGS) $(CFLAGS) -c -o civetweb/src/libcivetweb_la-civetweb.lo `test -f 'civetweb/src/civetweb.c' || echo '$(srcdir)/'`civetweb/src/civetweb.c
 
 common/libcommon_crc_la-sctp_crc32.lo: common/sctp_crc32.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(libcommon_crc_la_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT common/libcommon_crc_la-sctp_crc32.lo -MD -MP -MF common/$(DEPDIR)/libcommon_crc_la-sctp_crc32.Tpo -c -o common/libcommon_crc_la-sctp_crc32.lo `test -f 'common/sctp_crc32.c' || echo '$(srcdir)/'`common/sctp_crc32.c
@@ -10747,20 +10833,6 @@ test/librbd/ceph_test_librbd_fsx-fsx.obj: test/librbd/fsx.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='test/librbd/fsx.c' object='test/librbd/ceph_test_librbd_fsx-fsx.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ceph_test_librbd_fsx_CFLAGS) $(CFLAGS) -c -o test/librbd/ceph_test_librbd_fsx-fsx.obj `if test -f 'test/librbd/fsx.c'; then $(CYGPATH_W) 'test/librbd/fsx.c'; else $(CYGPATH_W) '$(srcdir)/test/librbd/fsx.c'; fi`
-
-civetweb/src/radosgw-civetweb.o: civetweb/src/civetweb.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(radosgw_CFLAGS) $(CFLAGS) -MT civetweb/src/radosgw-civetweb.o -MD -MP -MF civetweb/src/$(DEPDIR)/radosgw-civetweb.Tpo -c -o civetweb/src/radosgw-civetweb.o `test -f 'civetweb/src/civetweb.c' || echo '$(srcdir)/'`civetweb/src/civetweb.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) civetweb/src/$(DEPDIR)/radosgw-civetweb.Tpo civetweb/src/$(DEPDIR)/radosgw-civetweb.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='civetweb/src/civetweb.c' object='civetweb/src/radosgw-civetweb.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(radosgw_CFLAGS) $(CFLAGS) -c -o civetweb/src/radosgw-civetweb.o `test -f 'civetweb/src/civetweb.c' || echo '$(srcdir)/'`civetweb/src/civetweb.c
-
-civetweb/src/radosgw-civetweb.obj: civetweb/src/civetweb.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(radosgw_CFLAGS) $(CFLAGS) -MT civetweb/src/radosgw-civetweb.obj -MD -MP -MF civetweb/src/$(DEPDIR)/radosgw-civetweb.Tpo -c -o civetweb/src/radosgw-civetweb.obj `if test -f 'civetweb/src/civetweb.c'; then $(CYGPATH_W) 'civetweb/src/civetweb.c'; else $(CYGPATH_W) '$(srcdir)/civetweb/src/civetweb.c'; fi`
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) civetweb/src/$(DEPDIR)/radosgw-civetweb.Tpo civetweb/src/$(DEPDIR)/radosgw-civetweb.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='civetweb/src/civetweb.c' object='civetweb/src/radosgw-civetweb.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(radosgw_CFLAGS) $(CFLAGS) -c -o civetweb/src/radosgw-civetweb.obj `if test -f 'civetweb/src/civetweb.c'; then $(CYGPATH_W) 'civetweb/src/civetweb.c'; else $(CYGPATH_W) '$(srcdir)/civetweb/src/civetweb.c'; fi`
 
 test_build_libcommon-ceph_ver.o: ceph_ver.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(test_build_libcommon_CFLAGS) $(CFLAGS) -MT test_build_libcommon-ceph_ver.o -MD -MP -MF $(DEPDIR)/test_build_libcommon-ceph_ver.Tpo -c -o test_build_libcommon-ceph_ver.o `test -f 'ceph_ver.c' || echo '$(srcdir)/'`ceph_ver.c
@@ -11177,6 +11249,20 @@ java/native/libcephfs_jni_la-JniConstants.lo: java/native/JniConstants.cpp
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='java/native/JniConstants.cpp' object='java/native/libcephfs_jni_la-JniConstants.lo' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(libcephfs_jni_la_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o java/native/libcephfs_jni_la-JniConstants.lo `test -f 'java/native/JniConstants.cpp' || echo '$(srcdir)/'`java/native/JniConstants.cpp
+
+rgw/libcivetweb_la-rgw_civetweb.lo: rgw/rgw_civetweb.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcivetweb_la_CXXFLAGS) $(CXXFLAGS) -MT rgw/libcivetweb_la-rgw_civetweb.lo -MD -MP -MF rgw/$(DEPDIR)/libcivetweb_la-rgw_civetweb.Tpo -c -o rgw/libcivetweb_la-rgw_civetweb.lo `test -f 'rgw/rgw_civetweb.cc' || echo '$(srcdir)/'`rgw/rgw_civetweb.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) rgw/$(DEPDIR)/libcivetweb_la-rgw_civetweb.Tpo rgw/$(DEPDIR)/libcivetweb_la-rgw_civetweb.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='rgw/rgw_civetweb.cc' object='rgw/libcivetweb_la-rgw_civetweb.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcivetweb_la_CXXFLAGS) $(CXXFLAGS) -c -o rgw/libcivetweb_la-rgw_civetweb.lo `test -f 'rgw/rgw_civetweb.cc' || echo '$(srcdir)/'`rgw/rgw_civetweb.cc
+
+rgw/libcivetweb_la-rgw_civetweb_log.lo: rgw/rgw_civetweb_log.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcivetweb_la_CXXFLAGS) $(CXXFLAGS) -MT rgw/libcivetweb_la-rgw_civetweb_log.lo -MD -MP -MF rgw/$(DEPDIR)/libcivetweb_la-rgw_civetweb_log.Tpo -c -o rgw/libcivetweb_la-rgw_civetweb_log.lo `test -f 'rgw/rgw_civetweb_log.cc' || echo '$(srcdir)/'`rgw/rgw_civetweb_log.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) rgw/$(DEPDIR)/libcivetweb_la-rgw_civetweb_log.Tpo rgw/$(DEPDIR)/libcivetweb_la-rgw_civetweb_log.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='rgw/rgw_civetweb_log.cc' object='rgw/libcivetweb_la-rgw_civetweb_log.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libcivetweb_la_CXXFLAGS) $(CXXFLAGS) -c -o rgw/libcivetweb_la-rgw_civetweb_log.lo `test -f 'rgw/rgw_civetweb_log.cc' || echo '$(srcdir)/'`rgw/rgw_civetweb_log.cc
 
 common/libcommon_crc_la-crc32c.lo: common/crc32c.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(libcommon_crc_la_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT common/libcommon_crc_la-crc32c.lo -MD -MP -MF common/$(DEPDIR)/libcommon_crc_la-crc32c.Tpo -c -o common/libcommon_crc_la-crc32c.lo `test -f 'common/crc32c.cc' || echo '$(srcdir)/'`common/crc32c.cc
@@ -13705,6 +13791,20 @@ mds/test_build_libcommon-mdstypes.obj: mds/mdstypes.cc
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(test_build_libcommon_CXXFLAGS) $(CXXFLAGS) -c -o mds/test_build_libcommon-mdstypes.obj `if test -f 'mds/mdstypes.cc'; then $(CYGPATH_W) 'mds/mdstypes.cc'; else $(CYGPATH_W) '$(srcdir)/mds/mdstypes.cc'; fi`
 
+mds/test_build_libcommon-flock.o: mds/flock.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(test_build_libcommon_CXXFLAGS) $(CXXFLAGS) -MT mds/test_build_libcommon-flock.o -MD -MP -MF mds/$(DEPDIR)/test_build_libcommon-flock.Tpo -c -o mds/test_build_libcommon-flock.o `test -f 'mds/flock.cc' || echo '$(srcdir)/'`mds/flock.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) mds/$(DEPDIR)/test_build_libcommon-flock.Tpo mds/$(DEPDIR)/test_build_libcommon-flock.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='mds/flock.cc' object='mds/test_build_libcommon-flock.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(test_build_libcommon_CXXFLAGS) $(CXXFLAGS) -c -o mds/test_build_libcommon-flock.o `test -f 'mds/flock.cc' || echo '$(srcdir)/'`mds/flock.cc
+
+mds/test_build_libcommon-flock.obj: mds/flock.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(test_build_libcommon_CXXFLAGS) $(CXXFLAGS) -MT mds/test_build_libcommon-flock.obj -MD -MP -MF mds/$(DEPDIR)/test_build_libcommon-flock.Tpo -c -o mds/test_build_libcommon-flock.obj `if test -f 'mds/flock.cc'; then $(CYGPATH_W) 'mds/flock.cc'; else $(CYGPATH_W) '$(srcdir)/mds/flock.cc'; fi`
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) mds/$(DEPDIR)/test_build_libcommon-flock.Tpo mds/$(DEPDIR)/test_build_libcommon-flock.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='mds/flock.cc' object='mds/test_build_libcommon-flock.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(test_build_libcommon_CXXFLAGS) $(CXXFLAGS) -c -o mds/test_build_libcommon-flock.obj `if test -f 'mds/flock.cc'; then $(CYGPATH_W) 'mds/flock.cc'; else $(CYGPATH_W) '$(srcdir)/mds/flock.cc'; fi`
+
 test/test_build_librados-buildtest_skeleton.o: test/buildtest_skeleton.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(test_build_librados_CXXFLAGS) $(CXXFLAGS) -MT test/test_build_librados-buildtest_skeleton.o -MD -MP -MF test/$(DEPDIR)/test_build_librados-buildtest_skeleton.Tpo -c -o test/test_build_librados-buildtest_skeleton.o `test -f 'test/buildtest_skeleton.cc' || echo '$(srcdir)/'`test/buildtest_skeleton.cc
 @am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/$(DEPDIR)/test_build_librados-buildtest_skeleton.Tpo test/$(DEPDIR)/test_build_librados-buildtest_skeleton.Po
@@ -14755,6 +14855,20 @@ test/osd/unittest_hitset-hitset.obj: test/osd/hitset.cc
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_hitset_CXXFLAGS) $(CXXFLAGS) -c -o test/osd/unittest_hitset-hitset.obj `if test -f 'test/osd/hitset.cc'; then $(CYGPATH_W) 'test/osd/hitset.cc'; else $(CYGPATH_W) '$(srcdir)/test/osd/hitset.cc'; fi`
 
+test/common/unittest_io_priority-test_io_priority.o: test/common/test_io_priority.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_io_priority_CXXFLAGS) $(CXXFLAGS) -MT test/common/unittest_io_priority-test_io_priority.o -MD -MP -MF test/common/$(DEPDIR)/unittest_io_priority-test_io_priority.Tpo -c -o test/common/unittest_io_priority-test_io_priority.o `test -f 'test/common/test_io_priority.cc' || echo '$(srcdir)/'`test/common/test_io_priority.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/common/$(DEPDIR)/unittest_io_priority-test_io_priority.Tpo test/common/$(DEPDIR)/unittest_io_priority-test_io_priority.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/common/test_io_priority.cc' object='test/common/unittest_io_priority-test_io_priority.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_io_priority_CXXFLAGS) $(CXXFLAGS) -c -o test/common/unittest_io_priority-test_io_priority.o `test -f 'test/common/test_io_priority.cc' || echo '$(srcdir)/'`test/common/test_io_priority.cc
+
+test/common/unittest_io_priority-test_io_priority.obj: test/common/test_io_priority.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_io_priority_CXXFLAGS) $(CXXFLAGS) -MT test/common/unittest_io_priority-test_io_priority.obj -MD -MP -MF test/common/$(DEPDIR)/unittest_io_priority-test_io_priority.Tpo -c -o test/common/unittest_io_priority-test_io_priority.obj `if test -f 'test/common/test_io_priority.cc'; then $(CYGPATH_W) 'test/common/test_io_priority.cc'; else $(CYGPATH_W) '$(srcdir)/test/common/test_io_priority.cc'; fi`
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/common/$(DEPDIR)/unittest_io_priority-test_io_priority.Tpo test/common/$(DEPDIR)/unittest_io_priority-test_io_priority.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/common/test_io_priority.cc' object='test/common/unittest_io_priority-test_io_priority.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_io_priority_CXXFLAGS) $(CXXFLAGS) -c -o test/common/unittest_io_priority-test_io_priority.obj `if test -f 'test/common/test_io_priority.cc'; then $(CYGPATH_W) 'test/common/test_io_priority.cc'; else $(CYGPATH_W) '$(srcdir)/test/common/test_io_priority.cc'; fi`
+
 test/unittest_ipaddr-test_ipaddr.o: test/test_ipaddr.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_ipaddr_CXXFLAGS) $(CXXFLAGS) -MT test/unittest_ipaddr-test_ipaddr.o -MD -MP -MF test/$(DEPDIR)/unittest_ipaddr-test_ipaddr.Tpo -c -o test/unittest_ipaddr-test_ipaddr.o `test -f 'test/test_ipaddr.cc' || echo '$(srcdir)/'`test/test_ipaddr.cc
 @am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/$(DEPDIR)/unittest_ipaddr-test_ipaddr.Tpo test/$(DEPDIR)/unittest_ipaddr-test_ipaddr.Po
@@ -15195,6 +15309,7 @@ clean-libtool:
 	-rm -rf auth/cephx/.libs auth/cephx/_libs
 	-rm -rf auth/none/.libs auth/none/_libs
 	-rm -rf auth/unknown/.libs auth/unknown/_libs
+	-rm -rf civetweb/src/.libs civetweb/src/_libs
 	-rm -rf client/.libs client/_libs
 	-rm -rf cls/hello/.libs cls/hello/_libs
 	-rm -rf cls/lock/.libs cls/lock/_libs
@@ -15994,6 +16109,7 @@ $(shell_scripts): %: %.in
 docdir ?= ${datadir}/doc/ceph
 
 check-local:
+	$(top_srcdir)/qa/workunits/erasure-code/encode-decode-non-regression.sh 
 	$(srcdir)/test/encoding/readable.sh ../ceph-object-corpus
 
 # base targets

@@ -194,7 +194,8 @@ PG::PG(OSDService *o, OSDMapRef curmap,
   finish_sync_event(NULL),
   scrub_after_recovery(false),
   active_pushes(0),
-  recovery_state(this)
+  recovery_state(this),
+  peer_features((uint64_t)-1)
 {
 #ifdef PG_DEBUG_REFS
   osd->add_pgid(p, this);
@@ -1551,6 +1552,9 @@ void PG::activate(ObjectStore::Transaction& t,
 	pi.history = info.history;
 	pi.hit_set = info.hit_set;
 	pi.stats.stats.clear();
+
+	// initialize peer with our purged_snaps.
+	pi.purged_snaps = info.purged_snaps;
 
 	m = new MOSDPGLog(
 	  i->shard, pg_whoami.shard,
@@ -4685,7 +4689,10 @@ bool PG::old_peering_msg(epoch_t reply_epoch, epoch_t query_epoch)
 void PG::set_last_peering_reset()
 {
   dout(20) << "set_last_peering_reset " << get_osdmap()->get_epoch() << dendl;
-  last_peering_reset = get_osdmap()->get_epoch();
+  if (last_peering_reset != get_osdmap()->get_epoch()) {
+    last_peering_reset = get_osdmap()->get_epoch();
+    reset_interval_flush();
+  }
 }
 
 struct FlushState {
@@ -4739,7 +4746,6 @@ void PG::start_peering_interval(
   const OSDMapRef osdmap = get_osdmap();
 
   set_last_peering_reset();
-  reset_interval_flush();
 
   vector<int> oldacting, oldup;
   int oldrole = get_role();
@@ -5277,37 +5283,6 @@ void PG::queue_peering_event(CephPeeringEvtRef evt)
   osd->queue_for_peering(this);
 }
 
-void PG::queue_notify(epoch_t msg_epoch,
-		      epoch_t query_epoch,
-		      pg_shard_t from, pg_notify_t& i)
-{
-  dout(10) << "notify " << i << " from replica " << from << dendl;
-  queue_peering_event(
-    CephPeeringEvtRef(new CephPeeringEvt(msg_epoch, query_epoch,
-					 MNotifyRec(from, i))));
-}
-
-void PG::queue_info(epoch_t msg_epoch,
-		     epoch_t query_epoch,
-		     pg_shard_t from, pg_info_t& i)
-{
-  dout(10) << "info " << i << " from replica " << from << dendl;
-  queue_peering_event(
-    CephPeeringEvtRef(new CephPeeringEvt(msg_epoch, query_epoch,
-					 MInfoRec(from, i, msg_epoch))));
-}
-
-void PG::queue_log(epoch_t msg_epoch,
-		   epoch_t query_epoch,
-		   pg_shard_t from,
-		   MOSDPGLog *msg)
-{
-  dout(10) << "log " << *msg << " from replica " << from << dendl;
-  queue_peering_event(
-    CephPeeringEvtRef(new CephPeeringEvt(msg_epoch, query_epoch,
-					 MLogRec(from, msg))));
-}
-
 void PG::queue_null(epoch_t msg_epoch,
 		    epoch_t query_epoch)
 {
@@ -5810,7 +5785,28 @@ PG::RecoveryState::Backfilling::react(const RemoteReservationRejected &)
   pg->osd->local_reserver.cancel_reservation(pg->info.pgid);
   pg->state_set(PG_STATE_BACKFILL_TOOFULL);
 
+  for (set<pg_shard_t>::iterator it = pg->backfill_targets.begin();
+       it != pg->backfill_targets.end();
+       ++it) {
+    assert(*it != pg->pg_whoami);
+    ConnectionRef con = pg->osd->get_con_osd_cluster(
+      it->osd, pg->get_osdmap()->get_epoch());
+    if (con) {
+      if (con->has_feature(CEPH_FEATURE_BACKFILL_RESERVATION)) {
+        pg->osd->send_message_osd_cluster(
+          new MBackfillReserve(
+	    MBackfillReserve::REJECT,
+	    spg_t(pg->info.pgid.pgid, it->shard),
+	    pg->get_osdmap()->get_epoch()),
+	  con.get());
+      }
+    }
+  }
+
   pg->osd->recovery_wq.dequeue(pg);
+
+  pg->waiting_on_backfill.clear();
+  pg->finish_recovery_op(hobject_t::get_max());
 
   pg->schedule_backfill_full_retry();
   return transit<NotBackfilling>();
@@ -6066,14 +6062,33 @@ boost::statechart::result
 PG::RecoveryState::RepWaitBackfillReserved::react(const RemoteBackfillReserved &evt)
 {
   PG *pg = context< RecoveryMachine >().pg;
-  pg->osd->send_message_osd_cluster(
-    pg->primary.osd,
-    new MBackfillReserve(
-      MBackfillReserve::GRANT,
-      spg_t(pg->info.pgid.pgid, pg->primary.shard),
-      pg->get_osdmap()->get_epoch()),
-    pg->get_osdmap()->get_epoch());
-  return transit<RepRecovering>();
+
+  double ratio, max_ratio;
+  if (g_conf->osd_debug_reject_backfill_probability > 0 &&
+      (rand()%1000 < (g_conf->osd_debug_reject_backfill_probability*1000.0))) {
+    dout(10) << "backfill reservation rejected after reservation: "
+	     << "failure injection" << dendl;
+    pg->osd->remote_reserver.cancel_reservation(pg->info.pgid);
+    post_event(RemoteReservationRejected());
+    return discard_event();
+  } else if (pg->osd->too_full_for_backfill(&ratio, &max_ratio) &&
+	     !pg->cct->_conf->osd_debug_skip_full_check_in_backfill_reservation) {
+    dout(10) << "backfill reservation rejected after reservation: full ratio is "
+	     << ratio << ", which is greater than max allowed ratio "
+	     << max_ratio << dendl;
+    pg->osd->remote_reserver.cancel_reservation(pg->info.pgid);
+    post_event(RemoteReservationRejected());
+    return discard_event();
+  } else {
+    pg->osd->send_message_osd_cluster(
+      pg->primary.osd,
+      new MBackfillReserve(
+	MBackfillReserve::GRANT,
+	spg_t(pg->info.pgid.pgid, pg->primary.shard),
+	pg->get_osdmap()->get_epoch()),
+      pg->get_osdmap()->get_epoch());
+    return transit<RepRecovering>();
+  }
 }
 
 boost::statechart::result
@@ -6097,7 +6112,7 @@ PG::RecoveryState::RepRecovering::react(const BackfillTooFull &)
 {
   PG *pg = context< RecoveryMachine >().pg;
   pg->reject_reservation();
-  return transit<RepNotRecovering>();
+  return discard_event();
 }
 
 void PG::RecoveryState::RepRecovering::exit()
@@ -6839,6 +6854,7 @@ PG::RecoveryState::GetInfo::GetInfo(my_context ctx)
 
   pg->publish_stats_to_osd();
 
+  pg->reset_peer_features();
   get_infos();
   if (peer_info_requested.empty() && !prior_set->pg_down) {
     post_event(GotInfo());
@@ -6906,6 +6922,9 @@ boost::statechart::result PG::RecoveryState::GetInfo::react(const MNotifyRec& in
       }
       get_infos();
     }
+    dout(20) << "Adding osd: " << infoevt.from.osd << " features: "
+      << hex << infoevt.features << dec << dendl;
+    pg->apply_peer_features(infoevt.features);
 
     // are we done getting everything?
     if (peer_info_requested.empty() && !prior_set->pg_down) {
@@ -6964,6 +6983,7 @@ boost::statechart::result PG::RecoveryState::GetInfo::react(const MNotifyRec& in
 	  break;
 	}
       }
+      dout(20) << "Common features: " << hex << pg->get_min_peer_features() << dec << dendl;
       post_event(GotInfo());
     }
   }
