@@ -1,3 +1,11 @@
+ceph (0.80.9-1) unstable; urgency=medium
+
+  * [4b4e] Imported Upstream version 0.80.9
+  * [7102] Remove patches firefly-latest and p2139 applied upstream
+  * [5869] Add myself to uploaders
+
+ -- Gaudenz Steinlin <gaudenz@debian.org>  Mon, 04 May 2015 08:49:37 +0200
+
 ceph (0.80.7-2) unstable; urgency=medium
 
   * Team upload.
