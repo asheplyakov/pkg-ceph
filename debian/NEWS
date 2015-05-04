@@ -1,0 +1,42 @@
+ceph (0.80.9-2) unstable; urgency=medium
+
+  The 0.80.9 point release fixes several issues with CRUSH that trigger excessive
+  data migration when adjusting OSD weights. These are most obvious when a very
+  small weight change (e.g., a change from 0 to .01) triggers a large amount of
+  movement, but the same set of bugs can also lead to excessive (though less
+  noticeable) movement in other cases.
+
+  However, because the bug may already have affected your cluster, fixing it
+  may trigger movement back to the more correct location. For this reason, you
+  must manually opt-in to the fixed behavior.
+
+  In order to set the new tunable to correct the behavior:
+
+      ceph osd crush set-tunable straw_calc_version 1
+
+  Note that this change will have no immediate effect. However, from this
+  point forward, any ‘straw’ bucket in your CRUSH map that is adjusted will get
+  non-buggy internal weights, and that transition may trigger some rebalancing.
+
+  You can estimate how much rebalancing will eventually be necessary on your
+  cluster with:
+
+      ceph osd getcrushmap -o /tmp/cm
+      crushtool -i /tmp/cm --num-rep 3 --test --show-mappings > /tmp/a 2>&1
+      crushtool -i /tmp/cm --set-straw-calc-version 1 -o /tmp/cm2
+      crushtool -i /tmp/cm2 --reweight -o /tmp/cm2
+      crushtool -i /tmp/cm2 --num-rep 3 --test --show-mappings > /tmp/b 2>&1
+      wc -l /tmp/a                          # num total mappings
+      diff -u /tmp/a /tmp/b | grep -c ^+    # num changed mappings
+
+  Divide the total number of lines in /tmp/a with the number of lines
+  changed.  We've found that most clusters are under 10%.
+
+  You can force all of this rebalancing to happen at once with:
+
+      ceph osd crush reweight-all
+
+  Otherwise, it will happen at some unknown point in the future when
+  CRUSH weights are next adjusted.
+
+ -- Gaudenz Steinlin <gaudenz@debian.org>  Mon, 04 May 2015 22:49:48 +0200
