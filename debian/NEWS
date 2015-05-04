@@ -1,5 +1,7 @@
 ceph (0.80.9-2) unstable; urgency=medium
 
+  ## CRUSH fixes in 0.80.9
+
   The 0.80.9 point release fixes several issues with CRUSH that trigger excessive
   data migration when adjusting OSD weights. These are most obvious when a very
   small weight change (e.g., a change from 0 to .01) triggers a large amount of
