@@ -41,4 +41,16 @@ ceph (0.80.9-2) unstable; urgency=medium
   Otherwise, it will happen at some unknown point in the future when
   CRUSH weights are next adjusted.
 
+  ## Mapping rbd devices with rbdmap on systemd systems
+
+  If you have setup rbd mappings in /etc/ceph/rbdmap and corresponding mounts
+  in /etc/fstab things might break with systemd because systemd waits for the
+  rbd device to appear before the legacy rbdmap init file has a chance to run
+  and drops into emergency mode if it times out.
+
+  This can be fixed by adding the nofail option in /etc/fstab to all rbd
+  backed mount points. With this systemd does not wait for the device and
+  proceeds with the boot process. After rbdmap mapped the device, systemd
+  detects the new device and mounts the file system.
+
  -- Gaudenz Steinlin <gaudenz@debian.org>  Mon, 04 May 2015 22:49:48 +0200
