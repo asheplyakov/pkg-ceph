@@ -1,3 +1,10 @@
+ceph (0.80.9-2) unstable; urgency=medium
+
+  * [70fc1d] Add NEWS entry about CRUSH issues fixed in 0.80.9
+  * [f41bb6] Add NEWS entry about rbd backed filesystems and systemd
+
+ -- Gaudenz Steinlin <gaudenz@debian.org>  Tue, 05 May 2015 21:29:15 +0200
+
 ceph (0.80.9-1) unstable; urgency=medium
 
   * [4b4e] Imported Upstream version 0.80.9
