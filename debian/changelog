@@ -1,3 +1,9 @@
+ceph (0.80.9-2~bpo8+1) jessie-backports; urgency=medium
+
+  * Rebuild for jessie-backports.
+
+ -- Gaudenz Steinlin <gaudenz@debian.org>  Fri, 29 May 2015 15:03:35 +0200
+
 ceph (0.80.9-2) unstable; urgency=medium
 
   * [70fc1d] Add NEWS entry about CRUSH issues fixed in 0.80.9
