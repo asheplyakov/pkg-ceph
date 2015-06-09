@@ -4526,12 +4526,17 @@ bool OSDMonitor::prepare_command_impl(MMonCommand *m,
     dout(10) << " testing map" << dendl;
     stringstream ess;
     CrushTester tester(crush, ess);
-    int r = tester.test_with_crushtool();
+    int r = tester.test_with_crushtool(g_conf->crushtool,
+				       g_conf->mon_lease);
     if (r < 0) {
-      derr << "error on crush map: " << ess.str() << dendl;
-      ss << "Failed to parse crushmap: " << ess.str();
-      err = r;
-      goto reply;
+      if (r == -EINTR) {
+	ss << "(note: crushtool tests not run because they took too long) ";
+      } else {
+	derr << "error on crush map: " << ess.str() << dendl;
+	ss << "Failed to parse crushmap: " << ess.str();
+	err = r;
+	goto reply;
+      }
     }
 
     dout(10) << " result " << ess.str() << dendl;
@@ -5138,7 +5143,11 @@ bool OSDMonitor::prepare_command_impl(MMonCommand *m,
       }
       if (!force) {
 	err = -EPERM;
-	ss << "will not override erasure code profile " << name;
+	ss << "will not override erasure code profile " << name
+	   << " because the existing profile "
+	   << osdmap.get_erasure_code_profile(name)
+	   << " is different from the proposed profile "
+	   << profile_map;
 	goto reply;
       }
     }
@@ -6450,6 +6459,7 @@ done:
       return true;
     }
     np->tiers.insert(tierpool_id);
+    np->read_tier = np->write_tier = tierpool_id;
     np->set_snap_epoch(pending_inc.epoch); // tier will update to our snap info
     ntp->tier_of = pool_id;
     ntp->cache_mode = mode;

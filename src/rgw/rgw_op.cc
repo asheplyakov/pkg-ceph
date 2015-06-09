@@ -522,6 +522,12 @@ int RGWOp::init_quota()
 
 static bool validate_cors_rule_method(RGWCORSRule *rule, const char *req_meth) {
   uint8_t flags = 0;
+
+  if (!req_meth) {
+    dout(5) << "req_meth is null" << dendl;
+    return false;
+  }
+
   if (strcmp(req_meth, "GET") == 0) flags = RGW_CORS_GET;
   else if (strcmp(req_meth, "POST") == 0) flags = RGW_CORS_POST;
   else if (strcmp(req_meth, "PUT") == 0) flags = RGW_CORS_PUT;
@@ -627,11 +633,12 @@ bool RGWOp::generate_cors_headers(string& origin, string& method, string& header
     req_meth = s->info.method;
   }
 
-  if (req_meth)
+  if (req_meth) {
     method = req_meth;
-  /* CORS 6.2.5. */
-  if (!validate_cors_rule_method(rule, req_meth)) {
-    return false;
+    /* CORS 6.2.5. */
+    if (!validate_cors_rule_method(rule, req_meth)) {
+     return false;
+    }
   }
 
   /* CORS 6.2.4. */
@@ -2445,7 +2452,6 @@ void RGWPutACLs::execute()
   RGWAccessControlPolicy_S3 new_policy(s->cct);
   stringstream ss;
   char *new_data = NULL;
-  ACLOwner owner;
   rgw_obj obj;
 
   ret = 0;
@@ -2455,8 +2461,10 @@ void RGWPutACLs::execute()
     return;
   }
 
-  owner.set_id(s->user.user_id);
-  owner.set_name(s->user.display_name);
+
+  RGWAccessControlPolicy *existing_policy = (s->object.empty() ? s->bucket_acl : s->object_acl);
+
+  owner = existing_policy->get_owner();
 
   ret = get_params();
   if (ret < 0)

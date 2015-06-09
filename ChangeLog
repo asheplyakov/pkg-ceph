@@ -1,4 +1,174 @@
-bebf8e9 (HEAD, tag: v0.93) 0.93
+e4bfad3 (HEAD, tag: v0.94.1) 0.94.1
+5ca771a crush: fix has_v4_buckets()
+33e79ab crush: fix dump of has_v4_buckets
+b5921d5 crush/mapper: fix divide-by-0 in straw2
+93c8f43 osd: fix negative degraded objects during backfilling
+e61c4f0 (tag: v0.94) 0.94
+4347a32 debian: remove lttng checking from rules
+57d2781 (origin/wip-11113-hammer) librbd: snap_remove should ignore -ENOENT errors
+572a2f5 librbd: get_parent_info should protect against invalid parent
+0b2e272 ReplicatedPG::cancel_pull: requeue waiters as well
+23efab7 ReplicatedPG: don't write hitset while scrubbing, update scrub_cstat
+85307b9 ReplicatedPG: in do_op, requeue op if we requeue waiters in agent_choose_mode
+b1f078b ReplicatedPG: requeue waiting_for_active before waiting_for_cache_not_full
+b0a3941 ReplicatedPG::promote_object: do not create obc if not promoting
+bdc664f ECTransaction: write out the hinfo key on touch as well
+8e5d4c6 osd: drop unused utime_t now arg to issue_repop
+8db4056 osd: do not update mtime when recording digest
+491474f test: Add testing for PGLog::filter_log()
+1fcd3fb osd: Create a filter_log for PGLog
+c751191 ceph-objectstore-tool, osd: Filter the pg_log_t for objects no longer in pg
+ccc0839 (origin/wip-11177) common: send cluster log messages to 'cluster' channel by default
+f9b98c9 ceph-objectstore-tool: Fix message and make it debug only to stderr
+923d532 ceph-objectstore-tool: Remove bogus comment and eliminate a debug message
+c176ebf (origin/wip-move-code) osd/: Move ReplicatedBackend methods into ReplicatedBackend.cc
+e9d6096 ReplicatedPG: remove unused C_OnPushCommit
+ddf0292 PG: set/clear CREATING in Primary state entry/exit
+6f218b1 (origin/hammer-11205) qa/workunits/fs/misc: fix filelock_interrupt.py
+1388d6b ReplicatedPG: trim backfill intervals based on peer's last_backfill_started
+924ace8 (origin/wip-11145) rgw: shut down timer before erroring out
+65bb4df ReplicatedPG::promote_object: check scrubber and block if necessary
+78c5de7 osd/: s/is_degraded_object/is_degraded_or_backfilling_object
+4a5bd05 Revert "osd/: update peer_missing and local missing if we write a degraded object"
+6ed86b4 Revert "append_log: use remove_snap_mapped_object"
+b84943c Revert "osd/: don't block writes on degraded objects"
+9cefc59 Revert "ReplicatedPG: block writes on degraded objects for ec pools"
+45bff59 Revert "Merge pull request #3641 from athanatos/wip-10731"
+6f23d34 Revert "osd/: s/is_degraded_object/is_degraded_or_backfilling_object"
+fc3ce48 (origin/wip-hammer-rgw) rgw: update makefile to enable civetweb config
+2f1342e civetweb: update submodule
+e5f3282 rgw: pass civetweb configurables to civetweb
+a8ced2c rgw: don't overwrite bucket / object owner when setting acls
+3edfa67 Revert "ReplicatedPG: only allow a degraded write if we have at least min_size copies"
+5e4b7b0 Revert "Merge pull request #3911 from athanatos/wip-11057"
+0a0d8f6 doc: Regenerate man/ceph.8 based on ceph.rst changes
+eb890b1 doc: Break ceph osd pool get into sections based on pool type
+b6512eb erasure code: add shec's documentation / change default layout
+175aff8 ceph-objectstore-tool: Use exit status 11 for incompatible import attempt
+68719f5 (origin/wip-omap-clear) osd: fix omap digest clearing for omap write ops
+d5b3bd7 os/MemStore: make omap_clear zap the omap header too
+d2467e4 ceph_test_rados_api_aio: verify omap_clear clears header, too
+5b23f5b ceph-objectstore-tool: Output only unsupported features when incomatible
+477ac92 (origin/wip-11102) osd: only complain about stored vs actual digest if all peers support it
+9a2ff34 PG::find_best_info: reject infos with old last_epoch_started
+f96d58b init-radosgw*: don't require rgw_socket_path to be defined
+0712d8d PG: ensure that info.last_epoch_started only increases
+2956ae2 doc: add last_epoch_started.rst
+2da9584 PG: make sure to update history.last_epoch_started with first write
+0d52aca osd: erasure-code-profile incremental rm before set
+b92f9cf mon: informative message when erasure-code-profile set fails
+f5fa25d (origin/wip-rgw-bootstrap) ceph-create-keys: create bootstrap-rgw key
+679e266 mon: add 'bootstrap-rgw' profile
+01379bd (origin/wip-refine-build-configuration-hammer) Compile test_build_librgw only if WITH_BUILD_TESTS
+1c20417 (origin/wip-11123) osd: use (robust) helper for setting exists or clearing whiteout
+f5a2aef PGLog::merge_log: in tail extend case, log.log might be empty
+88d66ca mon: Support multiple args to ceph pg dump_stuck as in usage and man pages
+a3dfeec Improve "ceph_argparse.py: add stderr note if nonrequired param is invalid"
+bbe231a PGLog: split divergent priors as well
+90a0393 PendingReleaseNotes: warn about lttng LD_PRELOAD for daemons
+53cc492 ceph_test_rados_tier: add test case for delete+create compound ops
+93ef911 PG: add config to ignore history les in find_best_info
+d06c1d7 rhel 5.9 port fixes to compile librados only Signed-off-by: Rohan Mars <code@rohanmars.com>
+f4bc48d doc: Fix ceph command manpage to match ceph -h (hammer)
+9495de47 doc: Fix ceph command manpage to match ceph -h (firefly)
+5680456 PGBackend: do not rewrite ec object oi checksums
+e0bf132 PGBackend: add debug option to rewrite digest even if present
+3858d0b ReplicatedPG: finish_ctx: do not assume that the oi is for the head object
+aceb860 Build ceph-dencoder if server and mds for now
+c365cac rbd: regenerate rbd(8) man page
+416cbff doc: Fix typo in ceph pg dump_stuck usage in man page
+ba77bda (origin/wip-librbd-invalidate-object-map) librbd: invalidating snapshot object maps should set snapshot flag
+ba4bb22 test_cls_rbd: verify set_flags updates snapshots
+fa25b84 cls_rbd_client: add snap_id param to set_flags
+2d86898 cls_rbd: set_flags can now update snapshots
+c1892a0 rgw_main.cc: fix null-deref in case get_storage() fails
+f5b0151 rgw/rgw_op.cc: fix potential null-deref in strcmp()
+595e87f Fix XioLoopbackConnection Lifecycle.
+e1eebb3 osd: refactor RepScrubWQ::_process()
+052debd osd: fix a msg leak when OSD is stopping
+3ae87c8 XIO: Handle requeue case of XIO messages
+5a8d4c5 qa,cephtool: add test case for 'ceph osd tier add-cache'
+83d0581 mon: Don't forget set read_tier/write_tier for 'osd tier add-cache'.
+23d7991 tests: add unit test for multiple concurrent resize ops
+194fcfd librbd: retrieve image size at start of resize op
+0212ae4 librbd: do not invalidate oversized object map
+7f246b8 librbd: avoid canceling object map / header updates
+85737ab librbd: update size / parent overlap after resize completes
+1d29890 librbd: use image size and parent overlap from active shrink op
+9c5c665 librbd: queue multiple resize requests
+6bc47eb xlist: add const versions of front / back
+e7f9e3b librbd: use ImageCtx::get_parent_overlap helper function
+286b385 librbd: resize/flatten should validate image is R/W
+9dcd517 librbd: hold write snap_lock when refreshing object map
+ac527a2 (origin/wip-11079) crushtool: improve straw2 compile/decompile test
+6445d9e crush: fix crush_get_bucket_item_weight and bucket destroy for straw2
+b686eda crushtool: fix straw2 cli test
+5b58ef1 osdc: fix a memory leak in C_TwoContexts
+e3616a5 doc: rhel6.5 is rhel6
+147b1db (origin/wip-11068-debian-jessie) deb: add zlib1g-dev to Build-Depends for Debian/jessie
+84f05c0 TestAsyncDriver: Fix typo in ceph_test_async_driver
+918afc0 qa: make rbd-fuse exit cleanly with lttng
+b6326a0 ReplicatedPG: block write on degraded object if there are waiters
+7acfdac (origin/wip-11015) crushtool: test compilation of a rule with straw2 buckets
+61308cc crush: parse alg names that include a digit
+cb6813c tests: add Debian jessie dockerfile
+657844a tests: DEBIAN_FRONTEND=noninteractive apt-get install
+f8dec72 tests: jq is not available on Ubuntu precise
+4add63c install-deps.sh: strip | in the list of packages
+dbe2b24 (origin/wip-wn-rgw-hammer) rgw: flush watch after unregistering
+3530a25 Client: do not require successful remount when unmounting
+b90018f The erasure-code is actually required by libcommon
+9b3e1f0 Minor syntax fix-ups for Makefile.am redesign
+96c685e Minor changes in other Makefile.am files to make them support the build refinement
+0f04633 Split Makefile.am in src/test
+e82ac10 rgw: only finialize finisher if it's not null
+7bab9f7 rgw: fix watch initialization and reinit on error
+387e4f8 rgw: move watch reinit into a finisher
+30c32b4 rgw: add support for new watch/notify functionality
+04437e4 rgw: switch to new watch/notify API
+e3a7ab7 Split Makefile.am in src/tools
+14572ff Cleanup src/Makefile's a bit more
+70c89d5 Split Makefile.am in src
+e37af1b Reorganize structure of Makefile.am in src/include
+da9935e Split Makefile.am in cls
+9e1c49c ceph.spec.in: loosen ceph-test's dependencies
+5cbe5ca man: move ENABLE_* to Makefile.am
+e531dd4 Add new configure options to improve build refinement
+c474106 Split Makefile.am in man
+fa13a5d qa: fix up rbd permissions test
+cb840cc librbd: remove unneeded assert from unregister_watch()
+8dc0bf8 (origin/wip-10828) osdc/Objecter: clean up oncommit_sync (and fix leak)
+f7d35b9 osdc/Objecter: count oncommit_sync as uncommitted
+099264f (origin/hammer-backports-hadoop) hadoop: workunits don't need java path
+2f2ace3 qa: update old replication tests
+a6a6df6 cmake:  build fixes
+137800a (origin/wip-10968) librbd: delay completion of AioRequest::read_from_parent
+7d2fe5b librbd: allow AioCompletions to be blocked
+416ce76 librbd: delete Contexts when object map aio_update not required
+1bfd760 librbd: handle possible aio_read return error code
+fb2caa0 librbd: add log message for completion of AioRequest
+1e3f814 mon: ignore crushtool validation if too long
+7a5a635 mon: do not hardwire crushtool command line
+eca153e (origin/wip-10962) test/cli-integration/rbd: updated to new CLI
+6c2d929 rbd: permit v2 striping for clones and imports
+b5050b6 rbd: fixed formatted output of rbd image features
+6cff494 (origin/wip-10990) qa/workunits/rbd/copy.sh: remove all image locks
+0e58463 librbd: missing callback log message for CopyupRequest object map update
+ed9e358 librbd: hide flush log message if no flushes are pending
+e2283e3 (origin/wip-10958) librbd: flush pending AIO after acquiring lock
+472db64 librbd: hold snap_lock between clipping IO and registering AIO
+7e89f51 mon: do not pollute directory with cvs files from crushtool
+2e74959 (origin/wip-10546) mon: Monitor: fix timecheck rounds period
+3f73eb4 (origin/wip-mon-datahealth-fix.hammer) test: encoding: add LevelDBStoreStats and ceph_data_stats to types.h
+028806a mon/mon_types.h: allow testing encode/decode of LevelDBStoreStats
+6c7f3a7 include/util.h: allow testing encoding/decoding of ceph_data_stats
+b8c7bae include/util.h: initialize ceph_data_stats to zero
+6c2dea9 mon: mon_types.h: initialize LevelDBStoreStats and avoid craziness
+1584104 librbd: moved flush / cache invalidate to resize state machine
+9fed4b9 librbd: add AIO version of invalidate_cache
+bebf8e9 (tag: v0.93) 0.93
+6f31458 (origin/wip-hammer-gplv2-text) Add GPLv2 text file
+2c666f3 librbd: C_SaferCond memory leak
 7ed9640 (origin/wip-fusesystem-10710) ceph-fuse: test dentry invalidation options and fail out if we fail
 694529a Client: support using dentry invalidation callbacks on older kernels
 a6ebf67 Client: add functions to test remount functionality
@@ -51,6 +221,7 @@ e0e765f osd/OSDMap: cache get_up_osd_features
 942f875 librbd: add test instances for watch/notify messages
 10d8686 librbd: minor cleanup of ImageWatcher messages
 0ed296b (origin/wip-librbd-exclusive-lock-config) rbd: disable RBD exclusive locking by default
+2b63dd2 DBObjectMap: lock header_lock on sync()
 170c88d (origin/wip-cmake-vstart) cmake: radosgw, radosgw-admin related fixes
 4feb171 vstart.sh: can use binaries outside of ceph/src
 55d3db9 (origin/wip-10919) cls_rbd: invalidate bufferlist CRC when updating object map
@@ -327,6 +498,7 @@ cfab01e (origin/wip-10722) rgw: move perf cleanup before context cleanup
 4074a91 pybind: fix error hiding and inconsistency on librados load.
 cfcfafc Objecter::_op_submit_with_budget: add timeout before call
 00a3ac3 (tag: v0.92, origin/wip-sam-v0.92) 0.92
+c656bce PGLog: improve PGLog::check() debugging
 05ce2aa qa: use correct binary path on rpm-based systems
 eb526af (origin/wip-10709) rbd: watch command should unwatch before exiting
 2a0e9b7 (origin/wip-optional-encoding) encoding: ignore uninitialized instantiation in boost::optional decode
@@ -906,7 +1078,7 @@ e7cc611 qa: ignore duplicates in rados ls
 e5591f8 (origin/wip-10539) qa: fail_all_mds between fs reset and fs rm
 26a2df2 mailmap: Josh Durgin name normalization
 d6a9d25 doc/release-notes: v0.80.8
-45e9cd5 (origin/wip-xio) Fix make check blockers.
+45e9cd5 Fix make check blockers.
 daefad7 xio: enable accelio debug on level 2
 aa5f195 xio: Get the right Accelio errno code
 37719c3 Dequeue XioMsg on send-fail
@@ -4296,7 +4468,7 @@ ecbb005 OSD: The thread pool variable name changed The variable names are more m
 a0e48b8 ShardedTP: Changes related to conforming to Ceph coding guidelines
 2e3f4bc doc: Fixed typo.
 6733947 Fix for bug #6700
-a4923f5 (origin/wip-warnings) fix compilation warnings
+a4923f5 fix compilation warnings
 63cc7f9 Add test for objectstore
 50c8fee Fix write operation on a deleted object in the same transaction
 737c13e Remove SequencerPosition from KeyValueStore
@@ -28362,7 +28534,7 @@ a80a0ca rados:Added basic df functionality to rados and fixed librados.cc to han
 26ff613 debian: add build depends libssl-dev, libfcgi-dev
 c645d26 osd: autodetect PGOP flag if there are PG ops
 b4eaf55 rados: rename radostool -> rados
-98a8175 rados: external acls [beginning of] implementation
+98a81758 rados: external acls [beginning of] implementation
 e5e1264 s3: fastcgi s3 gateway
 6ddb9e5 objecter: unify read and write paths
 bb9a109 osd: you may, but need not, specify READ|WRITE flag in MOSDOp.
@@ -33844,7 +34016,7 @@ c8015df * fixed up indoe/dentry/dir discover; all now add_replica_*() * fixed bu
 918e5a2 * cosmetic
 4c1ea57 * fixed link/unlink recovery behavior * fixed up slave request recovery handling in general * unlink now reanchors when moving ots tray * fixed rename replication of straydn
 705bbe4 * new link thrasher, still needs some work.
-76fec3d * cleaned up old message types, unlink/link cruft * rejoin restores authpins AND xlocks, slightly more cleanly * rename reanchor cleaned up * fixed migrator export vs stopping mds race * slave update recovery implemented (untested)
+76fec3d0 * cleaned up old message types, unlink/link cruft * rejoin restores authpins AND xlocks, slightly more cleanly * rename reanchor cleaned up * fixed migrator export vs stopping mds race * slave update recovery implemented (untested)
 2cfdd57 * remote unlink, genericized slave link++/--
 15d9d63 * foreign link implemented
 7693801 * resolved request forward vs slave request finish race
@@ -35226,7 +35398,7 @@ eba9e7e *** empty log message ***
 ee63c70 *** empty log message ***
 90a1c02 *** empty log message ***
 bac0031 *** empty log message ***
-2576492 import is currently broken
+25764921 import is currently broken
 b247412 *** empty log message ***
 61a5130 *** empty log message ***
 9475610 *** empty log message ***

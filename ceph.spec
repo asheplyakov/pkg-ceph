@@ -9,7 +9,7 @@
 # common
 #################################################################################
 Name:		ceph
-Version:	0.93
+Version:	0.94.1
 Release:	0%{?dist}
 Epoch:		1
 Summary:	User space components of the Ceph file system
@@ -315,9 +315,7 @@ RESTful bencher that can be used to benchmark radosgw performance.
 Summary:	Ceph benchmarks and test tools
 Group:		System Environment/Libraries
 License:	LGPL-2.0
-Requires:	librados2 = %{epoch}:%{version}-%{release}
-Requires:	librbd1 = %{epoch}:%{version}-%{release}
-Requires:	libcephfs1 = %{epoch}:%{version}-%{release}
+Requires:	ceph-common
 %if (0%{?fedora} >= 20 || 0%{?rhel} == 6)
 BuildRequires:	lttng-ust-devel
 BuildRequires:	libbabeltrace-devel
