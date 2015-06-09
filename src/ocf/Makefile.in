@@ -44,7 +44,7 @@ am__aclocal_m4_deps = $(top_srcdir)/m4/ac_check_classpath.m4 \
 	$(top_srcdir)/m4/ac_prog_javac.m4 \
 	$(top_srcdir)/m4/ac_prog_javac_works.m4 \
 	$(top_srcdir)/m4/ac_prog_javah.m4 \
-	$(top_srcdir)/m4/acx_pthread.m4 \
+	$(top_srcdir)/m4/acx_pthread.m4 $(top_srcdir)/m4/ax_arm.m4 \
 	$(top_srcdir)/m4/ax_c_pretty_func.m4 \
 	$(top_srcdir)/m4/ax_c_var_func.m4 \
 	$(top_srcdir)/m4/ax_check_compile_flag.m4 \
@@ -103,6 +103,8 @@ AMTAR = @AMTAR@
 AM_CXXFLAGS = @AM_CXXFLAGS@
 AM_DEFAULT_VERBOSITY = @AM_DEFAULT_VERBOSITY@
 AR = @AR@
+ARM_FLAGS = @ARM_FLAGS@
+ARM_NEON_FLAGS = @ARM_NEON_FLAGS@
 AUTOCONF = @AUTOCONF@
 AUTOHEADER = @AUTOHEADER@
 AUTOMAKE = @AUTOMAKE@
@@ -165,6 +167,7 @@ LDFLAGS = @LDFLAGS@
 LIBEDIT_CFLAGS = @LIBEDIT_CFLAGS@
 LIBEDIT_LIBS = @LIBEDIT_LIBS@
 LIBFUSE = @LIBFUSE@
+LIBJEMALLOC = @LIBJEMALLOC@
 LIBOBJS = @LIBOBJS@
 LIBROCKSDB_CFLAGS = @LIBROCKSDB_CFLAGS@
 LIBROCKSDB_LIBS = @LIBROCKSDB_LIBS@
@@ -216,8 +219,11 @@ SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
 STRIP = @STRIP@
 VERSION = @VERSION@
+WARN_ERROR_FORMAT_SECURITY = @WARN_ERROR_FORMAT_SECURITY@
 WARN_IGNORED_QUALIFIERS = @WARN_IGNORED_QUALIFIERS@
 WARN_TYPE_LIMITS = @WARN_TYPE_LIMITS@
+XIO_LIBS = @XIO_LIBS@
+YASM_CHECK = @YASM_CHECK@
 abs_builddir = @abs_builddir@
 abs_srcdir = @abs_srcdir@
 abs_top_builddir = @abs_top_builddir@

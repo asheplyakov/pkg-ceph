@@ -3,6 +3,8 @@ Description=Ceph cluster monitor daemon (MON)
 Documentation=man:ceph-mon
 After=network-online.target
 Wants=network-online.target
+Requires=ceph-create-keys.service
+Before=ceph-create-keys.service
 PartOf=ceph.service
 
 [Service]
@@ -10,7 +12,9 @@ Environment=CLUSTER=ceph
 Environment=CONFIG=/etc/ceph/ceph.conf
 EnvironmentFile=-/etc/default/ceph
 ExecStart=/usr/bin/ceph-mon --id %H --foreground --cluster ${CLUSTER} -c ${CONFIG}
-#Restart=on-abnormal
+LimitNOFILE=16384
+Restart=on-failure
+RestartSec=30
 
 [Install]
 WantedBy=multi-user.target

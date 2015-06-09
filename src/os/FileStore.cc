@@ -79,6 +79,8 @@ using ceph::crypto::SHA1;
 
 #ifdef WITH_LTTNG
 #include "tracing/objectstore.h"
+#else
+#define tracepoint(...)
 #endif
 
 #define dout_subsys ceph_subsys_filestore
@@ -242,6 +244,10 @@ int FileStore::lfn_open(coll_t cid,
   }
   if (!((*index).index)) {
     r = get_index(cid, index);
+    if (r < 0) {
+      dout(10) << __func__ << " could not get index r = " << r << dendl;
+      return r;
+    }
   } else {
     need_lock = false;
   }
@@ -437,8 +443,10 @@ int FileStore::lfn_unlink(coll_t cid, const ghobject_t& o,
 {
   Index index;
   int r = get_index(cid, &index);
-  if (r < 0)
+  if (r < 0) {
+    dout(25) << __func__ << " get_index failed " << cpp_strerror(r) << dendl;
     return r;
+  }
 
   assert(NULL != index.index);
   RWLock::WLocker l((index.index)->access_lock);
@@ -463,6 +471,7 @@ int FileStore::lfn_unlink(coll_t cid, const ghobject_t& o,
 	} else {
 	  assert(!m_filestore_fail_eio || r != -EIO);
 	}
+	dout(25) << __func__ << " stat failed " << cpp_strerror(r) << dendl;
 	return r;
       } else if (st.st_nlink == 1) {
 	force_clear_omap = true;
@@ -473,6 +482,7 @@ int FileStore::lfn_unlink(coll_t cid, const ghobject_t& o,
 	       << " in cid " << cid << dendl;
       r = object_map->clear(o, &spos);
       if (r < 0 && r != -ENOENT) {
+	dout(25) << __func__ << " omap clear failed " << cpp_strerror(r) << dendl;
 	assert(!m_filestore_fail_eio || r != -EIO);
 	return r;
       }
@@ -489,7 +499,12 @@ int FileStore::lfn_unlink(coll_t cid, const ghobject_t& o,
 	object_map->sync(&o, &spos);
     }
   }
-  return index->unlink(o);
+  r = index->unlink(o);
+  if (r < 0) {
+    dout(25) << __func__ << " index unlink failed " << cpp_strerror(r) << dendl;
+    return r;
+  }
+  return 0;
 }
 
 FileStore::FileStore(const std::string &base, const std::string &jdev, osflagbits_t flags, const char *name, bool do_update) :
@@ -504,7 +519,7 @@ FileStore::FileStore(const std::string &base, const std::string &jdev, osflagbit
   index_manager(do_update),
   ondisk_finisher(g_ceph_context),
   lock("FileStore::lock"),
-  force_sync(false), sync_epoch(0),
+  force_sync(false), 
   sync_entry_timeo_lock("sync_entry_timeo_lock"),
   timer(g_ceph_context, sync_entry_timeo_lock),
   stop(false), sync_thread(this),
@@ -527,7 +542,7 @@ FileStore::FileStore(const std::string &base, const std::string &jdev, osflagbit
   m_filestore_max_sync_interval(g_conf->filestore_max_sync_interval),
   m_filestore_min_sync_interval(g_conf->filestore_min_sync_interval),
   m_filestore_fail_eio(g_conf->filestore_fail_eio),
-  m_filestore_replica_fadvise(g_conf->filestore_replica_fadvise),
+  m_filestore_fadvise(g_conf->filestore_fadvise),
   do_update(do_update),
   m_journal_dio(g_conf->journal_dio),
   m_journal_aio(g_conf->journal_aio),
@@ -707,12 +722,6 @@ void FileStore::create_backend(long f_type)
 
   case XFS_SUPER_MAGIC:
     // wbthrottle is constructed with fs(WBThrottle::XFS)
-    if (m_filestore_replica_fadvise) {
-      dout(1) << " disabling 'filestore replica fadvise' due to known issues with fadvise(DONTNEED) on xfs" << dendl;
-      g_conf->set_val("filestore_replica_fadvise", "false");
-      g_conf->apply_changes(NULL);
-      assert(m_filestore_replica_fadvise == false);
-    }
     break;
 #endif
   }
@@ -1164,6 +1173,26 @@ int FileStore::write_version_stamp()
       bl.c_str(), bl.length());
 }
 
+int FileStore::upgrade()
+{
+  uint32_t version;
+  int r = version_stamp_is_valid(&version);
+  if (r < 0)
+    return r;
+  if (r == 1)
+    return 0;
+
+  if (version < 3) {
+    derr << "ObjectStore is old at version " << version << ".  Please upgrade to firefly v0.80.x, convert your store, and then upgrade."  << dendl;
+    return -EINVAL;
+  }
+
+  // nothing necessary in FileStore for v3 -> v4 upgrade; we just need to
+  // open up DBObjectMap with the do_upgrade flag, which we already did.
+  update_version_stamp();
+  return 0;
+}
+
 int FileStore::read_op_seq(uint64_t *seq)
 {
   int op_fd = ::open(current_op_seq_fn.c_str(), O_CREAT|O_RDWR, 0644);
@@ -1248,17 +1277,19 @@ int FileStore::mount()
 	 << cpp_strerror(ret) << dendl;
     goto close_fsid_fd;
   } else if (ret == 0) {
-    if (do_update) {
+    if (do_update || (int)version_stamp < g_conf->filestore_update_to) {
       derr << "FileStore::mount : stale version stamp detected: "
 	   << version_stamp 
 	   << ". Proceeding, do_update "
 	   << "is set, performing disk format upgrade."
 	   << dendl;
+      do_update = true;
     } else {
       ret = -EINVAL;
       derr << "FileStore::mount : stale version stamp " << version_stamp
 	   << ". Please run the FileStore update script before starting the "
 	   << "OSD, or set filestore_update_to to " << target_version
+	   << " (currently " << g_conf->filestore_update_to << ")"
 	   << dendl;
       goto close_fsid_fd;
     }
@@ -1568,6 +1599,16 @@ int FileStore::mount()
 
   timer.init();
 
+  // upgrade?
+  if (g_conf->filestore_update_to >= (int)get_target_version()) {
+    int err = upgrade();
+    if (err < 0) {
+      derr << "error converting store" << dendl;
+      umount();
+      return err;
+    }
+  }
+
   // all okay.
   return 0;
 
@@ -1785,7 +1826,9 @@ void FileStore::_finish_op(OpSequencer *osr)
   if (o->onreadable) {
     op_finisher.queue(o->onreadable);
   }
-  op_finisher.queue(to_queue);
+  if (!to_queue.empty()) {
+    op_finisher.queue(to_queue);
+  }
   delete o;
 }
 
@@ -1935,7 +1978,9 @@ void FileStore::_journaled_ahead(OpSequencer *osr, Op *o, Context *ondisk)
     dout(10) << " queueing ondisk " << ondisk << dendl;
     ondisk_finisher.queue(ondisk);
   }
-  ondisk_finisher.queue(to_queue);
+  if (!to_queue.empty()) {
+    ondisk_finisher.queue(to_queue);
+  }
 }
 
 int FileStore::_do_transactions(
@@ -1966,7 +2011,11 @@ void FileStore::_set_global_replay_guard(coll_t cid,
     return;
 
   // sync all previous operations on this sequencer
-  sync_filesystem(basedir_fd);
+  int ret = sync_filesystem(basedir_fd);
+  if (ret < 0) {
+    derr << __func__ << " :sync_filesytem error " << cpp_strerror(ret) << dendl;
+    assert(0 == "_set_global_replay_guard failed");
+  }
 
   char fn[PATH_MAX];
   get_cdir(cid, fn, sizeof(fn));
@@ -2228,197 +2277,193 @@ unsigned FileStore::_do_transaction(
     if (handle)
       handle->reset_tp_timeout();
 
-    int op = i.decode_op();
+    Transaction::Op *op = i.decode_op();
     int r = 0;
 
     _inject_failure();
 
-    switch (op) {
+    switch (op->op) {
     case Transaction::OP_NOP:
       break;
     case Transaction::OP_TOUCH:
       {
-	coll_t cid = i.decode_cid();
-	ghobject_t oid = i.decode_oid();
+        coll_t cid = i.get_cid(op->cid);
+        ghobject_t oid = i.get_oid(op->oid);
         tracepoint(objectstore, touch_enter, osr_name);
-	if (_check_replay_guard(cid, oid, spos) > 0)
-	  r = _touch(cid, oid);
+        if (_check_replay_guard(cid, oid, spos) > 0)
+          r = _touch(cid, oid);
         tracepoint(objectstore, touch_exit, r);
       }
       break;
       
     case Transaction::OP_WRITE:
       {
-	coll_t cid = i.decode_cid();
-	ghobject_t oid = i.decode_oid();
-	uint64_t off = i.decode_length();
-	uint64_t len = i.decode_length();
-	bool replica = i.get_replica();
-	bufferlist bl;
-	i.decode_bl(bl);
+        coll_t cid = i.get_cid(op->cid);
+        ghobject_t oid = i.get_oid(op->oid);
+        uint64_t off = op->off;
+        uint64_t len = op->len;
+        uint32_t fadvise_flags = i.get_fadvise_flags();
+        bufferlist bl;
+        i.decode_bl(bl);
         tracepoint(objectstore, write_enter, osr_name, off, len);
-	if (_check_replay_guard(cid, oid, spos) > 0)
-	  r = _write(cid, oid, off, len, bl, replica);
+        if (_check_replay_guard(cid, oid, spos) > 0)
+          r = _write(cid, oid, off, len, bl, fadvise_flags);
         tracepoint(objectstore, write_exit, r);
       }
       break;
       
     case Transaction::OP_ZERO:
       {
-	coll_t cid = i.decode_cid();
-	ghobject_t oid = i.decode_oid();
-	uint64_t off = i.decode_length();
-	uint64_t len = i.decode_length();
+        coll_t cid = i.get_cid(op->cid);
+        ghobject_t oid = i.get_oid(op->oid);
+        uint64_t off = op->off;
+        uint64_t len = op->len;
         tracepoint(objectstore, zero_enter, osr_name, off, len);
-	if (_check_replay_guard(cid, oid, spos) > 0)
-	  r = _zero(cid, oid, off, len);
+        if (_check_replay_guard(cid, oid, spos) > 0)
+          r = _zero(cid, oid, off, len);
         tracepoint(objectstore, zero_exit, r);
       }
       break;
       
     case Transaction::OP_TRIMCACHE:
       {
-	i.decode_cid();
-	i.decode_oid();
-	i.decode_length();
-	i.decode_length();
 	// deprecated, no-op
       }
       break;
       
     case Transaction::OP_TRUNCATE:
       {
-	coll_t cid = i.decode_cid();
-	ghobject_t oid = i.decode_oid();
-	uint64_t off = i.decode_length();
+        coll_t cid = i.get_cid(op->cid);
+        ghobject_t oid = i.get_oid(op->oid);
+        uint64_t off = op->off;
         tracepoint(objectstore, truncate_enter, osr_name, off);
-	if (_check_replay_guard(cid, oid, spos) > 0)
-	  r = _truncate(cid, oid, off);
+        if (_check_replay_guard(cid, oid, spos) > 0)
+          r = _truncate(cid, oid, off);
         tracepoint(objectstore, truncate_exit, r);
       }
       break;
       
     case Transaction::OP_REMOVE:
       {
-	coll_t cid = i.decode_cid();
-	ghobject_t oid = i.decode_oid();
+        coll_t cid = i.get_cid(op->cid);
+        ghobject_t oid = i.get_oid(op->oid);
         tracepoint(objectstore, remove_enter, osr_name);
-	if (_check_replay_guard(cid, oid, spos) > 0)
-	  r = _remove(cid, oid, spos);
+        if (_check_replay_guard(cid, oid, spos) > 0)
+          r = _remove(cid, oid, spos);
         tracepoint(objectstore, remove_exit, r);
       }
       break;
       
     case Transaction::OP_SETATTR:
       {
-	coll_t cid = i.decode_cid();
-	ghobject_t oid = i.decode_oid();
-	string name = i.decode_attrname();
-	bufferlist bl;
-	i.decode_bl(bl);
+        coll_t cid = i.get_cid(op->cid);
+        ghobject_t oid = i.get_oid(op->oid);
+        string name = i.decode_string();
+        bufferlist bl;
+        i.decode_bl(bl);
         tracepoint(objectstore, setattr_enter, osr_name);
-	if (_check_replay_guard(cid, oid, spos) > 0) {
-	  map<string, bufferptr> to_set;
-	  to_set[name] = bufferptr(bl.c_str(), bl.length());
-	  r = _setattrs(cid, oid, to_set, spos);
-	  if (r == -ENOSPC)
-	    dout(0) << " ENOSPC on setxattr on " << cid << "/" << oid
-		    << " name " << name << " size " << bl.length() << dendl;
-	}
+        if (_check_replay_guard(cid, oid, spos) > 0) {
+          map<string, bufferptr> to_set;
+          to_set[name] = bufferptr(bl.c_str(), bl.length());
+          r = _setattrs(cid, oid, to_set, spos);
+          if (r == -ENOSPC)
+            dout(0) << " ENOSPC on setxattr on " << cid << "/" << oid
+                    << " name " << name << " size " << bl.length() << dendl;
+        }
         tracepoint(objectstore, setattr_exit, r);
       }
       break;
       
     case Transaction::OP_SETATTRS:
       {
-	coll_t cid = i.decode_cid();
-	ghobject_t oid = i.decode_oid();
-	map<string, bufferptr> aset;
-	i.decode_attrset(aset);
+        coll_t cid = i.get_cid(op->cid);
+        ghobject_t oid = i.get_oid(op->oid);
+        map<string, bufferptr> aset;
+        i.decode_attrset(aset);
         tracepoint(objectstore, setattrs_enter, osr_name);
-	if (_check_replay_guard(cid, oid, spos) > 0)
-	  r = _setattrs(cid, oid, aset, spos);
+        if (_check_replay_guard(cid, oid, spos) > 0)
+          r = _setattrs(cid, oid, aset, spos);
         tracepoint(objectstore, setattrs_exit, r);
-  	if (r == -ENOSPC)
-	  dout(0) << " ENOSPC on setxattrs on " << cid << "/" << oid << dendl;
+        if (r == -ENOSPC)
+          dout(0) << " ENOSPC on setxattrs on " << cid << "/" << oid << dendl;
       }
       break;
 
     case Transaction::OP_RMATTR:
       {
-	coll_t cid = i.decode_cid();
-	ghobject_t oid = i.decode_oid();
-	string name = i.decode_attrname();
+        coll_t cid = i.get_cid(op->cid);
+        ghobject_t oid = i.get_oid(op->oid);
+        string name = i.decode_string();
         tracepoint(objectstore, rmattr_enter, osr_name);
-	if (_check_replay_guard(cid, oid, spos) > 0)
-	  r = _rmattr(cid, oid, name.c_str(), spos);
+        if (_check_replay_guard(cid, oid, spos) > 0)
+          r = _rmattr(cid, oid, name.c_str(), spos);
         tracepoint(objectstore, rmattr_exit, r);
       }
       break;
 
     case Transaction::OP_RMATTRS:
       {
-	coll_t cid = i.decode_cid();
-	ghobject_t oid = i.decode_oid();
+        coll_t cid = i.get_cid(op->cid);
+        ghobject_t oid = i.get_oid(op->oid);
         tracepoint(objectstore, rmattrs_enter, osr_name);
-	if (_check_replay_guard(cid, oid, spos) > 0)
-	  r = _rmattrs(cid, oid, spos);
+        if (_check_replay_guard(cid, oid, spos) > 0)
+          r = _rmattrs(cid, oid, spos);
         tracepoint(objectstore, rmattrs_exit, r);
       }
       break;
       
     case Transaction::OP_CLONE:
       {
-	coll_t cid = i.decode_cid();
-	ghobject_t oid = i.decode_oid();
-	ghobject_t noid = i.decode_oid();
+        coll_t cid = i.get_cid(op->cid);
+        ghobject_t oid = i.get_oid(op->oid);
+        ghobject_t noid = i.get_oid(op->dest_oid);
         tracepoint(objectstore, clone_enter, osr_name);
-	r = _clone(cid, oid, noid, spos);
+        r = _clone(cid, oid, noid, spos);
         tracepoint(objectstore, clone_exit, r);
       }
       break;
 
     case Transaction::OP_CLONERANGE:
       {
-	coll_t cid = i.decode_cid();
-	ghobject_t oid = i.decode_oid();
-	ghobject_t noid = i.decode_oid();
-	uint64_t off = i.decode_length();
-	uint64_t len = i.decode_length();
+        coll_t cid = i.get_cid(op->cid);
+        ghobject_t oid = i.get_oid(op->oid);
+        ghobject_t noid = i.get_oid(op->dest_oid);
+        uint64_t off = op->off;
+        uint64_t len = op->len;
         tracepoint(objectstore, clone_range_enter, osr_name, len);
-	r = _clone_range(cid, oid, noid, off, len, off, spos);
+        r = _clone_range(cid, oid, noid, off, len, off, spos);
         tracepoint(objectstore, clone_range_exit, r);
       }
       break;
 
     case Transaction::OP_CLONERANGE2:
       {
-	coll_t cid = i.decode_cid();
-	ghobject_t oid = i.decode_oid();
-	ghobject_t noid = i.decode_oid();
-	uint64_t srcoff = i.decode_length();
-	uint64_t len = i.decode_length();
-	uint64_t dstoff = i.decode_length();
+        coll_t cid = i.get_cid(op->cid);
+        ghobject_t oid = i.get_oid(op->oid);
+        ghobject_t noid = i.get_oid(op->dest_oid);
+        uint64_t srcoff = op->off;
+        uint64_t len = op->len;
+        uint64_t dstoff = op->dest_off;
         tracepoint(objectstore, clone_range2_enter, osr_name, len);
-	r = _clone_range(cid, oid, noid, srcoff, len, dstoff, spos);
+        r = _clone_range(cid, oid, noid, srcoff, len, dstoff, spos);
         tracepoint(objectstore, clone_range2_exit, r);
       }
       break;
 
     case Transaction::OP_MKCOLL:
       {
-	coll_t cid = i.decode_cid();
+        coll_t cid = i.get_cid(op->cid);
         tracepoint(objectstore, mkcoll_enter, osr_name);
-	if (_check_replay_guard(cid, spos) > 0)
-	  r = _create_collection(cid, spos);
+        if (_check_replay_guard(cid, spos) > 0)
+          r = _create_collection(cid, spos);
         tracepoint(objectstore, mkcoll_exit, r);
       }
       break;
 
     case Transaction::OP_COLL_HINT:
       {
-        coll_t cid = i.decode_cid();
-        uint32_t type = i.decode_u32();
+        coll_t cid = i.get_cid(op->cid);
+        uint32_t type = op->hint_type;
         bufferlist hint;
         i.decode_bl(hint);
         bufferlist::iterator hiter = hint.begin();
@@ -2439,83 +2484,88 @@ unsigned FileStore::_do_transaction(
 
     case Transaction::OP_RMCOLL:
       {
-	coll_t cid = i.decode_cid();
+        coll_t cid = i.get_cid(op->cid);
         tracepoint(objectstore, rmcoll_enter, osr_name);
-	if (_check_replay_guard(cid, spos) > 0)
-	  r = _destroy_collection(cid);
+        if (_check_replay_guard(cid, spos) > 0)
+          r = _destroy_collection(cid);
         tracepoint(objectstore, rmcoll_exit, r);
       }
       break;
 
     case Transaction::OP_COLL_ADD:
       {
-	coll_t ncid = i.decode_cid();
-	coll_t ocid = i.decode_cid();
-	ghobject_t oid = i.decode_oid();
-        tracepoint(objectstore, coll_add_enter);
-	r = _collection_add(ncid, ocid, oid, spos);
-        tracepoint(objectstore, coll_add_exit, r);
-      }
-      break;
+        coll_t ocid = i.get_cid(op->cid);
+        coll_t ncid = i.get_cid(op->dest_cid);
+        ghobject_t oid = i.get_oid(op->oid);
 
-    case Transaction::OP_COLL_REMOVE:
-       {
-	coll_t cid = i.decode_cid();
-	ghobject_t oid = i.decode_oid();
+        // always followed by OP_COLL_REMOVE
+        Transaction::Op *op2 = i.decode_op();
+        coll_t ocid2 = i.get_cid(op2->cid);
+        ghobject_t oid2 = i.get_oid(op2->oid);
+        assert(op2->op == Transaction::OP_COLL_REMOVE);
+        assert(ocid2 == ocid);
+        assert(oid2 == oid);
+
+        tracepoint(objectstore, coll_add_enter);
+        r = _collection_add(ncid, ocid, oid, spos);
+        tracepoint(objectstore, coll_add_exit, r);
+        spos.op++;
+        if (r < 0)
+          break;
         tracepoint(objectstore, coll_remove_enter, osr_name);
-	if (_check_replay_guard(cid, oid, spos) > 0)
-	  r = _remove(cid, oid, spos);
+        if (_check_replay_guard(ocid, oid, spos) > 0)
+          r = _remove(ocid, oid, spos);
         tracepoint(objectstore, coll_remove_exit, r);
-       }
+      }
       break;
 
     case Transaction::OP_COLL_MOVE:
       {
-	// WARNING: this is deprecated and buggy; only here to replay old journals.
-	coll_t ocid = i.decode_cid();
-	coll_t ncid = i.decode_cid();
-	ghobject_t oid = i.decode_oid();
+        // WARNING: this is deprecated and buggy; only here to replay old journals.
+        coll_t ocid = i.get_cid(op->cid);
+        coll_t ncid = i.get_cid(op->dest_cid);
+        ghobject_t oid = i.get_oid(op->oid);
         tracepoint(objectstore, coll_move_enter);
-	r = _collection_add(ocid, ncid, oid, spos);
-	if (r == 0 &&
-	    (_check_replay_guard(ocid, oid, spos) > 0))
-	  r = _remove(ocid, oid, spos);
+        r = _collection_add(ocid, ncid, oid, spos);
+        if (r == 0 &&
+            (_check_replay_guard(ocid, oid, spos) > 0))
+          r = _remove(ocid, oid, spos);
         tracepoint(objectstore, coll_move_exit, r);
       }
       break;
 
     case Transaction::OP_COLL_MOVE_RENAME:
       {
-	coll_t oldcid = i.decode_cid();
-	ghobject_t oldoid = i.decode_oid();
-	coll_t newcid = i.decode_cid();
-	ghobject_t newoid = i.decode_oid();
+        coll_t oldcid = i.get_cid(op->cid);
+        ghobject_t oldoid = i.get_oid(op->oid);
+        coll_t newcid = i.get_cid(op->dest_cid);
+        ghobject_t newoid = i.get_oid(op->dest_oid);
         tracepoint(objectstore, coll_move_rename_enter);
-	r = _collection_move_rename(oldcid, oldoid, newcid, newoid, spos);
+        r = _collection_move_rename(oldcid, oldoid, newcid, newoid, spos);
         tracepoint(objectstore, coll_move_rename_exit, r);
       }
       break;
 
     case Transaction::OP_COLL_SETATTR:
       {
-	coll_t cid = i.decode_cid();
-	string name = i.decode_attrname();
-	bufferlist bl;
-	i.decode_bl(bl);
+        coll_t cid = i.get_cid(op->cid);
+        string name = i.decode_string();
+        bufferlist bl;
+        i.decode_bl(bl);
         tracepoint(objectstore, coll_setattr_enter, osr_name);
-	if (_check_replay_guard(cid, spos) > 0)
-	  r = _collection_setattr(cid, name.c_str(), bl.c_str(), bl.length());
+        if (_check_replay_guard(cid, spos) > 0)
+          r = _collection_setattr(cid, name.c_str(), bl.c_str(), bl.length());
         tracepoint(objectstore, coll_setattr_exit, r);
       }
       break;
 
     case Transaction::OP_COLL_RMATTR:
       {
-	coll_t cid = i.decode_cid();
-	string name = i.decode_attrname();
+        coll_t cid = i.get_cid(op->cid);
+        string name = i.decode_string();
         tracepoint(objectstore, coll_rmattr_enter, osr_name);
-	if (_check_replay_guard(cid, spos) > 0)
-	  r = _collection_rmattr(cid, name.c_str());
+        if (_check_replay_guard(cid, spos) > 0)
+          r = _collection_rmattr(cid, name.c_str());
         tracepoint(objectstore, coll_rmattr_exit, r);
       }
       break;
@@ -2528,97 +2578,93 @@ unsigned FileStore::_do_transaction(
 
     case Transaction::OP_COLL_RENAME:
       {
-	coll_t cid(i.decode_cid());
-	coll_t ncid(i.decode_cid());
-        tracepoint(objectstore, coll_rename_enter, osr_name);
-	r = _collection_rename(cid, ncid, spos);
-        tracepoint(objectstore, coll_rename_exit, r);
+        r = -EOPNOTSUPP;
       }
       break;
 
     case Transaction::OP_OMAP_CLEAR:
       {
-	coll_t cid(i.decode_cid());
-	ghobject_t oid = i.decode_oid();
+        coll_t cid = i.get_cid(op->cid);
+        ghobject_t oid = i.get_oid(op->oid);
         tracepoint(objectstore, omap_clear_enter, osr_name);
-	r = _omap_clear(cid, oid, spos);
+        r = _omap_clear(cid, oid, spos);
         tracepoint(objectstore, omap_clear_exit, r);
       }
       break;
     case Transaction::OP_OMAP_SETKEYS:
       {
-	coll_t cid(i.decode_cid());
-	ghobject_t oid = i.decode_oid();
-	map<string, bufferlist> aset;
-	i.decode_attrset(aset);
+        coll_t cid = i.get_cid(op->cid);
+        ghobject_t oid = i.get_oid(op->oid);
+        map<string, bufferlist> aset;
+        i.decode_attrset(aset);
         tracepoint(objectstore, omap_setkeys_enter, osr_name);
-	r = _omap_setkeys(cid, oid, aset, spos);
+        r = _omap_setkeys(cid, oid, aset, spos);
         tracepoint(objectstore, omap_setkeys_exit, r);
       }
       break;
     case Transaction::OP_OMAP_RMKEYS:
       {
-	coll_t cid(i.decode_cid());
-	ghobject_t oid = i.decode_oid();
-	set<string> keys;
-	i.decode_keyset(keys);
+        coll_t cid = i.get_cid(op->cid);
+        ghobject_t oid = i.get_oid(op->oid);
+        set<string> keys;
+        i.decode_keyset(keys);
         tracepoint(objectstore, omap_rmkeys_enter, osr_name);
-	r = _omap_rmkeys(cid, oid, keys, spos);
+        r = _omap_rmkeys(cid, oid, keys, spos);
         tracepoint(objectstore, omap_rmkeys_exit, r);
       }
       break;
     case Transaction::OP_OMAP_RMKEYRANGE:
       {
-	coll_t cid(i.decode_cid());
-	ghobject_t oid = i.decode_oid();
-	string first, last;
-	first = i.decode_key();
-	last = i.decode_key();
+        coll_t cid = i.get_cid(op->cid);
+        ghobject_t oid = i.get_oid(op->oid);
+        string first, last;
+        first = i.decode_string();
+        last = i.decode_string();
         tracepoint(objectstore, omap_rmkeyrange_enter, osr_name);
-	r = _omap_rmkeyrange(cid, oid, first, last, spos);
+        r = _omap_rmkeyrange(cid, oid, first, last, spos);
         tracepoint(objectstore, omap_rmkeyrange_exit, r);
       }
       break;
     case Transaction::OP_OMAP_SETHEADER:
       {
-	coll_t cid(i.decode_cid());
-	ghobject_t oid = i.decode_oid();
-	bufferlist bl;
-	i.decode_bl(bl);
+        coll_t cid = i.get_cid(op->cid);
+        ghobject_t oid = i.get_oid(op->oid);
+        bufferlist bl;
+        i.decode_bl(bl);
         tracepoint(objectstore, omap_setheader_enter, osr_name);
-	r = _omap_setheader(cid, oid, bl, spos);
+        r = _omap_setheader(cid, oid, bl, spos);
         tracepoint(objectstore, omap_setheader_exit, r);
       }
       break;
     case Transaction::OP_SPLIT_COLLECTION:
       {
-	coll_t cid(i.decode_cid());
-	uint32_t bits(i.decode_u32());
-	uint32_t rem(i.decode_u32());
-	coll_t dest(i.decode_cid());
+        coll_t cid = i.get_cid(op->cid);
+        uint32_t bits = op->split_bits;
+        uint32_t rem = op->split_rem;
+        coll_t dest = i.get_cid(op->dest_cid);
         tracepoint(objectstore, split_coll_enter, osr_name);
-	r = _split_collection_create(cid, bits, rem, dest, spos);
+        r = _split_collection_create(cid, bits, rem, dest, spos);
         tracepoint(objectstore, split_coll_exit, r);
       }
       break;
     case Transaction::OP_SPLIT_COLLECTION2:
       {
-	coll_t cid(i.decode_cid());
-	uint32_t bits(i.decode_u32());
-	uint32_t rem(i.decode_u32());
-	coll_t dest(i.decode_cid());
+        coll_t cid = i.get_cid(op->cid);
+        uint32_t bits = op->split_bits;
+        uint32_t rem = op->split_rem;
+        coll_t dest = i.get_cid(op->dest_cid);
         tracepoint(objectstore, split_coll2_enter, osr_name);
-	r = _split_collection(cid, bits, rem, dest, spos);
+        r = _split_collection(cid, bits, rem, dest, spos);
         tracepoint(objectstore, split_coll2_exit, r);
       }
       break;
 
     case Transaction::OP_SETALLOCHINT:
       {
-        coll_t cid = i.decode_cid();
-        ghobject_t oid = i.decode_oid();
-        uint64_t expected_object_size = i.decode_length();
-        uint64_t expected_write_size = i.decode_length();
+        coll_t cid = i.get_cid(op->cid);
+        ghobject_t oid = i.get_oid(op->oid);
+        uint64_t expected_object_size = op->expected_object_size;
+        uint64_t expected_write_size = op->expected_write_size;
         tracepoint(objectstore, setallochint_enter, osr_name);
         if (_check_replay_guard(cid, oid, spos) > 0)
           r = _set_alloc_hint(cid, oid, expected_object_size,
@@ -2628,28 +2674,24 @@ unsigned FileStore::_do_transaction(
       break;
 
     default:
-      derr << "bad op " << op << dendl;
+      derr << "bad op " << op->op << dendl;
       assert(0);
     }
 
     if (r < 0) {
       bool ok = false;
 
-      if (r == -ENOENT && !(op == Transaction::OP_CLONERANGE ||
-			    op == Transaction::OP_CLONE ||
-			    op == Transaction::OP_CLONERANGE2 ||
-			    op == Transaction::OP_COLL_ADD))
+      if (r == -ENOENT && !(op->op == Transaction::OP_CLONERANGE ||
+			    op->op == Transaction::OP_CLONE ||
+			    op->op == Transaction::OP_CLONERANGE2 ||
+			    op->op == Transaction::OP_COLL_ADD))
 	// -ENOENT is normally okay
 	// ...including on a replayed OP_RMCOLL with checkpoint mode
 	ok = true;
-      if (r == -ENOENT && (
-	  op == Transaction::OP_COLL_ADD &&
-	  i.tolerate_collection_add_enoent()))
-	ok = true; // Hack for upgrade from snapcolls to snapmapper
       if (r == -ENODATA)
 	ok = true;
 
-      if (op == Transaction::OP_SETALLOCHINT)
+      if (op->op == Transaction::OP_SETALLOCHINT)
         // Either EOPNOTSUPP or EINVAL most probably.  EINVAL in most
         // cases means invalid hint size (e.g. too big, not a multiple
         // of block size, etc) or, at least on xfs, an attempt to set
@@ -2658,15 +2700,15 @@ unsigned FileStore::_do_transaction(
         ok = true;
 
       if (replaying && !backend->can_checkpoint()) {
-	if (r == -EEXIST && op == Transaction::OP_MKCOLL) {
+	if (r == -EEXIST && op->op == Transaction::OP_MKCOLL) {
 	  dout(10) << "tolerating EEXIST during journal replay since checkpoint is not enabled" << dendl;
 	  ok = true;
 	}
-	if (r == -EEXIST && op == Transaction::OP_COLL_ADD) {
+	if (r == -EEXIST && op->op == Transaction::OP_COLL_ADD) {
 	  dout(10) << "tolerating EEXIST during journal replay since checkpoint is not enabled" << dendl;
 	  ok = true;
 	}
-	if (r == -EEXIST && op == Transaction::OP_COLL_MOVE) {
+	if (r == -EEXIST && op->op == Transaction::OP_COLL_MOVE) {
 	  dout(10) << "tolerating EEXIST during journal replay since checkpoint is not enabled" << dendl;
 	  ok = true;
 	}
@@ -2683,9 +2725,9 @@ unsigned FileStore::_do_transaction(
       if (!ok) {
 	const char *msg = "unexpected error code";
 
-	if (r == -ENOENT && (op == Transaction::OP_CLONERANGE ||
-			     op == Transaction::OP_CLONE ||
-			     op == Transaction::OP_CLONERANGE2))
+	if (r == -ENOENT && (op->op == Transaction::OP_CLONERANGE ||
+			     op->op == Transaction::OP_CLONE ||
+			     op->op == Transaction::OP_CLONERANGE2))
 	  msg = "ENOENT on clone suggests osd bug";
 
 	if (r == -ENOSPC)
@@ -2769,6 +2811,7 @@ int FileStore::read(
   uint64_t offset,
   size_t len,
   bufferlist& bl,
+  uint32_t op_flags,
   bool allow_eio)
 {
   int got;
@@ -2792,6 +2835,13 @@ int FileStore::read(
     len = st.st_size;
   }
 
+#ifdef HAVE_POSIX_FADVISE
+  if (op_flags & CEPH_OSD_OP_FLAG_FADVISE_RANDOM)
+    posix_fadvise(**fd, offset, len, POSIX_FADV_RANDOM);
+  if (op_flags & CEPH_OSD_OP_FLAG_FADVISE_SEQUENTIAL)
+    posix_fadvise(**fd, offset, len, POSIX_FADV_SEQUENTIAL);
+#endif
+
   bufferptr bptr(len);  // prealloc space for entire read
   got = safe_pread(**fd, bptr.c_str(), len, offset);
   if (got < 0) {
@@ -2802,6 +2852,13 @@ int FileStore::read(
   }
   bptr.set_length(got);   // properly size the buffer
   bl.push_back(bptr);   // put it in the target bufferlist
+
+#ifdef HAVE_POSIX_FADVISE
+  if (op_flags & CEPH_OSD_OP_FLAG_FADVISE_DONTNEED)
+    posix_fadvise(**fd, offset, len, POSIX_FADV_DONTNEED);
+  if (op_flags & (CEPH_OSD_OP_FLAG_FADVISE_RANDOM | CEPH_OSD_OP_FLAG_FADVISE_SEQUENTIAL))
+    posix_fadvise(**fd, offset, len, POSIX_FADV_NORMAL);
+#endif
 
   if (m_filestore_sloppy_crc && (!replaying || backend->can_checkpoint())) {
     ostringstream ss;
@@ -2944,7 +3001,7 @@ int FileStore::_touch(coll_t cid, const ghobject_t& oid)
 
 int FileStore::_write(coll_t cid, const ghobject_t& oid,
                      uint64_t offset, size_t len,
-                     const bufferlist& bl, bool replica)
+                     const bufferlist& bl, uint32_t fadvise_flags)
 {
   dout(15) << "write " << cid << "/" << oid << " " << offset << "~" << len << dendl;
   int r;
@@ -2988,7 +3045,8 @@ int FileStore::_write(coll_t cid, const ghobject_t& oid,
   // flush?
   if (!replaying &&
       g_conf->filestore_wbthrottle_enable)
-    wbthrottle.queue_wb(fd, oid, offset, len, replica);
+    wbthrottle.queue_wb(fd, oid, offset, len,
+			  fadvise_flags & CEPH_OSD_OP_FLAG_FADVISE_DONTNEED);
   lfn_close(fd);
 
  out:
@@ -3078,10 +3136,6 @@ int FileStore::_clone(coll_t cid, const ghobject_t& oldoid, const ghobject_t& ne
       r = -errno;
       goto out3;
     }
-    r = ::ftruncate(**n, st.st_size);
-    if (r < 0) {
-      goto out3;
-    }
 
     dout(20) << "objectmap clone" << dendl;
     r = object_map->clone(oldoid, newoid, &spos);
@@ -3161,6 +3215,7 @@ int FileStore::_do_sparse_copy_range(int from, int to, uint64_t srcoff, uint64_t
     extent->fe_logical = srcoff;
   }
 
+  int64_t written = 0;
   uint64_t i = 0;
 
   while (i < fiemap->fm_mapped_extents) {
@@ -3234,18 +3289,38 @@ int FileStore::_do_sparse_copy_range(int from, int to, uint64_t srcoff, uint64_t
         op += (r-op);
       }
       if (r < 0)
-        break;
+        goto out;
       pos += r;
     }
+    written += end;
     i++;
     extent++;
   }
 
-  if (r >= 0 && m_filestore_sloppy_crc) {
-    int rc = backend->_crc_update_clone_range(from, to, srcoff, len, dstoff);
-    assert(rc >= 0);
+  if (r >= 0) {
+    if (m_filestore_sloppy_crc) {
+      int rc = backend->_crc_update_clone_range(from, to, srcoff, len, dstoff);
+      assert(rc >= 0);
+    }
+    struct stat st;
+    r = ::fstat(to, &st);
+    if (r < 0) {
+      r = -errno;
+      derr << __func__ << ": fstat error at " << to << " " << cpp_strerror(r) << dendl;
+      goto out;
+    }
+    if (st.st_size < (int)(dstoff + len)) {
+      r = ::ftruncate(to, dstoff + len);
+      if (r < 0) {
+        r = -errno;
+        derr << __func__ << ": ftruncate error at " << dstoff+len << " " << cpp_strerror(r) << dendl;
+        goto out;
+      }
+    }
+    r = written;
   }
 
+ out:
   dout(20) << __func__ << " " << srcoff << "~" << len << " to " << dstoff << " = " << r << dendl;
   return r;
 }
@@ -3340,10 +3415,15 @@ int FileStore::_clone_range(coll_t cid, const ghobject_t& oldoid, const ghobject
     goto out;
   }
   r = _do_clone_range(**o, **n, srcoff, len, dstoff);
+  if (r < 0) {
+    r = -errno;
+    goto out3;
+  }
 
   // clone is non-idempotent; record our work.
   _set_replay_guard(**n, spos, &newoid);
 
+ out3:
   lfn_close(n);
  out:
   lfn_close(o);
@@ -3425,10 +3505,7 @@ void FileStore::sync_entry()
 
       logger->set(l_os_committing, 1);
 
-      // make flusher stop flushing previously queued stuff
-      sync_epoch++;
-
-      dout(15) << "sync_entry committing " << cp << " sync_epoch " << sync_epoch << dendl;
+      dout(15) << "sync_entry committing " << cp << dendl;
       stringstream errstream;
       if (g_conf->filestore_debug_omap_check && !object_map->check(errstream)) {
 	derr << errstream.str() << dendl;
@@ -4292,56 +4369,6 @@ int FileStore::_collection_remove_recursive(const coll_t &cid,
   return _destroy_collection(cid);
 }
 
-int FileStore::_collection_rename(const coll_t &cid, const coll_t &ncid,
-				  const SequencerPosition& spos)
-{
-  char new_coll[PATH_MAX], old_coll[PATH_MAX];
-  get_cdir(cid, old_coll, sizeof(old_coll));
-  get_cdir(ncid, new_coll, sizeof(new_coll));
-
-  if (_check_replay_guard(cid, spos) < 0) {
-    return 0;
-  }
-
-  if (_check_replay_guard(ncid, spos) < 0) {
-    return _collection_remove_recursive(cid, spos);
-  }
-
-  if (!collection_exists(cid)) {
-    if (replaying) {
-      // already happened
-      return 0;
-    } else {
-      return -ENOENT;
-    }
-  }
-  _set_global_replay_guard(cid, spos);
-
-  int ret = 0;
-  if (::rename(old_coll, new_coll)) {
-    if (replaying && !backend->can_checkpoint() &&
-	(errno == EEXIST || errno == ENOTEMPTY))
-      ret = _collection_remove_recursive(cid, spos);
-    else
-      ret = -errno;
-
-    dout(10) << "collection_rename '" << cid << "' to '" << ncid << "'"
-	     << ": ret = " << ret << dendl;
-    return ret;
-  }
-
-  if (ret >= 0) {
-    int fd = ::open(new_coll, O_RDONLY);
-    assert(fd >= 0);
-    _set_replay_guard(fd, spos);
-    VOID_TEMP_FAILURE_RETRY(::close(fd));
-  }
-
-  dout(10) << "collection_rename '" << cid << "' to '" << ncid << "'"
-	   << ": ret = " << ret << dendl;
-  return ret;
-}
-
 // --------------------------
 // collections
 
@@ -4972,16 +4999,22 @@ int FileStore::_omap_setkeys(coll_t cid, const ghobject_t &hoid,
   dout(15) << __func__ << " " << cid << "/" << hoid << dendl;
   Index index;
   int r = get_index(cid, &index);
-  if (r < 0)
+  if (r < 0) {
+    dout(20) << __func__ << " get_index got " << cpp_strerror(r) << dendl;
     return r;
+  }
   {
     assert(NULL != index.index);
     RWLock::RLocker l((index.index)->access_lock);
     r = lfn_find(hoid, index);
-    if (r < 0)
+    if (r < 0) {
+      dout(20) << __func__ << " lfn_find got " << cpp_strerror(r) << dendl;
       return r;
+    }
   }
-  return object_map->set_keys(hoid, aset, &spos);
+  r = object_map->set_keys(hoid, aset, &spos);
+  dout(20) << __func__ << " " << cid << "/" << hoid << " = " << r << dendl;
+  return r;
 }
 
 int FileStore::_omap_rmkeys(coll_t cid, const ghobject_t &hoid,
@@ -5064,8 +5097,6 @@ int FileStore::_split_collection(coll_t cid,
     int dstcmp = _check_replay_guard(dest, spos);
     if (dstcmp < 0)
       return 0;
-    if (dstcmp > 0 && !collection_empty(dest))
-      return -ENOTEMPTY;
 
     int srccmp = _check_replay_guard(cid, spos);
     if (srccmp < 0)
@@ -5226,7 +5257,7 @@ const char** FileStore::get_tracked_conf_keys() const
     "filestore_dump_file",
     "filestore_kill_at",
     "filestore_fail_eio",
-    "filestore_replica_fadvise",
+    "filestore_fadvise",
     "filestore_sloppy_crc",
     "filestore_sloppy_crc_block_size",
     "filestore_max_alloc_hint_size",
@@ -5260,7 +5291,7 @@ void FileStore::handle_conf_change(const struct md_config_t *conf,
       changed.count("filestore_sloppy_crc") ||
       changed.count("filestore_sloppy_crc_block_size") ||
       changed.count("filestore_max_alloc_hint_size") ||
-      changed.count("filestore_replica_fadvise")) {
+      changed.count("filestore_fadvise")) {
     Mutex::Locker l(lock);
     m_filestore_min_sync_interval = conf->filestore_min_sync_interval;
     m_filestore_max_sync_interval = conf->filestore_max_sync_interval;
@@ -5270,7 +5301,7 @@ void FileStore::handle_conf_change(const struct md_config_t *conf,
     m_filestore_queue_committing_max_bytes = conf->filestore_queue_committing_max_bytes;
     m_filestore_kill_at.set(conf->filestore_kill_at);
     m_filestore_fail_eio = conf->filestore_fail_eio;
-    m_filestore_replica_fadvise = conf->filestore_replica_fadvise;
+    m_filestore_fadvise = conf->filestore_fadvise;
     m_filestore_sloppy_crc = conf->filestore_sloppy_crc;
     m_filestore_sloppy_crc_block_size = conf->filestore_sloppy_crc_block_size;
     m_filestore_max_alloc_hint_size = conf->filestore_max_alloc_hint_size;

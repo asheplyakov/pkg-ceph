@@ -1,0 +1,11 @@
+--- a/src/upstart/ceph-osd.conf
++++ b/src/upstart/ceph-osd.conf
+@@ -15,7 +15,7 @@ pre-start script
+ 
+     install -d -m0755 /var/run/ceph
+ 
+-    /usr/libexec/ceph/ceph-osd-prestart.sh --cluster="${cluster:-ceph}" -i "$id"
++    /usr/lib/ceph/ceph-osd-prestart.sh --cluster="${cluster:-ceph}" -i "$id"
+ end script
+ 
+ instance ${cluster:-ceph}/$id

@@ -52,7 +52,7 @@ void Striper::file_to_extents(CephContext *cct, const char *object_format,
   /*
    * we want only one extent per object!
    * this means that each extent we read may map into different bits of the 
-   * final read buffer.. hence OSDExtent.buffer_extents
+   * final read buffer.. hence ObjectExtent.buffer_extents
    */
   
   __u32 object_size = layout->fl_object_size;
@@ -212,6 +212,19 @@ uint64_t Striper::object_truncate_size(CephContext *cct, const ceph_file_layout 
   ldout(cct, 20) << "object_truncate_size " << objectno << " "
 		 << trunc_size << "->" << obj_trunc_size << dendl;
   return obj_trunc_size;
+}
+uint64_t Striper::get_num_objects(const ceph_file_layout& layout, uint64_t size)
+{
+  __u32 object_size = layout.fl_object_size;
+  __u32 stripe_unit = layout.fl_stripe_unit;
+  __u32 stripe_count = layout.fl_stripe_count;
+  uint64_t period = stripe_count * object_size;
+  uint64_t num_periods = (size + period - 1) / period;
+  uint64_t remainder_bytes = size % period;
+  uint64_t remainder_objs = 0;
+  if ((remainder_bytes > 0) && (remainder_bytes < stripe_count * stripe_unit))
+    remainder_objs = stripe_count - ((remainder_bytes + stripe_unit - 1) / stripe_unit);
+  return num_periods * stripe_count - remainder_objs;
 }
 
 // StripedReadResult

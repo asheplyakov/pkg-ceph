@@ -47,8 +47,14 @@ enum {
   l_librbd_notify,
   l_librbd_resize,
 
+  l_librbd_readahead,
+  l_librbd_readahead_bytes,
+
   l_librbd_last,
 };
+
+class Context;
+class SimpleThrottle;
 
 namespace librbd {
 
@@ -79,7 +85,7 @@ namespace librbd {
   int snap_set(ImageCtx *ictx, const char *snap_name);
   int list(librados::IoCtx& io_ctx, std::vector<std::string>& names);
   int list_children(ImageCtx *ictx,
-		    std::set<pair<std::string, std::string> > & names);
+		    std::set<std::pair<std::string, std::string> > & names);
   int create(librados::IoCtx& io_ctx, const char *imgname, uint64_t size,
 	     int *order);
   int create(librados::IoCtx& io_ctx, const char *imgname, uint64_t size,
@@ -95,14 +101,15 @@ namespace librbd {
   int get_size(ImageCtx *ictx, uint64_t *size);
   int get_features(ImageCtx *ictx, uint64_t *features);
   int get_overlap(ImageCtx *ictx, uint64_t *overlap);
-  int get_parent_info(ImageCtx *ictx, string *parent_pool_name,
-		      string *parent_name, string *parent_snap_name);
+  int get_parent_info(ImageCtx *ictx, std::string *parent_pool_name,
+		      std::string *parent_name, std::string *parent_snap_name);
+  int get_flags(ImageCtx *ictx, uint64_t *flags);
+  int is_exclusive_lock_owner(ImageCtx *ictx, bool *is_owner);
 
   int remove(librados::IoCtx& io_ctx, const char *imgname,
 	     ProgressContext& prog_ctx);
   int resize(ImageCtx *ictx, uint64_t size, ProgressContext& prog_ctx);
-  int resize_helper(ImageCtx *ictx, uint64_t size, ProgressContext& prog_ctx);
-  int snap_create(ImageCtx *ictx, const char *snap_name);
+  int snap_create(ImageCtx *ictx, const char *snap_name, bool notify);
   int snap_list(ImageCtx *ictx, std::vector<snap_info_t>& snaps);
   bool snap_exists(ImageCtx *ictx, const char *snap_name);
   int snap_rollback(ImageCtx *ictx, const char *snap_name,
@@ -112,7 +119,7 @@ namespace librbd {
   int snap_unprotect(ImageCtx *ictx, const char *snap_name);
   int snap_is_protected(ImageCtx *ictx, const char *snap_name,
 			bool *is_protected);
-  int add_snap(ImageCtx *ictx, const char *snap_name);
+  int add_snap(ImageCtx *ictx, const char *snap_name, bool lock_owner);
   int rm_snap(ImageCtx *ictx, const char *snap_name);
   int refresh_parent(ImageCtx *ictx);
   int ictx_check(ImageCtx *ictx);
@@ -149,19 +156,22 @@ namespace librbd {
   int read_header_bl(librados::IoCtx& io_ctx, const std::string& md_oid,
 		     ceph::bufferlist& header, uint64_t *ver);
   int notify_change(librados::IoCtx& io_ctx, const std::string& oid,
-		    uint64_t *pver, ImageCtx *ictx);
+		    ImageCtx *ictx);
   int read_header(librados::IoCtx& io_ctx, const std::string& md_oid,
 		  struct rbd_obj_header_ondisk *header, uint64_t *ver);
   int write_header(librados::IoCtx& io_ctx, const std::string& md_oid,
 		   ceph::bufferlist& header);
   int tmap_set(librados::IoCtx& io_ctx, const std::string& imgname);
   int tmap_rm(librados::IoCtx& io_ctx, const std::string& imgname);
+  void rollback_object(ImageCtx *ictx, uint64_t snap_id, const string& oid,
+                       SimpleThrottle& throttle);
   int rollback_image(ImageCtx *ictx, uint64_t snap_id,
 		     ProgressContext& prog_ctx);
   void image_info(const ImageCtx *ictx, image_info_t& info, size_t info_size);
   std::string get_block_oid(const std::string &object_prefix, uint64_t num,
 			    bool old_format);
-  uint64_t oid_to_object_no(const string& oid, const string& object_prefix);
+  uint64_t oid_to_object_no(const std::string& oid,
+			    const std::string& object_prefix);
   int clip_io(ImageCtx *ictx, uint64_t off, uint64_t *len);
   int init_rbd_info(struct rbd_info *info);
   void init_rbd_header(struct rbd_obj_header_ondisk& ondisk,
@@ -174,18 +184,25 @@ namespace librbd {
 		   uint64_t off, uint64_t len,
 		   int (*cb)(uint64_t, size_t, int, void *),
 		   void *arg);
-  ssize_t read(ImageCtx *ictx, uint64_t off, size_t len, char *buf);
+  ssize_t read(ImageCtx *ictx, uint64_t off, size_t len, char *buf, int op_flags);
   ssize_t read(ImageCtx *ictx, const vector<pair<uint64_t,uint64_t> >& image_extents,
-	       char *buf, bufferlist *pbl);
-  ssize_t write(ImageCtx *ictx, uint64_t off, size_t len, const char *buf);
+	       char *buf, bufferlist *pbl, int op_flags);
+  ssize_t write(ImageCtx *ictx, uint64_t off, size_t len, const char *buf, int op_flags);
   int discard(ImageCtx *ictx, uint64_t off, uint64_t len);
+
+  int async_flatten(ImageCtx *ictx, Context *ctx, ProgressContext &prog_ctx);
+  int async_resize(ImageCtx *ictx, Context *ctx, uint64_t size,
+		   ProgressContext &prog_ctx);
+  void async_resize_helper(ImageCtx *ictx, Context *ctx, uint64_t new_size,
+                           ProgressContext& prog_ctx);
+
   int aio_write(ImageCtx *ictx, uint64_t off, size_t len, const char *buf,
-		AioCompletion *c);
+		AioCompletion *c, int op_flags);
   int aio_discard(ImageCtx *ictx, uint64_t off, uint64_t len, AioCompletion *c);
   int aio_read(ImageCtx *ictx, uint64_t off, size_t len,
-	       char *buf, bufferlist *pbl, AioCompletion *c);
+	       char *buf, bufferlist *pbl, AioCompletion *c, int op_flags);
   int aio_read(ImageCtx *ictx, const vector<pair<uint64_t,uint64_t> >& image_extents,
-	       char *buf, bufferlist *pbl, AioCompletion *c);
+	       char *buf, bufferlist *pbl, AioCompletion *c, int op_flags);
   int aio_flush(ImageCtx *ictx, AioCompletion *c);
   int flush(ImageCtx *ictx);
   int _flush(ImageCtx *ictx);

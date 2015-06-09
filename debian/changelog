@@ -1,3 +1,9 @@
+ceph (0.94.1-1) UNRELEASED; urgency=medium
+
+  * Resync with Ubuntu, introducing Ceph Hammer stable release. 
+
+ -- James Page <james.page@ubuntu.com>  Tue, 09 Jun 2015 17:41:26 +0100
+
 ceph (0.87-2) experimental; urgency=low
 
   * Team upload.

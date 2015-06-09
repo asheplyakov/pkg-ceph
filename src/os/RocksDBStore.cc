@@ -153,6 +153,7 @@ RocksDBStore::~RocksDBStore()
 
   // Ensure db is destroyed before dependent db_cache and filterpolicy
   delete db;
+  delete filterpolicy;
 }
 
 void RocksDBStore::close()
@@ -226,7 +227,6 @@ void RocksDBStore::RocksDBTransactionImpl::set(
   const bufferlist &to_set_bl)
 {
   buffers.push_back(to_set_bl);
-  buffers.rbegin()->rebuild();
   bufferlist &bl = *(buffers.rbegin());
   string key = combine_strings(prefix, k);
   keys.push_back(key);

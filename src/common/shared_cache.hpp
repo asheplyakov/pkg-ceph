@@ -31,7 +31,9 @@ class SharedLRU {
   size_t max_size;
   Cond cond;
   unsigned size;
-
+public:
+  int waiting;
+private:
   map<K, typename list<pair<K, VPtr> >::iterator > contents;
   list<pair<K, VPtr> > lru;
 
@@ -89,7 +91,8 @@ class SharedLRU {
 
 public:
   SharedLRU(CephContext *cct = NULL, size_t max_size = 20)
-    : cct(cct), lock("SharedLRU::lock"), max_size(max_size), size(0) {}
+    : cct(cct), lock("SharedLRU::lock"), max_size(max_size), 
+      size(0), waiting(0) {}
   
   ~SharedLRU() {
     contents.clear();
@@ -120,6 +123,19 @@ public:
 	  << p->first << " = " << p->second.second
 	  << " with " << p->second.first.use_count() << " refs"
 	  << std::endl;
+    }
+  }
+
+  //clear all strong reference from the lru.
+  void clear() {
+    while (true) {
+      VPtr val; // release any ref we have after we drop the lock
+      Mutex::Locker l(lock);
+      if (size == 0)
+        break;
+
+      val = lru.back().second;
+      lru_remove(lru.back().first);
     }
   }
 
@@ -166,6 +182,7 @@ public:
     list<VPtr> to_release;
     {
       Mutex::Locker l(lock);
+      ++waiting;
       bool retry = false;
       do {
 	retry = false;
@@ -184,8 +201,40 @@ public:
 	if (retry)
 	  cond.Wait(lock);
       } while (retry);
+      --waiting;
     }
     return val;
+  }
+  bool get_next(const K &key, pair<K, VPtr> *next) {
+    pair<K, VPtr> r;
+    {
+      Mutex::Locker l(lock);
+      VPtr next_val;
+      typename map<K, pair<WeakVPtr, V*> >::iterator i = weak_refs.upper_bound(key);
+
+      while (i != weak_refs.end() &&
+	     !(next_val = i->second.first.lock()))
+	++i;
+
+      if (i == weak_refs.end())
+	return false;
+
+      if (next)
+	r = make_pair(i->first, next_val);
+    }
+    if (next)
+      *next = r;
+    return true;
+  }
+  bool get_next(const K &key, pair<K, V> *next) {
+    pair<K, VPtr> r;
+    bool found = get_next(key, &r);
+    if (!found || !next)
+      return found;
+    next->first = r.first;
+    assert(r.second);
+    next->second = *(r.second);
+    return found;
   }
 
   VPtr lookup(const K& key) {
@@ -193,6 +242,7 @@ public:
     list<VPtr> to_release;
     {
       Mutex::Locker l(lock);
+      ++waiting;
       bool retry = false;
       do {
 	retry = false;
@@ -208,8 +258,49 @@ public:
 	if (retry)
 	  cond.Wait(lock);
       } while (retry);
+      --waiting;
     }
     return val;
+  }
+  VPtr lookup_or_create(const K &key) {
+    VPtr val;
+    list<VPtr> to_release;
+    {
+      Mutex::Locker l(lock);
+      bool retry = false;
+      do {
+	retry = false;
+	typename map<K, pair<WeakVPtr, V*> >::iterator i = weak_refs.find(key);
+	if (i != weak_refs.end()) {
+	  val = i->second.first.lock();
+	  if (val) {
+	    lru_add(key, val, &to_release);
+	    return val;
+	  } else {
+	    retry = true;
+	  }
+	}
+	if (retry)
+	  cond.Wait(lock);
+      } while (retry);
+
+      V *new_value = new V();
+      VPtr new_val(new_value, Cleanup(this, key));
+      weak_refs.insert(make_pair(key, make_pair(new_val, new_value)));
+      lru_add(key, new_val, &to_release);
+      return new_val;
+    }
+  }
+
+  /**
+   * empty()
+   *
+   * Returns true iff there are no live references left to anything that has been
+   * in the cache.
+   */
+  bool empty() {
+    Mutex::Locker l(lock);
+    return weak_refs.empty();
   }
 
   /***
@@ -247,6 +338,8 @@ public:
     }
     return val;
   }
+
+  friend class SharedLRUTest;
 };
 
 #endif

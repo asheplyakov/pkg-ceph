@@ -17,12 +17,19 @@
 #
 source test/mon/mon-test-helpers.sh
 
+function expect_false()
+{
+    set -x
+    if "$@"; then return 1; else return 0; fi
+}
+
 function run() {
     local dir=$1
 
+    export CEPH_MON="127.0.0.1:7105"
     export CEPH_ARGS
     CEPH_ARGS+="--fsid=$(uuidgen) --auth-supported=none "
-    CEPH_ARGS+="--mon-host=127.0.0.1 "
+    CEPH_ARGS+="--mon-host=$CEPH_MON "
 
     FUNCTIONS=${FUNCTIONS:-$(set | sed -n -e 's/^\(TEST_[0-9a-z_]*\) .*/\1/p')}
     for TEST_function in $FUNCTIONS ; do
@@ -36,7 +43,7 @@ function TEST_default_deprectated_0() {
     local dir=$1
     # explicitly set the default crush rule
     expected=66
-    run_mon $dir a --public-addr 127.0.0.1 \
+    run_mon $dir a --public-addr $CEPH_MON \
         --osd_pool_default_crush_replicated_ruleset $expected
     ./ceph --format json osd dump | grep '"crush_ruleset":'$expected
     CEPH_ARGS='' ./ceph --admin-daemon $dir/a/ceph-mon.a.asok log flush || return 1
@@ -47,7 +54,7 @@ function TEST_default_deprectated_1() {
     local dir=$1
     # explicitly set the default crush rule using deprecated option
     expected=55
-    run_mon $dir a --public-addr 127.0.0.1 \
+    run_mon $dir a --public-addr $CEPH_MON \
         --osd_pool_default_crush_rule $expected
     ./ceph --format json osd dump | grep '"crush_ruleset":'$expected
     CEPH_ARGS='' ./ceph --admin-daemon $dir/a/ceph-mon.a.asok log flush || return 1
@@ -58,7 +65,7 @@ function TEST_default_deprectated_2() {
     local dir=$1
     expected=77
     unexpected=33
-    run_mon $dir a --public-addr 127.0.0.1 \
+    run_mon $dir a --public-addr $CEPH_MON \
         --osd_pool_default_crush_rule $expected \
         --osd_pool_default_crush_replicated_ruleset $unexpected
     ./ceph --format json osd dump | grep '"crush_ruleset":'$expected
@@ -70,7 +77,7 @@ function TEST_default_deprectated_2() {
 # Before http://tracker.ceph.com/issues/8307 the invalid profile was created
 function TEST_erasure_invalid_profile() {
     local dir=$1
-    run_mon $dir a --public-addr 127.0.0.1
+    run_mon $dir a --public-addr $CEPH_MON
     local poolname=pool_erasure
     local notaprofile=not-a-valid-erasure-code-profile
     ! ./ceph osd pool create $poolname 12 12 erasure $notaprofile || return 1
@@ -79,7 +86,7 @@ function TEST_erasure_invalid_profile() {
 
 function TEST_erasure_crush_rule() {
     local dir=$1
-    run_mon $dir a --public-addr 127.0.0.1
+    run_mon $dir a --public-addr $CEPH_MON
     # 
     # choose the crush ruleset used with an erasure coded pool
     #
@@ -109,7 +116,7 @@ function TEST_erasure_crush_rule() {
 
 function TEST_erasure_code_profile_default() {
     local dir=$1
-    run_mon $dir a --public-addr 127.0.0.1
+    run_mon $dir a --public-addr $CEPH_MON
     ./ceph osd erasure-code-profile rm default || return 1
     ! ./ceph osd erasure-code-profile ls | grep default || return 1
     ./ceph osd pool create $poolname 12 12 erasure default
@@ -119,7 +126,7 @@ function TEST_erasure_code_profile_default() {
 function TEST_erasure_crush_stripe_width() {
     local dir=$1
     # the default stripe width is used to initialize the pool
-    run_mon $dir a --public-addr 127.0.0.1
+    run_mon $dir a --public-addr $CEPH_MON
     stripe_width=$(./ceph-conf --show-config-value osd_pool_erasure_code_stripe_width)
     ./ceph osd pool create pool_erasure 12 12 erasure
     ./ceph --format json osd dump | tee $dir/osd.json
@@ -138,7 +145,7 @@ function TEST_erasure_crush_stripe_width_padded() {
     expected_chunk_size=2048
     actual_stripe_width=$(($expected_chunk_size * $k))
     desired_stripe_width=$(($actual_stripe_width - 1))
-    run_mon $dir a --public-addr 127.0.0.1 \
+    run_mon $dir a --public-addr $CEPH_MON \
         --osd_pool_erasure_code_stripe_width $desired_stripe_width \
         --osd_pool_default_erasure_code_profile "$profile"
     ./ceph osd pool create pool_erasure 12 12 erasure
@@ -148,7 +155,7 @@ function TEST_erasure_crush_stripe_width_padded() {
 
 function TEST_erasure_code_pool() {
     local dir=$1
-    run_mon $dir a --public-addr 127.0.0.1
+    run_mon $dir a --public-addr $CEPH_MON
     ./ceph --format json osd dump > $dir/osd.json
     local expected='"erasure_code_profile":"default"'
     ! grep "$expected" $dir/osd.json || return 1
@@ -164,7 +171,7 @@ function TEST_erasure_code_pool() {
 
 function TEST_replicated_pool_with_ruleset() {
     local dir=$1
-    run_mon $dir a --public-addr 127.0.0.1
+    run_mon $dir a --public-addr $CEPH_MON
     local ruleset=ruleset0
     local root=host1
     ./ceph osd crush add-bucket $root host
@@ -184,7 +191,7 @@ function TEST_replicated_pool_with_ruleset() {
 
 function TEST_erasure_code_pool_lrc() {
     local dir=$1
-    run_mon $dir a --public-addr 127.0.0.1
+    run_mon $dir a --public-addr $CEPH_MON
 
     ./ceph osd erasure-code-profile set LRCprofile \
              plugin=lrc \
@@ -203,7 +210,7 @@ function TEST_erasure_code_pool_lrc() {
 
 function TEST_replicated_pool() {
     local dir=$1
-    run_mon $dir a --public-addr 127.0.0.1
+    run_mon $dir a --public-addr $CEPH_MON
     ./ceph osd pool create replicated 12 12 replicated replicated_ruleset 2>&1 | \
         grep "pool 'replicated' created" || return 1
     ./ceph osd pool create replicated 12 12 replicated replicated_ruleset 2>&1 | \
@@ -217,6 +224,16 @@ function TEST_replicated_pool() {
         grep "pool 'replicated2' created" || return 1
     ./ceph osd pool create replicated 12 12 erasure 2>&1 | \
         grep 'cannot change to type erasure' || return 1
+}
+
+function TEST_no_pool_delete() {
+    local dir=$1
+    run_mon $dir a --public-addr $CEPH_MON
+    ./ceph osd pool create foo 1
+    ./ceph tell mon.a injectargs -- --no-mon-allow-pool-delete
+    expect_false ./ceph osd pool delete foo foo --yes-i-really-really-mean-it
+    ./ceph tell mon.a injectargs -- --mon-allow-pool-delete
+    ./ceph osd pool delete foo foo --yes-i-really-really-mean-it
 }
 
 

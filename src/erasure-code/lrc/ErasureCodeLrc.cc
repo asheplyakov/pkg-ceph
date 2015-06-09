@@ -62,9 +62,9 @@ int ErasureCodeLrc::create_ruleset(const string &name,
   }
   ruleset = rno;
 
-  int steps = 3 + ruleset_steps.size();
+  int steps = 4 + ruleset_steps.size();
   int min_rep = 3;
-  int max_rep = 30;
+  int max_rep = get_chunk_count();
   int ret;
   ret = crush.add_rule(steps, ruleset, pg_pool_t::TYPE_ERASURE,
 		  min_rep, max_rep, rno);
@@ -72,6 +72,8 @@ int ErasureCodeLrc::create_ruleset(const string &name,
   int step = 0;
 
   ret = crush.set_rule_step(rno, step++, CRUSH_RULE_SET_CHOOSELEAF_TRIES, 5, 0);
+  assert(ret == 0);
+  ret = crush.set_rule_step(rno, step++, CRUSH_RULE_SET_CHOOSE_TRIES, 100, 0);
   assert(ret == 0);
   ret = crush.set_rule_step(rno, step++, CRUSH_RULE_TAKE, root, 0);
   assert(ret == 0);
@@ -198,7 +200,6 @@ int ErasureCodeLrc::layers_parse(string description_string,
 int ErasureCodeLrc::layers_init()
 {
   ErasureCodePluginRegistry &registry = ErasureCodePluginRegistry::instance();
-  int err;
   for (unsigned int i = 0; i < layers.size(); i++) {
     Layer &layer = layers[i];
     int position = 0;
@@ -227,10 +228,10 @@ int ErasureCodeLrc::layers_init()
     if (layer.parameters.find("directory") == layer.parameters.end())
       layer.parameters["directory"] = directory;
     stringstream ss;
-    err = registry.factory(layer.parameters["plugin"],
-			   layer.parameters,
-			   &layer.erasure_code,
-			   ss);
+    int err = registry.factory(layer.parameters["plugin"],
+			       layer.parameters,
+			       &layer.erasure_code,
+			       ss);
     if (err) {
       derr << ss.str() << dendl;
       return err;

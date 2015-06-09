@@ -64,7 +64,7 @@ enum TestOpType {
   TEST_OP_APPEND
 };
 
-class TestWatchContext : public librados::WatchCtx {
+class TestWatchContext : public librados::WatchCtx2 {
   TestWatchContext(const TestWatchContext&);
 public:
   Cond cond;
@@ -73,10 +73,16 @@ public:
   Mutex lock;
   TestWatchContext() : handle(0), waiting(false),
 		       lock("watch lock") {}
-  void notify(uint8_t opcode, uint64_t ver, bufferlist &bl) {
+  void handle_notify(uint64_t notify_id, uint64_t cookie,
+		     uint64_t notifier_id,
+		     bufferlist &bl) {
     Mutex::Locker l(lock);
     waiting = false;
     cond.SignalAll();
+  }
+  void handle_error(uint64_t cookie, int err) {
+    Mutex::Locker l(lock);
+    cout << "watch handle_error " << err << std::endl;
   }
   void start() {
     Mutex::Locker l(lock);
@@ -178,6 +184,7 @@ public:
   AttrGenerator attr_gen;
   const bool no_omap;
   bool pool_snaps;
+  bool write_fadvise_dontneed;
   int snapname_num;
 
   RadosTestContext(const string &pool_name, 
@@ -187,6 +194,7 @@ public:
 		   uint64_t max_stride_size,
 		   bool no_omap,
 		   bool pool_snaps,
+		   bool write_fadvise_dontneed,
 		   const char *id = 0) :
     state_lock("Context Lock"),
     pool_obj_cont(),
@@ -199,9 +207,10 @@ public:
     rados_id(id), initialized(false),
     max_size(max_size), 
     min_stride_size(min_stride_size), max_stride_size(max_stride_size),
-    attr_gen(2000),
+    attr_gen(2000, 20000),
     no_omap(no_omap),
     pool_snaps(pool_snaps),
+    write_fadvise_dontneed(write_fadvise_dontneed),
     snapname_num(0)
   {
   }
@@ -221,6 +230,15 @@ public:
     if (r < 0)
       return r;
     r = rados.ioctx_create(pool_name.c_str(), io_ctx);
+    if (r < 0) {
+      rados.shutdown();
+      return r;
+    }
+    bufferlist inbl;
+    r = rados.mon_command(
+      "{\"prefix\": \"osd pool set\", \"pool\": \"" + pool_name +
+      "\", \"var\": \"write_fadvise_dontneed\", \"val\": \"" + (write_fadvise_dontneed ? "true" : "false") + "\"}",
+      inbl, NULL, NULL);
     if (r < 0) {
       rados.shutdown();
       return r;
@@ -855,6 +873,17 @@ public:
 	     << version << std::endl;
 	assert(0 == "racing read got wrong version");
       }
+
+      {
+	ObjectDesc old_value;
+	assert(context->find_object(oid, &old_value, -1));
+	if (old_value.deleted())
+	  std::cout << num << ":  left oid " << oid << " deleted" << std::endl;
+	else
+	  std::cout << num << ":  left oid " << oid << " "
+		    << old_value.most_recent() << std::endl;
+      }
+
       rcompletion->release();
       context->oid_in_use.erase(oid);
       context->oid_not_in_use.insert(oid);
@@ -978,6 +1007,10 @@ public:
     context->oid_in_use.insert(oid);
     context->oid_not_in_use.erase(oid);
     assert(context->find_object(oid, &old_value, snap));
+    if (old_value.deleted())
+      std::cout << num << ":  expect deleted" << std::endl;
+    else
+      std::cout << num << ":  expect " << old_value.most_recent() << std::endl;
 
     TestWatchContext *ctx = context->get_watch_context(oid);
     context->state_lock.Unlock();
@@ -989,7 +1022,7 @@ public:
       std::cerr << num << ":  started" << std::endl;
       bufferlist bl;
       context->io_ctx.set_notify_timeout(600);
-      int r = context->io_ctx.notify(context->prefix+oid, 0, bl);
+      int r = context->io_ctx.notify2(context->prefix+oid, bl, 0, NULL);
       if (r < 0) {
 	std::cerr << "r is " << r << std::endl;
 	assert(0);
@@ -1059,8 +1092,12 @@ public:
 	headerbl = iter->second;
 	xattrs.erase(iter);
       }
-      cout << num << ":  expect " << old_value.most_recent() << std::endl;
-      assert(!old_value.deleted());
+      if (old_value.deleted()) {
+	std::cout << num << ":  expect deleted" << std::endl;
+	assert(0 == "expected deleted");
+      } else {
+	std::cout << num << ":  expect " << old_value.most_recent() << std::endl;
+      }
       if (old_value.has_contents()) {
 	ContDesc to_check;
 	bufferlist::iterator p = headerbl.begin();
@@ -1309,13 +1346,11 @@ public:
 	ctx = context->watch(oid);
       }
 
-      r = context->io_ctx.watch(context->prefix+oid,
-				0,
-				&ctx->get_handle(),
-				ctx);
+      r = context->io_ctx.watch2(context->prefix+oid,
+				 &ctx->get_handle(),
+				 ctx);
     } else {
-      r = context->io_ctx.unwatch(context->prefix+oid,
-				  ctx->get_handle());
+      r = context->io_ctx.unwatch2(ctx->get_handle());
       {
 	Mutex::Locker l(context->state_lock);
 	context->unwatch(oid);

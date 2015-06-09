@@ -17,6 +17,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
+#include <assert.h>
 
 #include "gf_complete.h"
 #include "gf_int.h"
@@ -240,7 +241,7 @@ int gf_general_are_equal(gf_general_t *v1, gf_general_t *v2, int w)
     return (v1->w64 == v2->w64);
   } else {
     return (v1->w128[0] == v2->w128[0] &&
-            v1->w128[0] == v2->w128[0]);
+            v1->w128[1] == v2->w128[1]);
   }
 }
 
@@ -311,7 +312,7 @@ void gf_general_do_region_check(gf_t *gf, gf_general_t *a, void *orig_a, void *o
       if (xor) fprintf(stderr,"   XOR with target word: %s\n", sot);
       fprintf(stderr,"   Product word: %s\n", sft);
       fprintf(stderr,"   It should be: %s\n", ssb);
-      exit(0);
+      assert(0);
     }
   }
 }
@@ -326,7 +327,7 @@ void gf_general_set_up_single_timing_test(int w, void *ra, void *rb, int size)
   uint64_t *r64;
   int i;
 
-  top = (char*)rb+size;
+  top = (uint8_t *)rb+size;
 
   /* If w is 8, 16, 32, 64 or 128, fill the regions with random bytes.
      However, don't allow for zeros in rb, because that will screw up
@@ -365,7 +366,7 @@ void gf_general_set_up_single_timing_test(int w, void *ra, void *rb, int size)
           r64[1] = g.w128[1];
           break;
       }
-      rb = (char*)rb + (w/8);
+      rb = (uint8_t *)rb + (w/8);
     }
   } else if (w == 4) {
     r8a = (uint8_t *) ra;
@@ -407,7 +408,7 @@ int gf_general_do_single_timing_test(gf_t *gf, void *ra, void *rb, int size, cha
 
   h = (gf_internal_t *) gf->scratch;
   w = h->w;
-  top = (char*)ra + size;
+  top = (uint8_t *)ra + size;
 
   if (w == 8 || w == 4) {
     r8a = (uint8_t *) ra; 

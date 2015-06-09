@@ -1,5 +1,1 @@
-usr/bin/ceph-rbdnamer
 usr/lib/*/librbd.so.*
-usr/share/man/man8/ceph-rbdnamer.8
-## install from source tree
-udev/50-rbd.rules    /lib/udev/rules.d

@@ -4,6 +4,12 @@ TYPE(CompatSet)
 #include "include/filepath.h"
 TYPE(filepath)
 
+#include "include/util.h"
+TYPE(ceph_data_stats)
+
+#include "common/bit_vector.hpp"
+TYPE(BitVector<2>)
+
 #include "common/bloom_filter.hpp"
 TYPE(bloom_filter)
 TYPE(compressible_bloom_filter)
@@ -30,8 +36,8 @@ TYPE(entity_addr_t)
 #include "osd/OSDMap.h"
 TYPE(osd_info_t)
 TYPE(osd_xinfo_t)
-TYPEWITHSTRAYDATA(OSDMap)
-TYPEWITHSTRAYDATA(OSDMap::Incremental)
+TYPE_FEATUREFUL_STRAYDATA(OSDMap)
+TYPE_FEATUREFUL_STRAYDATA(OSDMap::Incremental)
 
 #include "crush/CrushWrapper.h"
 TYPE_NOCOPY(CrushWrapper)
@@ -63,8 +69,9 @@ TYPE(pg_log_t)
 TYPE(pg_missing_t::item)
 TYPE(pg_missing_t)
 TYPE(pg_ls_response_t)
+TYPE(pg_nls_response_t)
 TYPE(object_copy_cursor_t)
-TYPE(object_copy_data_t)
+TYPE_FEATUREFUL(object_copy_data_t)
 TYPE(pg_create_t)
 TYPE(watch_info_t)
 TYPE(object_info_t)
@@ -88,7 +95,7 @@ TYPE(ECUtil::HashInfo)
 #include "osd/ECMsgTypes.h"
 TYPE(ECSubWrite)
 TYPE(ECSubWriteReply)
-TYPE(ECSubRead)
+TYPE_FEATUREFUL(ECSubRead)
 TYPE(ECSubReadReply)
 
 #include "osd/HitSet.h"
@@ -125,6 +132,9 @@ TYPE_FEATUREFUL(MonMap)
 #include "mon/MonCap.h"
 TYPE(MonCap)
 
+#include "mon/mon_types.h"
+TYPE(LevelDBStoreStats)
+
 #include "os/DBObjectMap.h"
 TYPE(DBObjectMap::_Header)
 TYPE(DBObjectMap::State)
@@ -158,6 +168,7 @@ TYPE(mds_load_t)
 TYPE(cap_reconnect_t)
 TYPE(inode_backtrace_t)
 TYPE(inode_backpointer_t)
+TYPE(quota_info_t)
 
 #include "mds/CInode.h"
 TYPE(InodeStore)
@@ -176,7 +187,7 @@ TYPE(InoTable)
 TYPEWITHSTRAYDATA(SnapServer)
 
 #include "mds/SessionMap.h"
-TYPE(SessionMap)
+TYPE(SessionMapStore)
 
 #include "mds/events/ECommitted.h"
 TYPE(ECommitted)
@@ -217,6 +228,10 @@ TYPE(ETableServer)
 #include "mds/events/EUpdate.h"
 TYPE(EUpdate)
 
+#include "librbd/WatchNotifyTypes.h"
+TYPE(librbd::WatchNotify::NotifyMessage)
+TYPE(librbd::WatchNotify::ResponseMessage)
+
 #ifdef WITH_RADOSGW
 
 #include "rgw/rgw_rados.h"
@@ -244,6 +259,8 @@ TYPE(rgw_bucket_category_stats)
 TYPE(rgw_bucket_dir_header)
 TYPE(rgw_bucket_dir)
 TYPE(rgw_bucket_entry_ver)
+TYPE(cls_rgw_obj_key)
+TYPE(rgw_bucket_olh_log_entry)
 
 #include "cls/rgw/cls_rgw_ops.h"
 TYPE(rgw_cls_obj_prepare_op)
@@ -262,6 +279,13 @@ TYPE(rgw_cls_tag_timeout_op)
 TYPE(cls_rgw_bi_log_list_op)
 TYPE(cls_rgw_bi_log_trim_op)
 TYPE(cls_rgw_bi_log_list_ret)
+TYPE(rgw_cls_link_olh_op)
+TYPE(rgw_cls_unlink_instance_op)
+TYPE(rgw_cls_read_olh_log_op)
+TYPE(rgw_cls_read_olh_log_ret)
+TYPE(rgw_cls_trim_olh_log_op)
+TYPE(rgw_cls_bucket_clear_olh_op)
+TYPE(rgw_cls_check_index_ret)
 
 #include "cls/rgw/cls_rgw_client.h"
 TYPE(rgw_bi_log_entry)
@@ -293,7 +317,6 @@ TYPE(rgw_obj)
 
 #include "rgw/rgw_log.h"
 TYPE(rgw_log_entry)
-TYPE(rgw_intent_log_entry)
 
 #include "cls/rbd/cls_rbd.h"
 TYPE(cls_rbd_parent)
@@ -312,6 +335,7 @@ TYPE(cls_lock_break_op)
 TYPE(cls_lock_get_info_op)
 TYPE(cls_lock_get_info_reply)
 TYPE(cls_lock_list_locks_reply)
+TYPE(cls_lock_assert_op)
 
 #include "cls/replica_log/cls_replica_log_types.h"
 TYPE(cls_replica_log_item_marker)

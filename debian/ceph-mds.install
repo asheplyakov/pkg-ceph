@@ -1,4 +1,5 @@
+debian/lib-systemd/system/ceph-mds.service    /lib/systemd/system/
 usr/bin/ceph-mds
 usr/bin/cephfs-journal-tool
+usr/bin/cephfs-table-tool
 usr/share/man/man8/ceph-mds.8
-debian/lib-systemd/system/ceph-mds.service    /lib/systemd/system/

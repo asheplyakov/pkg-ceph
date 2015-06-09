@@ -11,54 +11,7 @@
 #include "gf_int.h"
 #include <stdio.h>
 #include <stdlib.h>
-
-#define GF_FIELD_WIDTH (16)
-#define GF_FIELD_SIZE (1 << GF_FIELD_WIDTH)
-#define GF_MULT_GROUP_SIZE GF_FIELD_SIZE-1
-
-#define GF_BASE_FIELD_WIDTH (8)
-#define GF_BASE_FIELD_SIZE       (1 << GF_BASE_FIELD_WIDTH)
-
-struct gf_w16_logtable_data {
-    uint16_t      log_tbl[GF_FIELD_SIZE];
-    uint16_t      antilog_tbl[GF_FIELD_SIZE * 2];
-    uint16_t      inv_tbl[GF_FIELD_SIZE];
-    uint16_t      *d_antilog;
-};
-
-struct gf_w16_zero_logtable_data {
-    int           log_tbl[GF_FIELD_SIZE];
-    uint16_t      _antilog_tbl[GF_FIELD_SIZE * 4];
-    uint16_t      *antilog_tbl;
-    uint16_t      inv_tbl[GF_FIELD_SIZE];
-};
-
-struct gf_w16_lazytable_data {
-    uint16_t      log_tbl[GF_FIELD_SIZE];
-    uint16_t      antilog_tbl[GF_FIELD_SIZE * 2];
-    uint16_t      inv_tbl[GF_FIELD_SIZE];
-    uint16_t      *d_antilog;
-    uint16_t      lazytable[GF_FIELD_SIZE];
-};
-
-struct gf_w16_bytwo_data {
-    uint64_t prim_poly;
-    uint64_t mask1;
-    uint64_t mask2;
-};
-
-struct gf_w16_split_8_8_data {
-    uint16_t      tables[3][256][256];
-};
-
-struct gf_w16_group_4_4_data {
-    uint16_t reduce[16];
-    uint16_t shift[16];
-};
-
-struct gf_w16_composite_data {
-  uint8_t *mult_table;
-};
+#include "gf_w16.h"
 
 #define AB2(ip, am1 ,am2, b, t1, t2) {\
   t1 = (b << 1) & am1;\
@@ -1264,13 +1217,18 @@ int gf_w16_split_init(gf_t *gf)
   gf_internal_t *h;
   struct gf_w16_split_8_8_data *d8;
   int i, j, exp, issse3;
+  int isneon = 0;
   uint32_t p, basep;
 
   h = (gf_internal_t *) gf->scratch;
 
-issse3 = 0;
 #ifdef INTEL_SSSE3
   issse3 = 1;
+#else
+  issse3 = 0;
+#endif
+#ifdef ARM_NEON
+  isneon = 1;
 #endif
 
   if (h->arg1 == 8 && h->arg2 == 8) {
@@ -1316,6 +1274,10 @@ issse3 = 0;
 
   if (issse3) {
     gf->multiply_region.w32 = gf_w16_split_4_16_lazy_sse_multiply_region;
+  } else if (isneon) {
+#ifdef ARM_NEON
+    gf_w16_neon_split_init(gf);
+#endif
   } else {
     gf->multiply_region.w32 = gf_w16_split_8_16_lazy_multiply_region;
   }
@@ -1325,15 +1287,15 @@ issse3 = 0;
     gf->multiply_region.w32 = gf_w16_split_8_16_lazy_multiply_region;
 
   } else if ((h->arg1 == 4 && h->arg2 == 16) || (h->arg2 == 4 && h->arg1 == 16)) {
-    if (issse3) {
-      if(h->region_type & GF_REGION_ALTMAP && h->region_type & GF_REGION_NOSSE)
+    if (issse3 || isneon) {
+      if(h->region_type & GF_REGION_ALTMAP && h->region_type & GF_REGION_NOSIMD)
         gf->multiply_region.w32 = gf_w16_split_4_16_lazy_nosse_altmap_multiply_region;
-      else if(h->region_type & GF_REGION_NOSSE)
+      else if(h->region_type & GF_REGION_NOSIMD)
         gf->multiply_region.w32 = gf_w16_split_4_16_lazy_multiply_region;
-      else if(h->region_type & GF_REGION_ALTMAP)
+      else if(h->region_type & GF_REGION_ALTMAP && issse3)
         gf->multiply_region.w32 = gf_w16_split_4_16_lazy_sse_altmap_multiply_region;
     } else {
-      if(h->region_type & GF_REGION_SSE)
+      if(h->region_type & GF_REGION_SIMD)
         return 0;
       else if(h->region_type & GF_REGION_ALTMAP)
         gf->multiply_region.w32 = gf_w16_split_4_16_lazy_nosse_altmap_multiply_region;
@@ -1817,6 +1779,7 @@ gf_w16_bytwo_b_nosse_multiply_region(gf_t *gf, void *src, void *dest, gf_val_32_
         s64++;
       }
     }
+    break;
   default:
     if (xor) {
       while (d64 < (uint64_t *) rd.d_top) {
@@ -1882,25 +1845,25 @@ int gf_w16_bytwo_init(gf_t *gf)
   if (h->mult_type == GF_MULT_BYTWO_p) {
     gf->multiply.w32 = gf_w16_bytwo_p_multiply;
     #ifdef INTEL_SSE2
-      if (h->region_type & GF_REGION_NOSSE)
+      if (h->region_type & GF_REGION_NOSIMD)
         gf->multiply_region.w32 = gf_w16_bytwo_p_nosse_multiply_region;
       else
         gf->multiply_region.w32 = gf_w16_bytwo_p_sse_multiply_region;
     #else
       gf->multiply_region.w32 = gf_w16_bytwo_p_nosse_multiply_region;
-      if(h->region_type & GF_REGION_SSE)
+      if(h->region_type & GF_REGION_SIMD)
         return 0;
     #endif
   } else {
     gf->multiply.w32 = gf_w16_bytwo_b_multiply;
     #ifdef INTEL_SSE2
-      if (h->region_type & GF_REGION_NOSSE)
+      if (h->region_type & GF_REGION_NOSIMD)
         gf->multiply_region.w32 = gf_w16_bytwo_b_nosse_multiply_region;
       else
         gf->multiply_region.w32 = gf_w16_bytwo_b_sse_multiply_region;
     #else
       gf->multiply_region.w32 = gf_w16_bytwo_b_nosse_multiply_region;
-      if(h->region_type & GF_REGION_SSE)
+      if(h->region_type & GF_REGION_SIMD)
         return 0;
     #endif
   }
@@ -2269,7 +2232,6 @@ void gf_w16_group_4_4_region_multiply(gf_t *gf, void *src, void *dest, gf_val_32
   top = (uint16_t *) rd.d_top;
 
   while (d16 < top) {
-    p = 0;
     a16 = *s16;
     p16 = (xor) ? *d16 : 0;
     ind = a16 >> 12;

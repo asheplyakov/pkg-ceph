@@ -5,41 +5,25 @@ Description: disable tests that depend on network...
 
 --- a/src/test/Makefile.am
 +++ b/src/test/Makefile.am
-@@ -230,8 +230,9 @@
- 
+@@ -62,6 +62,7 @@ bin_DEBUGPROGRAMS += ceph_bench_log
  
  ## Unit tests
  
 +if WITH_CLUSTER_TESTS
  check_SCRIPTS += \
- 	unittest_bufferlist.sh \
- 	test/encoding/check-generated.sh \
- 	test/mon/osd-pool-create.sh \
-@@ -243,8 +244,9 @@
+ 	test/ceph_objectstore_tool.py \
+ 	test/test-ceph-helpers.sh \
+@@ -80,6 +81,7 @@ check_SCRIPTS += \
  	test/osd/osd-bench.sh \
- 	test/ceph-disk.sh \
- 	test/mon/mon-handle-forward.sh \
- 	test/vstart_wrapped_tests.sh
+ 	test/osd/osd-copy-from.sh \
+ 	test/mon/mon-handle-forward.sh
 +endif
  
- EXTRA_DIST += \
- 	$(srcdir)/test/mon/mon-test-helpers.sh \
- 	$(srcdir)/test/osd/osd-test-helpers.sh \
---- a/src/test/erasure-code/Makefile.am
-+++ b/src/test/erasure-code/Makefile.am
-@@ -1,6 +1,8 @@
-+if WITH_CLUSTER_TESTS
- check_SCRIPTS += \
- 	test/erasure-code/test-erasure-code.sh
-+endif
- 
- ceph_erasure_code_benchmark_SOURCES = \
- 	erasure-code/ErasureCode.cc \
- 	test/erasure-code/ceph_erasure_code_benchmark.cc
+ if ENABLE_ROOT_MAKE_CHECK
+ check_SCRIPTS += test/ceph-disk-root.sh
 --- a/configure.ac
 +++ b/configure.ac
-@@ -951,8 +951,15 @@
- AC_LANG_POP([C++])
+@@ -1147,6 +1147,13 @@ AC_LANG_POP([C++])
  
  AM_CONDITIONAL(WITH_BUILD_TESTS, test "$WITH_BUILD_TESTS" = "1")
  
@@ -53,4 +37,16 @@ Description: disable tests that depend on network...
  AM_PATH_PYTHON([2.4],
  	[], [AC_MSG_FAILURE([Failed to find Python 2.4 or newer])])
  
- AC_CONFIG_HEADERS([src/acconfig.h])
+--- a/src/test/erasure-code/Makefile.am
++++ b/src/test/erasure-code/Makefile.am
+@@ -1,8 +1,10 @@
+ if ENABLE_SERVER
+ if WITH_OSD
+ 
++if WITH_CLUSTER_TESTS
+ check_SCRIPTS += \
+ 	test/erasure-code/test-erasure-code.sh
++endif
+ 
+ noinst_HEADERS += \
+ 	test/erasure-code/ceph_erasure_code_benchmark.h

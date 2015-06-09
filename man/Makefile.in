@@ -34,16 +34,68 @@ POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
 target_triplet = @target@
-subdir = man
-DIST_COMMON = $(dist_man_MANS) $(srcdir)/Makefile.am \
+DIST_COMMON = $(dist_man_MANS) $(srcdir)/Makefile-client.am \
+	$(srcdir)/Makefile-server.am $(srcdir)/Makefile.am \
 	$(srcdir)/Makefile.in
+@ENABLE_CLIENT_TRUE@am__append_1 = \
+@ENABLE_CLIENT_TRUE@	ceph-syn.8 \
+@ENABLE_CLIENT_TRUE@	ceph-conf.8 \
+@ENABLE_CLIENT_TRUE@	ceph.8 \
+@ENABLE_CLIENT_TRUE@	ceph-authtool.8 \
+@ENABLE_CLIENT_TRUE@	rados.8 \
+@ENABLE_CLIENT_TRUE@	rbd.8 \
+@ENABLE_CLIENT_TRUE@	ceph-post-file.8 \
+@ENABLE_CLIENT_TRUE@	ceph-dencoder.8
+
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_2 = \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	librados-config.8
+
+@ENABLE_CLIENT_TRUE@@WITH_RBD_TRUE@am__append_3 = \
+@ENABLE_CLIENT_TRUE@@WITH_RBD_TRUE@	ceph-rbdnamer.8 \
+@ENABLE_CLIENT_TRUE@@WITH_RBD_TRUE@	rbd-replay.8 \
+@ENABLE_CLIENT_TRUE@@WITH_RBD_TRUE@	rbd-replay-many.8 \
+@ENABLE_CLIENT_TRUE@@WITH_RBD_TRUE@	rbd-replay-prep.8
+
+@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@am__append_4 = \
+@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@	cephfs.8
+
+@ENABLE_CLIENT_TRUE@@WITH_FUSE_TRUE@am__append_5 = \
+@ENABLE_CLIENT_TRUE@@WITH_FUSE_TRUE@	rbd-fuse.8 \
+@ENABLE_CLIENT_TRUE@@WITH_FUSE_TRUE@	ceph-fuse.8
+
+@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@am__append_6 = \
+@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@	radosgw.8 \
+@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@	radosgw-admin.8
+
+@ENABLE_SERVER_TRUE@am__append_7 = \
+@ENABLE_SERVER_TRUE@	ceph-deploy.8 \
+@ENABLE_SERVER_TRUE@	crushtool.8 \
+@ENABLE_SERVER_TRUE@	ceph-run.8 \
+@ENABLE_SERVER_TRUE@	mount.ceph.8 \
+@ENABLE_SERVER_TRUE@	ceph-rest-api.8 \
+@ENABLE_SERVER_TRUE@	ceph-debugpack.8
+
+@ENABLE_SERVER_TRUE@@WITH_MON_TRUE@am__append_8 = \
+@ENABLE_SERVER_TRUE@@WITH_MON_TRUE@	ceph-mon.8 \
+@ENABLE_SERVER_TRUE@@WITH_MON_TRUE@	monmaptool.8
+
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_9 = \
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	ceph-clsinfo.8 \
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	ceph-disk.8 \
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	ceph-osd.8 \
+@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	osdmaptool.8
+
+@ENABLE_SERVER_TRUE@@WITH_MDS_TRUE@am__append_10 = \
+@ENABLE_SERVER_TRUE@@WITH_MDS_TRUE@	ceph-mds.8
+
+subdir = man
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/ac_check_classpath.m4 \
 	$(top_srcdir)/m4/ac_prog_jar.m4 \
 	$(top_srcdir)/m4/ac_prog_javac.m4 \
 	$(top_srcdir)/m4/ac_prog_javac_works.m4 \
 	$(top_srcdir)/m4/ac_prog_javah.m4 \
-	$(top_srcdir)/m4/acx_pthread.m4 \
+	$(top_srcdir)/m4/acx_pthread.m4 $(top_srcdir)/m4/ax_arm.m4 \
 	$(top_srcdir)/m4/ax_c_pretty_func.m4 \
 	$(top_srcdir)/m4/ax_c_var_func.m4 \
 	$(top_srcdir)/m4/ax_check_compile_flag.m4 \
@@ -104,6 +156,8 @@ AMTAR = @AMTAR@
 AM_CXXFLAGS = @AM_CXXFLAGS@
 AM_DEFAULT_VERBOSITY = @AM_DEFAULT_VERBOSITY@
 AR = @AR@
+ARM_FLAGS = @ARM_FLAGS@
+ARM_NEON_FLAGS = @ARM_NEON_FLAGS@
 AUTOCONF = @AUTOCONF@
 AUTOHEADER = @AUTOHEADER@
 AUTOMAKE = @AUTOMAKE@
@@ -166,6 +220,7 @@ LDFLAGS = @LDFLAGS@
 LIBEDIT_CFLAGS = @LIBEDIT_CFLAGS@
 LIBEDIT_LIBS = @LIBEDIT_LIBS@
 LIBFUSE = @LIBFUSE@
+LIBJEMALLOC = @LIBJEMALLOC@
 LIBOBJS = @LIBOBJS@
 LIBROCKSDB_CFLAGS = @LIBROCKSDB_CFLAGS@
 LIBROCKSDB_LIBS = @LIBROCKSDB_LIBS@
@@ -217,8 +272,11 @@ SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
 STRIP = @STRIP@
 VERSION = @VERSION@
+WARN_ERROR_FORMAT_SECURITY = @WARN_ERROR_FORMAT_SECURITY@
 WARN_IGNORED_QUALIFIERS = @WARN_IGNORED_QUALIFIERS@
 WARN_TYPE_LIMITS = @WARN_TYPE_LIMITS@
+XIO_LIBS = @XIO_LIBS@
+YASM_CHECK = @YASM_CHECK@
 abs_builddir = @abs_builddir@
 abs_srcdir = @abs_srcdir@
 abs_top_builddir = @abs_top_builddir@
@@ -283,40 +341,14 @@ top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 AUTOMAKE_OPTIONS = gnu
-dist_man_MANS = \
-	ceph-osd.8 \
-	ceph-mds.8 \
-	ceph-mon.8 \
-	ceph-fuse.8 \
-	ceph-syn.8 \
-	crushtool.8 \
-	osdmaptool.8 \
-	monmaptool.8 \
-	ceph-conf.8 \
-	ceph-run.8 \
-	ceph.8 \
-	mount.ceph.8 \
-	radosgw.8 \
-	radosgw-admin.8 \
-	ceph-authtool.8 \
-	rados.8 \
-	librados-config.8 \
-	rbd.8 \
-	ceph-clsinfo.8 \
-	ceph-debugpack.8 \
-	cephfs.8 \
-	ceph-dencoder.8 \
-	ceph-rest-api.8 \
-	ceph-rbdnamer.8 \
-	ceph-post-file.8 \
-	rbd-fuse.8 \
-	rbd-replay.8 \
-	rbd-replay-prep.8
-
+dist_man_MANS = $(am__append_1) $(am__append_2) $(am__append_3) \
+	$(am__append_4) $(am__append_5) $(am__append_6) \
+	$(am__append_7) $(am__append_8) $(am__append_9) \
+	$(am__append_10)
 all: all-am
 
 .SUFFIXES:
-$(srcdir)/Makefile.in:  $(srcdir)/Makefile.am  $(am__configure_deps)
+$(srcdir)/Makefile.in:  $(srcdir)/Makefile.am $(srcdir)/Makefile-client.am $(srcdir)/Makefile-server.am $(am__configure_deps)
 	@for dep in $?; do \
 	  case '$(am__configure_deps)' in \
 	    *$$dep*) \
@@ -337,6 +369,7 @@ Makefile: $(srcdir)/Makefile.in $(top_builddir)/config.status
 	    echo ' cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@ $(am__depfiles_maybe)'; \
 	    cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@ $(am__depfiles_maybe);; \
 	esac;
+$(srcdir)/Makefile-client.am $(srcdir)/Makefile-server.am:
 
 $(top_builddir)/config.status: $(top_srcdir)/configure $(CONFIG_STATUS_DEPENDENCIES)
 	cd $(top_builddir) && $(MAKE) $(AM_MAKEFLAGS) am--refresh

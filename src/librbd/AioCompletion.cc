@@ -13,6 +13,8 @@
 
 #ifdef WITH_LTTNG
 #include "tracing/librbd.h"
+#else
+#define tracepoint(...)
 #endif
 
 #define dout_subsys ceph_subsys_rbd
@@ -24,14 +26,7 @@ namespace librbd {
   void AioCompletion::finish_adding_requests(CephContext *cct)
   {
     ldout(cct, 20) << "AioCompletion::finish_adding_requests " << (void*)this << " pending " << pending_count << dendl;
-    lock.Lock();
-    assert(building);
-    building = false;
-    if (!pending_count) {
-      finalize(cct, rval);
-      complete();
-    }
-    lock.Unlock();
+    unblock(cct);
   }
 
   int AioCompletion::wait_for_complete() {
@@ -86,6 +81,10 @@ namespace librbd {
       lderr(ictx->cct) << "completed invalid aio_type: " << aio_type << dendl;
       break;
     }
+
+    // note: possible for image to be closed after op marked finished
+    async_op.finish_op();
+
     if (complete_cb) {
       complete_cb(rbd_comp, complete_arg);
     }
@@ -108,7 +107,7 @@ namespace librbd {
     }
     assert(pending_count);
     int count = --pending_count;
-    if (!count && !building) {
+    if (!count && blockers == 0) {
       finalize(cct, rval);
       complete();
     }

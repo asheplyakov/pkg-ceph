@@ -5,23 +5,28 @@ Description: use system "libjerasure" instead of bundled one.
 
 --- a/src/erasure-code/jerasure/Makefile.am
 +++ b/src/erasure-code/jerasure/Makefile.am
-@@ -1,50 +1,22 @@
+@@ -1,40 +1,8 @@
  # jerasure plugin
  noinst_HEADERS += \
+-  erasure-code/jerasure/gf-complete/include/gf_complete.h \
+-  erasure-code/jerasure/gf-complete/include/gf_general.h \
+-  erasure-code/jerasure/gf-complete/include/gf_int.h \
+-  erasure-code/jerasure/gf-complete/include/gf_method.h \
+-  erasure-code/jerasure/gf-complete/include/gf_rand.h \
+-  erasure-code/jerasure/gf-complete/include/gf_w16.h \
+-  erasure-code/jerasure/gf-complete/include/gf_w32.h \
+-  erasure-code/jerasure/gf-complete/include/gf_w4.h \
+-  erasure-code/jerasure/gf-complete/include/gf_w64.h \
+-  erasure-code/jerasure/gf-complete/include/gf_w8.h \
 -  erasure-code/jerasure/jerasure/include/cauchy.h \
 -  erasure-code/jerasure/jerasure/include/galois.h \
 -  erasure-code/jerasure/jerasure/include/jerasure.h \
 -  erasure-code/jerasure/jerasure/include/liberation.h \
 -  erasure-code/jerasure/jerasure/include/reed_sol.h \
--  erasure-code/jerasure/gf-complete/include/gf_int.h \
--  erasure-code/jerasure/gf-complete/include/gf_complete.h \
--  erasure-code/jerasure/gf-complete/include/gf_rand.h \
--  erasure-code/jerasure/gf-complete/include/gf_method.h \
--  erasure-code/jerasure/gf-complete/include/gf_general.h \
    erasure-code/jerasure/ErasureCodeJerasure.h
  
  jerasure_sources = \
-   erasure-code/ErasureCode.cc \
+-  erasure-code/ErasureCode.cc \
 -  erasure-code/jerasure/jerasure/src/cauchy.c \
 -  erasure-code/jerasure/jerasure/src/galois.c \
 -  erasure-code/jerasure/jerasure/src/jerasure.c \
@@ -41,13 +46,12 @@ Description: use system "libjerasure" instead of bundled one.
    erasure-code/jerasure/ErasureCodePluginJerasure.cc \
    erasure-code/jerasure/ErasureCodeJerasure.cc
  
- erasure-code/jerasure/ErasureCodePluginJerasure.cc: ./ceph_ver.h
+@@ -42,13 +10,11 @@ erasure-code/jerasure/ErasureCodePluginJ
  
  libec_jerasure_generic_la_SOURCES = ${jerasure_sources}
--libec_jerasure_generic_la_CFLAGS = ${AM_CFLAGS}  \
+ libec_jerasure_generic_la_CFLAGS = ${AM_CFLAGS}  \
 -	-I$(srcdir)/erasure-code/jerasure/gf-complete/include \
 -	-I$(srcdir)/erasure-code/jerasure/jerasure/include
-+libec_jerasure_generic_la_CFLAGS = ${AM_CFLAGS} \
 +    -I$(includedir)/jerasure
  libec_jerasure_generic_la_CXXFLAGS= ${AM_CXXFLAGS} \
 -	-I$(srcdir)/erasure-code/jerasure/gf-complete/include \
@@ -59,9 +63,7 @@ Description: use system "libjerasure" instead of bundled one.
  if LINUX
  libec_jerasure_generic_la_LDFLAGS += -export-symbols-regex '.*__erasure_code_.*'
  endif
- 
-@@ -55,19 +27,17 @@
- 	${INTEL_SSE_FLAGS} \
+@@ -85,17 +51,15 @@ libec_jerasure_sse3_la_CFLAGS = ${AM_CFL
  	${INTEL_SSE2_FLAGS} \
  	${INTEL_SSE3_FLAGS} \
  	${INTEL_SSSE3_FLAGS} \
@@ -82,9 +84,7 @@ Description: use system "libjerasure" instead of bundled one.
  if LINUX
  libec_jerasure_sse3_la_LDFLAGS += -export-symbols-regex '.*__erasure_code_.*'
  endif
- 
-@@ -80,21 +50,19 @@
- 	${INTEL_SSE3_FLAGS} \
+@@ -112,8 +76,7 @@ libec_jerasure_sse4_la_CFLAGS = ${AM_CFL
  	${INTEL_SSSE3_FLAGS} \
  	${INTEL_SSE4_1_FLAGS} \
  	${INTEL_SSE4_2_FLAGS} \
@@ -94,7 +94,7 @@ Description: use system "libjerasure" instead of bundled one.
  libec_jerasure_sse4_la_CXXFLAGS= ${AM_CXXFLAGS} \
  	${INTEL_SSE_FLAGS} \
  	${INTEL_SSE2_FLAGS} \
- 	${INTEL_SSE3_FLAGS} \
+@@ -121,10 +84,9 @@ libec_jerasure_sse4_la_CXXFLAGS= ${AM_CX
  	${INTEL_SSSE3_FLAGS} \
  	${INTEL_SSE4_1_FLAGS} \
  	${INTEL_SSE4_2_FLAGS} \
@@ -107,9 +107,7 @@ Description: use system "libjerasure" instead of bundled one.
  if LINUX
  libec_jerasure_sse4_la_LDFLAGS += -export-symbols-regex '.*__erasure_code_.*'
  endif
- 
-@@ -104,9 +72,9 @@
- 	erasure-code/jerasure/ErasureCodePluginSelectJerasure.cc
+@@ -138,7 +100,7 @@ libec_jerasure_la_SOURCES = \
  libec_jerasure_la_CFLAGS = ${AM_CFLAGS}
  libec_jerasure_la_CXXFLAGS= ${AM_CXXFLAGS}
  libec_jerasure_la_LIBADD = $(LIBCRUSH) $(PTHREAD_LIBS) $(EXTRALIBS)
@@ -118,4 +116,3 @@ Description: use system "libjerasure" instead of bundled one.
  if LINUX
  libec_jerasure_la_LDFLAGS += -export-symbols-regex '.*__erasure_code_.*'
  endif
- 

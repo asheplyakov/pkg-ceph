@@ -1,0 +1,26 @@
+Description: Fix argparse usage for Python 2.7.9
+ The behaviour of set_defaults appears to have
+ regressed in python 2.7.9; this patch works around
+ this problem by providing the default for 'cluster'
+ alongside the --cluster option.
+Bug-Ubuntu: https://bugs.launchpad.net/ubuntu/+source/ceph/+bug/1413321
+Forwarded: no
+
+--- a/src/ceph-disk
++++ b/src/ceph-disk
+@@ -2747,7 +2747,6 @@ def parse_args():
+     parser.set_defaults(
+         # we want to hold on to this, for later
+         prog=parser.prog,
+-        cluster='ceph',
+         )
+ 
+     subparsers = parser.add_subparsers(
+@@ -2761,6 +2760,7 @@ def parse_args():
+         '--cluster',
+         metavar='NAME',
+         help='cluster name to assign this disk to',
++        default='ceph',
+         )
+     prepare_parser.add_argument(
+         '--cluster-uuid',

@@ -1,7 +1,19 @@
 #!/bin/sh
 
+if [ -z "$CEPH_BUILD_ROOT" ]; then
+        [ -z "$CEPH_BIN" ] && CEPH_BIN=.
+        [ -z "$CEPH_LIB" ] && CEPH_LIB=.libs
+        [ -z $EC_PATH ] && EC_PATH=$CEPH_LIB
+        [ -z $OBJCLASS_PATH ] && OBJCLASS_PATH=$CEPH_LIB
+else
+        [ -z $CEPH_BIN ] && CEPH_BIN=$CEPH_BUILD_ROOT/bin
+        [ -z $CEPH_LIB ] && CEPH_LIB=$CEPH_BUILD_ROOT/lib
+        [ -z $EC_PATH ] && EC_PATH=$CEPH_LIB/erasure-code
+        [ -z $OBJCLASS_PATH ] && OBJCLASS_PATH=$CEPH_LIB/rados-classes
+fi
+
 export PYTHONPATH=./pybind
-export LD_LIBRARY_PATH=.libs
+export LD_LIBRARY_PATH=$CEPH_LIB
 export DYLD_LIBRARY_PATH=$LD_LIBRARY_PATH
 
 
@@ -67,7 +79,7 @@ usage=$usage"\t-x enable cephx (on by default)\n"
 usage=$usage"\t-X disable cephx\n"
 usage=$usage"\t--hitset <pool> <hit_set_type>: enable hitset tracking\n"
 usage=$usage"\t-e : create an erasure pool\n";
-usage=$usage"\t-o config\t\t add extra config parameters to mds section\n"
+usage=$usage"\t-o config\t\t add extra config parameters to all sections\n"
 usage=$usage"\t-J no journal\t\tdisable filestore journal\n"
 
 
@@ -260,15 +272,18 @@ fi
 # lockdep everywhere?
 # export CEPH_ARGS="--lockdep 1"
 
-[ -z "$CEPH_BIN" ] && CEPH_BIN=.
-[ -z "$CEPH_PORT" ] && CEPH_PORT=6789
+if [ -z "$CEPH_PORT" ]; then
+    CEPH_PORT=6789
+    [ -e ".ceph_port" ] && CEPH_PORT=`cat .ceph_port`
+fi
 
+[ -z "$INIT_CEPH" ] && INIT_CEPH=$CEPH_BIN/init-ceph
 
 # sudo if btrfs
 test -d $CEPH_DEV_DIR/osd0/. && test -e $CEPH_DEV_DIR/sudo && SUDO="sudo"
 
 if [ "$start_all" -eq 1 ]; then
-    $SUDO $CEPH_BIN/init-ceph stop
+    $SUDO $INIT_CEPH stop
 fi
 $SUDO rm -f core*
 
@@ -281,7 +296,7 @@ test -d gmon && $SUDO rm -rf gmon/*
 
 
 # figure machine's ip
-HOSTNAME=`hostname`
+HOSTNAME=`hostname -s`
 if [ -n "$ip" ]; then
     IP="$ip"
 else
@@ -294,6 +309,7 @@ else
     echo ip $IP
 fi
 echo "ip $IP"
+echo "port $PORT"
 
 
 
@@ -338,7 +354,11 @@ if [ "$start_mon" -eq 1 ]; then
         osd pgp bits = 5  ; (invalid, but ceph should cope!)
         osd crush chooseleaf type = 0
         osd pool default min size = 1
-        osd pool default erasure code directory = .libs
+        osd failsafe full ratio = .99
+        mon osd full ratio = .99
+        mon data avail warn = 10
+        mon data avail crit = 1
+        osd pool default erasure code directory = $EC_PATH
         osd pool default erasure code profile = plugin=jerasure technique=reed_sol_van k=2 m=1 ruleset-failure-domain=osd
         rgw frontends = fastcgi, civetweb port=$CEPH_RGW_PORT
         filestore fd cache size = 32
@@ -381,7 +401,7 @@ $DAEMONOPTS
         osd journal = $journal_path
         osd journal size = 100
         osd class tmp = out
-        osd class dir = .libs
+        osd class dir = $OBJCLASS_PATH
         osd scrub load threshold = 5.0
         osd debug op order = true
         filestore wbthrottle xfs ios start flusher = 10
@@ -394,7 +414,7 @@ $COSDDEBUG
 $COSDMEMSTORE
 $extra_conf
 [mon]
-        mon pg warn min per osd = 10
+        mon pg warn min per osd = 3
         mon osd allow primary affinity = true
         mon reweight min pgs per osd = 4
 $DAEMONOPTS
@@ -419,7 +439,7 @@ EOF
 	        $SUDO $CEPH_BIN/ceph-authtool --gen-key --name=client.admin --set-uid=0 \
 		    --cap mon 'allow *' \
 		    --cap osd 'allow *' \
-		    --cap mds allow \
+		    --cap mds 'allow *' \
 		    $keyring_fn
 
 		# build a fresh fs monmap, mon fs
@@ -538,11 +558,11 @@ EOF
 			mon 'allow *' osd 'allow *' mds 'allow'
 	    fi
 
-        cmd="$CEPH_ADM osd pool create cephfs_data 128"
+        cmd="$CEPH_ADM osd pool create cephfs_data 8"
         echo $cmd
         $cmd
 
-        cmd="$CEPH_ADM osd pool create cephfs_metadata 128"
+        cmd="$CEPH_ADM osd pool create cephfs_metadata 8"
         echo $cmd
         $cmd
 
@@ -625,6 +645,22 @@ do_rgw()
     echo "setting up user testid"
     $CEPH_BIN/radosgw-admin user create --uid testid --access-key $akey --secret $skey --display-name 'M. Tester' --email tester@ceph.com -c $conf_fn > /dev/null
 
+    # Create S3-test users
+    # See: https://github.com/ceph/s3-tests
+    echo "setting up s3-test users"
+    $CEPH_BIN/radosgw-admin user create \
+        --uid 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
+        --access-key ABCDEFGHIJKLMNOPQRST \
+        --secret abcdefghijklmnopqrstuvwxyzabcdefghijklmn \
+        --display-name youruseridhere \
+        --email s3@example.com -c $conf_fn > /dev/null
+    $CEPH_BIN/radosgw-admin user create \
+        --uid 56789abcdef0123456789abcdef0123456789abcdef0123456789abcdef01234 \
+        --access-key NOPQRSTUVWXYZABCDEFG \
+        --secret nopqrstuvwxyzabcdefghijklmnabcdefghijklm \
+        --display-name john.doe \
+        --email john.doe@example.com -c $conf_fn > /dev/null
+
     # Create Swift user
     echo "setting up user tester"
     $CEPH_BIN/radosgw-admin user create --subuser=tester:testing --display-name=Tester-Subuser --key-type=swift --secret=asdf > /dev/null
@@ -637,7 +673,7 @@ echo "started.  stop.sh to stop.  see out/* (e.g. 'tail -f out/????') for debug 
 
 echo ""
 echo "export PYTHONPATH=./pybind"
-echo "export LD_LIBRARY_PATH=.libs"
+echo "export LD_LIBRARY_PATH=$CEPH_LIB"
 
 if [ "$CEPH_DIR" != "$PWD" ]; then
     echo "export CEPH_CONF=$conf_fn"

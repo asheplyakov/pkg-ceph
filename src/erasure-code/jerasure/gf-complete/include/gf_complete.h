@@ -13,7 +13,12 @@
 #include <stdint.h>
 
 #ifdef INTEL_SSE4
-  #include <nmmintrin.h>
+  #ifdef __SSE4_2__
+    #include <nmmintrin.h>
+  #endif
+  #ifdef __SSE4_1__
+    #include <smmintrin.h>
+  #endif
 #endif
 
 #ifdef INTEL_SSSE3
@@ -28,22 +33,27 @@
   #include <wmmintrin.h>
 #endif
 
+#if defined(ARM_NEON)
+  #include <arm_neon.h>
+#endif
+
 
 /* These are the different ways to perform multiplication.
    Not all are implemented for all values of w.
    See the paper for an explanation of how they work. */
 
-typedef enum {GF_MULT_DEFAULT,   
-              GF_MULT_SHIFT,   
-              GF_MULT_CARRY_FREE,   
-              GF_MULT_GROUP,   
+typedef enum {GF_MULT_DEFAULT,
+              GF_MULT_SHIFT,
+              GF_MULT_CARRY_FREE,
+              GF_MULT_CARRY_FREE_GK,
+              GF_MULT_GROUP,
               GF_MULT_BYTWO_p,
               GF_MULT_BYTWO_b,
-              GF_MULT_TABLE,   
-              GF_MULT_LOG_TABLE,   
+              GF_MULT_TABLE,
+              GF_MULT_LOG_TABLE,
               GF_MULT_LOG_ZERO,
               GF_MULT_LOG_ZERO_EXT,
-              GF_MULT_SPLIT_TABLE,   
+              GF_MULT_SPLIT_TABLE,
               GF_MULT_COMPOSITE } gf_mult_type_t;
 
 /* These are the different ways to optimize region 
@@ -55,7 +65,9 @@ typedef enum {GF_MULT_DEFAULT,
 #define GF_REGION_DOUBLE_TABLE (0x1)
 #define GF_REGION_QUAD_TABLE   (0x2)
 #define GF_REGION_LAZY         (0x4)
+#define GF_REGION_SIMD         (0x8)
 #define GF_REGION_SSE          (0x8)
+#define GF_REGION_NOSIMD       (0x10)
 #define GF_REGION_NOSSE        (0x10)
 #define GF_REGION_ALTMAP       (0x20)
 #define GF_REGION_CAUCHY       (0x40)

@@ -46,8 +46,10 @@ int ErasureCodeJerasure::create_ruleset(const string &name,
 					"indep", pg_pool_t::TYPE_ERASURE, ss);
   if (ruleid < 0)
     return ruleid;
-  else
+  else {
+    crush.set_rule_mask_max_size(ruleid, get_chunk_count());
     return crush.get_rule_mask_ruleset(ruleid);
+  }
 }
 
 void ErasureCodeJerasure::init(const map<string,string> &parameters)
@@ -199,7 +201,7 @@ int ErasureCodeJerasureReedSolomonVandermonde::parse(const map<std::string,std::
     w = DEFAULT_W;
     err = -EINVAL;
   }
-  err |= to_bool("jerasure-per-chunk-alignement", parameters,
+  err |= to_bool("jerasure-per-chunk-alignment", parameters,
 		 &per_chunk_alignment, false, ss);
   return err;
 }
@@ -298,15 +300,8 @@ int ErasureCodeJerasureCauchy::parse(const map<std::string,std::string> &paramet
 				     ostream *ss)
 {
   int err = ErasureCodeJerasure::parse(parameters, ss);
-  if (w != 8 && w != 16 && w != 32) {
-    *ss << "Cauchy: w=" << w
-	<< " must be one of {8, 16, 32} : revert to " 
-        << DEFAULT_W << std::endl;
-    w = DEFAULT_W;
-    err = -EINVAL;
-  }
   err |= to_int("packetsize", parameters, &packetsize, DEFAULT_PACKETSIZE, ss);
-  err |= to_bool("jerasure-per-chunk-alignement", parameters,
+  err |= to_bool("jerasure-per-chunk-alignment", parameters,
 		 &per_chunk_alignment, false, ss);
   return err;
 }

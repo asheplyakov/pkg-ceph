@@ -343,6 +343,24 @@ librbd_close(struct rbd_ctx *ctx)
 	return __librbd_close(ctx);
 }
 
+int
+librbd_verify_object_map(struct rbd_ctx *ctx)
+{
+	int n;
+	uint64_t flags;
+	n = rbd_get_flags(ctx->image, &flags);
+	if (n < 0) {
+		prt("rbd_get_flags() failed\n");
+		return n;
+	}
+
+	if ((flags & RBD_FLAG_OBJECT_MAP_INVALID) != 0) {
+		prt("rbd_get_flags() indicates object map is invalid\n");
+		return -EINVAL;
+	}
+	return 0;
+}
+
 ssize_t
 librbd_read(struct rbd_ctx *ctx, uint64_t off, size_t len, void *buf)
 {
@@ -359,11 +377,18 @@ ssize_t
 librbd_write(struct rbd_ctx *ctx, uint64_t off, size_t len, void *buf)
 {
 	ssize_t n;
+	int ret;
 
 	n = rbd_write(ctx->image, off, len, buf);
-	if (n < 0)
+	if (n < 0) {
 		prt("rbd_write(%llu, %zu) failed\n", off, len);
+		return n;
+	}
 
+	ret = librbd_verify_object_map(ctx);
+	if (ret < 0) {
+		return ret;
+	}
 	return n;
 }
 
@@ -378,7 +403,7 @@ librbd_flush(struct rbd_ctx *ctx)
 		return ret;
 	}
 
-	return 0;
+	return librbd_verify_object_map(ctx);
 }
 
 int
@@ -392,7 +417,7 @@ librbd_discard(struct rbd_ctx *ctx, uint64_t off, uint64_t len)
 		return ret;
 	}
 
-	return 0;
+	return librbd_verify_object_map(ctx);
 }
 
 int
@@ -423,7 +448,7 @@ __librbd_resize(struct rbd_ctx *ctx, uint64_t size)
 		return ret;
 	}
 
-	return 0;
+	return librbd_verify_object_map(ctx);
 }
 
 int
@@ -435,7 +460,7 @@ librbd_resize(struct rbd_ctx *ctx, uint64_t size)
 int
 __librbd_clone(struct rbd_ctx *ctx, const char *src_snapname,
 	       const char *dst_imagename, int *order, int stripe_unit,
-	       int stripe_count)
+	       int stripe_count, bool krbd)
 {
 	int ret;
 
@@ -453,8 +478,13 @@ __librbd_clone(struct rbd_ctx *ctx, const char *src_snapname,
 		return ret;
 	}
 
+	uint64_t features = RBD_FEATURES_ALL;
+	if (krbd) {
+		features &= ~(RBD_FEATURE_EXCLUSIVE_LOCK |
+		              RBD_FEATURE_OBJECT_MAP);
+	}
 	ret = rbd_clone2(ioctx, ctx->name, src_snapname, ioctx,
-			 dst_imagename, RBD_FEATURES_ALL, order,
+			 dst_imagename, features, order,
 			 stripe_unit, stripe_count);
 	if (ret < 0) {
 		prt("rbd_clone2(%s@%s -> %s) failed\n", ctx->name,
@@ -471,7 +501,7 @@ librbd_clone(struct rbd_ctx *ctx, const char *src_snapname,
 	     int stripe_count)
 {
 	return __librbd_clone(ctx, src_snapname, dst_imagename, order,
-			      stripe_unit, stripe_count);
+			      stripe_unit, stripe_count, false);
 }
 
 int
@@ -485,7 +515,7 @@ __librbd_flatten(struct rbd_ctx *ctx)
 		return ret;
 	}
 
-	return 0;
+	return librbd_verify_object_map(ctx);
 }
 
 int
@@ -692,7 +722,7 @@ krbd_clone(struct rbd_ctx *ctx, const char *src_snapname,
 		return ret;
 
 	return __librbd_clone(ctx, src_snapname, dst_imagename, order,
-			      stripe_unit, stripe_count);
+			      stripe_unit, stripe_count, true);
 }
 
 int
@@ -1280,14 +1310,14 @@ do_punch_hole(unsigned offset, unsigned length)
 	if (length == 0) {
 		if (!quiet && testcalls > simulatedopcount)
 			prt("skipping zero length punch hole\n");
-			log4(OP_SKIPPED, OP_PUNCH_HOLE, offset, length);
+		log4(OP_SKIPPED, OP_PUNCH_HOLE, offset, length);
 		return;
 	}
 
 	if (file_size <= (loff_t)offset) {
 		if (!quiet && testcalls > simulatedopcount)
 			prt("skipping hole punch off the end of the file\n");
-			log4(OP_SKIPPED, OP_PUNCH_HOLE, offset, length);
+		log4(OP_SKIPPED, OP_PUNCH_HOLE, offset, length);
 		return;
 	}
 
@@ -2069,11 +2099,23 @@ main(int argc, char **argv)
 			randomoplen = 0;
 			break;
 		case 'P':
-			strncpy(dirpath, optarg, sizeof(dirpath));
-			strncpy(goodfile, dirpath, sizeof(goodfile));
-			strcat(goodfile, "/");
+			strncpy(dirpath, optarg, sizeof(dirpath)-1);
+			dirpath[sizeof(dirpath)-1] = '\0';
+			strncpy(goodfile, dirpath, sizeof(goodfile)-1);
+			goodfile[sizeof(goodfile)-1] = '\0';
+			if (strlen(goodfile) < sizeof(goodfile)-2) {
+				strcat(goodfile, "/");
+			} else {
+				prt("file name to long\n");
+				exit(1);
+			}
 			strncpy(logfile, dirpath, sizeof(logfile));
-			strcat(logfile, "/");
+			if (strlen(logfile) < sizeof(logfile)-2) {
+				strcat(logfile, "/");
+			} else {
+				prt("file path to long\n");
+				exit(1);
+			}
 			break;
                 case 'R':
                         mapped_reads = 0;

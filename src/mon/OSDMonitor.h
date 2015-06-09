@@ -140,6 +140,8 @@ private:
    */
   map<int,epoch_t> osd_epoch;
 
+  void note_osd_has_epoch(int osd, epoch_t epoch);
+
   void check_failures(utime_t now);
   bool check_failure(utime_t now, int target_osd, failure_info_t& fi);
 
@@ -217,13 +219,17 @@ private:
   MOSDMap *build_incremental(epoch_t first, epoch_t last);
   void send_full(PaxosServiceMessage *m);
   void send_incremental(PaxosServiceMessage *m, epoch_t first);
-  void send_incremental(epoch_t first, entity_inst_t& dest, bool onetime);
+  void send_incremental(epoch_t first, MonSession *session, bool onetime);
 
   int reweight_by_utilization(int oload, std::string& out_str, bool by_pg,
 			      const set<int64_t> *pools);
 
+  void print_utilization(ostream &out, Formatter *f, bool tree) const;
+
   bool check_source(PaxosServiceMessage *m, uuid_d fsid);
  
+  bool preprocess_get_osdmap(class MMonGetOSDMap *m);
+
   bool preprocess_mark_me_down(class MOSDMarkMeDown *m);
 
   friend class C_AckMarkedDown;
@@ -261,6 +267,9 @@ private:
   bool prepare_pool_op (MPoolOp *m);
   bool prepare_pool_op_create (MPoolOp *m);
   bool prepare_pool_op_delete(MPoolOp *m);
+  int crush_rename_bucket(const string& srcname,
+			  const string& dstname,
+			  ostream *ss);
   int crush_ruleset_create_erasure(const string &name,
 				   const string &profile,
 				   int *ruleset,
