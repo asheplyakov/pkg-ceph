@@ -4,7 +4,7 @@ Forwarded: no
 
 --- a/src/ceph-disk
 +++ b/src/ceph-disk
-@@ -2130,7 +2130,10 @@ def activate(
+@@ -2128,7 +2128,10 @@ def activate(
              else:
                  (distro, release, codename) = platform.dist()
                  if distro == 'Ubuntu':

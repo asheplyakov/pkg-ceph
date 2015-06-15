@@ -78,3 +78,14 @@ Description: Mark modules as actually being modules
  radoslib_LTLIBRARIES += libcls_user.la
  
  libcls_rgw_la_SOURCES = \
+--- a/src/erasure-code/shec/Makefile.am
++++ b/src/erasure-code/shec/Makefile.am
+@@ -53,7 +53,7 @@ libec_shec_la_CXXFLAGS= ${AM_CXXFLAGS} \
+ libec_shec_la_LIBADD = $(LIBCRUSH) $(PTHREAD_LIBS) $(EXTRALIBS)
+ #libec_shec_la_LIBADD = $(PTHREAD_LIBS) $(EXTRALIBS)
+ #libec_shec_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0 -export-symbols-regex '.*__erasure_code_.*'
+-libec_shec_la_LDFLAGS = ${AM_LDFLAGS} -version-info 1:0:0
++libec_shec_la_LDFLAGS = ${AM_LDFLAGS} -module -avoid-version -shared
+ if LINUX
+ libec_shec_la_LDFLAGS += -export-symbols-regex '.*__erasure_code_.*'
+ endif

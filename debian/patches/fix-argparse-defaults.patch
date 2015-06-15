@@ -8,7 +8,7 @@ Forwarded: no
 
 --- a/src/ceph-disk
 +++ b/src/ceph-disk
-@@ -2747,7 +2747,6 @@ def parse_args():
+@@ -2745,7 +2745,6 @@ def parse_args():
      parser.set_defaults(
          # we want to hold on to this, for later
          prog=parser.prog,
@@ -16,7 +16,7 @@ Forwarded: no
          )
  
      subparsers = parser.add_subparsers(
-@@ -2761,6 +2760,7 @@ def parse_args():
+@@ -2759,6 +2758,7 @@ def parse_args():
          '--cluster',
          metavar='NAME',
          help='cluster name to assign this disk to',
