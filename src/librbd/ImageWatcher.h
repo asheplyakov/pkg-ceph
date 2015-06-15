@@ -74,7 +74,6 @@ namespace librbd {
       TASK_CODE_RELEASED_LOCK,
       TASK_CODE_RETRY_AIO_REQUESTS,
       TASK_CODE_CANCEL_ASYNC_REQUESTS,
-      TASK_CODE_HEADER_UPDATE,
       TASK_CODE_REREGISTER_WATCH,
       TASK_CODE_ASYNC_REQUEST,
       TASK_CODE_ASYNC_PROGRESS
@@ -210,9 +209,8 @@ namespace librbd {
     int get_lock_owner_info(entity_name_t *locker, std::string *cookie,
 			    std::string *address, uint64_t *handle);
     int lock();
-    void release_lock();
+    bool release_lock();
     bool try_request_lock();
-    void finalize_header_update();
 
     void schedule_retry_aio_requests(bool use_timer);
     void retry_aio_requests();
@@ -222,6 +220,7 @@ namespace librbd {
 
     WatchNotify::ClientId get_client_id();
 
+    void notify_release_lock();
     void notify_released_lock();
     void notify_request_lock();
     int notify_lock_owner(bufferlist &bl);

@@ -146,20 +146,26 @@ static void format_xattr(std::string &xattr)
  * attrs: will be filled up with attrs mapped as <attr_name, attr_contents>
  *
  */
-static void rgw_get_request_metadata(CephContext *cct, struct req_info& info, map<string, bufferlist>& attrs)
+static void rgw_get_request_metadata(CephContext *cct,
+                                     struct req_info& info,
+                                     map<string, bufferlist>& attrs,
+                                     const bool allow_empty_attrs = true)
 {
   map<string, string>::iterator iter;
   for (iter = info.x_meta_map.begin(); iter != info.x_meta_map.end(); ++iter) {
     const string &name(iter->first);
     string &xattr(iter->second);
-    ldout(cct, 10) << "x>> " << name << ":" << xattr << dendl;
-    format_xattr(xattr);
-    string attr_name(RGW_ATTR_PREFIX);
-    attr_name.append(name);
-    map<string, bufferlist>::value_type v(attr_name, bufferlist());
-    std::pair < map<string, bufferlist>::iterator, bool > rval(attrs.insert(v));
-    bufferlist& bl(rval.first->second);
-    bl.append(xattr.c_str(), xattr.size() + 1);
+
+    if (allow_empty_attrs || !xattr.empty()) {
+      ldout(cct, 10) << "x>> " << name << ":" << xattr << dendl;
+      format_xattr(xattr);
+      string attr_name(RGW_ATTR_PREFIX);
+      attr_name.append(name);
+      map<string, bufferlist>::value_type v(attr_name, bufferlist());
+      std::pair < map<string, bufferlist>::iterator, bool > rval(attrs.insert(v));
+      bufferlist& bl(rval.first->second);
+      bl.append(xattr.c_str(), xattr.size() + 1);
+    }
   }
 }
 
@@ -448,7 +454,8 @@ int RGWGetObj::verify_permission()
 {
   obj = rgw_obj(s->bucket, s->object);
   store->set_atomic(s->obj_ctx, obj);
-  store->set_prefetch_data(s->obj_ctx, obj);
+  if (get_data)
+    store->set_prefetch_data(s->obj_ctx, obj);
 
   if (!verify_object_permission(s, RGW_PERM_READ))
     return -EACCES;
@@ -1190,11 +1197,19 @@ void RGWListBucket::pre_exec()
 
 void RGWListBucket::execute()
 {
-  string no_ns;
-
   ret = get_params();
   if (ret < 0)
     return;
+
+  if (need_container_stats()) {
+    map<string, RGWBucketEnt> m;
+    m[s->bucket.name] = RGWBucketEnt();
+    m.begin()->second.bucket = s->bucket;
+    ret = store->update_containers_stats(m);
+    if (ret > 0) {
+      bucket = m.begin()->second;
+    } 
+  }
 
   RGWRados::Bucket target(store, s->bucket);
   RGWRados::Bucket::List list_op(&target);
@@ -1781,6 +1796,12 @@ void RGWPutObj::execute()
      */
     bool need_to_wait = (ofs == 0) && multipart;
 
+    bufferlist orig_data;
+
+    if (need_to_wait) {
+      orig_data = data;
+    }
+
     ret = put_data_and_throttle(processor, data, ofs, (need_calc_md5 ? &hash : NULL), need_to_wait);
     if (ret < 0) {
       if (!need_to_wait || ret != -EEXIST) {
@@ -1789,6 +1810,9 @@ void RGWPutObj::execute()
       }
 
       ldout(s->cct, 5) << "NOTICE: processor->throttle_data() returned -EEXIST, need to restart write" << dendl;
+
+      /* restore original data */
+      data.swap(orig_data);
 
       /* restart processing with different oid suffix */
 
@@ -1943,6 +1967,12 @@ void RGWPostObj::execute()
     goto done;
   }
 
+  ret = store->check_quota(s->bucket_owner.get_id(), s->bucket,
+                           user_quota, bucket_quota, s->content_length);
+  if (ret < 0) {
+    goto done;
+  }
+
   processor = select_processor(*(RGWObjectCtx *)s->obj_ctx);
 
   ret = processor->prepare(store, NULL);
@@ -1977,6 +2007,12 @@ void RGWPostObj::execute()
   }
 
   s->obj_size = ofs;
+
+  ret = store->check_quota(s->bucket_owner.get_id(), s->bucket,
+                           user_quota, bucket_quota, s->obj_size);
+  if (ret < 0) {
+    goto done;
+  }
 
   hash.Final(m);
   buf_to_hex(m, CEPH_CRYPTO_MD5_DIGESTSIZE, calc_md5);
@@ -2035,11 +2071,10 @@ void RGWPutMetadata::execute()
   if (ret < 0)
     return;
 
-  rgw_get_request_metadata(s->cct, s->info, attrs);
-
   RGWObjVersionTracker *ptracker = NULL;
-
   bool is_object_op = (!s->object.empty());
+
+  rgw_get_request_metadata(s->cct, s->info, attrs, is_object_op);
 
   if (is_object_op) {
     /* check if obj exists, read orig attrs */
@@ -2378,12 +2413,13 @@ void RGWCopyObj::execute()
                         src_obj,
                         dest_bucket_info,
                         src_bucket_info,
+                        &src_mtime,
                         &mtime,
                         mod_ptr,
                         unmod_ptr,
                         if_match,
                         if_nomatch,
-                        replace_attrs,
+                        attrs_mod,
                         attrs, RGW_OBJ_CATEGORY_MAIN,
                         olh_epoch,
                         (version_id.empty() ? NULL : &version_id),
