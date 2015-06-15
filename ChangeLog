@@ -1,6 +1,84 @@
-e4bfad3 (HEAD, tag: v0.94.1) 0.94.1
+5fb8561 (HEAD, tag: v0.94.2) 0.94.2
+968573b (origin/wip-11806-hammer) debian: ceph-dbg steals ceph-objectstore-tool from ceph-test-dbg
+344328d (origin/wip-11733-hammer) debian: set rest-bench-dbg ceph-test-dbg dependencies
+293affe (origin/wip-11622-hammer) rgw: merge manifests correctly when there's prefix override
+a43d248 rgw: restore buffer of multipart upload after EEXIST
+95818da (origin/wip-hammer-package-perf-objectstore) packaging: include ceph_perf_objectstore
+6e2dd40 (origin/hammer-uclient-checking) client: fix error handling in check_pool_perm
+3c2e6ae client: use SaferCond in check_pool_perm
+79b2ac2 client: check OSD caps before read/write
+c548d8d tests: ceph-helpers kill_daemons fails when kill fails
+fb10594 Added a "ceph hello world" for a simple check for ceph-deploy qa suite
+46a4e8a packaging: mv ceph-objectstore-tool to main ceph pkg
+f4a0dab rgw: send Content-Length in response for HEAD on Swift account.
+32f4a74 rgw: send Content-Length in response for DELETE on Swift container.
+d39a660 rgw: send Content-Length in response for PUT on Swift container.
+02a3813 (origin/wip-11370-hammer) librbd: flatten should return -EROFS if image is read-only
+af8939b librbd: allow snapshots to be created when snapshot is active
+d21c0c0 librbd: better handling for duplicate flatten requests
+ec0bd1d librbd: use generic helper for issuing async requests
+8a6e6e4 OSD: handle the case where we resurrected an old, deleted pg
+efbfe6f rgw: improve metadata handling on copy operation of Swift API.
+d164d80 rgw: quota not respected in POST object
+7f2a9ed rgw: fix handling empty metadata items on Swift container.
+8e6efdb rgw: send Content-Length in response for GET on Swift container.
+54b6290 rgw: enable end_header() to handle proposal of Content-Length.
+c87aa11 rgw: Swift API. Complement the response to "show container details"
+2cb5d60 rgw: enforce Content-Length in response for POST on Swift cont/obj.
+d2043a5 rgw: send Last-Modified header in response for PUT on Swift object.
+4d1f3f0 rgw: don't use rgw_socket_path if frontend is configured
+3aef0f2 rgw: update keystone cache with token info
+3edb196 civetweb: update max num of threads
+bc6eb8d rgw: improve code formatting ONLY.
+7aa1ae6 rgw: send X-Copied-From-Last-Modified header of Swift API.
+150b9e2 rgw: dump object metadata in response for COPY request of Swift API.
+e749701 rgw: refactor dumping metadata of Swift objects.
+b034511 rgw: add support for X-Copied-From{-Account} headers of Swift API.
+c9e6a0b rgw: send ETag, Last-Modified in response for copying Swift cobject.
+7f41ff0 rgw: Swift API. Allows setting attributes with COPY object operation.
+2f86995 rgw: improve format of X-Timestamp on Swift objects.
+48b1981 rgw: add support for X-Timestamp on Swift containers.
+893ffd3 tests: AioCompletion incorrectly freed
+96b0db5 librbd: update ref count when queueing AioCompletion
+0944051 librbd: failure to update the object map should always return success
+7ee7dcf tests: librados_test_stub reads should deep-copy
+113f3b1 mon: Total size of OSDs is a maginitude less than it is supposed to be.
+6a04b55 Fix "disk zap" sgdisk invocation
+8996907 osd: refuse to write a new erasure coded object with an offset > 0
+bc51476 ceph_json: add decode / encoder for multimap
+7c7e651 cls_rgw: use multimap to keep pending operations in bucket index
+cb75713 rgw: generate new tag for object when setting object attrs
+7387c43 java: libcephfs_jni.so is in /usr/lib64 on rhel
+856b2fa (origin/hammer-next) rgw-admin: a tool to fix object locator issue
+512ae4c rgw: set a special object locator if object starts with underscore
+da4d227 rgw: use correct oid when creating gc chains
+4e84f31 rgw: civetweb should use unique request id
+4789686 Move ceph-dencoder build to client
+7eabb70 Rework mds/Makefile.am to support a dencoder client build
+da7f683 Add support for PPC architecture, provide fallback
+3001fad Fix clear_pipe after reaping progress
+379ef71 rgw : Issue AIO for next chunk first before flush the (cached) data.
+b903ad2 rgw/Makefile.am: Populate DENCODER_SOURCES properly
+f994483 Dencoder should never be built with tcmalloc
+8709e34 ceph-disk: more robust parted output parser
+8d9f4d4 osdc: add epoch_t last_force_resend in Op/LingerOp.
+2f34d2e rgw: do not pre-fetch data for HEAD requests
+c6edc16 rgw - make starting quota/gc threads configurable
+c615972 librbd: ImageWatcher should cancel in-flight ops on watch error
+0e6a032 librbd: moved snap_create header update notification to initiator
+2864da8 librbd: updated cache max objects calculation
+0cdc93f librbd: acquire cache_lock before refreshing parent
+a1b4aeb librados_test_stub: AIO operation callbacks should be via Finisher
+3a58e30 (origin/hammer-11482) mds: remove caps from revoking list when caps are voluntarily released
+f30fa4a (origin/wip-11453-hammer-rgw-init-as-root) init-radosgw: run RGW as root
+0ee022b osd/ReplicatedPG: don't check order in finish_proxy_read
+8a58d83 Fix ceph_test_async_driver failed
+85a68f9 rgw: remove meta file after deleting bucket The meta file is deleted only if the bucket meta data is not synced
+51f5763 release-notes: backport Hammer release notes
+e4bfad3 (tag: v0.94.1) 0.94.1
 5ca771a crush: fix has_v4_buckets()
 33e79ab crush: fix dump of has_v4_buckets
+bd0ec49 bug fix: test case for lfn index
 b5921d5 crush/mapper: fix divide-by-0 in straw2
 93c8f43 osd: fix negative degraded objects during backfilling
 e61c4f0 (tag: v0.94) 0.94
@@ -6410,7 +6488,7 @@ fed8396 tset_bufferlist: fix signed/unsigned comparison
 bf38bfb (origin/wip-7271) rgw: set bucket permissions, cors on swift creation
 2682b64 (origin/wip-doc-librados-intro) doc: Incorporated feed back from Loic and Dan.
 0da9621 doc: Adds additional terms for use with librados.
-e1a49e5 (origin/wip-7385) ObjectCacher: remove unused target/max setters
+e1a49e5 ObjectCacher: remove unused target/max setters
 0559d31 librbd: remove limit on number of objects in the cache
 db034ac ObjectCacher: use uint64_t for target and max values
 bf8cf2d ObjectCacher: remove max_bytes and max_ob arguments to trim()
@@ -26981,7 +27059,7 @@ e97c152 auth: fix verify_authorize_reply stupid
 08fbca8 auth: simplify challenge key encoding
 05e198b buffer: make [], hexdump const
 6133f02 auth: break client/server challenge calc into helper
-9ea4e4a auth: CEPH_AUTH_NONE auth and caps working
+9ea4e4a5 auth: CEPH_AUTH_NONE auth and caps working
 e98eb90 auth: return correct auth type
 8de5de0 auth: auth-none protocol stubs
 0717270 auth: redefine CEPH_AUTH_NONE
