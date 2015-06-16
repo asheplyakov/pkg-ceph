@@ -45,7 +45,6 @@ Build-Depends: debhelper (>= 9~),
                uuid-dev,
                uuid-runtime,
                valgrind [amd64 armhf i386 powerpc],
-               virtualenv,
                xfslibs-dev,
                yasm [amd64],
                zlib1g-dev

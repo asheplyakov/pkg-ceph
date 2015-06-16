@@ -118,6 +118,7 @@ override_dh_makeshlibs:
 	dh_makeshlibs -V -X/usr/lib/jni -X/usr/lib/$(DEB_HOST_MULTIARCH)/ceph/erasure-code
 
 override_dh_auto_test:
-	-dh_auto_test -v
+	# Skip tests as they rely on virtualenv
+	:
 
 .PHONY: override_dh_auto_configure override_dh_installinit override_dh_strip override_dh_makeshlibs override_dh_auto_test
