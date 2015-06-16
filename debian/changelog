@@ -1,8 +1,35 @@
 ceph (0.94.2-1) UNRELEASED; urgency=medium
 
-  * Resync with Ubuntu, introducing Ceph Hammer stable release.
+  * Resync with Ubuntu, introducing Ceph Hammer stable release:
+    - d/*.symbols: Update inline with upstream additions, use regex
+      for ceph version symbol.
+    - d/lib-systemd/system/ceph-create-keys.service: Automatically create
+      admin and bootstrap keys after ceph mon startup.
+    - d/p/vivid-does-systemd.patch: Ensure that disks prepared on vivid
+      or later use systemd for init.
+    - d/lib-systemd/system/*.service: Align nofile limits and restart config
+      with equivalent upstart configurations.
+    - d/p/fix-cycles-arch.patch: Skip initialization of cycles_per_sec
+      if rtdsc (or equivalent) is not supported.
+    - d/ceph{-common}.install,control: Move ceph_argparse.py down into
+      ceph-common package to fixup ceph cli usage/autopkgtest failure.
+    - d/control,ceph-common.install,librbd1.install: Move rbdnamer and
+      associated udev rules into ceph-common package.
+    - d/control,python-*: Split out rbd, rados and cephfs bindings into
+      separate python packages, move some bits into ceph/ceph-common.
+    - d/control: Move python-flask dependency to ceph package, only required
+      for REST API.
+    - d/control: Use google-perftools on arm64.
+    - d/control: Re-order Recommends to prefer ntp over chrony for Ubuntu.
+    - d/p/ceph-osd-prestart-path.patch: Fixup path for ceph-osd upstart
+      configuration pre-start script.
+    - d/p/fix-argparse-defaults.patch: Workaround behavioural change in
+      argparse set_defaults in python 2.7.9
   * New upstream point release:
     - d/p/*: Refresh.
+  * d/p/use_system_jerasure.patch,d/control: Drop use of libjerasure
+    as the patch is intrusive and expensive to maintain; will revisit if
+    accepted upstream.
 
  -- James Page <james.page@ubuntu.com>  Tue, 09 Jun 2015 17:41:26 +0100
 

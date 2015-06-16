@@ -32,7 +32,6 @@ Build-Depends:
  libfcgi-dev,
  libfuse-dev,
  libgoogle-perftools-dev [i386 amd64 powerpc armhf arm64 ppc64el],
- libjerasure-dev (>= 2.0.0-2~),
  libkeyutils-dev,
  libleveldb-dev,
  libnss3-dev,

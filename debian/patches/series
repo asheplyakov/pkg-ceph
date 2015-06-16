@@ -8,7 +8,6 @@ modules.patch
 sample.ceph.conf.patch
 tests-disable.patch
 #use_system_gtest.patch
-use_system_jerasure.patch
 virtualenv-never-download.patch
 ceph-osd-prestart-path.patch
 fix-argparse-defaults.patch
