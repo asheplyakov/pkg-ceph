@@ -6,9 +6,11 @@ rbdmap3-lazyumount.patch
 arch.patch
 modules.patch
 sample.ceph.conf.patch
-tests-disable.patch
-#use_system_gtest.patch
+# Disabled until adopted upstream
+# use_system_jerasure.patch
 virtualenv-never-download.patch
+
+## From Ubuntu
 ceph-osd-prestart-path.patch
 fix-argparse-defaults.patch
 fix-cycles-arch.patch

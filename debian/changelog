@@ -29,7 +29,7 @@ ceph (0.94.2-1) UNRELEASED; urgency=medium
     - d/p/*: Refresh.
   * d/p/use_system_jerasure.patch,d/control: Drop use of libjerasure
     as the patch is intrusive and expensive to maintain; will revisit if
-    accepted upstream.
+    adopted upstream.
 
  -- James Page <james.page@ubuntu.com>  Tue, 09 Jun 2015 17:41:26 +0100
 
@@ -102,6 +102,30 @@ ceph (0.87-1) experimental; urgency=medium
   * Build and statically link bundled RocksDB.
 
  -- Dmitry Smirnov <onlyjob@debian.org>  Thu, 30 Oct 2014 12:43:49 +1100
+
+ceph (0.80.9-2) unstable; urgency=medium
+
+  * [70fc1d] Add NEWS entry about CRUSH issues fixed in 0.80.9
+  * [f41bb6] Add NEWS entry about rbd backed filesystems and systemd
+
+ -- Gaudenz Steinlin <gaudenz@debian.org>  Tue, 05 May 2015 21:29:15 +0200
+
+ceph (0.80.9-1) unstable; urgency=medium
+
+  * [4b4e] Imported Upstream version 0.80.9
+  * [7102] Remove patches firefly-latest and p2139 applied upstream
+  * [5869] Add myself to uploaders
+
+ -- Gaudenz Steinlin <gaudenz@debian.org>  Mon, 04 May 2015 08:49:37 +0200
+
+ceph (0.80.7-2) unstable; urgency=medium
+
+  * Team upload.
+  * Build-Depends: +libjerasure-dev (>= 2.0.0-2~)
+  * New patch to use system "jerasure" library instead of its bundled copy.
+  * Removed myself from Uploaders.
+
+ -- Dmitry Smirnov <onlyjob@debian.org>  Thu, 11 Dec 2014 12:55:38 +1100
 
 ceph (0.80.7-1) unstable; urgency=medium
 
