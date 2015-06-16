@@ -1,4 +1,4 @@
-ceph (0.94.2-1) UNRELEASED; urgency=medium
+ceph (0.94.2-1) experimental; urgency=medium
 
   * Resync with Ubuntu, introducing Ceph Hammer stable release:
     - d/*.symbols: Update inline with upstream additions, use regex
@@ -31,7 +31,7 @@ ceph (0.94.2-1) UNRELEASED; urgency=medium
     as the patch is intrusive and expensive to maintain; will revisit if
     adopted upstream.
 
- -- James Page <james.page@ubuntu.com>  Tue, 09 Jun 2015 17:41:26 +0100
+ -- James Page <james.page@ubuntu.com>  Tue, 16 Jun 2015 11:31:05 +0100
 
 ceph (0.87-2) experimental; urgency=low
 
