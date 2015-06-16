@@ -7,49 +7,48 @@ Uploaders: Laszlo Boszormenyi (GCS) <gcs@debian.org>,
 Homepage: http://ceph.com/
 Vcs-Git: git://anonscm.debian.org/pkg-ceph/ceph.git
 Vcs-Browser: http://anonscm.debian.org/gitweb/?p=pkg-ceph/ceph.git
-Build-Depends:
- debhelper (>= 9~),
- default-jdk,
- dh-autoreconf,
- dh-python,
- dh-systemd (>= 1.5),
- dpkg-dev (>= 1.16.1~),
- javahelper,
- junit4,
- libaio-dev,
- libatomic-ops-dev,
- libbabeltrace-ctf-dev,
- libbabeltrace-dev,
- libblkid-dev,
- libboost-dev,
- libboost-program-options-dev,
- libboost-system-dev,
- libboost-thread-dev,
- libbz2-dev,
- libcurl4-gnutls-dev,
- libedit-dev,
- libexpat1-dev,
- libfcgi-dev,
- libfuse-dev,
- libgoogle-perftools-dev [i386 amd64 powerpc armhf arm64 ppc64el],
- libkeyutils-dev,
- libleveldb-dev,
- libnss3-dev,
- libs3-dev,
- libsnappy-dev,
- libtool,
- libudev-dev,
- libxml2-dev,
- pkg-config,
- python-all (>= 2.6.6-3~),
- python-nose,
- uuid-dev,
- uuid-runtime,
- xfslibs-dev,
- yasm [amd64],
- zlib1g-dev,
- valgrind [amd64 armhf i386 powerpc],
- virtualenv
+Build-Depends: debhelper (>= 9~),
+               default-jdk,
+               dh-autoreconf,
+               dh-python,
+               dh-systemd (>= 1.5),
+               dpkg-dev (>= 1.16.1~),
+               javahelper,
+               junit4,
+               libaio-dev,
+               libatomic-ops-dev,
+               libbabeltrace-ctf-dev,
+               libbabeltrace-dev,
+               libblkid-dev,
+               libboost-dev,
+               libboost-program-options-dev,
+               libboost-system-dev,
+               libboost-thread-dev,
+               libbz2-dev,
+               libcurl4-gnutls-dev,
+               libedit-dev,
+               libexpat1-dev,
+               libfcgi-dev,
+               libfuse-dev,
+               libgoogle-perftools-dev [i386 amd64 powerpc armhf arm64 ppc64el],
+               libkeyutils-dev,
+               libleveldb-dev,
+               libnss3-dev,
+               libs3-dev,
+               libsnappy-dev,
+               libtool,
+               libudev-dev,
+               libxml2-dev,
+               pkg-config,
+               python-all (>= 2.6.6-3~),
+               python-nose,
+               uuid-dev,
+               uuid-runtime,
+               valgrind [amd64 armhf i386 powerpc],
+               virtualenv,
+               xfslibs-dev,
+               yasm [amd64],
+               zlib1g-dev
 Build-Conflicts: libcrypto++-dev
 Standards-Version: 3.9.6
 X-Python-Version: >= 2.6
@@ -57,29 +56,27 @@ XS-Testsuite: autopkgtest
 
 Package: ceph
 Architecture: linux-any
-Depends:
- binutils,
- ceph-common (= ${binary:Version}),
- cryptsetup-bin | cryptsetup,
- gdisk,
- hdparm | sdparm,
- parted,
- python-flask,
- uuid-runtime,
- xfsprogs,
- ${misc:Depends},
- ${python:Depends},
- ${shlibs:Depends}
+Depends: binutils,
+         ceph-common (= ${binary:Version}),
+         cryptsetup-bin | cryptsetup,
+         gdisk,
+         hdparm | sdparm,
+         parted,
+         python-flask,
+         uuid-runtime,
+         xfsprogs,
+         ${misc:Depends},
+         ${python:Depends},
+         ${shlibs:Depends}
 Pre-Depends: ${misc:Pre-Depends}
 Breaks: python-ceph (<< 0.94.1-1~)
 Conflicts: gceph, librgw-dev, librgw1, librgw1-dbg, obsync
-Replaces:
- gceph,
- librgw-dev,
- librgw1,
- librgw1-dbg,
- obsync,
- python-ceph (<< 0.94.1-1~)
+Replaces: gceph,
+          librgw-dev,
+          librgw1,
+          librgw1-dbg,
+          obsync,
+          python-ceph (<< 0.94.1-1~)
 Recommends: libcephfs1, librados2, librbd1, ntp | time-daemon | chrony
 Suggests: logrotate
 Description: distributed storage and file system
@@ -106,25 +103,22 @@ Description: debugging symbols for ceph
 
 Package: ceph-common
 Architecture: linux-any
-Depends:
- librbd1 (= ${binary:Version}),
- python-cephfs (= ${binary:Version}),
- python-rados (= ${binary:Version}),
- python-rbd (= ${binary:Version}),
- python-requests,
- ${misc:Depends},
- ${python:Depends},
- ${shlibs:Depends}
+Depends: librbd1 (= ${binary:Version}),
+         python-cephfs (= ${binary:Version}),
+         python-rados (= ${binary:Version}),
+         python-rbd (= ${binary:Version}),
+         python-requests,
+         ${misc:Depends},
+         ${python:Depends},
+         ${shlibs:Depends}
 Conflicts: ceph-client-tools
-Breaks:
- ceph (<< 0.93-0ubuntu3~),
- librbd1 (<< 0.94.1-1~),
- python-ceph (<< 0.94.1-1~)
-Replaces:
- ceph (<< 0.93-0ubuntu3~),
- ceph-client-tools,
- librbd1 (<< 0.94.1-1~),
- python-ceph (<< 0.94.1-1~)
+Breaks: ceph (<< 0.93-0ubuntu3~),
+        librbd1 (<< 0.94.1-1~),
+        python-ceph (<< 0.94.1-1~)
+Replaces: ceph (<< 0.93-0ubuntu3~),
+          ceph-client-tools,
+          librbd1 (<< 0.94.1-1~),
+          python-ceph (<< 0.94.1-1~)
 Suggests: ceph, ceph-mds
 Description: common utilities to mount and interact with a ceph storage cluster
  Ceph is a distributed storage and file system designed to provide
@@ -482,12 +476,11 @@ Description: debugging symbols for ceph-test
 Package: python-ceph
 Architecture: all
 Section: python
-Depends:
- python-cephfs (>= ${binary:Version}),
- python-rados (>= ${binary:Version}),
- python-rbd (>= ${binary:Version}),
- ${misc:Depends},
- ${python:Depends}
+Depends: python-cephfs (>= ${binary:Version}),
+         python-rados (>= ${binary:Version}),
+         python-rbd (>= ${binary:Version}),
+         ${misc:Depends},
+         ${python:Depends}
 Description: Meta-package for python libraries for the Ceph libraries
  Ceph is a massively scalable, open-source, distributed
  storage system that runs on commodity hardware and delivers object,
