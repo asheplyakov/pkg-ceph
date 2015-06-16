@@ -39,8 +39,6 @@ endif
 # Use system provided libs3
 extraopts += --with-system-libs3
 
-#extraopts += --with-cluster-tests
-
 %:
 	dh $@ --with javahelper,python2,autoreconf,systemd --parallel
 
@@ -50,8 +48,6 @@ override_dh_autoreconf:
 	dh_autoreconf $(DH_AS_NEEDED)
 
 override_dh_auto_configure:
-	## copy gtest sources
-	#cp -Rv /usr/src/gtest src/
 	dh_auto_configure -- $(extraopts)
 
 override_dh_auto_build:
@@ -59,9 +55,6 @@ override_dh_auto_build:
 	cp -v src/upstart/rbdmap.conf debian/ceph.rbdmap.upstart
 
 override_dh_auto_clean:
-	#$(RM) -rv src/gtest
-	$(RM) -rv src/test/fake_home src/mkfs src/test-ceph-disk/osd
-	dh_auto_clean --sourcedirectory=src/rocksdb
 	dh_auto_clean
 	rm -fv debian/*.upstart
 
