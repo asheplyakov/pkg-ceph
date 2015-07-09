@@ -5,13 +5,12 @@ Description: disable (FS-dependent?) "ceph-disk" test which always seems to fail
 
 --- a/src/test/Makefile.am
 +++ b/src/test/Makefile.am
-@@ -241,9 +241,8 @@
- 	test/mon/osd-erasure-code-profile.sh \
- 	test/mon/mkfs.sh \
- 	test/osd/osd-config.sh \
- 	test/osd/osd-bench.sh \
--	test/ceph-disk.sh \
- 	test/mon/mon-handle-forward.sh \
- 	test/vstart_wrapped_tests.sh
+@@ -83,8 +83,6 @@ check_SCRIPTS += \
+ 
+ if ENABLE_ROOT_MAKE_CHECK
+ check_SCRIPTS += test/ceph-disk-root.sh
+-else
+-check_SCRIPTS += test/ceph-disk.sh
  endif
  
+ EXTRA_DIST += \
