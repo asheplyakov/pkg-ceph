@@ -1,3 +1,11 @@
+ceph (0.94.2-2) experimental; urgency=medium
+
+  * Revert "Drop virtualenv BD, disable unit tests."
+  * Restore patches for test enablement.
+  * Display test-suite log output in the event of failures.
+
+ -- James Page <james.page@ubuntu.com>  Mon, 20 Jul 2015 13:37:06 +0100
+
 ceph (0.94.2-1) experimental; urgency=medium
 
   * Resync with Ubuntu, introducing Ceph Hammer stable release:
