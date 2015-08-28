@@ -150,6 +150,9 @@
 /* Define if you have tcmalloc */
 #undef HAVE_LIBTCMALLOC
 
+/* Define if you have tcmalloc */
+#undef HAVE_LIBTCMALLOC_MINIMAL
+
 /* Define to 1 if you have libxfs */
 #undef HAVE_LIBXFS
 
