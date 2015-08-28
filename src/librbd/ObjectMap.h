@@ -5,6 +5,7 @@
 
 #include "include/int_types.h"
 #include "include/rados/librados.hpp"
+#include "include/rbd/object_map_types.h"
 #include "common/bit_vector.hpp"
 #include "librbd/AsyncRequest.h"
 #include <boost/optional.hpp>
@@ -12,10 +13,6 @@
 class Context;
 
 namespace librbd {
-
-static const uint8_t OBJECT_NONEXISTENT = 0;
-static const uint8_t OBJECT_EXISTS = 1;
-static const uint8_t OBJECT_PENDING = 2;
 
 class ImageCtx;
 
@@ -58,6 +55,10 @@ private:
     }
 
   protected:
+
+    virtual bool safely_cancel(int r) {
+      return false;
+    }
     virtual bool should_complete(int r);
     virtual int filter_return_code(int r) {
       // never propagate an error back to the caller

@@ -9,7 +9,7 @@
 # common
 #################################################################################
 Name:		ceph
-Version:	0.94.2
+Version:	0.94.3
 Release:	0%{?dist}
 Epoch:		1
 Summary:	User space components of the Ceph file system
@@ -39,7 +39,9 @@ Requires:	cryptsetup
 Requires(post):	binutils
 BuildRequires:	gcc-c++
 BuildRequires:	boost-devel
+%if ! 0%{defined suse_version}
 BuildRequires:  bzip2-devel
+%endif
 BuildRequires:	cryptsetup
 BuildRequires:	gdbm
 BuildRequires:	hdparm
@@ -66,8 +68,11 @@ BuildRequires:	xfsprogs
 BuildRequires:	xfsprogs-devel
 BuildRequires:	xmlstarlet
 BuildRequires:	yasm
-%if 0%{?rhel} || 0%{?centos} || 0%{?fedora}
+%if 0%{?rhel} || 0%{?centos} || 0%{?fedora} || 0%{?suse_version}
 BuildRequires:	snappy-devel
+%endif
+%if 0%{?suse_version}
+BuildRequires:	net-tools
 %endif
 
 #################################################################################
@@ -121,7 +126,12 @@ Requires:	python-rados = %{epoch}:%{version}-%{release}
 Requires:	python-rbd = %{epoch}:%{version}-%{release}
 Requires:	python-cephfs = %{epoch}:%{version}-%{release}
 Requires:	python-requests
-Requires:	redhat-lsb-core
+%if 0%{defined suse_version}
+Requires:  python-argparse
+%endif
+%if 0%{?rhel} || 0%{?fedora}
+Requires:  redhat-lsb-core
+%endif
 %description -n ceph-common
 Common utilities to mount and interact with a ceph storage cluster.
 
@@ -480,6 +490,12 @@ install -m 0644 -D src/rgw/logrotate.conf $RPM_BUILD_ROOT%{_sysconfdir}/logrotat
 chmod 0644 $RPM_BUILD_ROOT%{_docdir}/ceph/sample.ceph.conf
 chmod 0644 $RPM_BUILD_ROOT%{_docdir}/ceph/sample.fetch_config
 
+# firewall templates
+%if 0%{?suse_version}
+install -m 0644 -D etc/sysconfig/SuSEfirewall2.d/services/ceph-mon %{buildroot}%{_sysconfdir}/sysconfig/SuSEfirewall2.d/services/ceph-mon
+install -m 0644 -D etc/sysconfig/SuSEfirewall2.d/services/ceph-osd-mds %{buildroot}%{_sysconfdir}/sysconfig/SuSEfirewall2.d/services/ceph-osd-mds
+%endif
+
 # udev rules
 %if 0%{?rhel} >= 7 || 0%{?fedora}
 install -m 0644 -D udev/50-rbd.rules $RPM_BUILD_ROOT/usr/lib/udev/rules.d/50-rbd.rules
@@ -495,7 +511,7 @@ install -m 0644 -D udev/95-ceph-osd-alt.rules $RPM_BUILD_ROOT/lib/udev/rules.d/9
 install -m 0644 -D udev/95-ceph-osd.rules $RPM_BUILD_ROOT/lib/udev/rules.d/95-ceph-osd.rules
 %endif
 
-%if 0%{?rhel} >= 7 || 0%{?fedora}
+%if 0%{?rhel} >= 7 || 0%{?fedora} || 0%{?suse_version}
 mv $RPM_BUILD_ROOT/lib/udev/rules.d/95-ceph-osd.rules $RPM_BUILD_ROOT/usr/lib/udev/rules.d/95-ceph-osd.rules
 mv $RPM_BUILD_ROOT/sbin/mount.ceph $RPM_BUILD_ROOT/usr/sbin/mount.ceph
 mv $RPM_BUILD_ROOT/sbin/mount.fuse.ceph $RPM_BUILD_ROOT/usr/sbin/mount.fuse.ceph
@@ -577,7 +593,7 @@ fi
 %{_sbindir}/ceph-disk-udev
 %{_sbindir}/ceph-create-keys
 %{_sbindir}/rcceph
-%if 0%{?rhel} >= 7 || 0%{?fedora}
+%if 0%{?rhel} >= 7 || 0%{?fedora} || 0%{?suse_version}
 %{_sbindir}/mount.ceph
 %else
 /sbin/mount.ceph
@@ -608,8 +624,13 @@ fi
 %endif
 %config %{_sysconfdir}/bash_completion.d/ceph
 %config(noreplace) %{_sysconfdir}/logrotate.d/ceph
+%if 0%{?suse_version}
+%config %{_sysconfdir}/sysconfig/SuSEfirewall2.d/services/ceph-mon
+%config %{_sysconfdir}/sysconfig/SuSEfirewall2.d/services/ceph-osd-mds
+%endif
 %{_mandir}/man8/ceph-deploy.8*
 %{_mandir}/man8/ceph-disk.8*
+%{_mandir}/man8/ceph-create-keys.8*
 %{_mandir}/man8/ceph-mon.8*
 %{_mandir}/man8/ceph-mds.8*
 %{_mandir}/man8/ceph-osd.8*
@@ -684,7 +705,7 @@ fi
 %defattr(-,root,root,-)
 %{_bindir}/ceph-fuse
 %{_mandir}/man8/ceph-fuse.8*
-%if 0%{?rhel} >= 7 || 0%{?fedora}
+%if 0%{?rhel} >= 7 || 0%{?fedora} || 0%{?suse_version}
 %{_sbindir}/mount.fuse.ceph
 %else
 /sbin/mount.fuse.ceph

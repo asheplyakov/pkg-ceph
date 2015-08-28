@@ -263,6 +263,10 @@ OPTION(mon_sync_provider_kill_at, OPT_INT, 0)  // kill the sync provider at a sp
 OPTION(mon_sync_requester_kill_at, OPT_INT, 0) // kill the sync requester at a specific point in the work flow
 OPTION(mon_force_quorum_join, OPT_BOOL, false) // force monitor to join quorum even if it has been previously removed from the map
 OPTION(mon_keyvaluedb, OPT_STR, "leveldb")   // type of keyvaluedb backend
+
+// UNSAFE -- TESTING ONLY! Allows addition of a cache tier with preexisting snaps
+OPTION(mon_debug_unsafe_allow_tier_with_nonempty_snaps, OPT_BOOL, false)
+
 OPTION(paxos_stash_full_interval, OPT_INT, 25)   // how often (in commits) to stash a full copy of the PaxosService state
 OPTION(paxos_max_join_drift, OPT_INT, 10) // max paxos iterations before we must first sync the monitor stores
 OPTION(paxos_propose_interval, OPT_DOUBLE, 1.0)  // gather updates for this long before proposing a map update
@@ -564,16 +568,22 @@ OPTION(osd_recover_clone_overlap_limit, OPT_INT, 10)
 OPTION(osd_backfill_scan_min, OPT_INT, 64)
 OPTION(osd_backfill_scan_max, OPT_INT, 512)
 OPTION(osd_op_thread_timeout, OPT_INT, 15)
+OPTION(osd_op_thread_suicide_timeout, OPT_INT, 150)
 OPTION(osd_recovery_thread_timeout, OPT_INT, 30)
+OPTION(osd_recovery_thread_suicide_timeout, OPT_INT, 300)
 OPTION(osd_snap_trim_thread_timeout, OPT_INT, 60*60*1)
+OPTION(osd_snap_trim_thread_suicide_timeout, OPT_INT, 60*60*10)
 OPTION(osd_snap_trim_sleep, OPT_FLOAT, 0)
 OPTION(osd_scrub_thread_timeout, OPT_INT, 60)
+OPTION(osd_scrub_thread_suicide_timeout, OPT_INT, 60)
 OPTION(osd_scrub_finalize_thread_timeout, OPT_INT, 60*10)
 OPTION(osd_scrub_invalid_stats, OPT_BOOL, true)
 OPTION(osd_remove_thread_timeout, OPT_INT, 60*60)
+OPTION(osd_remove_thread_suicide_timeout, OPT_INT, 10*60*60)
 OPTION(osd_command_thread_timeout, OPT_INT, 10*60)
 OPTION(osd_age, OPT_FLOAT, .8)
 OPTION(osd_age_time, OPT_INT, 0)
+OPTION(osd_command_thread_suicide_timeout, OPT_INT, 15*60)
 OPTION(osd_heartbeat_addr, OPT_ADDR, entity_addr_t())
 OPTION(osd_heartbeat_interval, OPT_INT, 6)       // (seconds) how often we ping peers
 OPTION(osd_heartbeat_grace, OPT_INT, 20)         // (seconds) how long before we decide a peer has failed
@@ -858,6 +868,9 @@ OPTION(journal_discard, OPT_BOOL, false) //using ssd disk as journal, whether su
 OPTION(rados_mon_op_timeout, OPT_DOUBLE, 0) // how many seconds to wait for a response from the monitor before returning an error from a rados operation. 0 means on limit.
 OPTION(rados_osd_op_timeout, OPT_DOUBLE, 0) // how many seconds to wait for a response from osds before returning an error from a rados operation. 0 means no limit.
 
+OPTION(rbd_op_threads, OPT_INT, 1)
+OPTION(rbd_op_thread_timeout, OPT_INT, 60)
+OPTION(rbd_non_blocking_aio, OPT_BOOL, true) // process AIO ops from a worker thread to prevent blocking
 OPTION(rbd_cache, OPT_BOOL, true) // whether to enable caching (writeback unless rbd_cache_max_dirty is 0)
 OPTION(rbd_cache_writethrough_until_flush, OPT_BOOL, true) // whether to make writeback caching writethrough until flush is called, to be sure the user of librbd will send flushs so that writeback is safe
 OPTION(rbd_cache_size, OPT_LONGLONG, 32<<20)         // cache size in bytes
@@ -938,6 +951,7 @@ OPTION(rgw_socket_path, OPT_STR, "")   // path to unix domain socket, if not spe
 OPTION(rgw_host, OPT_STR, "")  // host for radosgw, can be an IP, default is 0.0.0.0
 OPTION(rgw_port, OPT_STR, "")  // port to listen, format as "8080" "5000", if not specified, rgw will not run external fcgi
 OPTION(rgw_dns_name, OPT_STR, "")
+OPTION(rgw_content_length_compat, OPT_BOOL, false) // Check both HTTP_CONTENT_LENGTH and CONTENT_LENGTH in fcgi env
 OPTION(rgw_script_uri, OPT_STR, "") // alternative value for SCRIPT_URI if not set in request
 OPTION(rgw_request_uri, OPT_STR,  "") // alternative value for REQUEST_URI if not set in request
 OPTION(rgw_swift_url, OPT_STR, "")             // the swift url, being published by the internal swift auth

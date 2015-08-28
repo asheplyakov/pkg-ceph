@@ -116,6 +116,7 @@ DIST_COMMON = $(srcdir)/Makefile-client.am \
 @ENABLE_SERVER_TRUE@	crushtool.8 \
 @ENABLE_SERVER_TRUE@	ceph-run.8 \
 @ENABLE_SERVER_TRUE@	mount.ceph.8 \
+@ENABLE_SERVER_TRUE@	ceph-create-keys.8 \
 @ENABLE_SERVER_TRUE@	ceph-rest-api.8 \
 @ENABLE_SERVER_TRUE@	ceph-debugpack.8
 

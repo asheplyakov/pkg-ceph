@@ -2998,8 +2998,6 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
   } else if (prefix == "osd crush get-tunable") {
     string tunable;
     cmd_getval(g_ceph_context, cmdmap, "tunable", tunable);
-    int value;
-    cmd_getval(g_ceph_context, cmdmap, "value", value);
     ostringstream rss;
     if (f)
       f->open_object_section("tunable");
@@ -3369,6 +3367,12 @@ stats_out:
     f->flush(rs);
     rs << "\n";
     rdata.append(rs.str());
+  } else if (prefix == "osd crush tree") {
+    boost::scoped_ptr<Formatter> f(Formatter::create(format, "json-pretty", "json-pretty"));
+    f->open_array_section("crush_map_roots");
+    osdmap.crush->dump_tree(f.get());
+    f->close_section();
+    f->flush(rdata);
   } else if (prefix == "osd erasure-code-profile ls") {
     const map<string,map<string,string> > &profiles =
       osdmap.get_erasure_code_profiles();
@@ -4525,8 +4529,13 @@ bool OSDMonitor::prepare_command_impl(MMonCommand *m,
     // sanity check: test some inputs to make sure this map isn't totally broken
     dout(10) << " testing map" << dendl;
     stringstream ess;
+    // XXX: Use mon_lease as a timeout value for crushtool.
+    // If the crushtool consistently takes longer than 'mon_lease' seconds,
+    // then we would consistently trigger an election before the command
+    // finishes, having a flapping monitor unable to hold quorum.
     CrushTester tester(crush, ess);
     int r = tester.test_with_crushtool(g_conf->crushtool,
+				       osdmap.get_max_osd(),
 				       g_conf->mon_lease);
     if (r < 0) {
       if (r == -EINTR) {
@@ -6109,6 +6118,19 @@ done:
     if (tier_stats.stats.sum.num_objects != 0 &&
 	force_nonempty != "--force-nonempty") {
       ss << "tier pool '" << tierpoolstr << "' is not empty; --force-nonempty to force";
+      err = -ENOTEMPTY;
+      goto reply;
+    }
+    if (tp->ec_pool()) {
+      ss << "tier pool '" << tierpoolstr
+	 << "' is an ec pool, which cannot be a tier";
+      err = -ENOTSUP;
+      goto reply;
+    }
+    if ((!tp->removed_snaps.empty() || !tp->snaps.empty()) &&
+	((force_nonempty != "--force-nonempty") ||
+	 (!g_conf->mon_debug_unsafe_allow_tier_with_nonempty_snaps))) {
+      ss << "tier pool '" << tierpoolstr << "' has snapshot state; it cannot be added as a tier without breaking the pool";
       err = -ENOTEMPTY;
       goto reply;
     }
