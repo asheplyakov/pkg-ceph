@@ -13,6 +13,7 @@ bash-completion.patch
 rbdmap1-mount.patch
 rbdmap2-hooks.patch
 bug-11860.patch
+CVE-2015-5245.patch
 boost-1.58.patch
 
 ## Debian
