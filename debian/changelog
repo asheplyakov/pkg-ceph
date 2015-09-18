@@ -1,3 +1,10 @@
+ceph (0.94.3-1) experimental; urgency=medium
+
+  * [580fef] Imported Upstream version 0.94.3 (Closes:  #777814, #795178)
+  * [536935] Add upstream patch to fix CVE-2015-5245 (Closes: #798567)
+
+ -- Gaudenz Steinlin <gaudenz@debian.org>  Fri, 18 Sep 2015 16:55:23 +0200
+
 ceph (0.94.2-2) experimental; urgency=medium
 
   * Revert "Drop virtualenv BD, disable unit tests."
