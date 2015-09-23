@@ -6,8 +6,7 @@ usr/bin/ceph_bench_log /usr/lib/ceph/bin
 usr/bin/ceph_dupstore /usr/lib/ceph/bin
 usr/bin/ceph_erasure_code /usr/lib/ceph/bin
 usr/bin/ceph_erasure_code_benchmark /usr/lib/ceph/bin
-usr/bin/ceph_filestore_dump /usr/lib/ceph/bin
-usr/bin/ceph_filestore_tool /usr/lib/ceph/bin
+usr/bin/ceph-objectstore-tool /usr/lib/ceph/bin
 usr/bin/ceph_kvstorebench /usr/lib/ceph/bin
 usr/bin/ceph_multi_stress_watch /usr/lib/ceph/bin
 usr/bin/ceph_omapbench /usr/lib/ceph/bin
