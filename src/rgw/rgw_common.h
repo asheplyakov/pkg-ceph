@@ -849,7 +849,7 @@ struct req_info {
 
   req_info(CephContext *cct, RGWEnv *_env);
   void rebuild_from(req_info& src);
-  void init_meta_info(bool *found_nad_meta);
+  void init_meta_info(bool *found_bad_meta);
 };
 
 /** Store all the state necessary to complete and respond to an HTTP request*/
@@ -863,7 +863,7 @@ struct req_state {
    string decoded_uri;
    string relative_uri;
    const char *length;
-   uint64_t content_length;
+   int64_t content_length;
    map<string, string> generic_attrs;
    struct rgw_err err;
    bool expect_cont;

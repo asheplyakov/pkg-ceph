@@ -1627,6 +1627,12 @@ void RGWPutObj::execute()
      */
     bool need_to_wait = (ofs == 0) && multipart;
 
+    bufferlist orig_data;
+
+    if (need_to_wait) {
+      orig_data = data;
+    }
+
     ret = put_data_and_throttle(processor, data, ofs, (need_calc_md5 ? &hash : NULL), need_to_wait);
     if (ret < 0) {
       if (!need_to_wait || ret != -EEXIST) {
@@ -1635,6 +1641,9 @@ void RGWPutObj::execute()
       }
 
       ldout(s->cct, 5) << "NOTICE: processor->throttle_data() returned -EEXIST, need to restart write" << dendl;
+
+      /* restore original data */
+      data.swap(orig_data);
 
       /* restart processing with different oid suffix */
 
@@ -1661,7 +1670,7 @@ void RGWPutObj::execute()
     ofs += len;
   } while (len > 0);
 
-  if (!chunked_upload && (uint64_t)ofs != s->content_length) {
+  if (!chunked_upload && ofs != s->content_length) {
     ret = -ERR_REQUEST_TIMEOUT;
     goto done;
   }
@@ -1895,11 +1904,24 @@ void RGWPutMetadata::execute()
     orig_attrs = s->bucket_attrs;
   }
 
-  /* only remove meta attrs */
   for (iter = orig_attrs.begin(); iter != orig_attrs.end(); ++iter) {
     const string& name = iter->first;
+    /* check if the attr is user-defined metadata item */
     if (name.compare(0, meta_prefix_len, meta_prefix) == 0) {
-      rmattrs[name] = iter->second;
+      if (!(s->object == NULL)) {
+        /* for the objects all existing meta attrs have to be removed */
+        rmattrs[name] = iter->second;
+      } else {
+        /* for the buckets all existing meta attrs are preserved,
+           except those that are listed in rmattr_names. */
+        if (rmattr_names.find(name) != rmattr_names.end()) {
+          map<string, bufferlist>::iterator aiter = attrs.find(name);
+          if (aiter != attrs.end()) {
+            attrs.erase(aiter);
+          }
+          rmattrs[name] = iter->second;
+        }
+      }
     } else if (attrs.find(name) == attrs.end()) {
       attrs[name] = iter->second;
     }

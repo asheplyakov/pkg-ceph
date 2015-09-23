@@ -829,8 +829,9 @@ bool OSDMonitor::preprocess_failure(MOSDFailure *m)
   }
 
   // already reported?
-  if (osdmap.is_down(badboy)) {
-    dout(5) << "preprocess_failure dup: " << m->get_target() << ", from " << m->get_orig_source_inst() << dendl;
+  if (osdmap.is_down(badboy) ||
+      osdmap.get_up_from(badboy) > m->get_epoch()) {
+    dout(5) << "preprocess_failure dup/old: " << m->get_target() << ", from " << m->get_orig_source_inst() << dendl;
     if (m->get_epoch() < osdmap.get_epoch())
       send_incremental(m, m->get_epoch()+1);
     goto didit;
@@ -1688,10 +1689,13 @@ void OSDMonitor::send_incremental(PaxosServiceMessage *req, epoch_t first)
     osd = req->get_source().num();
     map<int,epoch_t>::iterator p = osd_epoch.find(osd);
     if (p != osd_epoch.end()) {
-      dout(10) << " osd." << osd << " should have epoch " << p->second << dendl;
-      first = p->second + 1;
-      if (first > osdmap.get_epoch())
-	return;
+      if (first <= p->second) {
+	dout(10) << __func__ << " osd." << osd << " should already have epoch "
+		 << p->second << dendl;
+	first = p->second + 1;
+	if (first > osdmap.get_epoch())
+	  return;
+      }
     }
   }
 
@@ -2297,6 +2301,8 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
     string format;
     cmd_getval(g_ceph_context, cmdmap, "format", format, string("json-pretty"));
     boost::scoped_ptr<Formatter> f(new_formatter(format));
+    if (!f)
+      f.reset(new_formatter("json-pretty"));
 
     f->open_object_section("osd_location");
     f->dump_int("osd", osd);
@@ -2324,6 +2330,8 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
     string format;
     cmd_getval(g_ceph_context, cmdmap, "format", format, string("json-pretty"));
     boost::scoped_ptr<Formatter> f(new_formatter(format));
+    if (!f)
+      f.reset(new_formatter("json-pretty"));
     f->open_object_section("osd_metadata");
     r = dump_osd_metadata(osd, f.get(), &ss);
     if (r < 0)
