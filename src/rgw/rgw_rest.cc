@@ -76,10 +76,10 @@ string lowercase_underscore_http_attr(const string& orig)
   for (size_t i = 0; i < orig.size(); ++i, ++s) {
     switch (*s) {
       case '-':
-	buf[i] = '_';
-	break;
+        buf[i] = '_';
+        break;
       default:
-	buf[i] = tolower(*s);
+        buf[i] = tolower(*s);
     }
   }
   return string(buf);
@@ -98,10 +98,32 @@ string uppercase_underscore_http_attr(const string& orig)
   for (size_t i = 0; i < orig.size(); ++i, ++s) {
     switch (*s) {
       case '-':
-	buf[i] = '_';
-	break;
+        buf[i] = '_';
+        break;
       default:
-	buf[i] = toupper(*s);
+        buf[i] = toupper(*s);
+    }
+  }
+  return string(buf);
+}
+
+/*
+ * make attrs look-like-this
+ * converts underscores to dashes
+ */
+string lowercase_dash_http_attr(const string& orig)
+{
+  const char *s = orig.c_str();
+  char buf[orig.size() + 1];
+  buf[orig.size()] = '\0';
+
+  for (size_t i = 0; i < orig.size(); ++i, ++s) {
+    switch (*s) {
+      case '_':
+        buf[i] = '-';
+        break;
+      default:
+        buf[i] = tolower(*s);
     }
   }
   return string(buf);
@@ -122,15 +144,15 @@ string camelcase_dash_http_attr(const string& orig)
   for (size_t i = 0; i < orig.size(); ++i, ++s) {
     switch (*s) {
       case '_':
-	buf[i] = '-';
-	last_sep = true;
-	break;
+        buf[i] = '-';
+        last_sep = true;
+        break;
       default:
-	if (last_sep)
-	  buf[i] = toupper(*s);
-	else
-	  buf[i] = tolower(*s);
-	last_sep = false;
+        if (last_sep)
+          buf[i] = toupper(*s);
+        else
+          buf[i] = tolower(*s);
+        last_sep = false;
     }
   }
   return string(buf);
@@ -1218,10 +1240,21 @@ int RGWREST::preprocess(struct req_state *s, RGWClientIO *cio)
   url_decode(s->info.request_uri, s->decoded_uri);
   s->length = info.env->get("CONTENT_LENGTH");
   if (s->length) {
-    if (*s->length == '\0')
+    if (*s->length == '\0') {
       s->content_length = 0;
-    else
-      s->content_length = atoll(s->length);
+    } else {
+      string err;
+      s->content_length = strict_strtol(s->length, 10, &err);
+      if (!err.empty()) {
+        ldout(s->cct, 10) << "bad content length, aborting" << dendl;
+        return -EINVAL;
+      }
+    }
+  }
+
+  if (s->content_length < 0) {
+    ldout(s->cct, 10) << "negative content length, aborting" << dendl;
+    return -EINVAL;
   }
 
   map<string, string>::iterator giter;
