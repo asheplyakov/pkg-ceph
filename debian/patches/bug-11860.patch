@@ -1,0 +1,24 @@
+From 8af25faed93fe02d3dad585b8579ce8b041cc4e6 Mon Sep 17 00:00:00 2001
+From: Wido den Hollander <wido@42on.com>
+Date: Wed, 3 Jun 2015 13:13:33 +0200
+Subject: [PATCH] rgw: Do not enclose the Bucket header in quotes
+
+Fixes: #11860
+Signed-off-by: Wido den Hollander <wido@42on.com>
+---
+ src/rgw/rgw_rest.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/rgw/rgw_rest.cc b/src/rgw/rgw_rest.cc
+index 228eea9..fffc003 100644
+--- a/src/rgw/rgw_rest.cc
++++ b/src/rgw/rgw_rest.cc
+@@ -362,7 +362,7 @@ void dump_bucket_from_state(struct req_state *s)
+   int expose_bucket = g_conf->rgw_expose_bucket;
+   if (expose_bucket) {
+     if (!s->bucket_name_str.empty())
+-      s->cio->print("Bucket: \"%s\"\r\n", s->bucket_name_str.c_str());
++      s->cio->print("Bucket: %s\r\n", s->bucket_name_str.c_str());
+   }
+ }
+ 
