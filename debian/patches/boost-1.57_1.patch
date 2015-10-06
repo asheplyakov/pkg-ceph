@@ -1,0 +1,118 @@
+commit dd8c43b90e0243a6c994a80325c6203a8a4d07de
+Author: Petr Machata <pmachata@redhat.com>
+Date:   Thu Jan 29 10:15:02 2015 -0700
+
+    support Boost 1.57.0
+    
+    Sometime after 1.55, boost introduced a forward declaration of
+    operator<< in optional.hpp. In 1.55 and earlier, when << was used
+    without the _io having been included, what got dumped was an implicit
+    bool conversion.
+    
+    http://tracker.ceph.com/issues/10688 Refs: #10688
+    Signed-off-by: Ken Dreyer <kdreyer@redhat.com>
+
+diff --git a/src/common/map_cacher.hpp b/src/common/map_cacher.hpp
+index da79e82..03adc65 100644
+--- a/src/common/map_cacher.hpp
++++ b/src/common/map_cacher.hpp
+@@ -16,7 +16,7 @@
+ #define MAPCACHER_H
+ 
+ #include <boost/scoped_ptr.hpp>
+-#include <boost/optional.hpp>
++#include <boost/optional/optional_io.hpp>
+ #include "include/memory.h"
+ #include <set>
+ #include <map>
+diff --git a/src/include/encoding.h b/src/include/encoding.h
+index 434d158..120809c 100644
+--- a/src/include/encoding.h
++++ b/src/include/encoding.h
+@@ -286,7 +286,7 @@ inline void decode(T &o, bufferlist& bl)
+ #include <deque>
+ #include <vector>
+ #include <string>
+-#include <boost/optional.hpp>
++#include <boost/optional/optional_io.hpp>
+ 
+ #ifndef _BACKWARD_BACKWARD_WARNING_H
+ #define _BACKWARD_BACKWARD_WARNING_H   // make gcc 4.3 shut up about hash_*
+diff --git a/src/osd/ECBackend.cc b/src/osd/ECBackend.cc
+index 5235d4d..64cd74f 100644
+--- a/src/osd/ECBackend.cc
++++ b/src/osd/ECBackend.cc
+@@ -13,7 +13,7 @@
+  */
+ 
+ #include <boost/variant.hpp>
+-#include <boost/optional.hpp>
++#include <boost/optional/optional_io.hpp>
+ #include <iostream>
+ #include <sstream>
+ 
+diff --git a/src/osd/ECBackend.h b/src/osd/ECBackend.h
+index 28bcf8a..1702bed 100644
+--- a/src/osd/ECBackend.h
++++ b/src/osd/ECBackend.h
+@@ -18,7 +18,7 @@
+ #include "OSD.h"
+ #include "PGBackend.h"
+ #include "osd_types.h"
+-#include <boost/optional.hpp>
++#include <boost/optional/optional_io.hpp>
+ #include "erasure-code/ErasureCodeInterface.h"
+ #include "ECTransaction.h"
+ #include "ECMsgTypes.h"
+diff --git a/src/osd/ECTransaction.cc b/src/osd/ECTransaction.cc
+index c25023c..b95cdf7 100644
+--- a/src/osd/ECTransaction.cc
++++ b/src/osd/ECTransaction.cc
+@@ -13,7 +13,7 @@
+  */
+ 
+ #include <boost/variant.hpp>
+-#include <boost/optional.hpp>
++#include <boost/optional/optional_io.hpp>
+ #include <iostream>
+ #include <vector>
+ #include <sstream>
+diff --git a/src/osd/ECTransaction.h b/src/osd/ECTransaction.h
+index 7b104c7..fc31cde 100644
+--- a/src/osd/ECTransaction.h
++++ b/src/osd/ECTransaction.h
+@@ -19,7 +19,7 @@
+ #include "PGBackend.h"
+ #include "osd_types.h"
+ #include "ECUtil.h"
+-#include <boost/optional.hpp>
++#include <boost/optional/optional_io.hpp>
+ #include "erasure-code/ErasureCodeInterface.h"
+ 
+ class ECTransaction : public PGBackend::PGTransaction {
+diff --git a/src/osd/ReplicatedPG.h b/src/osd/ReplicatedPG.h
+index c8e1c4b..44ef20b 100644
+--- a/src/osd/ReplicatedPG.h
++++ b/src/osd/ReplicatedPG.h
+@@ -17,7 +17,7 @@
+ #ifndef CEPH_REPLICATEDPG_H
+ #define CEPH_REPLICATEDPG_H
+ 
+-#include <boost/optional.hpp>
++#include <boost/optional/optional_io.hpp>
+ #include <boost/tuple/tuple.hpp>
+ 
+ #include "include/assert.h" 
+diff --git a/src/osd/osd_types.h b/src/osd/osd_types.h
+index 2ff1f8c..4ecae8c 100644
+--- a/src/osd/osd_types.h
++++ b/src/osd/osd_types.h
+@@ -22,7 +22,7 @@
+ #include <stdio.h>
+ #include <memory>
+ #include <boost/scoped_ptr.hpp>
+-#include <boost/optional.hpp>
++#include <boost/optional/optional_io.hpp>
+ 
+ #include "include/rados/rados_types.hpp"
+ 
