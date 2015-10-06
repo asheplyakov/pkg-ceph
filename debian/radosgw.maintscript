@@ -1,0 +1,1 @@
+rm_conffile /etc/bash_completion.d/radosgw-admin 0.80.10-1~

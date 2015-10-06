@@ -1,5 +1,3 @@
-etc/bash_completion.d/rados
-etc/bash_completion.d/rbd
 usr/bin/ceph
 usr/bin/ceph-authtool
 usr/bin/ceph-conf
