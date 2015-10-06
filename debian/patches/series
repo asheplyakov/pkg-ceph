@@ -12,6 +12,7 @@ backfill-prio.patch
 bash-completion.patch
 rbdmap1-mount.patch
 rbdmap2-hooks.patch
+boost-1.58.patch
 
 ## Debian
 rbdmap3-lazyumount.patch
