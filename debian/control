@@ -8,14 +8,16 @@ Uploaders: Laszlo Boszormenyi (GCS) <gcs@debian.org>,
 Homepage: http://ceph.com/
 Vcs-Git: git://anonscm.debian.org/pkg-ceph/ceph.git
 Vcs-Browser: http://anonscm.debian.org/gitweb/?p=pkg-ceph/ceph.git
-Build-Depends: debhelper (>= 9~),
+Build-Depends: bash-completion,
+               debhelper (>= 9~),
                default-jdk,
                dh-autoreconf,
+               dh-python,
                dpkg-dev (>= 1.16.1~),
                javahelper,
                junit4,
                libaio-dev,
-               libatomic-ops-dev,
+               libatomic-ops-dev [!armel],
                libblkid-dev,
                libboost-dev,
                libboost-program-options-dev,

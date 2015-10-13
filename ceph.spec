@@ -9,7 +9,7 @@
 # common
 #################################################################################
 Name:		ceph
-Version:	0.80.9
+Version:	0.80.10
 Release:	0%{?dist}
 Summary:	User space components of the Ceph file system
 License:	GPL-2.0
@@ -449,8 +449,10 @@ fi
 %{_sbindir}/ceph-create-keys
 %{_sbindir}/rcceph
 %if 0%{?rhel} >= 7 || 0%{?fedora}
+%{_sbindir}/mkcephfs
 %{_sbindir}/mount.ceph
 %else
+/sbin/mkcephfs
 /sbin/mount.ceph
 %endif
 %dir %{_libdir}/ceph
@@ -485,6 +487,7 @@ fi
 %config %{_sysconfdir}/bash_completion.d/ceph
 %config(noreplace) %{_sysconfdir}/logrotate.d/ceph
 %config(noreplace) %{_sysconfdir}/logrotate.d/radosgw
+%{_mandir}/man8/ceph-disk.8*
 %{_mandir}/man8/ceph-mon.8*
 %{_mandir}/man8/ceph-mds.8*
 %{_mandir}/man8/ceph-osd.8*
@@ -706,8 +709,7 @@ ln -sf %{_libdir}/librbd.so.1 /usr/lib64/qemu/librbd.so.1
 %{_bindir}/ceph_smalliobenchdumb
 %{_bindir}/ceph_smalliobenchfs
 %{_bindir}/ceph_smalliobenchrbd
-%{_bindir}/ceph_filestore_dump
-%{_bindir}/ceph_filestore_tool
+%{_bindir}/ceph-objectstore-tool
 %{_bindir}/ceph_streamtest
 %{_bindir}/ceph_test_*
 %{_bindir}/ceph_tpbench

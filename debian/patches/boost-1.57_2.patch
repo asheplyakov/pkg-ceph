@@ -1,0 +1,38 @@
+commit fcac7ab6305dc3215fdcb46951fa9ee4cbf68ce3
+Author: William A. Kennington III <william@wkennington.com>
+Date:   Sat Sep 20 22:52:31 2014 -0700
+
+    osd: Cleanup boost optionals
+    
+    Signed-off-by: William A. Kennington III <william@wkennington.com>
+    (cherry picked from commit a53ead14c113047567177630b4906136a2109b65)
+
+diff --git a/src/osd/ECBackend.cc b/src/osd/ECBackend.cc
+index 39e3429..5235d4d 100644
+--- a/src/osd/ECBackend.cc
++++ b/src/osd/ECBackend.cc
+@@ -81,7 +81,7 @@ ostream &operator<<(ostream &lhs, const ECBackend::read_result_t &rhs)
+   lhs << "read_result_t(r=" << rhs.r
+       << ", errors=" << rhs.errors;
+   if (rhs.attrs) {
+-    lhs << ", attrs=" << rhs.attrs;
++    lhs << ", attrs=" << rhs.attrs.get();
+   } else {
+     lhs << ", noattrs";
+   }
+diff --git a/src/osd/ReplicatedPG.cc b/src/osd/ReplicatedPG.cc
+index c8fb01e..b04f8f4 100644
+--- a/src/osd/ReplicatedPG.cc
++++ b/src/osd/ReplicatedPG.cc
+@@ -5065,7 +5065,10 @@ void ReplicatedPG::do_osd_op_effects(OpContext *ctx)
+   for (list<OpContext::NotifyAck>::iterator p = ctx->notify_acks.begin();
+        p != ctx->notify_acks.end();
+        ++p) {
+-    dout(10) << "notify_ack " << make_pair(p->watch_cookie, p->notify_id) << dendl;
++    if (p->watch_cookie)
++      dout(10) << "notify_ack " << make_pair(p->watch_cookie.get(), p->notify_id) << dendl;
++    else
++      dout(10) << "notify_ack " << make_pair("NULL", p->notify_id) << dendl;
+     for (map<pair<uint64_t, entity_name_t>, WatchRef>::iterator i =
+ 	   ctx->obc->watchers.begin();
+ 	 i != ctx->obc->watchers.end();

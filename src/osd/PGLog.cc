@@ -557,7 +557,6 @@ void PGLog::merge_log(ObjectStore::Transaction& t,
   //  missing set, as that should already be consistent with our
   //  current log.
   if (olog.tail < log.tail) {
-    mark_dirty_to(log.log.begin()->version); // last clean entry
     dout(10) << "merge_log extending tail to " << olog.tail << dendl;
     list<pg_log_entry_t>::iterator from = olog.log.begin();
     list<pg_log_entry_t>::iterator to;
@@ -570,6 +569,10 @@ void PGLog::merge_log(ObjectStore::Transaction& t,
       dout(15) << *to << dendl;
     }
       
+    if (to == olog.log.end())
+      mark_dirty_to(oinfo.last_update);
+    else
+      mark_dirty_to(to->version);
     // splice into our log.
     log.log.splice(log.log.begin(),
 		   olog.log, from, to);
@@ -687,6 +690,32 @@ void PGLog::merge_log(ObjectStore::Transaction& t,
   }
 }
 
+void PGLog::check() {
+  if (!pg_log_debug)
+    return;
+  if (log.log.size() != log_keys_debug.size()) {
+    derr << "log.log.size() != log_keys_debug.size()" << dendl;
+    derr << "actual log:" << dendl;
+    for (list<pg_log_entry_t>::iterator i = log.log.begin();
+	 i != log.log.end();
+	 ++i) {
+      derr << "    " << *i << dendl;
+    }
+    derr << "log_keys_debug:" << dendl;
+    for (set<string>::const_iterator i = log_keys_debug.begin();
+	 i != log_keys_debug.end();
+	 ++i) {
+      derr << "    " << *i << dendl;
+    }
+  }
+  assert(log.log.size() == log_keys_debug.size());
+  for (list<pg_log_entry_t>::iterator i = log.log.begin();
+       i != log.log.end();
+       ++i) {
+    assert(log_keys_debug.count(i->get_key_name()));
+  }
+}
+
 void PGLog::write_log(
   ObjectStore::Transaction& t, const hobject_t &log_oid)
 {
@@ -796,6 +825,7 @@ void PGLog::_write_log(
     ::encode(divergent_priors, keys["divergent_priors"]);
   }
   ::encode(log.can_rollback_to, keys["can_rollback_to"]);
+  ::encode(log.rollback_info_trimmed_to, keys["rollback_info_trimmed_to"]);
 
   t.omap_rmkeys(coll_t::META_COLL, log_oid, to_remove);
   t.omap_setkeys(coll_t::META_COLL, log_oid, keys);
@@ -820,8 +850,11 @@ bool PGLog::read_log(ObjectStore *store, coll_t coll, hobject_t log_oid,
     rewrite_log = true;
   } else {
     log.tail = info.log_tail;
+
     // will get overridden below if it had been recorded
     log.can_rollback_to = info.last_update;
+    log.rollback_info_trimmed_to = eversion_t();
+
     ObjectMap::ObjectMapIterator p = store->get_omap_iterator(coll_t::META_COLL, log_oid);
     if (p) for (p->seek_to_first(); p->valid() ; p->next()) {
       bufferlist bl = p->value();//Copy bufferlist before creating iterator
@@ -833,6 +866,10 @@ bool PGLog::read_log(ObjectStore *store, coll_t coll, hobject_t log_oid,
 	bufferlist bl = p->value();
 	bufferlist::iterator bp = bl.begin();
 	::decode(log.can_rollback_to, bp);
+      } else if (p->key() == "rollback_info_trimmed_to") {
+	bufferlist bl = p->value();
+	bufferlist::iterator bp = bl.begin();
+	::decode(log.rollback_info_trimmed_to, bp);
       } else {
 	pg_log_entry_t e;
 	e.decode_with_checksum(bp);

@@ -1,0 +1,32 @@
+commit 2e09a2c22ab885f8ec81dbc55f2c8fc0f2984543
+Author: Sage Weil <sage@redhat.com>
+Date:   Wed Sep 23 17:06:52 2015 -0400
+
+    common/RWLock: include assert
+    
+    Fixes atomic_t build issue without libatomic-ops.
+    
+    Fixes: #13088
+    Signed-off-by: Sage Weil <sage@redhat.com>
+
+diff --git a/src/common/RWLock.h b/src/common/RWLock.h
+index 1a70ef1..308092c 100644
+--- a/src/common/RWLock.h
++++ b/src/common/RWLock.h
+@@ -19,6 +19,7 @@
+ 
+ #include <pthread.h>
+ #include "lockdep.h"
++#include "include/assert.h"
+ #include "include/atomic.h"
+ 
+ class RWLock
+@@ -26,7 +27,7 @@ class RWLock
+   mutable pthread_rwlock_t L;
+   const char *name;
+   mutable int id;
+-  mutable atomic_t nrlock, nwlock;
++  mutable ceph::atomic_t nrlock, nwlock;
+ 
+ public:
+   RWLock(const RWLock& other);

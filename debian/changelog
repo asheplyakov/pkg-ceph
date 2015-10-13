@@ -1,3 +1,28 @@
+ceph (0.80.10-2) unstable; urgency=medium
+
+  * [2d1482] Add upstream patch to fix building without libatomic-ops
+    (Closes: #801477)
+  * [4d408f] Remove build dependency on libatomic-ops-dev for armel
+
+ -- Gaudenz Steinlin <gaudenz@debian.org>  Mon, 12 Oct 2015 18:47:17 +0200
+
+ceph (0.80.10-1) unstable; urgency=medium
+
+  * [469085] Imported Upstream version 0.80.10
+  * [3d6549] Refresh backfill-prio.patch
+  * [c8b478] Add upstream patch to fix compiling with boost 1.58
+    (Closes: #795178)
+  * [6fc46b] Add bug-11860.patch to fix quotes in bucket header for rgw
+  * [d3c87f] Add upstream patch to fix CVE-2015-5245 (Closes: #798567)
+  * [d29942] ceph-test: ceph_filestore_dump and ceph_filestore_tool
+    replaced by ceph-objectstore-tool
+  * [ad1248] Add upstream patches to fix compiling with boost 1.57
+  * [186e1e] Use dh_bash-completion to install bash completions
+  * [901a83] Remove no longer needed check for dh-autoreconf>=6
+  * [b5feba] Add build dependency on dh-python
+
+ -- Gaudenz Steinlin <gaudenz@debian.org>  Wed, 07 Oct 2015 11:54:58 +0200
+
 ceph (0.80.9-2~bpo8+1) jessie-backports; urgency=medium
 
   * Rebuild for jessie-backports.
