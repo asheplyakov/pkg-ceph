@@ -1,0 +1,22 @@
+# this is not needed by the newer udev rules
+# it's only relevant to udev/95-ceph-osd-alt.rules
+# which is not installed on Debian
+debian/tmp/usr/sbin/ceph-disk-udev
+# These plugins are also not installed by the ceph.com
+# Debian package and there is no documentation about
+# what they are used for
+debian/tmp/usr/lib/x86_64-linux-gnu/ceph/compressor/libceph_zlib.a
+debian/tmp/usr/lib/x86_64-linux-gnu/ceph/compressor/libceph_zlib.so.2.0.0
+debian/tmp/usr/lib/x86_64-linux-gnu/ceph/compressor/libceph_zlib.so
+debian/tmp/usr/lib/x86_64-linux-gnu/ceph/compressor/libceph_zlib.so.2
+debian/tmp/usr/lib/x86_64-linux-gnu/ceph/compressor/libceph_example.so.0.0.0
+debian/tmp/usr/lib/x86_64-linux-gnu/ceph/compressor/libceph_example.so.0
+debian/tmp/usr/lib/x86_64-linux-gnu/ceph/compressor/libceph_snappy.so
+debian/tmp/usr/lib/x86_64-linux-gnu/ceph/compressor/libceph_snappy.so.2.0.0
+debian/tmp/usr/lib/x86_64-linux-gnu/ceph/compressor/libceph_snappy.so.2
+debian/tmp/usr/lib/x86_64-linux-gnu/ceph/compressor/libceph_example.a
+debian/tmp/usr/lib/x86_64-linux-gnu/ceph/compressor/libceph_example.so
+debian/tmp/usr/lib/x86_64-linux-gnu/ceph/compressor/libceph_snappy.a
+# ceph-deploy is another source package, not much point
+# in installing this manpage
+debian/tmp/usr/share/man/man8/ceph-deploy.8

@@ -65,13 +65,13 @@ override_dh_auto_clean:
 	dh_auto_clean
 	rm -fv debian/*.upstart
 
-override_dh_auto_install:
-	dh_auto_install --destdir=$(CURDIR)/debian/tmp
+override_dh_install:
 	# NOTE: ensure that any versioned erasure coding test code is dropped
 	#       from the package install - package ships unversioned modules.
 	rm -f $(CURDIR)/debian/tmp/usr/lib/*/ceph/erasure-code/libec_*.so.*
 	find $(CURDIR)/debian/tmp/usr/lib/*/ceph/erasure-code -type l -delete || :
 	install -D -m 644 src/etc-rbdmap $(CURDIR)/debian/tmp/etc/ceph/rbdmap
+	dh_install --fail-missing
 
 override_dh_installinit:
 	dh_installinit --no-start
