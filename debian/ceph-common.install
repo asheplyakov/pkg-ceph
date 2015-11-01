@@ -4,6 +4,7 @@ etc/ceph/rbdmap
 udev/50-rbd.rules /lib/udev/rules.d
 usr/bin/ceph
 usr/bin/ceph-authtool
+usr/bin/ceph-brag
 usr/bin/ceph-conf
 usr/bin/ceph-crush-location
 usr/bin/ceph-dencoder
