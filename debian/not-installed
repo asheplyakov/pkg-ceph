@@ -1,3 +1,9 @@
+# files installed by jh_installlib
+debian/tmp/usr/share/java/libcephfs.jar
+debian/tmp/usr/share/java/libcephfs-test.jar
+# There is currently no -dev package for libcephfs-jni,
+# so the static library is not needed
+debian/tmp/usr/lib/x86_64-linux-gnu/libcephfs_jni.a
 # this is not needed by the newer udev rules
 # it's only relevant to udev/95-ceph-osd-alt.rules
 # which is not installed on Debian

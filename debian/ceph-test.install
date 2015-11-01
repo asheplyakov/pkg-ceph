@@ -24,4 +24,3 @@ usr/bin/ceph_test_* /usr/lib/ceph/bin
 usr/bin/ceph_tpbench /usr/lib/ceph/bin
 usr/bin/ceph_xattr_bench /usr/lib/ceph/bin
 usr/lib/*/ceph/ceph-monstore-update-crush.sh /usr/lib/ceph
-usr/share/java/libcephfs-test.jar
