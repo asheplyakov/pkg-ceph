@@ -1,6 +1,5 @@
 ## Backported / Upstream
 sleep-recover.patch
-CVE-2015-5245.patch
 
 ## Debian
 rbdmap3-lazyumount.patch
