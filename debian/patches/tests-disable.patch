@@ -23,7 +23,7 @@ Description: disable tests that depend on network...
  check_SCRIPTS += test/ceph-disk-root.sh
 --- a/configure.ac
 +++ b/configure.ac
-@@ -1147,6 +1147,13 @@ AC_LANG_POP([C++])
+@@ -1181,6 +1181,13 @@ AC_LANG_POP([C++])
  
  AM_CONDITIONAL(WITH_BUILD_TESTS, test "$WITH_BUILD_TESTS" = "1")
  

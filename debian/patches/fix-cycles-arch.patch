@@ -6,8 +6,8 @@ Forwarded: no
 
 --- a/src/common/Cycles.cc
 +++ b/src/common/Cycles.cc
-@@ -52,6 +52,10 @@ void Cycles::init()
-   if (cycles_per_sec != 0)
+@@ -56,6 +56,10 @@ void Cycles::init()
+   if (rdtsc() == 0)
      return;
  
 +  // Skip initialization if rtdsc is not implemented
