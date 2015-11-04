@@ -1,10 +1,219 @@
-95cefea (HEAD, tag: v0.94.3) 0.94.3
+9764da5 (HEAD, tag: v0.94.5) 0.94.5
+250dc07 osd/ReplicatedPG: remove stray debug line
+d3abcbe librbd: potential assertion failure during cache read
+991d0f0 tests: reproduce crash during read-induced CoW
+51f3d6a qa: Use public qemu repo
+9529269 (tag: v0.94.4) 0.94.4
+b203979 use git://git.ceph.com
+0f4ef19 qa: http://ceph.com/qa -> http://download.ceph.com/qa
+294f016 (origin/wip-13227-hammer) init-radosgw.sysv: remove
+698d75c (origin/wip-13410-hammer) tests: robust test for the pool create crushmap test
+2a28114 (origin/wip-13401-hammer) crush/CrushTester: test fewer inputs when running crushtool
+abc5b5f tests: update to match crushmap validation message
+25bd277 mon/OSDMonitor: fix crush injection error message
+6635530 mon/OSDMonitor: only test crush ruleset for the newly created pool
+cc1fedd crush/CrushTester: allow testing by ruleset
+3228161 qa/workunits/cephtool/test.sh: don't assume crash_replay_interval=45
+ad83304 rgw:add --reset-regions for regionmap update
+7de65e7 rgw : setting max number of buckets for users via ceph.conf option
+297c04d rgw: init_rados failed leads to repeated delete
+4b0686f rgw: delete finisher only after finalizing watches
+6119b15 rgw: be more flexible with iso8601 timestamps
+607904e init-radosgw: specify pid file to start-stop-daemon
+f51ab26 rgw: fix radosgw start-up script.
+544a98f init-radosgw: unify init-radosgw[.sysv]
+2a733e9 init-radosgw: look in /var/lib/ceph/radosgw
+d00c52b doc: rgw: fix typo in comments
+eb001d3 rgw: init script waits until the radosgw stops
+9ab9c44 rgw: don't read actual data on user manifest HEAD
+9026c4a doc: remove mention of ceph-extra as a requirement
+45ed24d doc: remove ceph-extras
+faccdce doc: correct links to download.ceph.com
+e9f4aec doc: Added "Hammer" in the list of major releases.
+424fc1c rgw: set default value for env->get() call
+e72bdc3 osd/ReplicatedPG: tolerate promotion completion with stopped agent
+a3afb3f rgw: remove trailing :port from host for purposes of subdomain matching
+77cb503 (origin/wip-13015-hammer) rgw: preserve all attrs if intra-zone copy
+b9f2ed3 rgw: don't preserve acls when copying object
+b3822f1 upstart: limit respawn to 3 in 30 mins (instead of 5 in 30s)
+0d6a8c6 Pipe: Drop connect_seq increase line
+4be8a28 osd/PG: peek_map_epoch: skip legacy PGs if infos object is missing
+f237ed9 osd: allow peek_map_epoch to return an error
+3a50b90 crypto: fix unbalanced ceph::crypto::init/ceph::crypto:shutdown
+0a5b856 ReplicatedPG,Objecter: copy_get should include truncate_seq and size
+82ea02a rgw: fix assignment of copy obj attributes
+3b2affc rgw: add delimiter to prefix only when path is specified
+9f69660 tests: tiering agent and proxy read
+5656eec osd: trigger the cache agent after a promotion
+dc693fc lockdep: allow lockdep to be dynamically enabled/disabled
+805732b tests: librbd API test cannot use private md_config_t struct
+7ac0173 tests: ensure old-format RBD tests still work
+b68d757 librados_test_stub: implement conf get/set API methods
+f0fa637 crypto: use NSS_InitContext/NSS_ShutdownContex to avoid memory leak
+3f542aa auth: use crypto_init_mutex to protect NSS_Shutdown()
+e487e8e auth: reinitialize NSS modules after fork()
+00e73ad librbd: prevent race condition between resize requests
+6c4ccc8 librbd: Add a paramter:purge_on_error in ImageCtx::invalidate_cache().
+0573491 librbd: Remvoe unused func ImageCtx::read_from_cache.
+28838f2 osdc: clean up code in ObjectCacher::Object::map_write
+5c4f152 osdc: Don't pass mutex into ObjectCacher::_wait_for_write.
+86e7698 osdc: After write try merge bh.
+c96541a osdc: Make last missing bh to wake up the reader.
+4135b9a osdc: For trust_enoent is true, there is only one extent.
+81376b6 osdc: In _readx() only no error can tidy read result.
+e80bd0a (origin/wip-12859-hammer-loic) rgw: send Content-Length in response for GET on Swift account.
+2e54245 rgw: force content_type for swift bucket stats request
+5d57b63 rgw: we should not overide Swift sent content type
+b8aafbc rgw: enforce Content-Type in Swift responses.
+143cfc3 rgw: force content-type header for swift account responses without body
+b5420d6 rgw: shouldn't return content-type: application/xml if content length is 0
+836f763 OSD: break connection->session->waiting message->connection cycle
+77624af osd/PGLog: dirty_to is inclusive
+aa00373 common: fix code format
+aab35da test: add test case for insert empty ptr when buffer rebuild
+2b0b7ae common: fix insert empty ptr when bufferlist rebuild
+2348a5b osd: copy the RecoveryCtx::handle when creating a new RecoveryCtx instance from another one
+bf72785 config: skip lockdep for intentionally recursive md_config_t lock
+c94fd92 osd: Keep a reference count on Connection while calling send_message()
+059bf98 WBThrottle::clear_object: signal if we cleared an object
+a478385 ceph-disk: always check zap is applied on a full device
+e471c5d librados: Make librados pool_create respect default_crush_ruleset
+35fa47a (origin/wip-corpus-hammer) ceph-object-corpus: add 0.94.2-207-g88e7ee7 hammer objects
+b80859e (origin/wip-11455-hammer) rgw: init some manifest fields when handling explicit objs
+f47ba4b mon: test the crush ruleset when creating a pool
+b58cbba erasure-code: set max_size to chunk_count() instead of 20 for shec
+6f0af18 vstart.sh: set PATH to include pwd
+da00bed rgw: rework X-Trans-Id header to be conform with Swift API.
+9937c81 Transaction Id added in response
+f1c7c62 rgw: api adjustment following a rebase
+85911df rgw: orphans, fix check on number of shards
+c1cf7df rgw: orphans, change default number of shards
+bb1d4cc rgw: change error output related to orphans
+2e0f6fe rgw: orphan, fix truncated detection
+1bfebef radosgw-admin: simplify orphan command
+f244b15 radosgw-admin: stat orphan objects before reporting leakage
+f80e2b2 radosgw-admin: orphans finish command
+88d32c6 rgw: cannot re-init an orphan scan job
+80a4034 rgw: stat_async() sets the object locator appropriately
+0082036 rgw: list_objects() sets namespace appropriately
+1c37072 rgw: modify orphan search fingerprints
+ef81367 rgw: compare oids and dump leaked objects
+f4d0544 rgw: keep accurate state for linked objects orphan scan
+748ea57 rgw: iterate over linked objects, store them
+6c6aa5d rgw: add rgw_obj::parse_raw_oid()
+62d562d rgw: iterate asynchronously over linked objects
+00ecf2d rgw: async object stat functionality
+7d1cc48 rgw-admin: build index of bucket indexes
+c1b0e7a rgw: initial work of orphan detection tool implementation
+b16129c Avoid an extra read on the atomic variable
+1f6916d RGW: Make RADOS handles in RGW to be a configurable option
+a13c7fd rgw:the arguments 'domain' should not be assigned when return false
+6acf36f rgw:segmentation fault when rgw_gc_max_objs > HASH_PRIME
+6b36514 rgw: avoid using slashes for generated secret keys
+8ba6b2f rgw: url encode exposed bucket
+0bc909e (origin/wip-12638-hammer) mon: add a cache layer over MonitorDBStore
+bee8666 Objecter: pg_interval_t::is_new_interval needs pgid from previous pool
+b5418b9 osd_types::is_new_interval: size change triggers new interval
+f028389 (origin/liewegas-wip-hammer-feature-hammer) include/ceph_features: define HAMMER_0_94_4 feature
+95cefea (tag: v0.94.3) 0.94.3
 81a311a (origin/hammer-12709) Workunits : fs/misc/chmod.sh : Include ACL characters in permission check.
+153744d (origin/wip-12682-hammer) tests: increase test coverage for partial encodes/decodes
+fca7876 common: bit_vector extent calculation incorrect for last page
+3396a96 osd/OSDMap: handle incrementals that modify+del pool
+3ab5d82 (origin/wip-12432-hammer) rgw: set http status in civetweb
+10a0383 civetweb: update submodule to support setting of http status
+00d802d hobject_t: fix get_boundary to work with new sorting regime
+9b91adc (origin/wip-osd-compat-hammer) mon: disallow post-hammer OSDs if there are up pre-hammer OSDs
+8a559c1 include/ceph_features: define MON_METADATA feature
+4faa8e0 (origin/wip-12577-hammer) osd: include newlines in scrub errors
+455eb2a osd: fix condition for loggin scrub errors
+67e7946 osd: fix fallback logic; move into be_select_auth_object
+0f57c70 osd: log a scrub error when we can't pick an auth object
+d4f4c5c osd: repair record digest if all replicas match but do not match
+acfed6b osd: move recorded vs on disk digest warning into be_compare_scrubmaps
+674029b osd: be slightly paranoid about value of okseed
+f2002b7 osd: be precise about "known" vs "best guess"
+4e5d146 osd: record digest if object is clean (vs entire scrub chunk)
+1357ed1 hobject_t: decode future hobject_t::get_min() properly
+6d01d6b OSDMonitor::preprocess_get_osdmap: send the last map as well
 2ecb3b7 Fh ref count will leak if readahead does not need to do read from osd
 4c199bf (origin/wip-11998-hammer) debian/control: ceph-common (>> 0.94.2) must be >= 0.94.2-2
+a785193 ceph.spec.in: drop SUSE-specific %py_requires macro
+8804b3f ceph.spec.in: remove SUSE-specific apache2-mod_fcgid dependency
+b575ecc (origin/wip-12236-hammer) tests: verify that image shrink properly handles flush op
+d4eb7bd librbd: invalidate cache outside cache callback context
+92272dd (origin/wip-12235-hammer) librbd: don't cancel request lock early
+58ae92f tests: new test for transitioning exclusive lock
+7b21ccb tests: verify that librbd will periodically resend lock request
+c95b37f common: Mutex shouldn't register w/ lockdep if disabled
+117205a librbd: improve debugging output for ImageWatcher
+08ae012 librados_test_stub: watcher id should be the instance id (gid)
+704c0e0 librbd: retry lock requests periodically until acquired
+dbaaed9 librbd: don't hold owner_lock for write during flush
+e971820 (origin/wip-12345-hammer) lockdep: do not automatically collect all backtraces
+27f7042 librbd: flush operations need to acquire owner lock
+5b39983 librbd: avoid infinite loop if copyup fails
+88b583b librbd: flush pending ops while not holding lock
+a88b180 tests: fix possible deadlock in librbd ImageWatcher tests
+321eb8d tests: enable lockdep for librbd unit tests
+bfe5b90 librbd: owner_lock should be held during flush request
+1e84fb0 osdc: ObjectCacher flusher might needs additional locks
+506a45a librbd: fix recursive locking issues
+acf5125 librbd: simplify state machine handling of exclusive lock
+9454f04 librbd: ObjectMap::aio_update can acquire snap_lock out-of-order
+3e0358e librbd: move copyup class method call to CopyupRequest
+2ee64a8 librbd: simplify AioRequest constructor parameters
+3e71a75 librbd/AioRequest.h: fix UNINIT_CTOR
+cb57fe5 librbd: add object state accessor to ObjectMap
+9249ab7 librbd: AsyncObjectThrottle should always hold owner_lock
+26902b9 librbd: execute flush completion outside of cache_lock
+571220d librbd: add AsyncRequest task enqueue helper method
+8e280f4 librbd: disable lockdep on AioCompletion
+b38da48 librbd: AioCompletion shouldn't hold its lock during callback
+6fdd3f1 librbd: give locks unique names to prevent false lockdep failures
+7004149 librbd: complete cache read in a new thread context
+65ef695 librbd: require callers to ObjectMap::aio_update to acquire lock
+58b8faf log: fix helgrind warnings regarding possible data race
+a5203d3 librados_test_stub: fix helgrind warnings
+b73e87e librados_test_stub: add support for flushing watches
+2fa35b1 common: lockdep now support unregistering once destructed
+7b85c7b common: add valgrind.h convenience wrapper
+6d3db5f librbd: add work queue for op completions
+64425e8 WorkQueue: ContextWQ can now accept a return code
+eccf369 packaging: RGW depends on /etc/mime.types
 e19f928 (origin/wip-12502-hammer) rgw: conversion tool to fix broken multipart objects
 28d32f6 rgw: only scan for objects not in namespace
 e22e2b4 rgw_admin: add --remove-bad flag to bucket check
+7bddf5d   rest_bench: bucketname is not mandatory as we have a default name
+6e7358b   rest_bench: drain the work queue to fix a crash   Fixes: #3896   Signed-off-by: huangjun <hjwsm1989@gmail.com>
+1e05578 auth: check return value of keyring->get_secret
+256620e Client: check dir is still complete after dropping locks in _readdir_cache_cb
+8a2ad05 TestPGLog: fix invalid proc_replica_log test caes
+df71e6b TestPGLog: fix noop log proc_replica_log test case
+549ff9a TestPGLog: add test for 11358
+c224fc7 PGLog::proc_replica_log: handle split out overlapping entries
+b8176d0 Mutex: fix leak of pthread_mutexattr
+43a72e4 mon/PGMonitor: bug fix pg monitor get crush rule
+0ca93db mon: ceph osd map shows NONE when an osd is missing
+695f782 crush/CrushWrapper: fix adjust_subtree_weight debug
+0bd4c81 crush/CrushWrapper: return changed from adjust_subtree_weight
+05fc59b crush/CrushWrapper: adjust subtree base in adjust_subtree_weight
+d2f31ad unittest_crush_wrapper: test adjust_subtree_weight
+0ccdf34 unittest_crush_wrapper: attach buckets to root in adjust_item_weight test
+1e73753 unittest_crush_wrapper: parse env
+cd11b88 osd: pg_interval_t::check_new_interval should not rely on pool.min_size to determine if the PG was active
+c5f0e22 osd: Move IsRecoverablePredicate/IsReadablePredicate to osd_types.h
+42bff0b mon: OSDMonitor: fix hex output on 'osd reweight'
+e004941 ceph.in: print more detailed warning for 'ceph <type> tell'
+f18900f ceph.in: print more detailed error message for 'tell' command
+9916d37   mon/PGMonitor: avoid uint64_t overflow when checking pool 'target/max' status.   Fixes: #12401
+4457d3e Update OSDMonitor.cc
+add0f1e ceph.in: do not throw on unknown errno
+fa19474 os/chain_xattr: handle read on chnk-aligned xattr
+931ffe3 common/Cycles.cc: skip initialization if rdtsc is not implemented
+0fde3a2 buffer: Fix bufferlist::zero bug with special case
+dabc611 UnittestBuffer: Add bufferlist zero test case
+d08db7a (origin/wip-11470.hammer) mon: PaxosService: call post_refresh() instead of post_paxos_update()
 154f18c (origin/wip-12465-hammer) Log::reopen_log_file: take m_flush_mutex
 b872882 (origin/wip-12237-hammer) librados_test_stub: read op should return number of bytes read
 7d9fce3 tests: fixed TestObjectMap.InvalidateFlagInMemoryOnly
@@ -31,6 +240,8 @@ fe013e0 librbd: TaskFinisher should finish all queued tasks
 13f926e librados_test_stub: cleanup singleton memory allocation
 1063f52 PG::find_best_info: ignore info.les for incomplete peer
 7132277 Conditional-compile against minimal tcmalloc.
+0818e9f ceph.spec.in: snappy-devel for all supported distros
+8b576bd ceph.spec.in: python-argparse only in Python 2.6
 ad5745b OSD: add command_wq suicide timeout
 059a579 OSD: add remove_wq suicide timeout
 b8826bc OSD: add scrub_wq suicide timeout
@@ -46,8 +257,13 @@ ec70533 rgw: error out if frontend did not send all data
 b1618a9 rgw: fix lack of account name in XML listing of Swift account.
 e39dce7 rgw: generate the "Date" HTTP header for civetweb.
 a5dbcbb Swift: Set Content-Length when requesting/checking Keystone tokens
+cdde626 ceph.spec.in: do not run fdupes, even on SLE/openSUSE
 3c8cdea client: reference counting 'struct Fh'
 c78cc00 rgw: rectify 202 Accepted in response for PUT on existing bucket.
+6417e8e rpm: add missing Java conditionals
+3728477 Add rpm conditionals : cephfs_java
+8f78001 ceph.spec.in: SUSE/openSUSE builds need libbz2-devel
+4eb58ad ceph.spec.in: use _udevrulesdir to eliminate conditionals
 7f1c0cc crush/CrushTester: return EINVAL if crushtool returns non-zero
 2aaeea1 tests: TEST_crush_reject_empty must not run a mon
 80afb81 ceph-helpers: implement test_expect_failure
@@ -1860,7 +2076,7 @@ e8e27a8 (origin/wip-10296) unittest_blkdev: test an abbreviated /sys/block dir
 5e454a8 common/blkdev: add simple sandboxing function for testing
 9b26de3 ReplicatedPG: fail a non-blocking flush if the object is being scrubbed
 dce6f28 ReplicatedPG::scan_range: an object can disappear between the list and the attr get
-6110220 (origin/wip-aarch64) debian: enable libgoogle-perftools-dev on arm64
+6110220 debian: enable libgoogle-perftools-dev on arm64
 2246dca common/blkdev: fix block device discard check
 25e3783 common/blkdev: get_block_device_base
 beaa04e mon: MonitorDBStore: allow randomly injecting random delays on writes
@@ -4741,7 +4957,7 @@ f31e4c8 (origin/wip-da-update-libs3) libs3: update to latest git master of ceph/
 23b657c Remove unused variables in KeyValueStore.cc
 307ba48 Remove unused variables in MemStore.cc
 5185a36 (origin/wip-autotools-dummy) automake: add dummy.cc to fix 'make tags'
-35509d2 bloom_filter, add test to validate assignement operator
+35509d274 bloom_filter, add test to validate assignement operator
 c50f85e bloom_filter, remove unecessary operators
 90cc6dd bloom_filter, add assertion to test validate element_count()
 c323c5b Fix keyvaluestore fiemap bug
@@ -18599,7 +18815,7 @@ dd31ff2 doc: add short section on documenting code
 590520c doc: fix rados_version todo formatting
 50c9cb1 doc: add a prefix to group names in librados.h
 d9d9e6d doc: Put rados_ioctx_locator_set_key in a group so it can be cross-referenced
-b464b75 doc: move rados_ioctx_get_id to the pool group
+b464b757 doc: move rados_ioctx_get_id to the pool group
 b148bef doc: fix some typos in librados C API
 c960641 doc: Switch doxygen integration from breathe to asphyxiate.
 78cc07f librados: Avoid using "crush_rule" as name of function argument.
@@ -20812,7 +21028,7 @@ cbeedeb proflogger: Unlink our UNIX domain sockets on exit
 adafec4 test/proflogger.cc: read length of message first
 f8b4aa3 ProfLogger: write out length of message first
 325951d test/proflogger: Add TeardownSetup and SimpleTest
-134a680 Add test/proflogger.cc, fix ProfLogger::init()
+134a680a Add test/proflogger.cc, fix ProfLogger::init()
 5517b8f Rework ProfLogger
 6424149 osd: remove unused variables
 d07c480 mon: remove unused variables
@@ -22037,7 +22253,7 @@ e37878e mds: fix discover tid assignment
 6025dee osd: move watch/notify effects out of do_osd_ops
 0aeab99 obsync: implement RadosStore
 ccf11fb osd: mention invalid snapc in log
-896de0ac osd: include (some) osd op flags in MOSDOp print method
+896de0a osd: include (some) osd op flags in MOSDOp print method
 b08ee2c osd: add RWORDERED osd op flag
 a44065d radostool: fix getxattr / setxattr return code
 9c2f0f0 rbd: make showmapped output a bit prettier
@@ -22604,7 +22820,7 @@ cae43fc Makefile: drop libradosgw_a LDFLAGS
 32fce3c rados_create: correctly handle null id
 f06f4ee librados: always call keyring_init in connect
 586fc66 librados: don't call keyring_init in init_internal
-9e1828a objecter: make response_data bufferlist static
+9e1828af objecter: make response_data bufferlist static
 251fd50 rados_create_internal calls keyring_init
 c548976 rados_create: set id based on parameter
 b1c3321 librados: add rados_create_internal
@@ -25099,7 +25315,7 @@ b01cc38 rgw: set default log level to 20
 6bd40ac qa: consistent snaptest-%d.sh naming
 9127cd9 mds: fix uninitialized LeaseStat for null lease
 5c714bf osd: log when we get marked down but aren't
-7fbe165 debug: no name symlink when explicit --log-file
+7fbe1655 debug: no name symlink when explicit --log-file
 3de9c8d client: some whitespace cleanup
 8195899 qa: add localized version of Thomas Mueller's snaptest-2.sh
 2d35d24 rgw: exit after 5 seconds from SIGUSR1 anyway
@@ -26693,7 +26909,7 @@ ba515fe mkcephfs: generate cephx keys during mkfs
 329178d mount: set flags when getting -o sync
 6ea3030 mds: fix dumpcache
 6285b61 authtool: only create keyring if --create-keyring (or -c)
-f40957e config: rename 'keys file' to 'keyring'
+f40957eb config: rename 'keys file' to 'keyring'
 3ebf9a4 filestore: optionally checkpoint with snaps
 5bdb348 journal: make sure max_size is multiple of block_size
 54898b3 mds: print setattr'd values with MClientRequest

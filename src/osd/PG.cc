@@ -694,6 +694,8 @@ void PG::generate_past_intervals()
       pgid = pgid.get_ancestor(last_map->get_pg_num(pgid.pool()));
     cur_map->pg_to_up_acting_osds(pgid, &up, &up_primary, &acting, &primary);
 
+    boost::scoped_ptr<IsPGRecoverablePredicate> recoverable(
+      get_is_recoverable_predicate());
     std::stringstream debug;
     bool new_interval = pg_interval_t::check_new_interval(
       old_primary,
@@ -709,6 +711,7 @@ void PG::generate_past_intervals()
       cur_map,
       last_map,
       pgid,
+      recoverable.get(),
       &past_intervals,
       &debug);
     if (new_interval) {
@@ -1336,7 +1339,7 @@ bool PG::choose_acting(pg_shard_t &auth_log_shard_id)
   }
 
   /* Check whether we have enough acting shards to later perform recovery */
-  boost::scoped_ptr<PGBackend::IsRecoverablePredicate> recoverable_predicate(
+  boost::scoped_ptr<IsPGRecoverablePredicate> recoverable_predicate(
     get_pgbackend()->get_is_recoverable_predicate());
   set<pg_shard_t> have;
   for (int i = 0; i < (int)want.size(); ++i) {
@@ -2805,9 +2808,10 @@ bool PG::_has_removal_flag(ObjectStore *store,
   return false;
 }
 
-epoch_t PG::peek_map_epoch(ObjectStore *store,
-			   spg_t pgid,
-			   bufferlist *bl)
+int PG::peek_map_epoch(ObjectStore *store,
+		       spg_t pgid,
+		       epoch_t *pepoch,
+		       bufferlist *bl)
 {
   coll_t coll(pgid);
   hobject_t legacy_infos_oid(OSD::make_infos_oid());
@@ -2852,7 +2856,8 @@ epoch_t PG::peek_map_epoch(ObjectStore *store,
       return 0;
     if (struct_v < 6) {
       ::decode(cur_epoch, bp);
-      return cur_epoch;
+      *pepoch = cur_epoch;
+      return 0;
     }
 
     // get epoch out of leveldb
@@ -2861,13 +2866,19 @@ epoch_t PG::peek_map_epoch(ObjectStore *store,
     values.clear();
     keys.insert(ek);
     store->omap_get_values(META_COLL, legacy_infos_oid, keys, &values);
-    assert(values.size() == 1);
+    if (values.size() < 1) {
+      // see #13060: this suggests we failed to upgrade this pg
+      // because it was a zombie and then removed the legacy infos
+      // object.  skip it.
+      return -1;
+    }
     bufferlist::iterator p = values[ek].begin();
     ::decode(cur_epoch, p);
   } else {
     assert(0 == "unable to open pg metadata");
   }
-  return cur_epoch;
+  *pepoch = cur_epoch;
+  return 0;
 }
 
 #pragma GCC diagnostic pop
@@ -4189,9 +4200,14 @@ void PG::scrub_compare_maps()
       maps[*i] = &scrubber.received_maps[*i];
     }
 
+    // can we relate scrub digests to oi digests?
+    bool okseed = (get_min_peer_features() & CEPH_FEATURE_OSD_OBJECT_DIGEST);
+    assert(okseed == (scrubber.seed == 0xffffffff));
+
     get_pgbackend()->be_compare_scrubmaps(
       maps,
-      scrubber.seed == 0xffffffff,  // can we relate scrub digests to oi digests?
+      okseed,
+      state_test(PG_STATE_REPAIR),
       scrubber.missing,
       scrubber.inconsistent,
       authoritative,
@@ -4202,7 +4218,7 @@ void PG::scrub_compare_maps()
       ss);
     dout(2) << ss.str() << dendl;
 
-    if (!authoritative.empty()) {
+    if (!ss.str().empty()) {
       osd->clog->error(ss);
     }
 
@@ -4737,6 +4753,8 @@ void PG::start_peering_interval(
     info.history.same_interval_since = osdmap->get_epoch();
   } else {
     std::stringstream debug;
+    boost::scoped_ptr<IsPGRecoverablePredicate> recoverable(
+      get_is_recoverable_predicate());
     bool new_interval = pg_interval_t::check_new_interval(
       old_acting_primary.osd,
       new_acting_primary,
@@ -4749,6 +4767,7 @@ void PG::start_peering_interval(
       osdmap,
       lastmap,
       info.pgid.pgid,
+      recoverable.get(),
       &past_intervals,
       &debug);
     dout(10) << __func__ << ": check_new_interval output: "
@@ -7466,7 +7485,7 @@ void PG::RecoveryState::RecoveryMachine::log_exit(const char *state_name, utime_
 #define dout_prefix (*_dout << (debug_pg ? debug_pg->gen_prefix() : string()) << " PriorSet: ")
 
 PG::PriorSet::PriorSet(bool ec_pool,
-		       PGBackend::IsRecoverablePredicate *c,
+		       IsPGRecoverablePredicate *c,
 		       const OSDMap &osdmap,
 		       const map<epoch_t, pg_interval_t> &past_intervals,
 		       const vector<int> &up,
