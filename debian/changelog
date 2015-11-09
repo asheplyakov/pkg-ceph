@@ -1,3 +1,9 @@
+ceph (9.2.0-1) UNRELEASED; urgency=medium
+
+  * [754935] Imported Upstream version 9.2.0
+
+ -- James Page <james.page@ubuntu.com>  Mon, 09 Nov 2015 12:38:52 +0000
+
 ceph (0.94.5-1) experimental; urgency=medium
 
   * [2d330d6] New upstream release:
