@@ -9,6 +9,7 @@
 
 #pragma once
 #include <stdio.h>
+#include <string>
 #include "rocksdb/comparator.h"
 #include "rocksdb/db.h"
 #include "rocksdb/filter_policy.h"
@@ -110,28 +111,16 @@ class InternalKeyComparator : public Comparator {
   }
   virtual ~InternalKeyComparator() {}
 
-  virtual const char* Name() const;
-  virtual int Compare(const Slice& a, const Slice& b) const;
-  virtual void FindShortestSeparator(
-      std::string* start,
-      const Slice& limit) const;
-  virtual void FindShortSuccessor(std::string* key) const;
+  virtual const char* Name() const override;
+  virtual int Compare(const Slice& a, const Slice& b) const override;
+  virtual void FindShortestSeparator(std::string* start,
+                                     const Slice& limit) const override;
+  virtual void FindShortSuccessor(std::string* key) const override;
 
   const Comparator* user_comparator() const { return user_comparator_; }
 
   int Compare(const InternalKey& a, const InternalKey& b) const;
   int Compare(const ParsedInternalKey& a, const ParsedInternalKey& b) const;
-};
-
-// Filter policy wrapper that converts from internal keys to user keys
-class InternalFilterPolicy : public FilterPolicy {
- private:
-  const FilterPolicy* const user_policy_;
- public:
-  explicit InternalFilterPolicy(const FilterPolicy* p) : user_policy_(p) { }
-  virtual const char* Name() const;
-  virtual void CreateFilter(const Slice* keys, int n, std::string* dst) const;
-  virtual bool KeyMayMatch(const Slice& key, const Slice& filter) const;
 };
 
 // Modules in this directory should keep internal keys wrapped inside
@@ -142,8 +131,27 @@ class InternalKey {
   std::string rep_;
  public:
   InternalKey() { }   // Leave rep_ as empty to indicate it is invalid
-  InternalKey(const Slice& user_key, SequenceNumber s, ValueType t) {
-    AppendInternalKey(&rep_, ParsedInternalKey(user_key, s, t));
+  InternalKey(const Slice& _user_key, SequenceNumber s, ValueType t) {
+    AppendInternalKey(&rep_, ParsedInternalKey(_user_key, s, t));
+  }
+
+  // sets the internal key to be bigger or equal to all internal keys with this
+  // user key
+  void SetMaxPossibleForUserKey(const Slice& _user_key) {
+    AppendInternalKey(&rep_, ParsedInternalKey(_user_key, kMaxSequenceNumber,
+                                               kValueTypeForSeek));
+  }
+
+  // sets the internal key to be smaller or equal to all internal keys with this
+  // user key
+  void SetMinPossibleForUserKey(const Slice& _user_key) {
+    AppendInternalKey(
+        &rep_, ParsedInternalKey(_user_key, 0, static_cast<ValueType>(0)));
+  }
+
+  bool Valid() const {
+    ParsedInternalKey parsed;
+    return ParseInternalKey(Slice(rep_), &parsed);
   }
 
   void DecodeFrom(const Slice& s) { rep_.assign(s.data(), s.size()); }
@@ -206,18 +214,24 @@ class LookupKey {
  public:
   // Initialize *this for looking up user_key at a snapshot with
   // the specified sequence number.
-  LookupKey(const Slice& user_key, SequenceNumber sequence);
+  LookupKey(const Slice& _user_key, SequenceNumber sequence);
 
   ~LookupKey();
 
   // Return a key suitable for lookup in a MemTable.
-  Slice memtable_key() const { return Slice(start_, end_ - start_); }
+  Slice memtable_key() const {
+    return Slice(start_, static_cast<size_t>(end_ - start_));
+  }
 
   // Return an internal key (suitable for passing to an internal iterator)
-  Slice internal_key() const { return Slice(kstart_, end_ - kstart_); }
+  Slice internal_key() const {
+    return Slice(kstart_, static_cast<size_t>(end_ - kstart_));
+  }
 
   // Return the user key
-  Slice user_key() const { return Slice(kstart_, end_ - kstart_ - 8); }
+  Slice user_key() const {
+    return Slice(kstart_, static_cast<size_t>(end_ - kstart_ - 8));
+  }
 
  private:
   // We construct a char array of the form:
@@ -249,26 +263,84 @@ class IterKey {
 
   Slice GetKey() const { return Slice(key_, key_size_); }
 
+  size_t Size() { return key_size_; }
+
   void Clear() { key_size_ = 0; }
 
-  void SetUserKey(const Slice& user_key) {
-    size_t size = user_key.size();
+  // Append "non_shared_data" to its back, from "shared_len"
+  // This function is used in Block::Iter::ParseNextKey
+  // shared_len: bytes in [0, shard_len-1] would be remained
+  // non_shared_data: data to be append, its length must be >= non_shared_len
+  void TrimAppend(const size_t shared_len, const char* non_shared_data,
+                  const size_t non_shared_len) {
+    assert(shared_len <= key_size_);
+
+    size_t total_size = shared_len + non_shared_len;
+    if (total_size <= buf_size_) {
+      key_size_ = total_size;
+    } else {
+      // Need to allocate space, delete previous space
+      char* p = new char[total_size];
+      memcpy(p, key_, shared_len);
+
+      if (key_ != nullptr && key_ != space_) {
+        delete[] key_;
+      }
+
+      key_ = p;
+      key_size_ = total_size;
+      buf_size_ = total_size;
+    }
+
+    memcpy(key_ + shared_len, non_shared_data, non_shared_len);
+  }
+
+  void SetKey(const Slice& key) {
+    size_t size = key.size();
     EnlargeBufferIfNeeded(size);
-    memcpy(key_, user_key.data(), size);
+    memcpy(key_, key.data(), size);
     key_size_ = size;
+  }
+
+  void SetInternalKey(const Slice& key_prefix, const Slice& user_key,
+                      SequenceNumber s,
+                      ValueType value_type = kValueTypeForSeek) {
+    size_t psize = key_prefix.size();
+    size_t usize = user_key.size();
+    EnlargeBufferIfNeeded(psize + usize + sizeof(uint64_t));
+    if (psize > 0) {
+      memcpy(key_, key_prefix.data(), psize);
+    }
+    memcpy(key_ + psize, user_key.data(), usize);
+    EncodeFixed64(key_ + usize + psize, PackSequenceAndType(s, value_type));
+    key_size_ = psize + usize + sizeof(uint64_t);
   }
 
   void SetInternalKey(const Slice& user_key, SequenceNumber s,
                       ValueType value_type = kValueTypeForSeek) {
-    size_t usize = user_key.size();
-    EnlargeBufferIfNeeded(usize + sizeof(uint64_t));
-    memcpy(key_, user_key.data(), usize);
-    EncodeFixed64(key_ + usize, PackSequenceAndType(s, value_type));
-    key_size_ = usize + sizeof(uint64_t);
+    SetInternalKey(Slice(), user_key, s, value_type);
+  }
+
+  void Reserve(size_t size) {
+    EnlargeBufferIfNeeded(size);
+    key_size_ = size;
   }
 
   void SetInternalKey(const ParsedInternalKey& parsed_key) {
-    SetInternalKey(parsed_key.user_key, parsed_key.sequence, parsed_key.type);
+    SetInternalKey(Slice(), parsed_key);
+  }
+
+  void SetInternalKey(const Slice& key_prefix,
+                      const ParsedInternalKey& parsed_key_suffix) {
+    SetInternalKey(key_prefix, parsed_key_suffix.user_key,
+                   parsed_key_suffix.sequence, parsed_key_suffix.type);
+  }
+
+  void EncodeLengthPrefixedKey(const Slice& key) {
+    auto size = key.size();
+    EnlargeBufferIfNeeded(size + static_cast<size_t>(VarintLength(size)));
+    char* ptr = EncodeVarint32(key_, static_cast<uint32_t>(size));
+    memcpy(ptr, key.data(), size);
   }
 
  private:
@@ -312,19 +384,19 @@ class InternalKeySliceTransform : public SliceTransform {
   explicit InternalKeySliceTransform(const SliceTransform* transform)
       : transform_(transform) {}
 
-  virtual const char* Name() const { return transform_->Name(); }
+  virtual const char* Name() const override { return transform_->Name(); }
 
-  virtual Slice Transform(const Slice& src) const {
+  virtual Slice Transform(const Slice& src) const override {
     auto user_key = ExtractUserKey(src);
     return transform_->Transform(user_key);
   }
 
-  virtual bool InDomain(const Slice& src) const {
+  virtual bool InDomain(const Slice& src) const override {
     auto user_key = ExtractUserKey(src);
     return transform_->InDomain(user_key);
   }
 
-  virtual bool InRange(const Slice& dst) const {
+  virtual bool InRange(const Slice& dst) const override {
     auto user_key = ExtractUserKey(dst);
     return transform_->InRange(user_key);
   }
@@ -337,4 +409,12 @@ class InternalKeySliceTransform : public SliceTransform {
   const SliceTransform* const transform_;
 };
 
+// Read record from a write batch piece from input.
+// tag, column_family, key, value and blob are return values. Callers own the
+// Slice they point to.
+// Tag is defined as ValueType.
+// input will be advanced to after the record.
+extern Status ReadRecordFromWriteBatch(Slice* input, char* tag,
+                                       uint32_t* column_family, Slice* key,
+                                       Slice* value, Slice* blob);
 }  // namespace rocksdb

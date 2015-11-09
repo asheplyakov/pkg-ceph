@@ -93,7 +93,7 @@ public:
     pg_missing_t init;
     pg_missing_t final;
 
-    set<hobject_t> toremove;
+    set<hobject_t, hobject_t::BitwiseComparator> toremove;
     list<pg_log_entry_t> torollback;
 
   private:
@@ -154,7 +154,7 @@ public:
   };
 
   struct LogHandler : public PGLog::LogEntryHandler {
-    set<hobject_t> removed;
+    set<hobject_t, hobject_t::BitwiseComparator> removed;
     list<pg_log_entry_t> rolledback;
     
     void rollback(
@@ -198,8 +198,8 @@ public:
     }
 
     {
-      set<hobject_t>::const_iterator titer = tcase.toremove.begin();
-      set<hobject_t>::const_iterator hiter = handler.removed.begin();
+      set<hobject_t, hobject_t::BitwiseComparator>::const_iterator titer = tcase.toremove.begin();
+      set<hobject_t, hobject_t::BitwiseComparator>::const_iterator hiter = handler.removed.begin();
       for (; titer != tcase.toremove.end(); ++titer, ++hiter) {
 	EXPECT_EQ(*titer, *hiter);
       }
@@ -1973,12 +1973,12 @@ TEST_F(PGLogTest, filter_log_1) {
 
     // Some should be removed
     log.filter_log(pgid, *osdmap, hit_set_namespace);
-    EXPECT_LE(log.log.size(), total);
+    EXPECT_LE(log.log.size(), (size_t)total);
 
     // If we filter a second time, there should be the same total
     total = log.log.size();
     log.filter_log(pgid, *osdmap, hit_set_namespace);
-    EXPECT_EQ(log.log.size(), total);
+    EXPECT_EQ(log.log.size(), (size_t)total);
 
     // Increase pg_num as if there would be a split
     int new_pg_num = pg_num * 16;
@@ -1995,7 +1995,7 @@ TEST_F(PGLogTest, filter_log_1) {
 
     // We should have fewer entries after a filter
     log.filter_log(pgid, *osdmap, hit_set_namespace);
-    EXPECT_LE(log.log.size(), total);
+    EXPECT_LE(log.log.size(), (size_t)total);
 
     // Make sure all internal entries are retained
     int count = 0;

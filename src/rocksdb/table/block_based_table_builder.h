@@ -9,6 +9,10 @@
 
 #pragma once
 #include <stdint.h>
+#include <limits>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "rocksdb/flush_block_policy.h"
 #include "rocksdb/options.h"
@@ -27,10 +31,14 @@ class BlockBasedTableBuilder : public TableBuilder {
   // Create a builder that will store the contents of the table it is
   // building in *file.  Does not close the file.  It is up to the
   // caller to close the file after calling Finish().
-  BlockBasedTableBuilder(const Options& options,
-                         const BlockBasedTableOptions& table_options,
-                         const InternalKeyComparator& internal_comparator,
-                         WritableFile* file, CompressionType compression_type);
+  BlockBasedTableBuilder(
+      const ImmutableCFOptions& ioptions,
+      const BlockBasedTableOptions& table_options,
+      const InternalKeyComparator& internal_comparator,
+      const std::vector<std::unique_ptr<IntTblPropCollectorFactory>>*
+          int_tbl_prop_collector_factories,
+      WritableFile* file, const CompressionType compression_type,
+      const CompressionOptions& compression_opts, const bool skip_filters);
 
   // REQUIRES: Either Finish() or Abandon() has been called.
   ~BlockBasedTableBuilder();
@@ -62,6 +70,9 @@ class BlockBasedTableBuilder : public TableBuilder {
   // Finish() call, returns the size of the final generated file.
   uint64_t FileSize() const override;
 
+  // Get table properties
+  TableProperties GetTableProperties() const override;
+
  private:
   bool ok() const { return status().ok(); }
   // Call block's Finish() method and then write the finalize block contents to
@@ -74,6 +85,7 @@ class BlockBasedTableBuilder : public TableBuilder {
                             const CompressionType type,
                             const BlockHandle* handle);
   struct Rep;
+  class BlockBasedTablePropertiesCollectorFactory;
   class BlockBasedTablePropertiesCollector;
   Rep* rep_;
 
@@ -82,6 +94,10 @@ class BlockBasedTableBuilder : public TableBuilder {
   // the same data block.  Most clients should not need to use this method.
   // REQUIRES: Finish(), Abandon() have not been called
   void Flush();
+
+  // Some compression libraries fail when the raw size is bigger than int. If
+  // uncompressed size is bigger than kCompressionSizeLimit, don't compress it
+  const uint64_t kCompressionSizeLimit = std::numeric_limits<int>::max();
 
   // No copying allowed
   BlockBasedTableBuilder(const BlockBasedTableBuilder&) = delete;

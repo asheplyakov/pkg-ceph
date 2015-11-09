@@ -7,11 +7,13 @@
 
 #include "db/dbformat.h"
 #include "util/coding.h"
+#include "util/string_util.h"
 
 namespace rocksdb {
 
-Status InternalKeyPropertiesCollector::Add(
-    const Slice& key, const Slice& value) {
+Status InternalKeyPropertiesCollector::InternalAdd(const Slice& key,
+                                                   const Slice& value,
+                                                   uint64_t file_size) {
   ParsedInternalKey ikey;
   if (!ParseInternalKey(key, &ikey)) {
     return Status::InvalidArgument("Invalid internal key");
@@ -40,19 +42,35 @@ Status InternalKeyPropertiesCollector::Finish(
 UserCollectedProperties
 InternalKeyPropertiesCollector::GetReadableProperties() const {
   return {
-    { "kDeletedKeys", std::to_string(deleted_keys_) }
+    { "kDeletedKeys", ToString(deleted_keys_) }
   };
 }
 
+namespace {
+EntryType GetEntryType(ValueType value_type) {
+  switch (value_type) {
+    case kTypeValue:
+      return kEntryPut;
+    case kTypeDeletion:
+      return kEntryDelete;
+    case kTypeMerge:
+      return kEntryMerge;
+    default:
+      return kEntryOther;
+  }
+}
+}  // namespace
 
-Status UserKeyTablePropertiesCollector::Add(
-    const Slice& key, const Slice& value) {
+Status UserKeyTablePropertiesCollector::InternalAdd(const Slice& key,
+                                                    const Slice& value,
+                                                    uint64_t file_size) {
   ParsedInternalKey ikey;
   if (!ParseInternalKey(key, &ikey)) {
     return Status::InvalidArgument("Invalid internal key");
   }
 
-  return collector_->Add(ikey.user_key, value);
+  return collector_->AddUserKey(ikey.user_key, value, GetEntryType(ikey.type),
+                                ikey.sequence, file_size);
 }
 
 Status UserKeyTablePropertiesCollector::Finish(

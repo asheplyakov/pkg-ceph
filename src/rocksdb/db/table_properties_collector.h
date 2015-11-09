@@ -18,11 +18,39 @@ struct InternalKeyTablePropertiesNames {
   static const std::string kDeletedKeys;
 };
 
+// Base class for internal table properties collector.
+class IntTblPropCollector {
+ public:
+  virtual ~IntTblPropCollector() {}
+  virtual Status Finish(UserCollectedProperties* properties) = 0;
+
+  virtual const char* Name() const = 0;
+
+  // @params key    the user key that is inserted into the table.
+  // @params value  the value that is inserted into the table.
+  virtual Status InternalAdd(const Slice& key, const Slice& value,
+                             uint64_t file_size) = 0;
+
+  virtual UserCollectedProperties GetReadableProperties() const = 0;
+};
+
+// Facrtory for internal table properties collector.
+class IntTblPropCollectorFactory {
+ public:
+  virtual ~IntTblPropCollectorFactory() {}
+  // has to be thread-safe
+  virtual IntTblPropCollector* CreateIntTblPropCollector() = 0;
+
+  // The name of the properties collector can be used for debugging purpose.
+  virtual const char* Name() const = 0;
+};
+
 // Collecting the statistics for internal keys. Visible only by internal
 // rocksdb modules.
-class InternalKeyPropertiesCollector : public TablePropertiesCollector {
+class InternalKeyPropertiesCollector : public IntTblPropCollector {
  public:
-  virtual Status Add(const Slice& key, const Slice& value) override;
+  virtual Status InternalAdd(const Slice& key, const Slice& value,
+                             uint64_t file_size) override;
 
   virtual Status Finish(UserCollectedProperties* properties) override;
 
@@ -36,28 +64,33 @@ class InternalKeyPropertiesCollector : public TablePropertiesCollector {
   uint64_t deleted_keys_ = 0;
 };
 
+class InternalKeyPropertiesCollectorFactory
+    : public IntTblPropCollectorFactory {
+ public:
+  virtual IntTblPropCollector* CreateIntTblPropCollector() override {
+    return new InternalKeyPropertiesCollector();
+  }
+
+  virtual const char* Name() const override {
+    return "InternalKeyPropertiesCollectorFactory";
+  }
+};
+
 // When rocksdb creates a new table, it will encode all "user keys" into
 // "internal keys", which contains meta information of a given entry.
 //
 // This class extracts user key from the encoded internal key when Add() is
 // invoked.
-class UserKeyTablePropertiesCollector : public TablePropertiesCollector {
+class UserKeyTablePropertiesCollector : public IntTblPropCollector {
  public:
-  explicit UserKeyTablePropertiesCollector(
-      TablePropertiesCollector* collector) :
-      UserKeyTablePropertiesCollector(
-        std::shared_ptr<TablePropertiesCollector>(collector)
-    ) {
-  }
+  // transfer of ownership
+  explicit UserKeyTablePropertiesCollector(TablePropertiesCollector* collector)
+      : collector_(collector) {}
 
-  explicit UserKeyTablePropertiesCollector(
-      std::shared_ptr<TablePropertiesCollector> collector) :
-      collector_(collector) {
-  }
+  virtual ~UserKeyTablePropertiesCollector() {}
 
-  virtual ~UserKeyTablePropertiesCollector() { }
-
-  virtual Status Add(const Slice& key, const Slice& value) override;
+  virtual Status InternalAdd(const Slice& key, const Slice& value,
+                             uint64_t file_size) override;
 
   virtual Status Finish(UserCollectedProperties* properties) override;
 
@@ -66,7 +99,26 @@ class UserKeyTablePropertiesCollector : public TablePropertiesCollector {
   UserCollectedProperties GetReadableProperties() const override;
 
  protected:
-  std::shared_ptr<TablePropertiesCollector> collector_;
+  std::unique_ptr<TablePropertiesCollector> collector_;
+};
+
+class UserKeyTablePropertiesCollectorFactory
+    : public IntTblPropCollectorFactory {
+ public:
+  explicit UserKeyTablePropertiesCollectorFactory(
+      std::shared_ptr<TablePropertiesCollectorFactory> user_collector_factory)
+      : user_collector_factory_(user_collector_factory) {}
+  virtual IntTblPropCollector* CreateIntTblPropCollector() override {
+    return new UserKeyTablePropertiesCollector(
+        user_collector_factory_->CreateTablePropertiesCollector());
+  }
+
+  virtual const char* Name() const override {
+    return user_collector_factory_->Name();
+  }
+
+ private:
+  std::shared_ptr<TablePropertiesCollectorFactory> user_collector_factory_;
 };
 
 }  // namespace rocksdb

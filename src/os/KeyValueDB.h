@@ -70,7 +70,7 @@ public:
 
   /// test whether we can successfully initialize; may have side effects (e.g., create)
   static int test_init(const string& type, const string& dir);
-  virtual int init() = 0;
+  virtual int init(string option_str="") = 0;
   virtual int open(ostream &out) = 0;
   virtual int create_and_open(ostream &out) = 0;
 
@@ -86,6 +86,21 @@ public:
     const std::set<string> &key,      ///< [in] Key to retrieve
     std::map<string, bufferlist> *out ///< [out] Key value retrieved
     ) = 0;
+  virtual int get(const string &prefix, ///< [in] prefix
+		  const string &key,    ///< [in] key
+		  bufferlist *value) {  ///< [out] value
+    set<string> ks;
+    ks.insert(key);
+    map<string,bufferlist> om;
+    int r = get(prefix, ks, &om);
+    if (om.find(key) != om.end()) {
+      *value = om[key];
+    } else {
+      *value = bufferlist();
+      r = -ENOENT;
+    }
+    return r;
+  }
 
   class WholeSpaceIteratorImpl {
   public:
@@ -130,7 +145,7 @@ public:
       if (!generic_iter->valid())
 	return false;
       pair<string,string> raw_key = generic_iter->raw_key();
-      return (raw_key.first == prefix);
+      return (raw_key.first.compare(0, prefix.length(), prefix) == 0);
     }
     int next() {
       if (valid())
@@ -144,6 +159,9 @@ public:
     }
     string key() {
       return generic_iter->key();
+    }
+    pair<string, string> raw_key() {
+      return generic_iter->raw_key();
     }
     bufferlist value() {
       return generic_iter->value();
@@ -176,6 +194,9 @@ public:
   }
 
   virtual uint64_t get_estimated_size(map<string,uint64_t> &extra) = 0;
+  virtual int get_statfs(struct statfs *buf) {
+    return -EOPNOTSUPP;
+  }
 
   virtual ~KeyValueDB() {}
 

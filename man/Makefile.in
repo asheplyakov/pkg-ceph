@@ -81,57 +81,61 @@ target_triplet = @target@
 DIST_COMMON = $(srcdir)/Makefile-client.am \
 	$(srcdir)/Makefile-server.am $(srcdir)/Makefile.in \
 	$(srcdir)/Makefile.am $(dist_man_MANS)
-@ENABLE_CLIENT_TRUE@am__append_1 = \
-@ENABLE_CLIENT_TRUE@	ceph-syn.8 \
-@ENABLE_CLIENT_TRUE@	ceph-conf.8 \
-@ENABLE_CLIENT_TRUE@	ceph.8 \
-@ENABLE_CLIENT_TRUE@	ceph-authtool.8 \
-@ENABLE_CLIENT_TRUE@	rados.8 \
-@ENABLE_CLIENT_TRUE@	rbd.8 \
-@ENABLE_CLIENT_TRUE@	ceph-post-file.8 \
-@ENABLE_CLIENT_TRUE@	ceph-dencoder.8
+@ENABLE_CLIENT_TRUE@@WITH_MAN_PAGES_TRUE@am__append_1 = \
+@ENABLE_CLIENT_TRUE@@WITH_MAN_PAGES_TRUE@	ceph-syn.8 \
+@ENABLE_CLIENT_TRUE@@WITH_MAN_PAGES_TRUE@	ceph-conf.8 \
+@ENABLE_CLIENT_TRUE@@WITH_MAN_PAGES_TRUE@	ceph.8 \
+@ENABLE_CLIENT_TRUE@@WITH_MAN_PAGES_TRUE@	ceph-authtool.8 \
+@ENABLE_CLIENT_TRUE@@WITH_MAN_PAGES_TRUE@	rados.8 \
+@ENABLE_CLIENT_TRUE@@WITH_MAN_PAGES_TRUE@	rbd.8 \
+@ENABLE_CLIENT_TRUE@@WITH_MAN_PAGES_TRUE@	ceph-post-file.8 \
+@ENABLE_CLIENT_TRUE@@WITH_MAN_PAGES_TRUE@	ceph-dencoder.8
 
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@am__append_2 = \
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	librados-config.8
+@ENABLE_CLIENT_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_RADOS_TRUE@am__append_2 = \
+@ENABLE_CLIENT_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_RADOS_TRUE@	librados-config.8
 
-@ENABLE_CLIENT_TRUE@@WITH_RBD_TRUE@am__append_3 = \
-@ENABLE_CLIENT_TRUE@@WITH_RBD_TRUE@	ceph-rbdnamer.8 \
-@ENABLE_CLIENT_TRUE@@WITH_RBD_TRUE@	rbd-replay.8 \
-@ENABLE_CLIENT_TRUE@@WITH_RBD_TRUE@	rbd-replay-many.8 \
-@ENABLE_CLIENT_TRUE@@WITH_RBD_TRUE@	rbd-replay-prep.8
+@ENABLE_CLIENT_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_RBD_TRUE@am__append_3 = \
+@ENABLE_CLIENT_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_RBD_TRUE@	ceph-rbdnamer.8 \
+@ENABLE_CLIENT_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_RBD_TRUE@	rbd-replay.8 \
+@ENABLE_CLIENT_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_RBD_TRUE@	rbd-replay-many.8 \
+@ENABLE_CLIENT_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_RBD_TRUE@	rbd-replay-prep.8
 
-@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@am__append_4 = \
-@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@	cephfs.8
+@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_MAN_PAGES_TRUE@am__append_4 = \
+@ENABLE_CLIENT_TRUE@@WITH_CEPHFS_TRUE@@WITH_MAN_PAGES_TRUE@	cephfs.8
 
-@ENABLE_CLIENT_TRUE@@WITH_FUSE_TRUE@am__append_5 = \
-@ENABLE_CLIENT_TRUE@@WITH_FUSE_TRUE@	rbd-fuse.8 \
-@ENABLE_CLIENT_TRUE@@WITH_FUSE_TRUE@	ceph-fuse.8
+@ENABLE_CLIENT_TRUE@@WITH_FUSE_TRUE@@WITH_MAN_PAGES_TRUE@am__append_5 = \
+@ENABLE_CLIENT_TRUE@@WITH_FUSE_TRUE@@WITH_MAN_PAGES_TRUE@	rbd-fuse.8 \
+@ENABLE_CLIENT_TRUE@@WITH_FUSE_TRUE@@WITH_MAN_PAGES_TRUE@	ceph-fuse.8
 
-@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@am__append_6 = \
-@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@	radosgw.8 \
-@ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@	radosgw-admin.8
+@ENABLE_CLIENT_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_RADOSGW_TRUE@am__append_6 = \
+@ENABLE_CLIENT_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_RADOSGW_TRUE@	radosgw.8 \
+@ENABLE_CLIENT_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_RADOSGW_TRUE@	radosgw-admin.8
 
-@ENABLE_SERVER_TRUE@am__append_7 = \
-@ENABLE_SERVER_TRUE@	ceph-deploy.8 \
-@ENABLE_SERVER_TRUE@	crushtool.8 \
-@ENABLE_SERVER_TRUE@	ceph-run.8 \
-@ENABLE_SERVER_TRUE@	mount.ceph.8 \
-@ENABLE_SERVER_TRUE@	ceph-create-keys.8 \
-@ENABLE_SERVER_TRUE@	ceph-rest-api.8 \
-@ENABLE_SERVER_TRUE@	ceph-debugpack.8
+@ENABLE_SERVER_TRUE@@WITH_MAN_PAGES_TRUE@am__append_7 = \
+@ENABLE_SERVER_TRUE@@WITH_MAN_PAGES_TRUE@	ceph-deploy.8 \
+@ENABLE_SERVER_TRUE@@WITH_MAN_PAGES_TRUE@	crushtool.8 \
+@ENABLE_SERVER_TRUE@@WITH_MAN_PAGES_TRUE@	ceph-run.8 \
+@ENABLE_SERVER_TRUE@@WITH_MAN_PAGES_TRUE@	mount.ceph.8 \
+@ENABLE_SERVER_TRUE@@WITH_MAN_PAGES_TRUE@	ceph-create-keys.8 \
+@ENABLE_SERVER_TRUE@@WITH_MAN_PAGES_TRUE@	ceph-rest-api.8 \
+@ENABLE_SERVER_TRUE@@WITH_MAN_PAGES_TRUE@	ceph-debugpack.8
 
-@ENABLE_SERVER_TRUE@@WITH_MON_TRUE@am__append_8 = \
-@ENABLE_SERVER_TRUE@@WITH_MON_TRUE@	ceph-mon.8 \
-@ENABLE_SERVER_TRUE@@WITH_MON_TRUE@	monmaptool.8
+@ENABLE_SERVER_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_SELINUX_TRUE@am__append_8 = \
+@ENABLE_SERVER_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_SELINUX_TRUE@	ceph_selinux.8
 
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@am__append_9 = \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	ceph-clsinfo.8 \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	ceph-disk.8 \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	ceph-osd.8 \
-@ENABLE_SERVER_TRUE@@WITH_OSD_TRUE@	osdmaptool.8
+@ENABLE_SERVER_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_MON_TRUE@am__append_9 = \
+@ENABLE_SERVER_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_MON_TRUE@	ceph-mon.8 \
+@ENABLE_SERVER_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_MON_TRUE@	monmaptool.8
 
-@ENABLE_SERVER_TRUE@@WITH_MDS_TRUE@am__append_10 = \
-@ENABLE_SERVER_TRUE@@WITH_MDS_TRUE@	ceph-mds.8
+@ENABLE_SERVER_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_OSD_TRUE@am__append_10 = \
+@ENABLE_SERVER_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_OSD_TRUE@	ceph-clsinfo.8 \
+@ENABLE_SERVER_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_OSD_TRUE@	ceph-detect-init.8 \
+@ENABLE_SERVER_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_OSD_TRUE@	ceph-disk.8 \
+@ENABLE_SERVER_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_OSD_TRUE@	ceph-osd.8 \
+@ENABLE_SERVER_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_OSD_TRUE@	osdmaptool.8
+
+@ENABLE_SERVER_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_MDS_TRUE@am__append_11 = \
+@ENABLE_SERVER_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_MDS_TRUE@	ceph-mds.8
 
 subdir = man
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
@@ -213,6 +217,7 @@ AMTAR = @AMTAR@
 AM_CXXFLAGS = @AM_CXXFLAGS@
 AM_DEFAULT_VERBOSITY = @AM_DEFAULT_VERBOSITY@
 AR = @AR@
+ARM_CRC_FLAGS = @ARM_CRC_FLAGS@
 ARM_FLAGS = @ARM_FLAGS@
 ARM_NEON_FLAGS = @ARM_NEON_FLAGS@
 AUTOCONF = @AUTOCONF@
@@ -220,6 +225,7 @@ AUTOHEADER = @AUTOHEADER@
 AUTOMAKE = @AUTOMAKE@
 AWK = @AWK@
 BOOST_PROGRAM_OPTIONS_LIBS = @BOOST_PROGRAM_OPTIONS_LIBS@
+BOOST_RANDOM_LIBS = @BOOST_RANDOM_LIBS@
 BOOST_THREAD_LIBS = @BOOST_THREAD_LIBS@
 CC = @CC@
 CCAS = @CCAS@
@@ -277,7 +283,8 @@ LD = @LD@
 LDFLAGS = @LDFLAGS@
 LIBEDIT_CFLAGS = @LIBEDIT_CFLAGS@
 LIBEDIT_LIBS = @LIBEDIT_LIBS@
-LIBFUSE = @LIBFUSE@
+LIBFUSE_CFLAGS = @LIBFUSE_CFLAGS@
+LIBFUSE_LIBS = @LIBFUSE_LIBS@
 LIBJEMALLOC = @LIBJEMALLOC@
 LIBOBJS = @LIBOBJS@
 LIBROCKSDB_CFLAGS = @LIBROCKSDB_CFLAGS@
@@ -328,6 +335,7 @@ RPM_RELEASE = @RPM_RELEASE@
 SED = @SED@
 SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
+SPHINX_BUILD = @SPHINX_BUILD@
 STRIP = @STRIP@
 VERSION = @VERSION@
 WARN_ERROR_FORMAT_SECURITY = @WARN_ERROR_FORMAT_SECURITY@
@@ -361,6 +369,7 @@ datarootdir = @datarootdir@
 docdir = @docdir@
 dvidir = @dvidir@
 exec_prefix = @exec_prefix@
+group_rgw = @group_rgw@
 host = @host@
 host_alias = @host_alias@
 host_cpu = @host_cpu@
@@ -390,6 +399,8 @@ sharedstatedir = @sharedstatedir@
 srcdir = @srcdir@
 subdirs = @subdirs@
 sysconfdir = @sysconfdir@
+systemd_libexec_dir = @systemd_libexec_dir@
+systemd_unit_dir = @systemd_unit_dir@
 target = @target@
 target_alias = @target_alias@
 target_cpu = @target_cpu@
@@ -398,11 +409,14 @@ target_vendor = @target_vendor@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
+user_rgw = @user_rgw@
 AUTOMAKE_OPTIONS = gnu
+EXTRA_DIST = conf.py ceph_selinux.8
 dist_man_MANS = $(am__append_1) $(am__append_2) $(am__append_3) \
 	$(am__append_4) $(am__append_5) $(am__append_6) \
 	$(am__append_7) $(am__append_8) $(am__append_9) \
-	$(am__append_10)
+	$(am__append_10) $(am__append_11)
+@WITH_MAN_PAGES_TRUE@MAINTAINERCLEANFILES = $(dist_man_MANS)
 all: all-am
 
 .SUFFIXES:
@@ -560,9 +574,11 @@ distclean-generic:
 maintainer-clean-generic:
 	@echo "This command is intended for maintainers to use"
 	@echo "it deletes files that may require special tools to rebuild."
+	-test -z "$(MAINTAINERCLEANFILES)" || rm -f $(MAINTAINERCLEANFILES)
+@WITH_MAN_PAGES_FALSE@clean-local:
 clean: clean-am
 
-clean-am: clean-generic clean-libtool mostlyclean-am
+clean-am: clean-generic clean-libtool clean-local mostlyclean-am
 
 distclean: distclean-am
 	-rm -f Makefile
@@ -631,7 +647,7 @@ uninstall-man: uninstall-man8
 .MAKE: install-am install-strip
 
 .PHONY: all all-am check check-am clean clean-generic clean-libtool \
-	cscopelist-am ctags-am distclean distclean-generic \
+	clean-local cscopelist-am ctags-am distclean distclean-generic \
 	distclean-libtool distdir dvi dvi-am html html-am info info-am \
 	install install-am install-data install-data-am install-dvi \
 	install-dvi-am install-exec install-exec-am install-html \
@@ -643,6 +659,20 @@ uninstall-man: uninstall-man8
 	ps ps-am tags-am uninstall uninstall-am uninstall-man \
 	uninstall-man8
 
+
+# prevent `make` from running in parallel, sphinx runs better in batch mode.
+@WITH_MAN_PAGES_TRUE@.PHONY: sphinx-build.stamp
+
+@WITH_MAN_PAGES_TRUE@$(dist_man_MANS): sphinx-build.stamp
+
+# in a tree populated from dist tarball, the $(top_srcdir)/doc is not included
+@WITH_MAN_PAGES_TRUE@sphinx-build.stamp:
+@WITH_MAN_PAGES_TRUE@	if [ -d $(top_srcdir)/doc/man ] ; then \
+@WITH_MAN_PAGES_TRUE@		${SPHINX_BUILD} -b man -d doctrees -c $(top_srcdir)/man $(top_srcdir)/doc/man $(top_builddir)/man; \
+@WITH_MAN_PAGES_TRUE@	fi
+
+@WITH_MAN_PAGES_TRUE@clean-local:
+@WITH_MAN_PAGES_TRUE@	@rm -rf doctrees
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.

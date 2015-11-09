@@ -11,6 +11,7 @@
 
 #pragma once
 #include <string>
+#include <vector>
 #include <stdint.h>
 
 #include "db/dbformat.h"
@@ -18,18 +19,19 @@
 #include "rocksdb/cache.h"
 #include "rocksdb/env.h"
 #include "rocksdb/table.h"
+#include "rocksdb/options.h"
 #include "table/table_reader.h"
 
 namespace rocksdb {
 
 class Env;
-struct FileMetaData;
+class Arena;
+struct FileDescriptor;
+class GetContext;
 
-// TODO(sdong): try to come up with a better API to pass the file information
-//              other than simply passing FileMetaData.
 class TableCache {
  public:
-  TableCache(const std::string& dbname, const Options* options,
+  TableCache(const ImmutableCFOptions& ioptions,
              const EnvOptions& storage_options, Cache* cache);
   ~TableCache();
 
@@ -42,19 +44,17 @@ class TableCache {
   // returned iterator is live.
   Iterator* NewIterator(const ReadOptions& options, const EnvOptions& toptions,
                         const InternalKeyComparator& internal_comparator,
-                        const FileMetaData& file_meta,
+                        const FileDescriptor& file_fd,
                         TableReader** table_reader_ptr = nullptr,
-                        bool for_compaction = false);
+                        bool for_compaction = false, Arena* arena = nullptr);
 
   // If a seek to internal key "k" in specified file finds an entry,
   // call (*handle_result)(arg, found_key, found_value) repeatedly until
   // it returns false.
   Status Get(const ReadOptions& options,
              const InternalKeyComparator& internal_comparator,
-             const FileMetaData& file_meta, const Slice& k, void* arg,
-             bool (*handle_result)(void*, const ParsedInternalKey&,
-                                   const Slice&, bool),
-             bool* table_io, void (*mark_key_may_exist)(void*) = nullptr);
+             const FileDescriptor& file_fd, const Slice& k,
+             GetContext* get_context);
 
   // Evict any entry for the specified file number
   static void Evict(Cache* cache, uint64_t file_number);
@@ -62,8 +62,8 @@ class TableCache {
   // Find table reader
   Status FindTable(const EnvOptions& toptions,
                    const InternalKeyComparator& internal_comparator,
-                   uint64_t file_number, uint64_t file_size, Cache::Handle**,
-                   bool* table_io = nullptr, const bool no_io = false);
+                   const FileDescriptor& file_fd, Cache::Handle**,
+                   const bool no_io = false);
 
   // Get TableReader from a cache handle.
   TableReader* GetTableReaderFromHandle(Cache::Handle* handle);
@@ -76,18 +76,23 @@ class TableCache {
   //            we set `no_io` to be true.
   Status GetTableProperties(const EnvOptions& toptions,
                             const InternalKeyComparator& internal_comparator,
-                            const FileMetaData& file_meta,
+                            const FileDescriptor& file_meta,
                             std::shared_ptr<const TableProperties>* properties,
                             bool no_io = false);
+
+  // Return total memory usage of the table reader of the file.
+  // 0 of table reader of the file is not loaded.
+  size_t GetMemoryUsageByTableReader(
+      const EnvOptions& toptions,
+      const InternalKeyComparator& internal_comparator,
+      const FileDescriptor& fd);
 
   // Release the handle from a cache
   void ReleaseHandle(Cache::Handle* handle);
 
  private:
-  Env* const env_;
-  const std::string dbname_;
-  const Options* options_;
-  const EnvOptions& storage_options_;
+  const ImmutableCFOptions& ioptions_;
+  const EnvOptions& env_options_;
   Cache* const cache_;
 };
 

@@ -73,19 +73,17 @@ TEST_P(ParameterTest, parameter_all)
   ErasureCodeShec* shec = new ErasureCodeShecReedSolomonVandermonde(
 				  tcache,
 				  ErasureCodeShec::MULTIPLE);
-  map < std::string, std::string > *parameters = new map<std::string,
-							 std::string>();
-  (*parameters)["plugin"] = "shec";
-  (*parameters)["technique"] = "";
-  (*parameters)["directory"] = "/usr/lib64/ceph/erasure-code";
-  (*parameters)["ruleset-failure-domain"] = "osd";
-  (*parameters)["k"] = k;
-  (*parameters)["m"] = m;
-  (*parameters)["c"] = c;
+  ErasureCodeProfile *profile = new ErasureCodeProfile();
+  (*profile)["plugin"] = "shec";
+  (*profile)["technique"] = "";
+  (*profile)["ruleset-failure-domain"] = "osd";
+  (*profile)["k"] = k;
+  (*profile)["m"] = m;
+  (*profile)["c"] = c;
 
-  result = shec->init(*parameters);
+  result = shec->init(*profile, &cerr);
 
-  //check parameters
+  //check profile
   EXPECT_EQ(i_k, shec->k);
   EXPECT_EQ(i_m, shec->m);
   EXPECT_EQ(i_c, shec->c);
@@ -184,7 +182,7 @@ TEST_P(ParameterTest, parameter_all)
 
   result = shec->encode(want_to_encode, in, &encoded);
   EXPECT_EQ(0, result);
-  EXPECT_EQ(i_k+i_m, encoded.size());
+  EXPECT_EQ(i_k+i_m, (int)encoded.size());
   EXPECT_EQ(c_size, encoded[0].length());
 
   //decode
@@ -248,16 +246,16 @@ TEST_P(ParameterTest, parameter_all)
   EXPECT_STREQ("myrule", crush->rule_name_map[0].c_str());
 
   //get_chunk_count
-  EXPECT_EQ(i_k+i_m, shec->get_chunk_count());
+  EXPECT_EQ(i_k+i_m, (int)shec->get_chunk_count());
 
   //get_data_chunk_count
-  EXPECT_EQ(i_k, shec->get_data_chunk_count());
+  EXPECT_EQ(i_k, (int)shec->get_data_chunk_count());
 
   //get_chunk_size
   EXPECT_EQ(c_size, shec->get_chunk_size(192));
 
   delete shec;
-  delete parameters;
+  delete profile;
   delete crush;
 }
 
@@ -275,9 +273,9 @@ int main(int argc, char **argv)
   for (unsigned int k = 1; k <= 12; k++) {
     for (unsigned int m = 1; (m <= k) && (k + m <= 20); m++) {
       for (unsigned int c = 1; c <= m; c++) {
-	sprintf(param[i].sk, "%d", k);
-	sprintf(param[i].sm, "%d", m);
-	sprintf(param[i].sc, "%d", c);
+	sprintf(param[i].sk, "%u", k);
+	sprintf(param[i].sm, "%u", m);
+	sprintf(param[i].sc, "%u", c);
 
 	param[i].k = param[i].sk;
 	param[i].m = param[i].sm;
@@ -298,6 +296,8 @@ int main(int argc, char **argv)
   global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT, CODE_ENVIRONMENT_UTILITY, 0);
   common_init_finish(g_ceph_context);
 
+  g_conf->set_val("erasure_code_dir", ".libs", false, false);
+
   ::testing::InitGoogleTest(&argc, argv);
 
   r = RUN_ALL_TESTS();
@@ -317,7 +317,7 @@ int main(int argc, char **argv)
   }
   std::cout << "cannot recovery patterns:" << std::endl;
   for (std::vector<Recover_d>::const_iterator i = cannot_recover.begin();
-       i != cannot_recover.end(); i++) {
+       i != cannot_recover.end(); ++i) {
     std::cout << "---" << std::endl;
     std::cout << "k = " << i->k << ", m = " << i->m << ", c = " << i->c
 	<< std::endl;

@@ -24,6 +24,7 @@
     bucket check               check bucket index
     object rm                  remove object
     object unlink              unlink object from bucket index
+    objects expire             run expired objects cleanup
     quota set                  set quota params
     quota enable               enable quota
     quota disable              disable quota
@@ -124,6 +125,7 @@
      --caps=<caps>             list of caps (e.g., "usage=read, write; user=read"
      --yes-i-really-mean-it    required for certain operations
      --reset-regions           reset regionmap when regionmap update
+ 
   <date> := "YYYY-MM-DD[ hh:mm:ss]"
   
   Quota options:
@@ -136,6 +138,8 @@
     --id/-i ID        set ID portion of my name
     --name/-n TYPE.ID set name
     --cluster NAME    set cluster name (default: ceph)
+    --setuser USER    set uid to user or uid (and gid to user's gid)
+    --setgroup GROUP  set gid to group or gid
     --version         show version and quit
   
   [1]

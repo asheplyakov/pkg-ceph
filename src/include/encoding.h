@@ -164,7 +164,8 @@ inline void encode(const std::string& s, bufferlist& bl, uint64_t features=0)
 {
   __u32 len = s.length();
   encode(len, bl);
-  bl.append(s.data(), len);
+  if (len)
+    bl.append(s.data(), len);
 }
 inline void decode(std::string& s, bufferlist::iterator& p)
 {
@@ -189,7 +190,8 @@ inline void encode(const char *s, bufferlist& bl)
 {
   __u32 len = strlen(s);
   encode(len, bl);
-  bl.append(s, len);
+  if (len)
+    bl.append(s, len);
 }
 
 
@@ -453,6 +455,43 @@ inline void decode(std::set<T>& s, bufferlist::iterator& p)
   }
 }
 
+template<class T, class C>
+inline void encode(const std::set<T, C>& s, bufferlist& bl)
+{
+  __u32 n = (__u32)(s.size());
+  encode(n, bl);
+  for (typename std::set<T, C>::const_iterator p = s.begin(); p != s.end(); ++p)
+    encode(*p, bl);
+}
+template<class T, class C>
+inline void decode(std::set<T, C>& s, bufferlist::iterator& p)
+{
+  __u32 n;
+  decode(n, p);
+  s.clear();
+  while (n--) {
+    T v;
+    decode(v, p);
+    s.insert(v);
+  }
+}
+
+template<class T>
+inline void encode_nohead(const std::set<T>& s, bufferlist& bl)
+{
+  for (typename std::set<T>::const_iterator p = s.begin(); p != s.end(); ++p)
+    encode(*p, bl);
+}
+template<class T>
+inline void decode_nohead(int len, std::set<T>& s, bufferlist::iterator& p)
+{
+  for (int i=0; i<len; i++) {
+    T v;
+    decode(v, p);
+    s.insert(v);
+  }
+}
+
 // multiset
 template<class T>
 inline void encode(const std::multiset<T>& s, bufferlist& bl)
@@ -595,6 +634,16 @@ inline void encode(const std::map<T,U>& m, bufferlist& bl)
     encode(p->second, bl);
   }
 }
+template<class T, class U, class C>
+inline void encode(const std::map<T,U,C>& m, bufferlist& bl)
+{
+  __u32 n = (__u32)(m.size());
+  encode(n, bl);
+  for (typename std::map<T,U,C>::const_iterator p = m.begin(); p != m.end(); ++p) {
+    encode(p->first, bl);
+    encode(p->second, bl);
+  }
+}
 template<class T, class U>
 inline void encode(const std::map<T,U>& m, bufferlist& bl, uint64_t features)
 {
@@ -611,6 +660,29 @@ inline void decode(std::map<T,U>& m, bufferlist::iterator& p)
   __u32 n;
   decode(n, p);
   m.clear();
+  while (n--) {
+    T k;
+    decode(k, p);
+    decode(m[k], p);
+  }
+}
+template<class T, class U, class C>
+inline void decode(std::map<T,U,C>& m, bufferlist::iterator& p)
+{
+  __u32 n;
+  decode(n, p);
+  m.clear();
+  while (n--) {
+    T k;
+    decode(k, p);
+    decode(m[k], p);
+  }
+}
+template<class T, class U, class C>
+inline void decode_noclear(std::map<T,U,C>& m, bufferlist::iterator& p)
+{
+  __u32 n;
+  decode(n, p);
   while (n--) {
     T k;
     decode(k, p);
@@ -791,13 +863,13 @@ inline void decode(std::deque<T>& ls, bufferlist::iterator& p)
 #define ENCODE_FINISH(bl) ENCODE_FINISH_NEW_COMPAT(bl, 0)
 
 #define DECODE_ERR_VERSION(func, v)			\
-  "" #func " unknown encoding version > " #v
+  (std::string(func) + " unknown encoding version > " #v)
 
 #define DECODE_ERR_OLDVERSION(func, v)			\
-  "" #func " no longer understand old encoding version < " #v
+  (std::string(func) + " no longer understand old encoding version < " #v)
 
 #define DECODE_ERR_PAST(func) \
-  "" #func " decode past end of struct encoding"
+  (std::string(func) + " decode past end of struct encoding")
 
 /**
  * check for very old encoding

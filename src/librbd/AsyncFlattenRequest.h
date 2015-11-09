@@ -12,7 +12,7 @@ namespace librbd {
 class ImageCtx;
 class ProgressContext;
 
-class AsyncFlattenRequest : public AsyncRequest
+class AsyncFlattenRequest : public AsyncRequest<>
 {
 public:
   AsyncFlattenRequest(ImageCtx &image_ctx, Context *on_finish,
@@ -34,6 +34,8 @@ private:
    * Flatten goes through the following state machine to copyup objects
    * from the parent image:
    *
+   * @verbatim
+   *
    * <start>
    *    |
    *    v
@@ -48,6 +50,8 @@ private:
    *           .                                   ^
    *           .                                   .
    *           . . . . . . . . . . . . . . . . . . .
+   *
+   * @endverbatim
    *
    * The _UPDATE_CHILDREN state will be skipped if the image has one or
    * more snapshots. The _UPDATE_HEADER state will be skipped if the

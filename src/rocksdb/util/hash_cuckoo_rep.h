@@ -28,8 +28,8 @@ class HashCuckooRepFactory : public MemTableRepFactory {
   virtual ~HashCuckooRepFactory() {}
 
   virtual MemTableRep* CreateMemTableRep(
-      const MemTableRep::KeyComparator& compare, Arena* arena,
-      const SliceTransform* transform) override;
+      const MemTableRep::KeyComparator& compare, MemTableAllocator* allocator,
+      const SliceTransform* transform, Logger* logger) override;
 
   virtual const char* Name() const override { return "HashCuckooRepFactory"; }
 

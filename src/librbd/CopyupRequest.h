@@ -30,16 +30,22 @@ namespace librbd {
      * Copyup requests go through the following state machine to read from the
      * parent image, update the object map, and copyup the object:
      *
+     *
+     * @verbatim
+     *
      * <start>
      *    |
      *    v
-     * STATE_READ_FROM_PARENT ----> STATE_OBJECT_MAP . . .
-     *    .               .            |                 .
-     *    .               .            v                 .
-     *    .               . . . . > STATE_COPYUP         .
-     *    .                            |                 .
-     *    .                            v                 .
-     *    . . . . . . . . . . . . > <finish> < . . . . . .
+     *  STATE_READ_FROM_PARENT
+     *    .   .        |
+     *    .   .        v
+     *    .   .     STATE_OBJECT_MAP . .
+     *    .   .        |               .
+     *    .   .        v               .
+     *    .   . . > STATE_COPYUP       .
+     *    .            |               .
+     *    .            v               .
+     *    . . . . > <finish> < . . . . .
      *
      * @endverbatim
      *
@@ -60,8 +66,11 @@ namespace librbd {
     State m_state;
     ceph::bufferlist m_copyup_data;
     vector<AioRequest *> m_pending_requests;
+    atomic_t m_pending_copyups;
 
     AsyncOperation m_async_op;
+
+    std::vector<uint64_t> m_snap_ids;
 
     void complete_requests(int r);
 

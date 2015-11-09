@@ -18,7 +18,8 @@ class TestRadosClient;
 
 typedef boost::function<int(TestIoCtxImpl*,
 			    const std::string&,
-			    bufferlist *)> ObjectOperationTestImpl;
+			    bufferlist *,
+                            const SnapContext &)> ObjectOperationTestImpl;
 typedef std::list<ObjectOperationTestImpl> ObjectOperations;
 
 struct TestObjectOperationImpl {
@@ -33,9 +34,11 @@ private:
 
 class TestIoCtxImpl {
 public:
+  typedef boost::function<int(TestIoCtxImpl *, const std::string &)> Operation;
+
 
   TestIoCtxImpl();
-  explicit TestIoCtxImpl(TestRadosClient &client, int64_t m_pool_id,
+  explicit TestIoCtxImpl(TestRadosClient *client, int64_t m_pool_id,
                          const std::string& pool_name);
 
   TestRadosClient *get_rados_client() {
@@ -44,6 +47,10 @@ public:
 
   void get();
   void put();
+
+  inline int64_t get_pool_id() const {
+    return m_pool_id;
+  }
 
   virtual TestIoCtxImpl *clone() = 0;
 
@@ -55,6 +62,9 @@ public:
     return m_snap_seq;
   }
 
+  inline void set_snap_context(const SnapContext& snapc) {
+    m_snapc = snapc;
+  }
   const SnapContext &get_snap_context() const {
     return m_snapc;
   }
@@ -72,9 +82,10 @@ public:
   virtual int assert_exists(const std::string &oid) = 0;
 
   virtual int create(const std::string& oid, bool exclusive) = 0;
-  virtual int exec(const std::string& oid, TestClassHandler &handler,
+  virtual int exec(const std::string& oid, TestClassHandler *handler,
                    const char *cls, const char *method,
-                   bufferlist& inbl, bufferlist* outbl);
+                   bufferlist& inbl, bufferlist* outbl,
+                   const SnapContext &snapc);
   virtual int list_snaps(const std::string& o, snap_set_t *out_snaps) = 0;
   virtual int list_watchers(const std::string& o,
                             std::list<obj_watch_t> *out_watchers);
@@ -111,26 +122,32 @@ public:
                           std::map<uint64_t,uint64_t> *m,
                           bufferlist *data_bl) = 0;
   virtual int stat(const std::string& oid, uint64_t *psize, time_t *pmtime) = 0;
-  virtual int truncate(const std::string& oid, uint64_t size) = 0;
+  virtual int truncate(const std::string& oid, uint64_t size,
+                       const SnapContext &snapc) = 0;
   virtual int tmap_update(const std::string& oid, bufferlist& cmdbl);
   virtual int unwatch(uint64_t handle);
   virtual int watch(const std::string& o, uint64_t *handle,
                     librados::WatchCtx *ctx, librados::WatchCtx2 *ctx2);
   virtual int write(const std::string& oid, bufferlist& bl, size_t len,
-                    uint64_t off) = 0;
-  virtual int write_full(const std::string& oid, bufferlist& bl) = 0;
+                    uint64_t off, const SnapContext &snapc) = 0;
+  virtual int write_full(const std::string& oid, bufferlist& bl,
+                         const SnapContext &snapc) = 0;
   virtual int xattr_get(const std::string& oid,
                         std::map<std::string, bufferlist>* attrset) = 0;
   virtual int xattr_set(const std::string& oid, const std::string &name,
                         bufferlist& bl) = 0;
   virtual int zero(const std::string& oid, uint64_t off, uint64_t len) = 0;
 
+  int execute_operation(const std::string& oid,
+                        const Operation &operation);
+
 protected:
   TestIoCtxImpl(const TestIoCtxImpl& rhs);
   virtual ~TestIoCtxImpl();
 
-  int execute_aio_operations(const std::string& oid, TestObjectOperationImpl *ops,
-                             bufferlist *pbl);
+  int execute_aio_operations(const std::string& oid,
+                             TestObjectOperationImpl *ops,
+                             bufferlist *pbl, const SnapContext &snapc);
 
 private:
 

@@ -1,3 +1,5 @@
+// -*- mode:C++; tab-width:8; c-basic-offset:2; indent-tabs-mode:t -*-
+// vim: ts=8 sw=2 smarttab
 
 #include "include/stringify.h"
 #include "CrushTester.h"
@@ -5,12 +7,8 @@
 
 #include <algorithm>
 #include <stdlib.h>
-/* fork */
-#include <unistd.h>
-/* waitpid */
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <common/errno.h>
+#include <boost/lexical_cast.hpp>
+#include <common/SubProcess.h>
 
 void CrushTester::set_device_weight(int dev, float f)
 {
@@ -357,94 +355,47 @@ void CrushTester::write_integer_indexed_scalar_data_string(vector<string> &dst, 
   dst.push_back( data_buffer.str() );
 }
 
-int CrushTester::test_with_crushtool(const string& crushtool,
-                                     int max_id,
-                                     int timeout,
+int CrushTester::test_with_crushtool(const char *crushtool_cmd,
+				     int max_id, int timeout,
 				     int ruleset)
 {
-  string timeout_string = stringify(timeout);
-  string opt_max_id = stringify(max_id);
-  vector<const char *> cmd_args;
-  cmd_args.push_back("timeout");
-  cmd_args.push_back(timeout_string.c_str());
-  cmd_args.push_back(crushtool.c_str());
-  cmd_args.push_back("-i");
-  cmd_args.push_back("-");
-  cmd_args.push_back("--test");
-  cmd_args.push_back("--check");
-  cmd_args.push_back(opt_max_id.c_str());
-  cmd_args.push_back("--min-x");
-  cmd_args.push_back("1");
-  cmd_args.push_back("--max-x");
-  cmd_args.push_back("50");
+  SubProcessTimed crushtool(crushtool_cmd, true, false, true, timeout);
+  string opt_max_id = boost::lexical_cast<string>(max_id);
+  crushtool.add_cmd_args(
+    "-i", "-",
+    "--test", "--check", opt_max_id.c_str(),
+    "--min-x", "1",
+    "--max-x", "50",
+    NULL);
   if (ruleset >= 0) {
-    cmd_args.push_back("--ruleset");
-    cmd_args.push_back(stringify(ruleset).c_str());
+    crushtool.add_cmd_args(
+      "--ruleset",
+      stringify(ruleset).c_str(),
+      NULL);
   }
-  cmd_args.push_back(NULL);
-
-  int pipefds[2];
-  if (::pipe(pipefds) == -1) {
-    int r = errno;
-    err << "error creating pipe: " << cpp_strerror(r) << "\n";
-    return -r;
+  int ret = crushtool.spawn();
+  if (ret != 0) {
+    err << "failed run crushtool: " << crushtool.err();
+    return ret;
   }
-
-  int fpid = fork();
-  if (fpid < 0) {
-    int r = errno;
-    err << "unable to fork(): " << cpp_strerror(r);
-    ::close(pipefds[0]);
-    ::close(pipefds[1]);
-    return -r;
-  } else if (fpid == 0) {
-    ::close(pipefds[1]);
-    ::dup2(pipefds[0], STDIN_FILENO);
-    ::close(pipefds[0]);
-    ::close(1);
-    ::close(2);
-    int r = execvp(cmd_args[0], (char * const *)&cmd_args[0]);
-    if (r < 0)
-      exit(errno);
-    // we should never reach this
-    exit(EINVAL);
-  }
-  ::close(pipefds[0]);
 
   bufferlist bl;
   ::encode(crush, bl);
-  bl.write_fd(pipefds[1]);
-  ::close(pipefds[1]);
-
-  int status;
-  int r = waitpid(fpid, &status, 0);
-  assert(r == fpid);
-
-  if (!WIFEXITED(status)) {
-    assert(WIFSIGNALED(status));
-    err << "error testing crush map\n";
+  bl.write_fd(crushtool.stdin());
+  crushtool.close_stdin();
+  bl.clear();
+  ret = bl.read_fd(crushtool.stderr(), 100 * 1024);
+  if (ret < 0) {
+    err << "failed read from crushtool: " << cpp_strerror(-ret);
+    return ret;
+  }
+  bl.write_stream(err);
+  if (crushtool.join() != 0) {
+    err << crushtool.err();
     return -EINVAL;
   }
 
-  r = WEXITSTATUS(status);
-  if (r == 0) {
-    // major success!
-    return 0;
-  }
-  if (r == 124) {
-    // the test takes longer than timeout and was interrupted
-    return -EINTR;
-  }
-
-  if (r == ENOENT) {
-    err << "unable to find " << cmd_args << " to test the map";
-    return -ENOENT;
-  }
-
-  // something else entirely happened
-  // log it and consider an invalid crush map
-  err << "error running crushmap through crushtool: " << cpp_strerror(r);
-  return -EINVAL;
+  return 0;
 }
 
 namespace {
@@ -458,7 +409,7 @@ namespace {
   class CrushWalker : public CrushTreeDumper::Dumper<void> {
     typedef void DumbFormatter;
     typedef CrushTreeDumper::Dumper<DumbFormatter> Parent;
-    unsigned max_id;
+    int max_id;
   public:
     CrushWalker(const CrushWrapper *crush, unsigned max_id)
       : Parent(crush), max_id(max_id) {}
@@ -470,7 +421,7 @@ namespace {
 	}
 	type = crush->get_bucket_type(qi.id);
       } else {
-	if (max_id > 0 && qi.id >= (int)max_id) {
+	if (max_id > 0 && qi.id >= max_id) {
 	  throw BadCrushMap("item id too large", qi.id);
 	}
 	type = 0;

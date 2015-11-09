@@ -8,6 +8,8 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "rocksdb/iterator.h"
+#include "table/iterator_wrapper.h"
+#include "util/arena.h"
 
 namespace rocksdb {
 
@@ -47,15 +49,22 @@ namespace {
 class EmptyIterator : public Iterator {
  public:
   explicit EmptyIterator(const Status& s) : status_(s) { }
-  virtual bool Valid() const { return false; }
-  virtual void Seek(const Slice& target) { }
-  virtual void SeekToFirst() { }
-  virtual void SeekToLast() { }
-  virtual void Next() { assert(false); }
-  virtual void Prev() { assert(false); }
-  Slice key() const { assert(false); return Slice(); }
-  Slice value() const { assert(false); return Slice(); }
-  virtual Status status() const { return status_; }
+  virtual bool Valid() const override { return false; }
+  virtual void Seek(const Slice& target) override {}
+  virtual void SeekToFirst() override {}
+  virtual void SeekToLast() override {}
+  virtual void Next() override { assert(false); }
+  virtual void Prev() override { assert(false); }
+  Slice key() const override {
+    assert(false);
+    return Slice();
+  }
+  Slice value() const override {
+    assert(false);
+    return Slice();
+  }
+  virtual Status status() const override { return status_; }
+
  private:
   Status status_;
 };
@@ -65,8 +74,26 @@ Iterator* NewEmptyIterator() {
   return new EmptyIterator(Status::OK());
 }
 
+Iterator* NewEmptyIterator(Arena* arena) {
+  if (arena == nullptr) {
+    return NewEmptyIterator();
+  } else {
+    auto mem = arena->AllocateAligned(sizeof(EmptyIterator));
+    return new (mem) EmptyIterator(Status::OK());
+  }
+}
+
 Iterator* NewErrorIterator(const Status& status) {
   return new EmptyIterator(status);
+}
+
+Iterator* NewErrorIterator(const Status& status, Arena* arena) {
+  if (arena == nullptr) {
+    return NewErrorIterator(status);
+  } else {
+    auto mem = arena->AllocateAligned(sizeof(EmptyIterator));
+    return new (mem) EmptyIterator(status);
+  }
 }
 
 }  // namespace rocksdb

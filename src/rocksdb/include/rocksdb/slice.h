@@ -20,6 +20,7 @@
 #define STORAGE_ROCKSDB_INCLUDE_SLICE_H_
 
 #include <assert.h>
+#include <cstdio>
 #include <stddef.h>
 #include <string.h>
 #include <string>
@@ -41,6 +42,10 @@ class Slice {
   // Create a slice that refers to s[0,strlen(s)-1]
   /* implicit */
   Slice(const char* s) : data_(s), size_(strlen(s)) { }
+
+  // Create a single slice from SliceParts using buf as storage.
+  // buf must exist as long as the returned Slice exists.
+  Slice(const struct SliceParts& parts, std::string* buf);
 
   // Return a pointer to the beginning of the referenced data
   const char* data() const { return data_; }
@@ -107,6 +112,7 @@ class Slice {
 struct SliceParts {
   SliceParts(const Slice* _parts, int _num_parts) :
       parts(_parts), num_parts(_num_parts) { }
+  SliceParts() : parts(nullptr), num_parts(0) {}
 
   const Slice* parts;
   int num_parts;
@@ -122,7 +128,7 @@ inline bool operator!=(const Slice& x, const Slice& y) {
 }
 
 inline int Slice::compare(const Slice& b) const {
-  const int min_len = (size_ < b.size_) ? size_ : b.size_;
+  const size_t min_len = (size_ < b.size_) ? size_ : b.size_;
   int r = memcmp(data_, b.data_, min_len);
   if (r == 0) {
     if (size_ < b.size_) r = -1;

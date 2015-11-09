@@ -30,7 +30,7 @@ Mutex::Mutex(const std::string &n, bool r, bool ld,
   if (cct) {
     PerfCountersBuilder b(cct, string("mutex-") + name,
 			  l_mutex_first, l_mutex_last);
-    b.add_time_avg(l_mutex_wait, "wait");
+    b.add_time_avg(l_mutex_wait, "wait", "Average time of mutex in locked state");
     logger = b.create_perf_counters();
     cct->get_perfcounters_collection()->add(logger);
     logger->set(l_mutex_wait, 0);
@@ -82,21 +82,26 @@ Mutex::~Mutex() {
 }
 
 void Mutex::Lock(bool no_lockdep) {
-  utime_t start;
   int r;
 
   if (lockdep && g_lockdep && !no_lockdep) _will_lock();
 
-  if (TryLock()) {
-    goto out;
-  }
-
-  if (logger && cct && cct->_conf->mutex_perf_counter)
+  if (logger && cct && cct->_conf->mutex_perf_counter) {
+    utime_t start;
+    // instrumented mutex enabled
     start = ceph_clock_now(cct);
-  r = pthread_mutex_lock(&_m);
-  if (logger && cct && cct->_conf->mutex_perf_counter)
+    if (TryLock()) {
+      goto out;
+    }
+
+    r = pthread_mutex_lock(&_m);
+
     logger->tinc(l_mutex_wait,
 		 ceph_clock_now(cct) - start);
+  } else {
+    r = pthread_mutex_lock(&_m);
+  }
+
   assert(r == 0);
   if (lockdep && g_lockdep) _locked();
   _post_lock();

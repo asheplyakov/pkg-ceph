@@ -14,41 +14,80 @@
 
 namespace rocksdb {
 
-Status PlainTableFactory::NewTableReader(const Options& options,
-                                         const EnvOptions& soptions,
+Status PlainTableFactory::NewTableReader(const ImmutableCFOptions& ioptions,
+                                         const EnvOptions& env_options,
                                          const InternalKeyComparator& icomp,
                                          unique_ptr<RandomAccessFile>&& file,
                                          uint64_t file_size,
                                          unique_ptr<TableReader>* table) const {
-  return PlainTableReader::Open(options, soptions, icomp, std::move(file),
+  return PlainTableReader::Open(ioptions, env_options, icomp, std::move(file),
                                 file_size, table, bloom_bits_per_key_,
                                 hash_table_ratio_, index_sparseness_,
-                                huge_page_tlb_size_);
+                                huge_page_tlb_size_, full_scan_mode_);
 }
 
 TableBuilder* PlainTableFactory::NewTableBuilder(
-    const Options& options, const InternalKeyComparator& internal_comparator,
-    WritableFile* file, CompressionType compression_type) const {
-  return new PlainTableBuilder(options, file, user_key_len_);
+    const TableBuilderOptions& table_builder_options,
+    WritableFile* file) const {
+  // Ignore the skip_filters flag. PlainTable format is optimized for small
+  // in-memory dbs. The skip_filters optimization is not useful for plain
+  // tables
+  //
+  return new PlainTableBuilder(
+      table_builder_options.ioptions,
+      table_builder_options.int_tbl_prop_collector_factories, file,
+      user_key_len_, encoding_type_, index_sparseness_, bloom_bits_per_key_, 6,
+      huge_page_tlb_size_, hash_table_ratio_, store_index_in_file_);
 }
 
-extern TableFactory* NewPlainTableFactory(uint32_t user_key_len,
-                                          int bloom_bits_per_key,
-                                          double hash_table_ratio,
-                                          size_t index_sparseness,
-                                          size_t huge_page_tlb_size) {
-  return new PlainTableFactory(user_key_len, bloom_bits_per_key,
-                               hash_table_ratio, index_sparseness,
-                               huge_page_tlb_size);
+std::string PlainTableFactory::GetPrintableTableOptions() const {
+  std::string ret;
+  ret.reserve(20000);
+  const int kBufferSize = 200;
+  char buffer[kBufferSize];
+
+  snprintf(buffer, kBufferSize, "  user_key_len: %u\n",
+           user_key_len_);
+  ret.append(buffer);
+  snprintf(buffer, kBufferSize, "  bloom_bits_per_key: %d\n",
+           bloom_bits_per_key_);
+  ret.append(buffer);
+  snprintf(buffer, kBufferSize, "  hash_table_ratio: %lf\n",
+           hash_table_ratio_);
+  ret.append(buffer);
+  snprintf(buffer, kBufferSize, "  index_sparseness: %zu\n",
+           index_sparseness_);
+  ret.append(buffer);
+  snprintf(buffer, kBufferSize, "  huge_page_tlb_size: %zu\n",
+           huge_page_tlb_size_);
+  ret.append(buffer);
+  snprintf(buffer, kBufferSize, "  encoding_type: %d\n",
+           encoding_type_);
+  ret.append(buffer);
+  snprintf(buffer, kBufferSize, "  full_scan_mode: %d\n",
+           full_scan_mode_);
+  ret.append(buffer);
+  snprintf(buffer, kBufferSize, "  store_index_in_file: %d\n",
+           store_index_in_file_);
+  ret.append(buffer);
+  return ret;
 }
 
-extern TableFactory* NewTotalOrderPlainTableFactory(uint32_t user_key_len,
-                                                    int bloom_bits_per_key,
-                                                    size_t index_sparseness,
-                                                    size_t huge_page_tlb_size) {
-  return new PlainTableFactory(user_key_len, bloom_bits_per_key, 0,
-                               index_sparseness, huge_page_tlb_size);
+extern TableFactory* NewPlainTableFactory(const PlainTableOptions& options) {
+  return new PlainTableFactory(options);
 }
+
+const std::string PlainTablePropertyNames::kPrefixExtractorName =
+    "rocksdb.prefix.extractor.name";
+
+const std::string PlainTablePropertyNames::kEncodingType =
+    "rocksdb.plain.table.encoding.type";
+
+const std::string PlainTablePropertyNames::kBloomVersion =
+    "rocksdb.plain.table.bloom.version";
+
+const std::string PlainTablePropertyNames::kNumBloomBlocks =
+    "rocksdb.plain.table.bloom.numblocks";
 
 }  // namespace rocksdb
 #endif  // ROCKSDB_LITE

@@ -1,35 +1,8 @@
 .\" Man page generated from reStructuredText.
 .
-.TH "RBD-REPLAY-PREP" "8" "August 21, 2014" "dev" "Ceph"
+.TH "RBD-REPLAY-PREP" "8" "November 03, 2015" "dev" "Ceph"
 .SH NAME
 rbd-replay-prep \- prepare captured rados block device (RBD) workloads for replay
-.
-.nr rst2man-indent-level 0
-.
-.de1 rstReportMargin
-\\$1 \\n[an-margin]
-level \\n[rst2man-indent-level]
-level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
--
-\\n[rst2man-indent0]
-\\n[rst2man-indent1]
-\\n[rst2man-indent2]
-..
-.de1 INDENT
-.\" .rstReportMargin pre:
-. RS \\$1
-. nr rst2man-indent\\n[rst2man-indent-level] \\n[an-margin]
-. nr rst2man-indent-level +1
-.\" .rstReportMargin post:
-..
-.de UNINDENT
-. RE
-.\" indent \\n[an-margin]
-.\" old: \\n[rst2man-indent\\n[rst2man-indent-level]]
-.nr rst2man-indent-level -1
-.\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
-.in \\n[rst2man-indent\\n[rst2man-indent-level]]u
-..
 .
 .nr rst2man-indent-level 0
 .
@@ -76,6 +49,11 @@ Requests further apart than \(aqseconds\(aq seconds are assumed to be independen
 .B \-\-anonymize
 Anonymizes image and snap names.
 .UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-verbose
+Print all processed events to console
+.UNINDENT
 .SH EXAMPLES
 .sp
 To prepare workload1\-trace for replay:
@@ -91,7 +69,7 @@ rbd\-replay\-prep workload1\-trace/ust/uid/1000/64\-bit workload1
 .UNINDENT
 .SH AVAILABILITY
 .sp
-\fBrbd\-replay\-prep\fP is part of Ceph, a massively scalable, open-source, distributed storage system. Please refer to
+\fBrbd\-replay\-prep\fP is part of Ceph, a massively scalable, open\-source, distributed storage system. Please refer to
 the Ceph documentation at \fI\%http://ceph.com/docs\fP for more information.
 .SH SEE ALSO
 .sp

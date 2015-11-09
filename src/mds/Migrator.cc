@@ -12,7 +12,7 @@
  * 
  */
 
-#include "MDS.h"
+#include "MDSRank.h"
 #include "MDCache.h"
 #include "CInode.h"
 #include "CDir.h"
@@ -86,7 +86,7 @@
 class MigratorContext : public MDSInternalContextBase {
 protected:
   Migrator *mig;
-  MDS *get_mds() {
+  MDSRank *get_mds() {
     return mig->mds;
   }
 public:
@@ -966,7 +966,7 @@ void Migrator::export_frozen(CDir *dir, uint64_t tid)
   MExportDirPrep *prep = new MExportDirPrep(dir->dirfrag(), it->second.tid);
 
   // include list of bystanders
-  for (map<mds_rank_t,unsigned>::iterator p = dir->replicas_begin();
+  for (compact_map<mds_rank_t,unsigned>::iterator p = dir->replicas_begin();
        p != dir->replicas_end();
        ++p) {
     if (p->first != it->second.peer) {
@@ -1042,12 +1042,12 @@ void Migrator::export_frozen(CDir *dir, uint64_t tid)
 
       start = 'f';  // start with dirfrag
     }
-    bufferlist final;
+    bufferlist final_bl;
     dirfrag_t df = cur->dirfrag();
-    ::encode(df, final);
-    ::encode(start, final);
-    final.claim_append(tracebl);
-    prep->add_trace(final);
+    ::encode(df, final_bl);
+    ::encode(start, final_bl);
+    final_bl.claim_append(tracebl);
+    prep->add_trace(final_bl);
   }
 
   // send.
@@ -1146,7 +1146,7 @@ void Migrator::handle_export_prep_ack(MExportDirPrepAck *m)
 	  it->second.warning_ack_waiting.count(MDS_RANK_NONE) > 0));
   assert(it->second.notify_ack_waiting.empty());
 
-  for (map<mds_rank_t,unsigned>::iterator p = dir->replicas_begin();
+  for (compact_map<mds_rank_t,unsigned>::iterator p = dir->replicas_begin();
        p != dir->replicas_end();
        ++p) {
     if (p->first == it->second.peer) continue;
@@ -1905,7 +1905,7 @@ void Migrator::handle_export_discover(MExportDirDiscover *m)
     if (r > 0) return;
     if (r < 0) {
       dout(7) << "handle_export_discover_2 failed to discover or not dir " << m->get_path() << ", NAK" << dendl;
-      assert(0);    // this shouldn't happen if the auth pins his path properly!!!! 
+      assert(0);    // this shouldn't happen if the auth pins its path properly!!!!
     }
 
     assert(0); // this shouldn't happen; the get_inode above would have succeeded.
@@ -2566,7 +2566,7 @@ void Migrator::import_logged_start(dirfrag_t df, CDir *dir, mds_rank_t from,
   dout(7) << "sending ack for " << *dir << " to old auth mds." << from << dendl;
 
   // test surviving observer of a failed migration that did not complete
-  //assert(dir->replica_map.size() < 2 || mds->whoami != 0);
+  //assert(dir->replica_map.size() < 2 || mds->get_nodeid() != 0);
 
   MExportDirAck *ack = new MExportDirAck(dir->dirfrag(), it->second.tid);
   ::encode(imported_caps, ack->imported_caps);
@@ -2696,7 +2696,7 @@ void Migrator::import_finish(CDir *dir, bool notify, bool last)
   mds->mdcache->maybe_send_pending_resolves();
 
   // did i just import mydir?
-  if (dir->ino() == MDS_INO_MDSDIR(mds->whoami))
+  if (dir->ino() == MDS_INO_MDSDIR(mds->get_nodeid()))
     cache->populate_mydir();
 
   // is it empty?
@@ -2932,7 +2932,8 @@ int Migrator::decode_import_dir(bufferlist::iterator& blp,
     else if (icode == 'I') {
       // inode
       assert(le);
-      decode_import_inode(dn, blp, oldauth, ls, le->get_start_off(), peer_exports, updated_scatterlocks);
+      decode_import_inode(dn, blp, oldauth, ls, le->get_metablob()->event_seq,
+          peer_exports, updated_scatterlocks);
     }
     
     // add dentry to journal entry

@@ -25,7 +25,8 @@ using namespace stl_wrappers;
 
 class VectorRep : public MemTableRep {
  public:
-  VectorRep(const KeyComparator& compare, Arena* arena, size_t count);
+  VectorRep(const KeyComparator& compare, MemTableAllocator* allocator,
+            size_t count);
 
   // Insert key into the collection. (The caller will pack key and value into a
   // single buffer and pass that in as the parameter to Insert)
@@ -91,11 +92,8 @@ class VectorRep : public MemTableRep {
     virtual void SeekToLast() override;
   };
 
-  // Unhide default implementations of GetIterator()
-  using MemTableRep::GetIterator;
-
   // Return an iterator over the keys in this representation.
-  virtual MemTableRep::Iterator* GetIterator() override;
+  virtual MemTableRep::Iterator* GetIterator(Arena* arena) override;
 
  private:
   friend class Iterator;
@@ -109,7 +107,6 @@ class VectorRep : public MemTableRep {
 
 void VectorRep::Insert(KeyHandle handle) {
   auto* key = static_cast<char*>(handle);
-  assert(!Contains(key));
   WriteLock l(&rwlock_);
   assert(!immutable_);
   bucket_->push_back(key);
@@ -135,8 +132,9 @@ size_t VectorRep::ApproximateMemoryUsage() {
     );
 }
 
-VectorRep::VectorRep(const KeyComparator& compare, Arena* arena, size_t count)
-  : MemTableRep(arena),
+VectorRep::VectorRep(const KeyComparator& compare, MemTableAllocator* allocator,
+                     size_t count)
+  : MemTableRep(allocator),
     bucket_(new Bucket()),
     immutable_(false),
     sorted_(false),
@@ -180,14 +178,14 @@ bool VectorRep::Iterator::Valid() const {
 // Returns the key at the current position.
 // REQUIRES: Valid()
 const char* VectorRep::Iterator::key() const {
-  assert(Valid());
+  assert(sorted_);
   return *cit_;
 }
 
 // Advances to the next position.
 // REQUIRES: Valid()
 void VectorRep::Iterator::Next() {
-  assert(Valid());
+  assert(sorted_);
   if (cit_ == bucket_->end()) {
     return;
   }
@@ -197,7 +195,7 @@ void VectorRep::Iterator::Next() {
 // Advances to the previous position.
 // REQUIRES: Valid()
 void VectorRep::Iterator::Prev() {
-  assert(Valid());
+  assert(sorted_);
   if (cit_ == bucket_->begin()) {
     // If you try to go back from the first element, the iterator should be
     // invalidated. So we set it to past-the-end. This means that you can
@@ -252,31 +250,43 @@ void VectorRep::Get(const LookupKey& k, void* callback_args,
     bucket.reset(new Bucket(*bucket_));  // make a copy
   }
   VectorRep::Iterator iter(vector_rep, immutable_ ? bucket_ : bucket, compare_);
-  rwlock_.Unlock();
+  rwlock_.ReadUnlock();
 
   for (iter.Seek(k.user_key(), k.memtable_key().data());
        iter.Valid() && callback_func(callback_args, iter.key()); iter.Next()) {
   }
 }
 
-MemTableRep::Iterator* VectorRep::GetIterator() {
+MemTableRep::Iterator* VectorRep::GetIterator(Arena* arena) {
+  char* mem = nullptr;
+  if (arena != nullptr) {
+    mem = arena->AllocateAligned(sizeof(Iterator));
+  }
   ReadLock l(&rwlock_);
   // Do not sort here. The sorting would be done the first time
   // a Seek is performed on the iterator.
   if (immutable_) {
-    return new Iterator(this, bucket_, compare_);
+    if (arena == nullptr) {
+      return new Iterator(this, bucket_, compare_);
+    } else {
+      return new (mem) Iterator(this, bucket_, compare_);
+    }
   } else {
     std::shared_ptr<Bucket> tmp;
     tmp.reset(new Bucket(*bucket_)); // make a copy
-    return new Iterator(nullptr, tmp, compare_);
+    if (arena == nullptr) {
+      return new Iterator(nullptr, tmp, compare_);
+    } else {
+      return new (mem) Iterator(nullptr, tmp, compare_);
+    }
   }
 }
 } // anon namespace
 
 MemTableRep* VectorRepFactory::CreateMemTableRep(
-    const MemTableRep::KeyComparator& compare, Arena* arena,
-    const SliceTransform*) {
-  return new VectorRep(compare, arena, count_);
+    const MemTableRep::KeyComparator& compare, MemTableAllocator* allocator,
+    const SliceTransform*, Logger* logger) {
+  return new VectorRep(compare, allocator, count_);
 }
 } // namespace rocksdb
 #endif  // ROCKSDB_LITE

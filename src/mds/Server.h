@@ -15,7 +15,7 @@
 #ifndef CEPH_MDS_SERVER_H
 #define CEPH_MDS_SERVER_H
 
-#include "MDS.h"
+#include "MDSRank.h"
 
 class OSDMap;
 class PerfCounters;
@@ -24,6 +24,9 @@ class EMetaBlob;
 class EUpdate;
 class MMDSSlaveRequest;
 struct SnapInfo;
+class MClientRequest;
+class MClientReply;
+class MDLog;
 
 struct MutationImpl;
 struct MDRequestImpl;
@@ -41,35 +44,30 @@ enum {
 };
 
 class Server {
-public:
-  // XXX FIXME: can probably friend enough contexts to make this not need to be public
-  MDS *mds;
 private:
+  MDSRank *mds;
   MDCache *mdcache;
   MDLog *mdlog;
-  Messenger *messenger;
   PerfCounters *logger;
 
   // OSDMap full status, used to generate ENOSPC on some operations
   bool is_full;
 
-public:
+  // State for while in reconnect
+  MDSInternalContext *reconnect_done;
   int failed_reconnects;
 
+  friend class MDSContinuation;
+  friend class ServerContext;
+
+public:
   bool terminating_sessions;
 
-  Server(MDS *m) : 
-    mds(m), 
-    mdcache(mds->mdcache), mdlog(mds->mdlog),
-    messenger(mds->messenger),
-    logger(0),
-    is_full(false),
-    failed_reconnects(0),
-    terminating_sessions(false) {
-  }
+  Server(MDSRank *m);
   ~Server() {
     g_ceph_context->get_perfcounters_collection()->remove(logger);
     delete logger;
+    delete reconnect_done;
   }
 
   void create_logger();
@@ -99,7 +97,7 @@ public:
   void find_idle_sessions();
   void kill_session(Session *session, Context *on_safe);
   void journal_close_session(Session *session, int state, Context *on_safe);
-  void reconnect_clients();
+  void reconnect_clients(MDSInternalContext *reconnect_done_);
   void handle_client_reconnect(class MClientReconnect *m);
   //void process_reconnect_cap(CInode *in, int from, ceph_mds_cap_reconnect& capinfo);
   void reconnect_gather_finish();
@@ -172,7 +170,7 @@ public:
   void handle_client_setdirlayout(MDRequestRef& mdr);
 
   int parse_layout_vxattr(string name, string value, const OSDMap *osdmap,
-			  ceph_file_layout *layout);
+			  ceph_file_layout *layout, bool validate=true);
   int parse_quota_vxattr(string name, string value, quota_info_t *quota);
   void handle_set_vxattr(MDRequestRef& mdr, CInode *cur,
 			 ceph_file_layout *dir_layout,
@@ -243,6 +241,9 @@ public:
   void _mksnap_finish(MDRequestRef& mdr, CInode *diri, SnapInfo &info);
   void handle_client_rmsnap(MDRequestRef& mdr);
   void _rmsnap_finish(MDRequestRef& mdr, CInode *diri, snapid_t snapid);
+  void handle_client_renamesnap(MDRequestRef& mdr);
+  void _renamesnap_finish(MDRequestRef& mdr, CInode *diri, snapid_t snapid);
+
 
   // helpers
   bool _rename_prepare_witness(MDRequestRef& mdr, mds_rank_t who, set<mds_rank_t> &witnesse,

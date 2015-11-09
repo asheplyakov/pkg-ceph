@@ -8,16 +8,17 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #pragma once
-#include <memory>
 #include <stdint.h>
 
+#include <memory>
+#include <string>
+
 #include "rocksdb/flush_block_policy.h"
-#include "rocksdb/options.h"
 #include "rocksdb/table.h"
+#include "db/dbformat.h"
 
 namespace rocksdb {
 
-struct Options;
 struct EnvOptions;
 
 using std::unique_ptr;
@@ -32,17 +33,44 @@ class BlockBasedTableFactory : public TableFactory {
 
   const char* Name() const override { return "BlockBasedTable"; }
 
-  Status NewTableReader(const Options& options, const EnvOptions& soptions,
+  Status NewTableReader(const ImmutableCFOptions& ioptions,
+                        const EnvOptions& soptions,
                         const InternalKeyComparator& internal_comparator,
                         unique_ptr<RandomAccessFile>&& file, uint64_t file_size,
-                        unique_ptr<TableReader>* table_reader) const override;
+                        unique_ptr<TableReader>* table_reader) const override {
+    return NewTableReader(ioptions, soptions, internal_comparator,
+                          std::move(file), file_size, table_reader,
+                          /*prefetch_index_and_filter=*/true);
+  }
+
+  // This is a variant of virtual member function NewTableReader function with
+  // added capability to disable pre-fetching of blocks on BlockBasedTable::Open
+  Status NewTableReader(const ImmutableCFOptions& ioptions,
+                        const EnvOptions& soptions,
+                        const InternalKeyComparator& internal_comparator,
+                        unique_ptr<RandomAccessFile>&& file, uint64_t file_size,
+                        unique_ptr<TableReader>* table_reader,
+                        bool prefetch_index_and_filter) const;
 
   TableBuilder* NewTableBuilder(
-      const Options& options, const InternalKeyComparator& internal_comparator,
-      WritableFile* file, CompressionType compression_type) const override;
+      const TableBuilderOptions& table_builder_options,
+      WritableFile* file) const override;
+
+  // Sanitizes the specified DB Options.
+  Status SanitizeOptions(const DBOptions& db_opts,
+                         const ColumnFamilyOptions& cf_opts) const override;
+
+  std::string GetPrintableTableOptions() const override;
+
+  const BlockBasedTableOptions& GetTableOptions() const;
 
  private:
   BlockBasedTableOptions table_options_;
 };
+
+extern const std::string kHashIndexPrefixesBlock;
+extern const std::string kHashIndexPrefixesMetadataBlock;
+extern const std::string kPropTrue;
+extern const std::string kPropFalse;
 
 }  // namespace rocksdb

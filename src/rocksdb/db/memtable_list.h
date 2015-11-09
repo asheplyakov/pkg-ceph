@@ -15,23 +15,29 @@
 #include "rocksdb/iterator.h"
 
 #include "db/dbformat.h"
+#include "db/filename.h"
 #include "db/skiplist.h"
 #include "db/memtable.h"
 #include "rocksdb/db.h"
 #include "rocksdb/iterator.h"
 #include "rocksdb/options.h"
 #include "util/autovector.h"
+#include "util/instrumented_mutex.h"
 #include "util/log_buffer.h"
 
 namespace rocksdb {
 
 class ColumnFamilyData;
 class InternalKeyComparator;
-class Mutex;
+class InstrumentedMutex;
+class MergeIteratorBuilder;
 
 // keeps a list of immutable memtables in a vector. the list is immutable
 // if refcount is bigger than one. It is used as a state for Get() and
 // Iterator code paths
+//
+// This class is not thread-safe.  External synchronization is required
+// (such as holding the db mutex or being on the write thread).
 class MemTableListVersion {
  public:
   explicit MemTableListVersion(MemTableListVersion* old = nullptr);
@@ -44,12 +50,17 @@ class MemTableListVersion {
   // Search all the memtables starting from the most recent one.
   // Return the most recent value found, if any.
   bool Get(const LookupKey& key, std::string* value, Status* s,
-           MergeContext& merge_context, const Options& options);
+           MergeContext* merge_context);
 
   void AddIterators(const ReadOptions& options,
-                    std::vector<Iterator*>* iterator_list);
+                    std::vector<Iterator*>* iterator_list, Arena* arena);
+
+  void AddIterators(const ReadOptions& options,
+                    MergeIteratorBuilder* merge_iter_builder);
 
   uint64_t GetTotalNumEntries() const;
+
+  uint64_t GetTotalNumDeletes() const;
 
  private:
   // REQUIRE: m is mutable memtable
@@ -69,25 +80,33 @@ class MemTableListVersion {
 // flushes can occur concurrently.  However, they are 'committed'
 // to the manifest in FIFO order to maintain correctness and
 // recoverability from a crash.
+//
+//
+// Other than imm_flush_needed, this class is not thread-safe and requires
+// external synchronization (such as holding the db mutex or being on the
+// write thread.)
 class MemTableList {
  public:
   // A list of memtables.
   explicit MemTableList(int min_write_buffer_number_to_merge)
-      : min_write_buffer_number_to_merge_(min_write_buffer_number_to_merge),
+      : imm_flush_needed(false),
+        min_write_buffer_number_to_merge_(min_write_buffer_number_to_merge),
         current_(new MemTableListVersion()),
         num_flush_not_started_(0),
         commit_in_progress_(false),
         flush_requested_(false) {
-    imm_flush_needed.Release_Store(nullptr);
     current_->Ref();
   }
+
+  // Should not delete MemTableList without making sure MemTableList::current()
+  // is Unref()'d.
   ~MemTableList() {}
 
   MemTableListVersion* current() { return current_; }
 
   // so that background threads can detect non-nullptr pointer to
   // determine whether there is anything more to start flushing.
-  port::AtomicPointer imm_flush_needed;
+  std::atomic<bool> imm_flush_needed;
 
   // Returns the total number of memtables in the list
   int size() const;
@@ -103,18 +122,14 @@ class MemTableList {
   // Reset status of the given memtable list back to pending state so that
   // they can get picked up again on the next round of flush.
   void RollbackMemtableFlush(const autovector<MemTable*>& mems,
-                             uint64_t file_number,
-                             std::set<uint64_t>* pending_outputs);
+                             uint64_t file_number);
 
   // Commit a successful flush in the manifest file
-  Status InstallMemtableFlushResults(ColumnFamilyData* cfd,
-                                     const autovector<MemTable*>& m,
-                                     VersionSet* vset, port::Mutex* mu,
-                                     Logger* info_log, uint64_t file_number,
-                                     std::set<uint64_t>& pending_outputs,
-                                     autovector<MemTable*>* to_delete,
-                                     Directory* db_directory,
-                                     LogBuffer* log_buffer);
+  Status InstallMemtableFlushResults(
+      ColumnFamilyData* cfd, const MutableCFOptions& mutable_cf_options,
+      const autovector<MemTable*>& m, VersionSet* vset, InstrumentedMutex* mu,
+      uint64_t file_number, autovector<MemTable*>* to_delete,
+      Directory* db_directory, LogBuffer* log_buffer);
 
   // New memtables are inserted at the front of the list.
   // Takes ownership of the referenced held on *m by the caller of Add().
@@ -123,7 +138,11 @@ class MemTableList {
   // Returns an estimate of the number of bytes of data in use.
   size_t ApproximateMemoryUsage();
 
-  // Request a flush of all existing memtables to storage
+  // Request a flush of all existing memtables to storage.  This will
+  // cause future calls to IsFlushPending() to return true if this list is
+  // non-empty (regardless of the min_write_buffer_number_to_merge
+  // parameter). This flush request will persist until the next time
+  // PickMemtablesToFlush() is called.
   void FlushRequested() { flush_requested_ = true; }
 
   // Copying allowed

@@ -7,6 +7,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "rocksdb/status.h"
 #include "util/arena.h"
 #include "util/murmurhash.h"
 
@@ -24,8 +25,8 @@ class BlockHashIndex {
  public:
   // Represents a restart index in the index block's restart array.
   struct RestartIndex {
-    explicit RestartIndex(uint32_t first_index, uint32_t num_blocks = 1)
-        : first_index(first_index), num_blocks(num_blocks) {}
+    explicit RestartIndex(uint32_t _first_index, uint32_t _num_blocks = 1)
+        : first_index(_first_index), num_blocks(_num_blocks) {}
 
     // For a given prefix, what is the restart index for the first data block
     // that contains it.
@@ -35,8 +36,12 @@ class BlockHashIndex {
     uint32_t num_blocks = 1;
   };
 
-  explicit BlockHashIndex(const SliceTransform* hash_key_extractor)
-      : hash_key_extractor_(hash_key_extractor) {}
+  // @params own_prefixes indicate if we should take care the memory space for
+  // the `key_prefix`
+  // passed by Add()
+  explicit BlockHashIndex(const SliceTransform* hash_key_extractor,
+                          bool own_prefixes)
+      : hash_key_extractor_(hash_key_extractor), kOwnPrefixes(own_prefixes) {}
 
   // Maps a key to its restart first_index.
   // Returns nullptr if the restart first_index is found
@@ -52,8 +57,17 @@ class BlockHashIndex {
  private:
   const SliceTransform* hash_key_extractor_;
   std::unordered_map<Slice, RestartIndex, murmur_hash> restart_indices_;
+
   Arena arena_;
+  bool kOwnPrefixes;
 };
+
+// Create hash index by reading from the metadata blocks.
+// @params prefixes: a sequence of prefixes.
+// @params prefix_meta: contains the "metadata" to of the prefixes.
+Status CreateBlockHashIndex(const SliceTransform* hash_key_extractor,
+                            const Slice& prefixes, const Slice& prefix_meta,
+                            BlockHashIndex** hash_index);
 
 // Create hash index by scanning the entries in index as well as the whole
 // dataset.
@@ -64,9 +78,8 @@ class BlockHashIndex {
 // @params num_restarts: used for correctness verification.
 // @params hash_key_extractor: extract the hashable part of a given key.
 // On error, nullptr will be returned.
-BlockHashIndex* CreateBlockHashIndex(Iterator* index_iter, Iterator* data_iter,
-                                     const uint32_t num_restarts,
-                                     const Comparator* comparator,
-                                     const SliceTransform* hash_key_extractor);
+BlockHashIndex* CreateBlockHashIndexOnTheFly(
+    Iterator* index_iter, Iterator* data_iter, const uint32_t num_restarts,
+    const Comparator* comparator, const SliceTransform* hash_key_extractor);
 
 }  // namespace rocksdb

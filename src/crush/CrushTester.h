@@ -348,7 +348,7 @@ public:
    */
   bool check_name_maps(unsigned max_id = 0) const;
   int test();
-  int test_with_crushtool(const string& crushtool,
+  int test_with_crushtool(const char *crushtool_cmd = "crushtool",
 			  int max_id = -1,
 			  int timeout = 0,
 			  int ruleset = -1);

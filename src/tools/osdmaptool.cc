@@ -53,8 +53,9 @@ int main(int argc, const char **argv)
 
   std::string fn;
   bool print = false;
-  bool print_json = false;
+  boost::scoped_ptr<Formatter> print_formatter;
   bool tree = false;
+  boost::scoped_ptr<Formatter> tree_formatter;
   bool createsimple = false;
   bool create_from_conf = false;
   int num_osd = 0;
@@ -82,11 +83,17 @@ int main(int argc, const char **argv)
       usage();
     } else if (ceph_argparse_flag(args, i, "-p", "--print", (char*)NULL)) {
       print = true;
-    } else if (ceph_argparse_flag(args, i, "--dump-json", (char*)NULL)) {
-      print_json = true;
-    } else if (ceph_argparse_flag(args, i, "--tree", (char*)NULL)) {
+    } else if (ceph_argparse_witharg(args, i, &val, err, "--dump", (char*)NULL)) {
+      print = true;
+      if (!val.empty() && val != "plain") {
+	print_formatter.reset(Formatter::create(val, "", "json"));
+      }
+    } else if (ceph_argparse_witharg(args, i, &val, err, "--tree", (char*)NULL)) {
       tree = true;
-    } else if (ceph_argparse_withint(args, i, &num_osd, &err, "--createsimple", (char*)NULL)) {
+      if (!val.empty() && val != "plain") {
+	tree_formatter.reset(Formatter::create(val, "", "json"));
+      }
+    } else if (ceph_argparse_witharg(args, i, &num_osd, err, "--createsimple", (char*)NULL)) {
       if (!err.str().empty()) {
 	cerr << err.str() << std::endl;
 	exit(EXIT_FAILURE);
@@ -106,12 +113,12 @@ int main(int argc, const char **argv)
       test_random = true;
     } else if (ceph_argparse_flag(args, i, "--clobber", (char*)NULL)) {
       clobber = true;
-    } else if (ceph_argparse_withint(args, i, &pg_bits, &err, "--pg_bits", (char*)NULL)) {
+    } else if (ceph_argparse_witharg(args, i, &pg_bits, err, "--pg_bits", (char*)NULL)) {
       if (!err.str().empty()) {
 	cerr << err.str() << std::endl;
 	exit(EXIT_FAILURE);
       }
-    } else if (ceph_argparse_withint(args, i, &pgp_bits, &err, "--pgp_bits", (char*)NULL)) {
+    } else if (ceph_argparse_witharg(args, i, &pgp_bits, err, "--pgp_bits", (char*)NULL)) {
       if (!err.str().empty()) {
 	cerr << err.str() << std::endl;
 	exit(EXIT_FAILURE);
@@ -126,9 +133,9 @@ int main(int argc, const char **argv)
       test_map_object = val;
     } else if (ceph_argparse_flag(args, i, "--test_crush", (char*)NULL)) {
       test_crush = true;
-    } else if (ceph_argparse_withint(args, i, &range_first, &err, "--range_first", (char*)NULL)) {
-    } else if (ceph_argparse_withint(args, i, &range_last, &err, "--range_last", (char*)NULL)) {
-    } else if (ceph_argparse_withint(args, i, &pool, &err, "--pool", (char*)NULL)) {
+    } else if (ceph_argparse_witharg(args, i, &range_first, err, "--range_first", (char*)NULL)) {
+    } else if (ceph_argparse_witharg(args, i, &range_last, err, "--range_last", (char*)NULL)) {
+    } else if (ceph_argparse_witharg(args, i, &pool, err, "--pool", (char*)NULL)) {
       if (!err.str().empty()) {
         cerr << err.str() << std::endl;
         exit(EXIT_FAILURE);
@@ -450,7 +457,7 @@ int main(int argc, const char **argv)
     }
   }
 
-  if (!print && !print_json && !tree && !modified && 
+  if (!print && !tree && !modified &&
       export_crush.empty() && import_crush.empty() && 
       test_map_pg.empty() && test_map_object.empty() &&
       !test_map_pgs && !test_map_pgs_dump) {
@@ -461,13 +468,28 @@ int main(int argc, const char **argv)
   if (modified)
     osdmap.inc_epoch();
 
-  if (print) 
-    osdmap.print(cout);
-  if (print_json)
-    osdmap.dump_json(cout);
-  if (tree) 
-    osdmap.print_tree(&cout, NULL);
+  if (print) {
+    if (print_formatter) {
+      print_formatter->open_object_section("osdmap");
+      osdmap.dump(print_formatter.get());
+      print_formatter->close_section();
+      print_formatter->flush(cout);
+    } else {
+      osdmap.print(cout);
+    }
+  }
 
+  if (tree) {
+    if (tree_formatter) {
+      tree_formatter->open_object_section("tree");
+      osdmap.print_tree(tree_formatter.get(), NULL);
+      tree_formatter->close_section();
+      tree_formatter->flush(cout);
+      cout << std::endl;
+    } else {
+      osdmap.print_tree(NULL, &cout);
+    }
+  }
   if (modified) {
     bl.clear();
     osdmap.encode(bl, CEPH_FEATURES_SUPPORTED_DEFAULT | CEPH_FEATURE_RESERVED);

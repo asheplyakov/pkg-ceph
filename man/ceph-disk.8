@@ -1,35 +1,8 @@
 .\" Man page generated from reStructuredText.
 .
-.TH "CEPH-DISK" "8" "December 18, 2014" "dev" "Ceph"
+.TH "CEPH-DISK" "8" "November 03, 2015" "dev" "Ceph"
 .SH NAME
 ceph-disk \- Ceph disk preparation and activation utility for OSD
-.
-.nr rst2man-indent-level 0
-.
-.de1 rstReportMargin
-\\$1 \\n[an-margin]
-level \\n[rst2man-indent-level]
-level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
--
-\\n[rst2man-indent0]
-\\n[rst2man-indent1]
-\\n[rst2man-indent2]
-..
-.de1 INDENT
-.\" .rstReportMargin pre:
-. RS \\$1
-. nr rst2man-indent\\n[rst2man-indent-level] \\n[an-margin]
-. nr rst2man-indent-level +1
-.\" .rstReportMargin post:
-..
-.de UNINDENT
-. RE
-.\" indent \\n[an-margin]
-.\" old: \\n[rst2man-indent\\n[rst2man-indent-level]]
-.nr rst2man-indent-level -1
-.\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
-.in \\n[rst2man-indent\\n[rst2man-indent-level]]u
-..
 .
 .nr rst2man-indent-level 0
 .
@@ -65,6 +38,8 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .sp
 .nf
 \fBceph\-disk\fP \fBactivate\fP [\fIdata\-path\fP] [\-\-activate\-key \fIpath\fP]
+[\-\-mark\-init \fIsysvinit|upstart|systemd|auto|none\fP]
+[\-\-no\-start\-daemon]
 .fi
 .sp
 .nf
@@ -88,7 +63,7 @@ subcommands \fBprepare\fP and \fBactivate\fP\&.
 .SH SUBCOMMANDS
 .SS prepare
 .sp
-Prepare a directory, disk or drive for a Ceph OSD. It creates a GPT partition,
+Prepare a directory, disk for a Ceph OSD. It creates a GPT partition,
 marks the partition with Ceph type \fBuuid\fP, creates a file system, marks the
 file system as ready for Ceph consumption, uses entire partition and adds a new
 partition to the journal disk. It is run directly or triggered by
@@ -107,10 +82,10 @@ ceph\-disk prepare \-\-cluster [cluster\-name] \-\-cluster\-uuid [uuid] \-\-fs\-
 .UNINDENT
 .UNINDENT
 .sp
-Other options like \fI\%--osd-uuid\fP, \fI\%--journal-uuid\fP,
-\fI\%--zap-disk\fP, \fI\%--data-dir\fP, \fI\%--data-dev\fP,
-\fI\%--journal-file\fP, \fI\%--journal-dev\fP, \fI\%--dmcrypt\fP
-and \fI\%--dmcrypt-key-dir\fP can also be used with the subcommand.
+Other options like \fI\%\-\-osd\-uuid\fP, \fI\%\-\-journal\-uuid\fP,
+\fI\%\-\-zap\-disk\fP, \fI\%\-\-data\-dir\fP, \fI\%\-\-data\-dev\fP,
+\fI\%\-\-journal\-file\fP, \fI\%\-\-journal\-dev\fP, \fI\%\-\-dmcrypt\fP
+and \fI\%\-\-dmcrypt\-key\-dir\fP can also be used with the subcommand.
 .SS activate
 .sp
 Activate the Ceph OSD. It mounts the volume in a temporary location, allocates
@@ -134,7 +109,7 @@ ceph\-disk activate [PATH]
 .sp
 Here, [PATH] is path to a block device or a directory.
 .sp
-An additional option \fI\%--activate-key\fP has to be used with this
+An additional option \fI\%\-\-activate\-key\fP has to be used with this
 subcommand when a copy of \fB/var/lib/ceph/bootstrap\-osd/{cluster}.keyring\fP
 isn\(aqt present in the OSD node.
 .sp
@@ -150,8 +125,31 @@ ceph\-disk activate [PATH] [\-\-activate\-key PATH]
 .UNINDENT
 .UNINDENT
 .sp
-Another option \fI\%--mark-init\fP can also be used with this subcommand.
-\fB\-\-mark\-init\fP provides init system to manage the OSD directory.
+Another option \fI\%\-\-mark\-init\fP can also be used with this
+subcommand.  \fB\-\-mark\-init\fP provides init system to manage the OSD
+directory. It defaults to \fBauto\fP which detects the init system
+suitable for ceph (either \fBsysvinit\fP, \fBsystemd\fP or
+\fBupstart\fP). The argument can be used to override the init system. It
+may be convenient when an operating system supports multiple init
+systems, such as Debian GNU/Linux jessie with \fBsystemd\fP and
+\fBsysvinit\fP\&. If the argument is \fBnone\fP, the OSD is not marked with
+any init system and \fBceph\-disk activate\fP needs to be called
+explicitely after each reboot.
+.sp
+Usage:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+ceph\-disk activate [PATH] [\-\-mark\-init *sysvinit|upstart|systemd|auto|none*]
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.sp
+If the option \fI\-\-no\-start\-daemon\fP is given, the activation
+steps are performed but the OSD daemon is not started.
 .SS activate\-journal
 .sp
 Activate an OSD via it\(aqs journal device. \fBudev\fP triggers
@@ -171,7 +169,7 @@ ceph\-disk activate\-journal [DEV]
 .sp
 Here, [DEV] is the path to a journal block device.
 .sp
-Others options like \fI\%--activate-key\fP and \fI\%--mark-init\fP can also
+Others options like \fI\%\-\-activate\-key\fP and \fI\%\-\-mark\-init\fP can also
 be used with this subcommand.
 .sp
 \fB\-\-mark\-init\fP provides init system to manage the OSD directory.
@@ -206,7 +204,7 @@ ceph\-disk activate\-all
 .UNINDENT
 .UNINDENT
 .sp
-Others options like \fI\%--activate-key\fP and \fI\%--mark-init\fP can
+Others options like \fI\%\-\-activate\-key\fP and \fI\%\-\-mark\-init\fP can
 also be used with this subcommand.
 .sp
 \fB\-\-mark\-init\fP provides init system to manage the OSD directory.
@@ -388,7 +386,7 @@ Provide init system to manage the OSD directory.
 .UNINDENT
 .SH AVAILABILITY
 .sp
-\fBceph\-disk\fP is a part of Ceph, a massively scalable, open-source, distributed storage system. Please refer to
+\fBceph\-disk\fP is part of Ceph, a massively scalable, open\-source, distributed storage system. Please refer to
 the Ceph documentation at \fI\%http://ceph.com/docs\fP for more information.
 .SH SEE ALSO
 .sp

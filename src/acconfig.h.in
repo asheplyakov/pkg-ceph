@@ -21,6 +21,9 @@
 /* FastCGI headers are in /usr/include/fastcgi */
 #undef FASTCGI_INCLUDE_DIR
 
+/* Support ARMv8 CRC instructions */
+#undef HAVE_ARMV8_CRC
+
 /* Define to 1 if you have the <arpa/inet.h> header file. */
 #undef HAVE_ARPA_INET_H
 
@@ -65,8 +68,8 @@
 /* Define if the C complier supports __func__ */
 #undef HAVE_FUNC
 
-/* Define to 1 if you have the `fuse_getgroups' function. */
-#undef HAVE_FUSE_GETGROUPS
+/* Define to 1 if you have the `getgrouplist' function. */
+#undef HAVE_GETGROUPLIST
 
 /* we have a recent yasm and are x86_64 */
 #undef HAVE_GOOD_YASM_ELF64
@@ -112,6 +115,13 @@
    (-lboost_program_options-mt). */
 #undef HAVE_LIBBOOST_PROGRAM_OPTIONS_MT
 
+/* Define to 1 if you have the `boost_random' library (-lboost_random). */
+#undef HAVE_LIBBOOST_RANDOM
+
+/* Define to 1 if you have the `boost_random-mt' library (-lboost_random-mt).
+   */
+#undef HAVE_LIBBOOST_RANDOM_MT
+
 /* Define to 1 if you have the `boost_regex' library (-lboost_regex). */
 #undef HAVE_LIBBOOST_REGEX
 
@@ -129,8 +139,8 @@
    */
 #undef HAVE_LIBBOOST_THREAD_MT
 
-/* Define if you have fuse */
-#undef HAVE_LIBFUSE
+/* Define to 1 if you have the `curl' library (-lcurl). */
+#undef HAVE_LIBCURL
 
 /* Define to 1 if you have the `ibverbs' library (-libverbs). */
 #undef HAVE_LIBIBVERBS
@@ -159,6 +169,9 @@
 /* Define to 1 if you have the `xio' library (-lxio). */
 #undef HAVE_LIBXIO
 
+/* Define to 1 if you have the `xml2' library (-lxml2). */
+#undef HAVE_LIBXML2
+
 /* Defined if you have libzfs enabled */
 #undef HAVE_LIBZFS
 
@@ -170,6 +183,9 @@
 
 /* Define to 1 if you have the <memory.h> header file. */
 #undef HAVE_MEMORY_H
+
+/* name_to_handle_at exists */
+#undef HAVE_NAME_TO_HANDLE_AT
 
 /* Define to 1 if you have the <ndir.h> header file, and it defines `DIR'. */
 #undef HAVE_NDIR_H

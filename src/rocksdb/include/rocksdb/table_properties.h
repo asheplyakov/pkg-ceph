@@ -6,6 +6,7 @@
 #include <string>
 #include <map>
 #include "rocksdb/status.h"
+#include "rocksdb/types.h"
 
 namespace rocksdb {
 
@@ -77,17 +78,44 @@ struct TablePropertiesNames {
 
 extern const std::string kPropertiesBlock;
 
+enum EntryType {
+  kEntryPut,
+  kEntryDelete,
+  kEntryMerge,
+  kEntryOther,
+};
+
 // `TablePropertiesCollector` provides the mechanism for users to collect
 // their own interested properties. This class is essentially a collection
-//  of callback functions that will be invoked during table building.
+// of callback functions that will be invoked during table building.
+// It is construced with TablePropertiesCollectorFactory. The methods don't
+// need to be thread-safe, as we will create exactly one
+// TablePropertiesCollector object per table and then call it sequentially
 class TablePropertiesCollector {
  public:
   virtual ~TablePropertiesCollector() {}
 
+  // DEPRECATE User defined collector should implement AddUserKey(), though
+  //           this old function still works for backward compatible reason.
   // Add() will be called when a new key/value pair is inserted into the table.
-  // @params key    the original key that is inserted into the table.
-  // @params value  the original value that is inserted into the table.
-  virtual Status Add(const Slice& key, const Slice& value) = 0;
+  // @params key    the user key that is inserted into the table.
+  // @params value  the value that is inserted into the table.
+  virtual Status Add(const Slice& key, const Slice& value) {
+    return Status::InvalidArgument(
+        "TablePropertiesCollector::Add() deprecated.");
+  }
+
+  // AddUserKey() will be called when a new key/value pair is inserted into the
+  // table.
+  // @params key    the user key that is inserted into the table.
+  // @params value  the value that is inserted into the table.
+  // @params file_size  file size up to now
+  virtual Status AddUserKey(const Slice& key, const Slice& value,
+                            EntryType type, SequenceNumber seq,
+                            uint64_t file_size) {
+    // For backward-compatible.
+    return Add(key, value);
+  }
 
   // Finish() will be called when a table has already been built and is ready
   // for writing the properties block.
@@ -95,12 +123,24 @@ class TablePropertiesCollector {
   // `properties`.
   virtual Status Finish(UserCollectedProperties* properties) = 0;
 
-  // The name of the properties collector can be used for debugging purpose.
-  virtual const char* Name() const = 0;
-
   // Return the human-readable properties, where the key is property name and
   // the value is the human-readable form of value.
   virtual UserCollectedProperties GetReadableProperties() const = 0;
+
+  // The name of the properties collector can be used for debugging purpose.
+  virtual const char* Name() const = 0;
+};
+
+// Constructs TablePropertiesCollector. Internals create a new
+// TablePropertiesCollector for each new table
+class TablePropertiesCollectorFactory {
+ public:
+  virtual ~TablePropertiesCollectorFactory() {}
+  // has to be thread-safe
+  virtual TablePropertiesCollector* CreateTablePropertiesCollector() = 0;
+
+  // The name of the properties collector can be used for debugging purpose.
+  virtual const char* Name() const = 0;
 };
 
 // Extra properties

@@ -93,16 +93,17 @@ int main(int argc, char **argv)
   global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT, CODE_ENVIRONMENT_UTILITY, 0);
   common_init_finish(g_ceph_context);
 
+  g_conf->set_val("erasure_code_dir", ".libs", false, false);
+
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
 
 void* thread1(void* pParam)
 {
-  TestParam* param = (TestParam*) pParam;
+  TestParam* param = static_cast<TestParam*>(pParam);
 
   time_t start, end;
-  int r;
 
   ErasureCodePluginRegistry &instance = ErasureCodePluginRegistry::instance();
 
@@ -136,19 +137,19 @@ void* thread1(void* pParam)
 
   while (kTestSec >= (end - start)) {
     //init
+    int r;
     ErasureCodeShec* shec = new ErasureCodeShecReedSolomonVandermonde(
 				    tcache,
 				    ErasureCodeShec::MULTIPLE);
-    map < std::string, std::string > *parameters = new map<std::string,
-							   std::string>();
-    (*parameters)["plugin"] = "shec";
-    (*parameters)["technique"] = "multiple";
-    (*parameters)["ruleset-failure-domain"] = "osd";
-    (*parameters)["k"] = param->k;
-    (*parameters)["m"] = param->m;
-    (*parameters)["c"] = param->c;
-    (*parameters)["w"] = param->w;
-    r = shec->init(*parameters);
+    ErasureCodeProfile *profile = new ErasureCodeProfile();
+    (*profile)["plugin"] = "shec";
+    (*profile)["technique"] = "multiple";
+    (*profile)["ruleset-failure-domain"] = "osd";
+    (*profile)["k"] = param->k;
+    (*profile)["m"] = param->m;
+    (*profile)["c"] = param->c;
+    (*profile)["w"] = param->w;
+    r = shec->init(*profile, &cerr);
 
     int i_k = std::atoi(param->k.c_str());
     int i_m = std::atoi(param->m.c_str());
@@ -216,7 +217,7 @@ void* thread1(void* pParam)
     }
 
     delete shec;
-    delete parameters;
+    delete profile;
     want_to_encode.clear();
     encoded.clear();
     decoded.clear();

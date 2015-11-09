@@ -14,7 +14,7 @@
 
 #include "MDSTable.h"
 
-#include "MDS.h"
+#include "MDSRank.h"
 #include "MDLog.h"
 
 #include "osdc/Filer.h"
@@ -22,6 +22,7 @@
 #include "include/types.h"
 
 #include "common/config.h"
+#include "common/errno.h"
 #include "common/Finisher.h"
 
 #include "include/assert.h"
@@ -36,7 +37,7 @@ class MDSTableIOContext : public MDSIOContextBase
 {
   protected:
     MDSTable *ida;
-    MDS *get_mds() {return ida->mds;}
+    MDSRank *get_mds() {return ida->mds;}
   public:
     MDSTableIOContext(MDSTable *ida_) : ida(ida_) {
       assert(ida != NULL);
@@ -83,7 +84,7 @@ void MDSTable::save(MDSInternalContextBase *onfinish, version_t v)
 			    bl, ceph_clock_now(g_ceph_context), 0,
 			    NULL,
 			    new C_OnFinisher(new C_IO_MT_Save(this, version),
-					     &mds->finisher));
+					     mds->finisher));
 }
 
 void MDSTable::save_2(int r, version_t v)
@@ -133,7 +134,7 @@ object_t MDSTable::get_object_name()
 {
   char n[50];
   if (per_mds)
-    snprintf(n, sizeof(n), "mds%d_%s", int(mds->whoami), table_name);
+    snprintf(n, sizeof(n), "mds%d_%s", int(mds->get_nodeid()), table_name);
   else
     snprintf(n, sizeof(n), "mds_%s", table_name);
   return object_t(n);
@@ -150,7 +151,7 @@ void MDSTable::load(MDSInternalContextBase *onfinish)
   object_t oid = get_object_name();
   object_locator_t oloc(mds->mdsmap->get_metadata_pool());
   mds->objecter->read_full(oid, oloc, CEPH_NOSNAP, &c->bl, 0,
-			   new C_OnFinisher(c, &mds->finisher));
+			   new C_OnFinisher(c, mds->finisher));
 }
 
 void MDSTable::load_2(int r, bufferlist& bl, Context *onfinish)
@@ -158,20 +159,31 @@ void MDSTable::load_2(int r, bufferlist& bl, Context *onfinish)
   assert(is_opening());
   state = STATE_ACTIVE;
   if (r == -EBLACKLISTED) {
-    mds->suicide();
+    mds->respawn();
     return;
   }
   if (r < 0) {
     derr << "load_2 could not read table: " << r << dendl;
-    assert(r >= 0);
+    mds->clog->error() << "error reading table object '" << get_object_name()
+                       << "' " << r << " (" << cpp_strerror(r) << ")";
+    mds->damaged();
+    assert(r >= 0);  // Should be unreachable because damaged() calls respawn()
   }
 
   dout(10) << "load_2 got " << bl.length() << " bytes" << dendl;
   bufferlist::iterator p = bl.begin();
-  ::decode(version, p);
-  projected_version = committed_version = version;
-  dout(10) << "load_2 loaded v" << version << dendl;
-  decode_state(p);
+
+  try {
+    ::decode(version, p);
+    projected_version = committed_version = version;
+    dout(10) << "load_2 loaded v" << version << dendl;
+    decode_state(p);
+  } catch (buffer::error &e) {
+    mds->clog->error() << "error decoding table object '" << get_object_name()
+                       << "': " << e.what();
+    mds->damaged();
+    assert(r >= 0);  // Should be unreachable because damaged() calls respawn()
+  }
 
   if (onfinish) {
     onfinish->complete(0);

@@ -19,9 +19,6 @@
 #include <errno.h>
 #include <iostream>
 #include <fstream>
-#ifdef HAVE_SCHED
-#include <sched.h>
-#endif
 
 #include "AsyncMessenger.h"
 
@@ -51,18 +48,6 @@ static ostream& _prefix(std::ostream *_dout, Worker *w) {
 static ostream& _prefix(std::ostream *_dout, WorkerPool *p) {
   return *_dout << " WorkerPool -- ";
 }
-
-
-class C_conn_accept : public EventCallback {
-  AsyncConnectionRef conn;
-  int fd;
-
- public:
-  C_conn_accept(AsyncConnectionRef c, int s): conn(c), fd(s) {}
-  void do_request(int id) {
-    conn->accept(fd);
-  }
-};
 
 
 class C_processor_accept : public EventCallback {
@@ -112,6 +97,9 @@ int Processor::bind(const entity_addr_t &bind_addr, const set<int>& avoid_ports)
     listen_sd = -1;
     return -errno;
   }
+
+  net.set_socket_options(listen_sd);
+
   // use whatever user specified (if anything)
   entity_addr_t listen_addr = bind_addr;
   listen_addr.set_family(family);
@@ -242,7 +230,7 @@ int Processor::start(Worker *w)
   ldout(msgr->cct, 1) << __func__ << " " << dendl;
 
   // start thread
-  if (listen_sd > 0) {
+  if (listen_sd >= 0) {
     worker = w;
     w->center.create_file_event(listen_sd, EVENT_READABLE,
                                 EventCallbackRef(new C_processor_accept(this)));
@@ -302,27 +290,11 @@ void *Worker::entry()
 {
   ldout(cct, 10) << __func__ << " starting" << dendl;
   if (cct->_conf->ms_async_set_affinity) {
-#ifdef HAVE_SCHED
-    int cpuid;
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-
-    cpuid = pool->get_cpuid(id);
-    if (cpuid < 0) {
-      cpuid = sched_getcpu();
+    int cid = pool->get_cpuid(id);
+    if (cid >= 0 && set_affinity(cid)) {
+      ldout(cct, 0) << __func__ << " sched_setaffinity failed: "
+                    << cpp_strerror(errno) << dendl;
     }
-
-    if (cpuid < CPU_SETSIZE) {
-      CPU_SET(cpuid, &cpuset);
-
-      if (sched_setaffinity(0, sizeof(cpuset), &cpuset) < 0) {
-        ldout(cct, 0) << __func__ << " sched_setaffinity failed: "
-            << cpp_strerror(errno) << dendl;
-      }
-      /* guaranteed to take effect immediately */
-      sched_yield();
-    }
-#endif
   }
 
   center.set_owner(pthread_self());
@@ -365,13 +337,16 @@ WorkerPool::WorkerPool(CephContext *c): cct(c), seq(0), started(false),
     else
       lderr(cct) << __func__ << " failed to parse " << *it << " in " << cct->_conf->ms_async_affinity_cores << dendl;
   }
+
 }
 
 WorkerPool::~WorkerPool()
 {
   for (uint64_t i = 0; i < workers.size(); ++i) {
-    workers[i]->stop();
-    workers[i]->join();
+    if (workers[i]->is_started()) {
+      workers[i]->stop();
+      workers[i]->join();
+    }
     delete workers[i];
   }
 }
@@ -392,8 +367,8 @@ void WorkerPool::barrier()
   pthread_t cur = pthread_self();
   for (vector<Worker*>::iterator it = workers.begin(); it != workers.end(); ++it) {
     assert(cur != (*it)->center.get_owner());
-    (*it)->center.dispatch_event_external(EventCallbackRef(new C_barrier(this)));
     barrier_count.inc();
+    (*it)->center.dispatch_event_external(EventCallbackRef(new C_barrier(this)));
   }
   ldout(cct, 10) << __func__ << " wait for " << barrier_count.read() << " barrier" << dendl;
   Mutex::Locker l(barrier_lock);
@@ -409,17 +384,19 @@ void WorkerPool::barrier()
  */
 
 AsyncMessenger::AsyncMessenger(CephContext *cct, entity_name_t name,
-                               string mname, uint64_t _nonce)
+                               string mname, uint64_t _nonce, uint64_t features)
   : SimplePolicyMessenger(cct, name,mname, _nonce),
     processor(this, cct, _nonce),
     lock("AsyncMessenger::lock"),
-    nonce(_nonce), need_addr(true), did_bind(false),
+    nonce(_nonce), need_addr(true), listen_sd(-1), did_bind(false),
     global_seq(0), deleted_lock("AsyncMessenger::deleted_lock"),
     cluster_protocol(0), stopped(true)
 {
   ceph_spin_init(&global_seq_lock);
   cct->lookup_or_create_singleton_object<WorkerPool>(pool, WorkerPool::name);
-  local_connection = new AsyncConnection(cct, this, &pool->get_worker()->center);
+  Worker *w = pool->get_worker();
+  local_connection = new AsyncConnection(cct, this, &w->center, w->get_perf_counter());
+  local_features = features;
   init_local_connection();
 }
 
@@ -545,8 +522,8 @@ AsyncConnectionRef AsyncMessenger::add_accept(int sd)
 {
   lock.Lock();
   Worker *w = pool->get_worker();
-  AsyncConnectionRef conn = new AsyncConnection(cct, this, &w->center);
-  w->center.dispatch_event_external(EventCallbackRef(new C_conn_accept(conn, sd)));
+  AsyncConnectionRef conn = new AsyncConnection(cct, this, &w->center, w->get_perf_counter());
+  conn->accept(sd);
   accepting_conns.insert(conn);
   lock.Unlock();
   return conn;
@@ -562,10 +539,11 @@ AsyncConnectionRef AsyncMessenger::create_connect(const entity_addr_t& addr, int
 
   // create connection
   Worker *w = pool->get_worker();
-  AsyncConnectionRef conn = new AsyncConnection(cct, this, &w->center);
+  AsyncConnectionRef conn = new AsyncConnection(cct, this, &w->center, w->get_perf_counter());
   conn->connect(addr, type);
   assert(!conns.count(addr));
   conns[addr] = conn;
+  w->get_perf_counter()->inc(l_msgr_active_connections);
 
   return conn;
 }
@@ -692,6 +670,7 @@ void AsyncMessenger::mark_down_all()
     AsyncConnectionRef p = it->second;
     ldout(cct, 5) << __func__ << " mark down " << it->first << " " << p << dendl;
     conns.erase(it);
+    p->get_perf_counter()->dec(l_msgr_active_connections);
     p->stop();
   }
 

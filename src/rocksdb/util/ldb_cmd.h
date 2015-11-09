@@ -4,22 +4,28 @@
 //  of patent rights can be found in the PATENTS file in the same directory.
 //
 #pragma once
+
+#ifndef ROCKSDB_LITE
+
 #include <string>
 #include <iostream>
 #include <sstream>
 #include <stdlib.h>
 #include <algorithm>
 #include <stdio.h>
+#include <vector>
+#include <map>
 
 #include "db/version_set.h"
 #include "rocksdb/env.h"
-#include "rocksdb/options.h"
 #include "rocksdb/iterator.h"
+#include "rocksdb/ldb_tool.h"
+#include "rocksdb/options.h"
 #include "rocksdb/slice.h"
+#include "rocksdb/utilities/db_ttl.h"
 #include "util/logging.h"
 #include "util/ldb_cmd_execute_result.h"
 #include "util/string_util.h"
-#include "utilities/db_ttl.h"
 #include "utilities/ttl/db_ttl_impl.h"
 
 using std::string;
@@ -45,30 +51,38 @@ public:
   static const string ARG_TO;
   static const string ARG_MAX_KEYS;
   static const string ARG_BLOOM_BITS;
+  static const string ARG_FIX_PREFIX_LEN;
   static const string ARG_COMPRESSION_TYPE;
   static const string ARG_BLOCK_SIZE;
   static const string ARG_AUTO_COMPACTION;
+  static const string ARG_DB_WRITE_BUFFER_SIZE;
   static const string ARG_WRITE_BUFFER_SIZE;
   static const string ARG_FILE_SIZE;
   static const string ARG_CREATE_IF_MISSING;
 
   static LDBCommand* InitFromCmdLineArgs(
     const vector<string>& args,
-    const Options& options = Options()
+    const Options& options,
+    const LDBOptions& ldb_options
   );
 
   static LDBCommand* InitFromCmdLineArgs(
     int argc,
     char** argv,
-    const Options& options = Options()
+    const Options& options,
+    const LDBOptions& ldb_options
   );
 
   bool ValidateCmdLineOptions();
 
   virtual Options PrepareOptionsForOpenDB();
 
-  virtual void SetOptions(Options options) {
+  virtual void SetDBOptions(Options options) {
     options_ = options;
+  }
+
+  void SetLDBOptions(const LDBOptions& ldb_options) {
+    ldb_options_ = ldb_options;
   }
 
   virtual bool NoDBOpen() {
@@ -97,7 +111,7 @@ public:
 
     DoCommand();
     if (exec_state_.IsNotStarted()) {
-      exec_state_ = LDBCommandExecuteResult::SUCCEED("");
+      exec_state_ = LDBCommandExecuteResult::Succeed("");
     }
 
     if (db_ != nullptr) {
@@ -229,7 +243,7 @@ protected:
     }
     if (!st.ok()) {
       string msg = st.ToString();
-      exec_state_ = LDBCommandExecuteResult::FAILED(msg);
+      exec_state_ = LDBCommandExecuteResult::Failed(msg);
     }
 
     options_ = opt;
@@ -276,10 +290,11 @@ protected:
    * used by this command.  It includes the common options and the ones
    * passed in.
    */
-  vector<string> BuildCmdLineOptions(vector<string> options) {
-    vector<string> ret = {ARG_DB, ARG_BLOOM_BITS, ARG_BLOCK_SIZE,
-                          ARG_AUTO_COMPACTION, ARG_COMPRESSION_TYPE,
-                          ARG_WRITE_BUFFER_SIZE, ARG_FILE_SIZE};
+  static vector<string> BuildCmdLineOptions(vector<string> options) {
+    vector<string> ret = {ARG_DB,               ARG_BLOOM_BITS,
+                          ARG_BLOCK_SIZE,       ARG_AUTO_COMPACTION,
+                          ARG_COMPRESSION_TYPE, ARG_WRITE_BUFFER_SIZE,
+                          ARG_FILE_SIZE,        ARG_FIX_PREFIX_LEN};
     ret.insert(ret.end(), options.begin(), options.end());
     return ret;
   }
@@ -291,6 +306,7 @@ protected:
                          const string& option, string* value);
 
   Options options_;
+  LDBOptions ldb_options_;
 
 private:
 
@@ -369,13 +385,26 @@ public:
 
   static void Help(string& ret);
 
-  virtual void DoCommand();
+  virtual void DoCommand() override;
 
 private:
   bool null_from_;
   string from_;
   bool null_to_;
   string to_;
+};
+
+class DBFileDumperCommand : public LDBCommand {
+ public:
+  static string Name() { return "dump_live_files"; }
+
+  DBFileDumperCommand(const vector<string>& params,
+                      const map<string, string>& options,
+                      const vector<string>& flags);
+
+  static void Help(string& ret);
+
+  virtual void DoCommand() override;
 };
 
 class DBDumperCommand: public LDBCommand {
@@ -387,7 +416,7 @@ public:
 
   static void Help(string& ret);
 
-  virtual void DoCommand();
+  virtual void DoCommand() override;
 
 private:
   bool null_from_;
@@ -416,7 +445,7 @@ public:
 
   static void Help(string& ret);
 
-  virtual void DoCommand();
+  virtual void DoCommand() override;
 
 private:
   bool has_from_;
@@ -447,9 +476,9 @@ public:
       const map<string, string>& options, const vector<string>& flags);
 
   static void Help(string& ret);
-  virtual void DoCommand();
+  virtual void DoCommand() override;
 
-  virtual Options PrepareOptionsForOpenDB();
+  virtual Options PrepareOptionsForOpenDB() override;
 
 private:
   bool create_if_missing_;
@@ -470,11 +499,9 @@ public:
       const map<string, string>& options, const vector<string>& flags);
 
   static void Help(string& ret);
-  virtual void DoCommand();
+  virtual void DoCommand() override;
 
-  virtual bool NoDBOpen() {
-    return true;
-  }
+  virtual bool NoDBOpen() override { return true; }
 
 private:
   bool verbose_;
@@ -493,9 +520,9 @@ class ListColumnFamiliesCommand : public LDBCommand {
                             const vector<string>& flags);
 
   static void Help(string& ret);
-  virtual void DoCommand();
+  virtual void DoCommand() override;
 
-  virtual bool NoDBOpen() { return true; }
+  virtual bool NoDBOpen() override { return true; }
 
  private:
   string dbname_;
@@ -508,13 +535,11 @@ public:
   ReduceDBLevelsCommand(const vector<string>& params,
       const map<string, string>& options, const vector<string>& flags);
 
-  virtual Options PrepareOptionsForOpenDB();
+  virtual Options PrepareOptionsForOpenDB() override;
 
-  virtual void DoCommand();
+  virtual void DoCommand() override;
 
-  virtual bool NoDBOpen() {
-    return true;
-  }
+  virtual bool NoDBOpen() override { return true; }
 
   static void Help(string& msg);
 
@@ -539,9 +564,9 @@ public:
   ChangeCompactionStyleCommand(const vector<string>& params,
       const map<string, string>& options, const vector<string>& flags);
 
-  virtual Options PrepareOptionsForOpenDB();
+  virtual Options PrepareOptionsForOpenDB() override;
 
-  virtual void DoCommand();
+  virtual void DoCommand() override;
 
   static void Help(string& msg);
 
@@ -560,12 +585,10 @@ public:
   WALDumperCommand(const vector<string>& params,
       const map<string, string>& options, const vector<string>& flags);
 
-  virtual bool  NoDBOpen() {
-    return true;
-  }
+  virtual bool NoDBOpen() override { return true; }
 
   static void Help(string& ret);
-  virtual void DoCommand();
+  virtual void DoCommand() override;
 
 private:
   bool print_header_;
@@ -585,7 +608,7 @@ public:
   GetCommand(const vector<string>& params, const map<string, string>& options,
       const vector<string>& flags);
 
-  virtual void DoCommand();
+  virtual void DoCommand() override;
 
   static void Help(string& ret);
 
@@ -600,7 +623,7 @@ public:
   ApproxSizeCommand(const vector<string>& params,
       const map<string, string>& options, const vector<string>& flags);
 
-  virtual void DoCommand();
+  virtual void DoCommand() override;
 
   static void Help(string& ret);
 
@@ -616,11 +639,11 @@ public:
   BatchPutCommand(const vector<string>& params,
       const map<string, string>& options, const vector<string>& flags);
 
-  virtual void DoCommand();
+  virtual void DoCommand() override;
 
   static void Help(string& ret);
 
-  virtual Options PrepareOptionsForOpenDB();
+  virtual Options PrepareOptionsForOpenDB() override;
 
 private:
   /**
@@ -636,7 +659,7 @@ public:
   ScanCommand(const vector<string>& params, const map<string, string>& options,
       const vector<string>& flags);
 
-  virtual void DoCommand();
+  virtual void DoCommand() override;
 
   static void Help(string& ret);
 
@@ -655,7 +678,7 @@ public:
   DeleteCommand(const vector<string>& params,
       const map<string, string>& options, const vector<string>& flags);
 
-  virtual void DoCommand();
+  virtual void DoCommand() override;
 
   static void Help(string& ret);
 
@@ -670,11 +693,11 @@ public:
   PutCommand(const vector<string>& params, const map<string, string>& options,
       const vector<string>& flags);
 
-  virtual void DoCommand();
+  virtual void DoCommand() override;
 
   static void Help(string& ret);
 
-  virtual Options PrepareOptionsForOpenDB();
+  virtual Options PrepareOptionsForOpenDB() override;
 
 private:
   string key_;
@@ -694,7 +717,7 @@ public:
 
   static void Help(string& ret);
 
-  virtual void DoCommand();
+  virtual void DoCommand() override;
 
 private:
   static const char* HELP_CMD;
@@ -710,13 +733,13 @@ public:
   CheckConsistencyCommand(const vector<string>& params,
       const map<string, string>& options, const vector<string>& flags);
 
-  virtual void DoCommand();
+  virtual void DoCommand() override;
 
-  virtual bool NoDBOpen() {
-    return true;
-  }
+  virtual bool NoDBOpen() override { return true; }
 
   static void Help(string& ret);
 };
 
 } // namespace rocksdb
+
+#endif  // ROCKSDB_LITE
