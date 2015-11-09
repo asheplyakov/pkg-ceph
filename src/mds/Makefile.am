@@ -1,6 +1,7 @@
 LIBMDS_SOURCES = \
 	mds/Capability.cc \
-	mds/MDS.cc \
+	mds/MDSDaemon.cc \
+	mds/MDSRank.cc \
 	mds/Beacon.cc \
 	mds/locks.c \
 	mds/journal.cc \
@@ -8,6 +9,7 @@ LIBMDS_SOURCES = \
 	mds/Mutation.cc \
 	mds/MDCache.cc \
 	mds/RecoveryQueue.cc \
+	mds/StrayManager.cc \
 	mds/Locker.cc \
 	mds/Migrator.cc \
 	mds/MDBalancer.cc \
@@ -20,6 +22,7 @@ LIBMDS_SOURCES = \
 	mds/JournalPointer.cc \
 	mds/MDSTableClient.cc \
 	mds/MDSTableServer.cc \
+	mds/SimpleLock.cc \
 	mds/SnapRealm.cc \
 	mds/SnapServer.cc \
 	mds/snap.cc \

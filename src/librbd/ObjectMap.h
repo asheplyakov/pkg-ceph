@@ -24,13 +24,18 @@ public:
   static std::string object_map_name(const std::string &image_id,
 				     uint64_t snap_id);
 
+  ceph::BitVector<2u>::Reference operator[](uint64_t object_no);
   uint8_t operator[](uint64_t object_no) const;
+  inline uint64_t size() const {
+    return m_object_map.size();
+  }
 
   int lock();
   int unlock();
 
   bool object_may_exist(uint64_t object_no) const;
 
+  void aio_save(Context *on_finish);
   void aio_resize(uint64_t new_size, uint8_t default_object_state,
 		  Context *on_finish);
   bool aio_update(uint64_t object_no, uint8_t new_state,
@@ -41,22 +46,30 @@ public:
 		  const boost::optional<uint8_t> &current_state,
 		  Context *on_finish);
 
+  void aio_update(uint64_t snap_id, uint64_t start_object_no,
+                  uint64_t end_object_no, uint8_t new_state,
+                  const boost::optional<uint8_t> &current_state,
+                  Context *on_finish);
+
   void refresh(uint64_t snap_id);
   void rollback(uint64_t snap_id);
-  void snapshot(uint64_t snap_id);
+  void snapshot_add(uint64_t snap_id);
+  int snapshot_remove(uint64_t snap_id);
 
   bool enabled() const;
 
 private:
 
-  class Request : public AsyncRequest {
+  class Request : public AsyncRequest<> {
   public:
-    Request(ImageCtx &image_ctx, Context *on_finish)
-      : AsyncRequest(image_ctx, on_finish), m_state(STATE_REQUEST)
+    Request(ImageCtx &image_ctx, uint64_t snap_id, Context *on_finish)
+      : AsyncRequest(image_ctx, on_finish), m_snap_id(snap_id),
+        m_state(STATE_REQUEST)
     {
     }
 
   protected:
+    const uint64_t m_snap_id;
 
     virtual bool safely_cancel(int r) {
       return false;
@@ -67,7 +80,6 @@ private:
       return 0;
     }
     virtual void finish(ObjectMap *object_map) = 0;
-
   private:
     /**
      * <start> ---> STATE_REQUEST ---> <finish>
@@ -87,10 +99,10 @@ private:
 
   class ResizeRequest : public Request {
   public:
-    ResizeRequest(ImageCtx &image_ctx, uint64_t new_size,
+    ResizeRequest(ImageCtx &image_ctx, uint64_t snap_id, uint64_t new_size,
 		  uint8_t default_object_state, Context *on_finish)
-      : Request(image_ctx, on_finish), m_num_objs(0), m_new_size(new_size),
-        m_default_object_state(default_object_state)
+      : Request(image_ctx, snap_id, on_finish), m_num_objs(0),
+        m_new_size(new_size), m_default_object_state(default_object_state)
     {
     }
 
@@ -105,13 +117,14 @@ private:
 
   class UpdateRequest : public Request {
   public:
-    UpdateRequest(ImageCtx &image_ctx, uint64_t start_object_no,
-		  uint64_t end_object_no, uint8_t new_state,
+    UpdateRequest(ImageCtx &image_ctx, uint64_t snap_id,
+                  uint64_t start_object_no, uint64_t end_object_no,
+                  uint8_t new_state,
                   const boost::optional<uint8_t> &current_state,
 		  Context *on_finish)
-      : Request(image_ctx, on_finish), m_start_object_no(start_object_no),
-	m_end_object_no(end_object_no), m_new_state(new_state),
-	m_current_state(current_state)
+      : Request(image_ctx, snap_id, on_finish),
+        m_start_object_no(start_object_no), m_end_object_no(end_object_no),
+        m_new_state(new_state), m_current_state(current_state)
     {
     }
 
@@ -126,13 +139,12 @@ private:
   };
 
   ImageCtx &m_image_ctx;
-
   ceph::BitVector<2> m_object_map;
-
+  uint64_t m_snap_id;
   bool m_enabled;
 
-  void invalidate();
-
+  void invalidate(uint64_t snap_id, bool force);
+  void resize(uint64_t num_objs, uint8_t default_state);
 };
 
 } // namespace librbd

@@ -104,9 +104,17 @@
  * type, so the monitor is expected to know the type of each argument.
  * See cmdparse.cc/h for more details.
  *
- * The flag parameter for COMMAND_WITH_FLAGS macro may be:
+ * The flag parameter for COMMAND_WITH_FLAGS macro must be passed using
+ * FLAG(f), where 'f' may be one of the following:
  *
+ *  NONE      - no flag assigned
  *  NOFORWARD - command may not be forwarded
+ *  OBSOLETE  - command is considered obsolete
+ *  DEPRECATED - command is considered deprecated
+ *
+ * A command should always be first considered DEPRECATED before being
+ * considered OBSOLETE, giving due consideration to users and conforming
+ * to any guidelines regarding deprecating commands.
  */
 
 /*
@@ -215,16 +223,19 @@ COMMAND("auth del " \
 /*
  * Monitor commands (Monitor.cc)
  */
-COMMAND_WITH_FLAG("compact", "cause compaction of monitor's leveldb storage", \
-	     "mon", "rw", "cli,rest", NOFORWARD)
-COMMAND("scrub", "scrub the monitor stores", "mon", "rw", "cli,rest")
+COMMAND_WITH_FLAG("compact", "cause compaction of monitor's leveldb storage (DEPRECATED)", \
+	     "mon", "rw", "cli,rest", \
+             FLAG(NOFORWARD)|FLAG(DEPRECATED))
+COMMAND_WITH_FLAG("scrub", "scrub the monitor stores (DEPRECATED)", \
+             "mon", "rw", "cli,rest", \
+             FLAG(DEPRECATED))
 COMMAND("fsid", "show cluster FSID/UUID", "mon", "r", "cli,rest")
 COMMAND("log name=logtext,type=CephString,n=N", \
 	"log supplied text to the monitor log", "mon", "rw", "cli,rest")
 COMMAND_WITH_FLAG("injectargs " \
 	     "name=injected_args,type=CephString,n=N",			\
 	     "inject config arguments into monitor", "mon", "rw", "cli,rest",
-	     NOFORWARD)
+	     FLAG(NOFORWARD))
 COMMAND("status", "show cluster status", "mon", "r", "cli,rest")
 COMMAND("health name=detail,type=CephChoices,strings=detail,req=false", \
 	"show cluster health", "mon", "r", "cli,rest")
@@ -235,16 +246,19 @@ COMMAND("report name=tags,type=CephString,n=N,req=false", \
 	"mon", "r", "cli,rest")
 COMMAND("quorum_status", "report status of monitor quorum", \
 	"mon", "r", "cli,rest")
+
 COMMAND_WITH_FLAG("mon_status", "report status of monitors", "mon", "r", "cli,rest",
-	     NOFORWARD)
-COMMAND("sync force " \
+	     FLAG(NOFORWARD))
+COMMAND_WITH_FLAG("sync force " \
 	"name=validate1,type=CephChoices,strings=--yes-i-really-mean-it,req=false " \
 	"name=validate2,type=CephChoices,strings=--i-know-what-i-am-doing,req=false", \
-	"force sync of and clear monitor store", "mon", "rw", "cli,rest")
+	"force sync of and clear monitor store (DEPRECATED)", \
+        "mon", "rw", "cli,rest", \
+        FLAG(NOFORWARD)|FLAG(DEPRECATED))
 COMMAND_WITH_FLAG("heap " \
 	     "name=heapcmd,type=CephChoices,strings=dump|start_profiler|stop_profiler|release|stats", \
 	     "show heap usage info (available only if compiled with tcmalloc)", \
-	     "mon", "rw", "cli,rest", NOFORWARD)
+	     "mon", "rw", "cli,rest", FLAG(NOFORWARD))
 COMMAND("quorum name=quorumcmd,type=CephChoices,strings=enter|exit,n=1", \
 	"enter or exit quorum", "mon", "rw", "cli,rest")
 COMMAND("tell " \
@@ -252,7 +266,32 @@ COMMAND("tell " \
 	"name=args,type=CephString,n=N", \
 	"send a command to a specific daemon", "mon", "rw", "cli,rest")
 COMMAND_WITH_FLAG("version", "show mon daemon version", "mon", "r", "cli,rest",
-	     NOFORWARD)
+                  FLAG(NOFORWARD))
+
+COMMAND("node ls " \
+	"name=type,type=CephChoices,strings=all|osd|mon|mds,req=false",
+	"list all nodes in cluster [type]", "mon", "r", "cli,rest")
+/*
+ * Monitor-specific commands under module 'mon'
+ */
+COMMAND_WITH_FLAG("mon compact", \
+    "cause compaction of monitor's leveldb storage", \
+    "mon", "rw", "cli,rest", \
+    FLAG(NOFORWARD))
+COMMAND_WITH_FLAG("mon scrub",
+    "scrub the monitor stores", \
+    "mon", "rw", "cli,rest", \
+    FLAG(NONE))
+COMMAND_WITH_FLAG("mon sync force " \
+    "name=validate1,type=CephChoices,strings=--yes-i-really-mean-it,req=false " \
+    "name=validate2,type=CephChoices,strings=--i-know-what-i-am-doing,req=false", \
+    "force sync of and clear monitor store", \
+    "mon", "rw", "cli,rest", \
+    FLAG(NOFORWARD))
+COMMAND("mon metadata name=id,type=CephString",
+	"fetch metadata for mon <id>",
+	"mon", "r", "cli,rest")
+
 
 /*
  * MDS commands (MDSMonitor.cc)
@@ -265,6 +304,9 @@ COMMAND("mds dump "
 COMMAND("mds getmap " \
 	"name=epoch,type=CephInt,req=false,range=0", \
 	"get MDS map, optionally from epoch", "mds", "r", "cli,rest")
+COMMAND("mds metadata name=who,type=CephString",
+	"fetch metadata for mds <who>",
+	"mds", "r", "cli,rest")
 COMMAND("mds tell " \
 	"name=who,type=CephString " \
 	"name=args,type=CephString,n=N", \
@@ -295,9 +337,10 @@ COMMAND("mds set_state " \
 	"set mds state of <gid> to <numeric-state>", "mds", "rw", "cli,rest")
 COMMAND("mds fail name=who,type=CephString", \
 	"force mds to status failed", "mds", "rw", "cli,rest")
+COMMAND("mds repaired name=rank,type=CephInt", \
+	"mark a damaged MDS rank as no longer damaged", "mds", "rw", "cli,rest")
 COMMAND("mds rm " \
-	"name=gid,type=CephInt,range=0 " \
-	"name=who,type=CephName", \
+	"name=gid,type=CephInt,range=0", \
 	"remove nonactive mds", "mds", "rw", "cli,rest")
 COMMAND("mds rmfailed name=who,type=CephInt,range=0", "remove failed mds", \
 	"mds", "rw", "cli,rest")
@@ -359,7 +402,6 @@ COMMAND("mon remove " \
 	"name=name,type=CephString", \
 	"remove monitor named <name>", "mon", "rw", "cli,rest")
 
-
 /*
  * OSD commands
  */
@@ -393,13 +435,14 @@ COMMAND("osd find " \
 	"find osd <id> in the CRUSH map and show its location", \
 	"osd", "r", "cli,rest")
 COMMAND("osd metadata " \
-	"name=id,type=CephInt,range=0", \
-	"fetch metadata for osd <id>", \
+	"name=id,type=CephInt,range=0,req=false", \
+	"fetch metadata for osd {id} (default all)", \
 	"osd", "r", "cli,rest")
 COMMAND("osd map " \
 	"name=pool,type=CephPoolname " \
-	"name=object,type=CephObjectname", \
-	"find pg for <object> in <pool>", "osd", "r", "cli,rest")
+	"name=object,type=CephObjectname " \
+	"name=nspace,type=CephString,req=false", \
+	"find pg for <object> in <pool> with [namespace]", "osd", "r", "cli,rest")
 COMMAND("osd scrub " \
 	"name=who,type=CephString", \
 	"initiate scrub on osd <who>", "osd", "rw", "cli,rest")
@@ -546,10 +589,10 @@ COMMAND("osd erasure-code-profile ls", \
 	"list all erasure code profiles", \
 	"osd", "r", "cli,rest")
 COMMAND("osd set " \
-	"name=key,type=CephChoices,strings=full|pause|noup|nodown|noout|noin|nobackfill|norebalance|norecover|noscrub|nodeep-scrub|notieragent", \
+	"name=key,type=CephChoices,strings=full|pause|noup|nodown|noout|noin|nobackfill|norebalance|norecover|noscrub|nodeep-scrub|notieragent|sortbitwise", \
 	"set <key>", "osd", "rw", "cli,rest")
 COMMAND("osd unset " \
-	"name=key,type=CephChoices,strings=full|pause|noup|nodown|noout|noin|nobackfill|norebalance|norecover|noscrub|nodeep-scrub|notieragent", \
+	"name=key,type=CephChoices,strings=full|pause|noup|nodown|noout|noin|nobackfill|norebalance|norecover|noscrub|nodeep-scrub|notieragent|sortbitwise", \
 	"unset <key>", "osd", "rw", "cli,rest")
 COMMAND("osd cluster_snap", "take cluster snapshot (disabled)", \
 	"osd", "r", "")
@@ -590,8 +633,9 @@ COMMAND("osd lost " \
 	"mark osd as permanently lost. THIS DESTROYS DATA IF NO MORE REPLICAS EXIST, BE CAREFUL", \
 	"osd", "rw", "cli,rest")
 COMMAND("osd create " \
-	"name=uuid,type=CephUUID,req=false", \
-	"create new osd (with optional UUID)", "osd", "rw", "cli,rest")
+	"name=uuid,type=CephUUID,req=false " \
+	"name=id,type=CephInt,range=0,req=false", \
+	"create new osd (with optional UUID and ID)", "osd", "rw", "cli,rest")
 COMMAND("osd blacklist " \
 	"name=blacklistop,type=CephChoices,strings=add|rm " \
 	"name=addr,type=CephEntityAddr " \
@@ -630,11 +674,11 @@ COMMAND("osd pool rename " \
 	"rename <srcpool> to <destpool>", "osd", "rw", "cli,rest")
 COMMAND("osd pool get " \
 	"name=pool,type=CephPoolname " \
-	"name=var,type=CephChoices,strings=size|min_size|crash_replay_interval|pg_num|pgp_num|crush_ruleset|hit_set_type|hit_set_period|hit_set_count|hit_set_fpp|auid|target_max_objects|target_max_bytes|cache_target_dirty_ratio|cache_target_full_ratio|cache_min_flush_age|cache_min_evict_age|erasure_code_profile|min_read_recency_for_promote|write_fadvise_dontneed", \
+	"name=var,type=CephChoices,strings=size|min_size|crash_replay_interval|pg_num|pgp_num|crush_ruleset|hashpspool|nodelete|nopgchange|nosizechange|write_fadvise_dontneed|noscrub|nodeep-scrub|hit_set_type|hit_set_period|hit_set_count|hit_set_fpp|auid|target_max_objects|target_max_bytes|cache_target_dirty_ratio|cache_target_dirty_high_ratio|cache_target_full_ratio|cache_min_flush_age|cache_min_evict_age|erasure_code_profile|min_read_recency_for_promote|all|min_write_recency_for_promote|fast_read", \
 	"get pool parameter <var>", "osd", "r", "cli,rest")
 COMMAND("osd pool set " \
 	"name=pool,type=CephPoolname " \
-	"name=var,type=CephChoices,strings=size|min_size|crash_replay_interval|pg_num|pgp_num|crush_ruleset|hashpspool|nodelete|nopgchange|nosizechange|hit_set_type|hit_set_period|hit_set_count|hit_set_fpp|debug_fake_ec_pool|target_max_bytes|target_max_objects|cache_target_dirty_ratio|cache_target_full_ratio|cache_min_flush_age|cache_min_evict_age|auid|min_read_recency_for_promote|write_fadvise_dontneed " \
+	"name=var,type=CephChoices,strings=size|min_size|crash_replay_interval|pg_num|pgp_num|crush_ruleset|hashpspool|nodelete|nopgchange|nosizechange|write_fadvise_dontneed|noscrub|nodeep-scrub|hit_set_type|hit_set_period|hit_set_count|hit_set_fpp|use_gmt_hitset|debug_fake_ec_pool|target_max_bytes|target_max_objects|cache_target_dirty_ratio|cache_target_dirty_high_ratio|cache_target_full_ratio|cache_min_flush_age|cache_min_evict_age|auid|min_read_recency_for_promote|min_write_recency_for_promote|fast_read " \
 	"name=val,type=CephString " \
 	"name=force,type=CephChoices,strings=--yes-i-really-mean-it,req=false", \
 	"set pool parameter <var> to <val>", "osd", "rw", "cli,rest")

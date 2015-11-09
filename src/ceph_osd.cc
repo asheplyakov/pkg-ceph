@@ -15,7 +15,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <uuid/uuid.h>
 #include <boost/scoped_ptr.hpp>
 
 #include <iostream>
@@ -34,6 +33,7 @@ using namespace std;
 #include "msg/Messenger.h"
 
 #include "common/Timer.h"
+#include "common/TracepointProvider.h"
 #include "common/ceph_argparse.h"
 
 #include "global/global_init.h"
@@ -51,6 +51,15 @@ using namespace std;
 
 #define dout_subsys ceph_subsys_osd
 
+namespace {
+
+TracepointProvider::Traits osd_tracepoint_traits("libosd_tp.so",
+                                                 "osd_tracing");
+TracepointProvider::Traits os_tracepoint_traits("libos_tp.so",
+                                                "osd_objectstore_tracing");
+
+} // anonymous namespace
+
 OSD *osd = NULL;
 
 void handle_osd_signal(int signum)
@@ -61,20 +70,35 @@ void handle_osd_signal(int signum)
 
 void usage() 
 {
-  derr << "usage: ceph-osd -i osdid [--osd-data=path] [--osd-journal=path] "
-       << "[--mkfs] [--mkjournal] [--convert-filestore]" << dendl;
-  derr << "   --debug_osd N   set debug level (e.g. 10)" << dendl;
+  cout << "usage: ceph-osd -i <osdid>\n"
+       << "  --osd-data=path   data directory\n"
+       << "  --osd-journal=path\n"
+       << "                    journal file or block device\n"
+       << "  --mkfs            create a [new] data directory\n"
+       << "  --convert-filestore\n"
+       << "                    run any pending upgrade operations\n"
+       << "  --flush-journal   flush all data out of journal\n"
+       << "  --mkjournal       initialize a new journal\n"
+       << "  --check-wants-journal\n"
+       << "                    check whether a journal is desired\n"
+       << "  --check-allows-journal\n"
+       << "                    check whether a journal is allowed\n"
+       << "  --check-needs-journal\n"
+       << "                    check whether a journal is required\n"
+       << "  --debug_osd N     set debug level (e.g. 10)"
+       << std::endl;
   generic_server_usage();
+  cout.flush();
 }
 
 int preload_erasure_code()
 {
-  string directory = g_conf->osd_pool_default_erasure_code_directory;
   string plugins = g_conf->osd_erasure_code_plugins;
   stringstream ss;
-  int r = ErasureCodePluginRegistry::instance().preload(plugins,
-							directory,
-							ss);
+  int r = ErasureCodePluginRegistry::instance().preload(
+    plugins,
+    g_conf->erasure_code_dir,
+    &ss);
   if (r)
     derr << ss.str() << dendl;
   else
@@ -99,6 +123,9 @@ int main(int argc, const char **argv)
   // osd specific args
   bool mkfs = false;
   bool mkjournal = false;
+  bool check_wants_journal = false;
+  bool check_allows_journal = false;
+  bool check_needs_journal = false;
   bool mkkey = false;
   bool flushjournal = false;
   bool dump_journal = false;
@@ -106,7 +133,6 @@ int main(int argc, const char **argv)
   bool get_journal_fsid = false;
   bool get_osd_fsid = false;
   bool get_cluster_fsid = false;
-  bool check_need_journal = false;
   std::string dump_pg_log;
 
   std::string val;
@@ -120,6 +146,12 @@ int main(int argc, const char **argv)
       mkfs = true;
     } else if (ceph_argparse_flag(args, i, "--mkjournal", (char*)NULL)) {
       mkjournal = true;
+    } else if (ceph_argparse_flag(args, i, "--check-allows-journal", (char*)NULL)) {
+      check_allows_journal = true;
+    } else if (ceph_argparse_flag(args, i, "--check-wants-journal", (char*)NULL)) {
+      check_wants_journal = true;
+    } else if (ceph_argparse_flag(args, i, "--check-needs-journal", (char*)NULL)) {
+      check_needs_journal = true;
     } else if (ceph_argparse_flag(args, i, "--mkkey", (char*)NULL)) {
       mkkey = true;
     } else if (ceph_argparse_flag(args, i, "--flush-journal", (char*)NULL)) {
@@ -136,8 +168,6 @@ int main(int argc, const char **argv)
       get_osd_fsid = true;
     } else if (ceph_argparse_flag(args, i, "--get-journal-fsid", "--get-journal-uuid", (char*)NULL)) {
       get_journal_fsid = true;
-    } else if (ceph_argparse_flag(args, i, "--check-needs-journal", (char*)NULL)) {
-      check_need_journal = true;
     } else {
       ++i;
     }
@@ -259,6 +289,33 @@ int main(int argc, const char **argv)
 	 << " for object store " << g_conf->osd_data << dendl;
     exit(0);
   }
+  if (check_wants_journal) {
+    if (store->wants_journal()) {
+      cout << "yes" << std::endl;
+      exit(0);
+    } else {
+      cout << "no" << std::endl;
+      exit(1);
+    }
+  }
+  if (check_allows_journal) {
+    if (store->allows_journal()) {
+      cout << "yes" << std::endl;
+      exit(0);
+    } else {
+      cout << "no" << std::endl;
+      exit(1);
+    }
+  }
+  if (check_needs_journal) {
+    if (store->needs_journal()) {
+      cout << "yes" << std::endl;
+      exit(0);
+    } else {
+      cout << "no" << std::endl;
+      exit(1);
+    }
+  }
   if (flushjournal) {
     common_init_finish(g_ceph_context);
     int err = store->mount();
@@ -268,7 +325,6 @@ int main(int argc, const char **argv)
 	   << ": " << cpp_strerror(-err) << TEXT_NORMAL << dendl;
       exit(1);
     }
-    store->sync_and_flush();
     store->umount();
     derr << "flushed journal " << g_conf->osd_journal
 	 << " for object store " << g_conf->osd_data
@@ -315,14 +371,6 @@ int main(int argc, const char **argv)
     if (r == 0)
       cout << fsid << std::endl;
     exit(r);
-  }
-
-  if (check_need_journal) {
-    if (store->need_journal())
-      cout << "yes" << std::endl;
-    else
-      cout << "no" << std::endl;
-    exit(0);
   }
 
   string magic;
@@ -373,7 +421,7 @@ int main(int argc, const char **argv)
 					   getpid());
   Messenger *ms_cluster = Messenger::create(g_ceph_context, g_conf->ms_type,
 					    entity_name_t::OSD(whoami), "cluster",
-					    getpid());
+					    getpid(), CEPH_FEATURES_ALL);
   Messenger *ms_hbclient = Messenger::create(g_ceph_context, g_conf->ms_type,
 					     entity_name_t::OSD(whoami), "hbclient",
 					     getpid());
@@ -412,11 +460,17 @@ int main(int argc, const char **argv)
     CEPH_FEATURE_MSG_AUTH |
     CEPH_FEATURE_OSD_ERASURE_CODES;
 
+  // All feature bits 0 - 34 should be present from dumpling v0.67 forward
   uint64_t osd_required =
     CEPH_FEATURE_UID |
     CEPH_FEATURE_PGID64 |
     CEPH_FEATURE_OSDENC |
-    CEPH_FEATURE_OSD_SNAPMAPPER;
+    CEPH_FEATURE_OSD_SNAPMAPPER |
+    CEPH_FEATURE_INDEP_PG_MAP |
+    CEPH_FEATURE_OSD_PACKED_RECOVERY |
+    CEPH_FEATURE_RECOVERY_RESERVATION |
+    CEPH_FEATURE_BACKFILL_RESERVATION |
+    CEPH_FEATURE_CHUNKY_SCRUB;
 
   ms_public->set_default_policy(Messenger::Policy::stateless_server(supported, 0));
   ms_public->set_policy_throttlers(entity_name_t::TYPE_CLIENT,
@@ -483,6 +537,9 @@ int main(int argc, const char **argv)
   // Set up crypto, daemonize, etc.
   global_init_daemonize(g_ceph_context, 0);
   common_init_finish(g_ceph_context);
+
+  TracepointProvider::initialize<osd_tracepoint_traits>(g_ceph_context);
+  TracepointProvider::initialize<os_tracepoint_traits>(g_ceph_context);
 
   MonClient mc(g_ceph_context);
   if (mc.build_initial_monmap() < 0)

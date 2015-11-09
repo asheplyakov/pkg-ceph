@@ -192,9 +192,10 @@ class PerfCase {
   }
 
   uint64_t rados_write_4k(int times) {
-    uint64_t start_time = 0, ticks = 0;
+    uint64_t ticks = 0;
     uint64_t len = Kib *4;
     for (int i = 0; i < times; i++) {
+      uint64_t start_time = 0;
       {
         Transaction t;
         ghobject_t oid = create_object();
@@ -232,8 +233,8 @@ const string PerfCase::info_info_attr("11.40_info");
 const string PerfCase::attr("_");
 const string PerfCase::snapset_attr("snapset");
 const string PerfCase::pglog_attr("pglog_attr");
-const coll_t PerfCase::meta_cid("meta");
-const coll_t PerfCase::cid("meta");
+const coll_t PerfCase::meta_cid;
+const coll_t PerfCase::cid;
 const ghobject_t PerfCase::pglog_oid(hobject_t(sobject_t(object_t("cid_pglog"), 0)));
 const ghobject_t PerfCase::info_oid(hobject_t(sobject_t(object_t("infos"), 0)));
 Transaction::Tick Transaction::write_ticks, Transaction::setattr_ticks, Transaction::omap_setkeys_ticks, Transaction::omap_rmkeys_ticks;

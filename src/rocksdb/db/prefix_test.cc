@@ -3,6 +3,14 @@
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
 
+#ifndef GFLAGS
+#include <cstdio>
+int main() {
+  fprintf(stderr, "Please install gflags to run rocksdb tools\n");
+  return 1;
+}
+#else
+
 #include <algorithm>
 #include <iostream>
 #include <vector>
@@ -15,18 +23,21 @@
 #include "rocksdb/memtablerep.h"
 #include "util/histogram.h"
 #include "util/stop_watch.h"
+#include "util/string_util.h"
 #include "util/testharness.h"
+
+using GFLAGS::ParseCommandLineFlags;
 
 DEFINE_bool(trigger_deadlock, false,
             "issue delete in range scan to trigger PrefixHashMap deadlock");
-DEFINE_uint64(bucket_count, 100000, "number of buckets");
+DEFINE_int32(bucket_count, 100000, "number of buckets");
 DEFINE_uint64(num_locks, 10001, "number of locks");
 DEFINE_bool(random_prefix, false, "randomize prefix");
 DEFINE_uint64(total_prefixes, 100000, "total number of prefixes");
 DEFINE_uint64(items_per_prefix, 1, "total number of values per prefix");
 DEFINE_int64(write_buffer_size, 33554432, "");
-DEFINE_int64(max_write_buffer_number, 2, "");
-DEFINE_int64(min_write_buffer_number_to_merge, 1, "");
+DEFINE_int32(max_write_buffer_number, 2, "");
+DEFINE_int32(min_write_buffer_number_to_merge, 1, "");
 DEFINE_int32(skiplist_height, 4, "");
 DEFINE_int32(memtable_prefix_bloom_bits, 10000000, "");
 DEFINE_int32(memtable_prefix_bloom_probes, 10, "");
@@ -42,7 +53,8 @@ struct TestKey {
   uint64_t prefix;
   uint64_t sorted;
 
-  TestKey(uint64_t prefix, uint64_t sorted) : prefix(prefix), sorted(sorted) {}
+  TestKey(uint64_t _prefix, uint64_t _sorted)
+      : prefix(_prefix), sorted(_sorted) {}
 };
 
 // return a slice backed by test_key
@@ -59,20 +71,20 @@ class TestKeyComparator : public Comparator {
 
   // Compare needs to be aware of the possibility of a and/or b is
   // prefix only
-  virtual int Compare(const Slice& a, const Slice& b) const {
+  virtual int Compare(const Slice& a, const Slice& b) const override {
     const TestKey* key_a = SliceToTestKey(a);
     const TestKey* key_b = SliceToTestKey(b);
     if (key_a->prefix != key_b->prefix) {
       if (key_a->prefix < key_b->prefix) return -1;
       if (key_a->prefix > key_b->prefix) return 1;
     } else {
-      ASSERT_TRUE(key_a->prefix == key_b->prefix);
+      EXPECT_TRUE(key_a->prefix == key_b->prefix);
       // note, both a and b could be prefix only
       if (a.size() != b.size()) {
         // one of them is prefix
-        ASSERT_TRUE(
-          (a.size() == sizeof(uint64_t) && b.size() == sizeof(TestKey)) ||
-          (b.size() == sizeof(uint64_t) && a.size() == sizeof(TestKey)));
+        EXPECT_TRUE(
+            (a.size() == sizeof(uint64_t) && b.size() == sizeof(TestKey)) ||
+            (b.size() == sizeof(uint64_t) && a.size() == sizeof(TestKey)));
         if (a.size() < b.size()) return -1;
         if (a.size() > b.size()) return 1;
       } else {
@@ -82,7 +94,7 @@ class TestKeyComparator : public Comparator {
         }
 
         // both a and b are whole key
-        ASSERT_TRUE(a.size() == sizeof(TestKey) && b.size() == sizeof(TestKey));
+        EXPECT_TRUE(a.size() == sizeof(TestKey) && b.size() == sizeof(TestKey));
         if (key_a->sorted < key_b->sorted) return -1;
         if (key_a->sorted > key_b->sorted) return 1;
         if (key_a->sorted == key_b->sorted) return 0;
@@ -95,13 +107,10 @@ class TestKeyComparator : public Comparator {
     return "TestKeyComparator";
   }
 
-  virtual void FindShortestSeparator(
-      std::string* start,
-      const Slice& limit) const {
-  }
+  virtual void FindShortestSeparator(std::string* start,
+                                     const Slice& limit) const override {}
 
-  virtual void FindShortSuccessor(std::string* key) const {}
-
+  virtual void FindShortSuccessor(std::string* key) const override {}
 };
 
 namespace {
@@ -136,7 +145,7 @@ std::string Get(DB* db, const ReadOptions& read_options, uint64_t prefix,
 }
 }  // namespace
 
-class PrefixTest {
+class PrefixTest : public testing::Test {
  public:
   std::shared_ptr<DB> OpenDb() {
     DB* db;
@@ -153,7 +162,7 @@ class PrefixTest {
         FLAGS_memtable_prefix_bloom_huge_page_tlb_size;
 
     Status s = DB::Open(options, kDbName,  &db);
-    ASSERT_OK(s);
+    EXPECT_OK(s);
     return std::shared_ptr<DB>(db);
   }
 
@@ -179,6 +188,10 @@ class PrefixTest {
           options.memtable_factory.reset(
               NewHashLinkListRepFactory(bucket_count, 2 * 1024 * 1024));
           return true;
+        case kHashLinkListTriggerSkipList:
+          options.memtable_factory.reset(
+              NewHashLinkListRepFactory(bucket_count, 0, 3));
+          return true;
         default:
           return false;
       }
@@ -198,13 +211,14 @@ class PrefixTest {
     kHashSkipList,
     kHashLinkList,
     kHashLinkListHugePageTlb,
+    kHashLinkListTriggerSkipList,
     kEnd
   };
   int option_config_;
   Options options;
 };
 
-TEST(PrefixTest, TestResult) {
+TEST_F(PrefixTest, TestResult) {
   for (int num_buckets = 1; num_buckets <= 2; num_buckets++) {
     FirstOption();
     while (NextOptions(num_buckets)) {
@@ -377,7 +391,7 @@ TEST(PrefixTest, TestResult) {
   }
 }
 
-TEST(PrefixTest, DynamicPrefixIterator) {
+TEST_F(PrefixTest, DynamicPrefixIterator) {
   while (NextOptions(FLAGS_bucket_count)) {
     std::cout << "*** Mem table: " << options.memtable_factory->Name()
         << std::endl;
@@ -426,7 +440,7 @@ TEST(PrefixTest, DynamicPrefixIterator) {
     for (auto prefix : prefixes) {
       TestKey test_key(prefix, FLAGS_items_per_prefix / 2);
       Slice key = TestKeyToSlice(test_key);
-      std::string value = "v" + std::to_string(0);
+      std::string value = "v" + ToString(0);
 
       perf_context.Reset();
       StopWatchNano timer(Env::Default(), true);
@@ -479,9 +493,11 @@ TEST(PrefixTest, DynamicPrefixIterator) {
 }
 
 int main(int argc, char** argv) {
-  google::ParseCommandLineFlags(&argc, &argv, true);
+  ::testing::InitGoogleTest(&argc, argv);
+  ParseCommandLineFlags(&argc, &argv, true);
   std::cout << kDbName << "\n";
 
-  rocksdb::test::RunAllTests();
-  return 0;
+  return RUN_ALL_TESTS();
 }
+
+#endif  // GFLAGS

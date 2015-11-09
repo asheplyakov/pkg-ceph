@@ -18,11 +18,11 @@
 
 namespace librbd {
 
-class AsyncFlattenObjectContext : public C_AsyncObjectThrottle {
+class AsyncFlattenObjectContext : public C_AsyncObjectThrottle<> {
 public:
-  AsyncFlattenObjectContext(AsyncObjectThrottle &throttle, ImageCtx *image_ctx,
-                            uint64_t object_size, ::SnapContext snapc,
-                            uint64_t object_no)
+  AsyncFlattenObjectContext(AsyncObjectThrottle<> &throttle,
+                            ImageCtx *image_ctx, uint64_t object_size,
+                            ::SnapContext snapc, uint64_t object_no)
     : C_AsyncObjectThrottle(throttle, *image_ctx), m_object_size(object_size),
       m_snapc(snapc), m_object_no(object_no)
   {
@@ -94,14 +94,14 @@ void AsyncFlattenRequest::send() {
   ldout(cct, 5) << this << " send" << dendl;
 
   m_state = STATE_FLATTEN_OBJECTS;
-  AsyncObjectThrottle::ContextFactory context_factory(
+  AsyncObjectThrottle<>::ContextFactory context_factory(
     boost::lambda::bind(boost::lambda::new_ptr<AsyncFlattenObjectContext>(),
       boost::lambda::_1, &m_image_ctx, m_object_size, m_snapc,
       boost::lambda::_2));
-  AsyncObjectThrottle *throttle = new AsyncObjectThrottle(
-    this, m_image_ctx, context_factory, create_callback_context(), m_prog_ctx,
+  AsyncObjectThrottle<> *throttle = new AsyncObjectThrottle<>(
+    this, m_image_ctx, context_factory, create_callback_context(), &m_prog_ctx,
     0, m_overlap_objects);
-  throttle->start_ops(cct->_conf->rbd_concurrent_management_ops);
+  throttle->start_ops(m_image_ctx.concurrent_management_ops);
 }
 
 bool AsyncFlattenRequest::send_update_header() {
@@ -155,7 +155,8 @@ bool AsyncFlattenRequest::send_update_children() {
   // (if snapshots remain, they have their own parent info, and the child
   // will be removed when the last snap goes away)
   RWLock::RLocker snap_locker(m_image_ctx.snap_lock);
-  if (!m_image_ctx.snaps.empty()) {
+  if ((m_image_ctx.features & RBD_FEATURE_DEEP_FLATTEN) == 0 &&
+      !m_image_ctx.snaps.empty()) {
     return true;
   }
 

@@ -41,7 +41,7 @@ void LogFlush(Logger *info_log) {
 }
 
 void Log(Logger* info_log, const char* format, ...) {
-  if (info_log) {
+  if (info_log && info_log->GetInfoLogLevel() <= InfoLogLevel::INFO_LEVEL) {
     va_list ap;
     va_start(ap, format);
     info_log->Logv(InfoLogLevel::INFO_LEVEL, format, ap);
@@ -51,7 +51,7 @@ void Log(Logger* info_log, const char* format, ...) {
 
 void Log(const InfoLogLevel log_level, Logger* info_log, const char* format,
          ...) {
-  if (info_log) {
+  if (info_log && info_log->GetInfoLogLevel() <= log_level) {
     va_list ap;
     va_start(ap, format);
     info_log->Logv(log_level, format, ap);
@@ -59,8 +59,17 @@ void Log(const InfoLogLevel log_level, Logger* info_log, const char* format,
   }
 }
 
-void Debug(Logger* info_log, const char* format, ...) {
+void Header(Logger* info_log, const char* format, ...) {
   if (info_log) {
+    va_list ap;
+    va_start(ap, format);
+    info_log->LogHeader(format, ap);
+    va_end(ap);
+  }
+}
+
+void Debug(Logger* info_log, const char* format, ...) {
+  if (info_log && info_log->GetInfoLogLevel() <= InfoLogLevel::DEBUG_LEVEL) {
     va_list ap;
     va_start(ap, format);
     info_log->Logv(InfoLogLevel::DEBUG_LEVEL, format, ap);
@@ -69,7 +78,7 @@ void Debug(Logger* info_log, const char* format, ...) {
 }
 
 void Info(Logger* info_log, const char* format, ...) {
-  if (info_log) {
+  if (info_log && info_log->GetInfoLogLevel() <= InfoLogLevel::INFO_LEVEL) {
     va_list ap;
     va_start(ap, format);
     info_log->Logv(InfoLogLevel::INFO_LEVEL, format, ap);
@@ -78,7 +87,7 @@ void Info(Logger* info_log, const char* format, ...) {
 }
 
 void Warn(Logger* info_log, const char* format, ...) {
-  if (info_log) {
+  if (info_log && info_log->GetInfoLogLevel() <= InfoLogLevel::WARN_LEVEL) {
     va_list ap;
     va_start(ap, format);
     info_log->Logv(InfoLogLevel::WARN_LEVEL, format, ap);
@@ -86,7 +95,7 @@ void Warn(Logger* info_log, const char* format, ...) {
   }
 }
 void Error(Logger* info_log, const char* format, ...) {
-  if (info_log) {
+  if (info_log && info_log->GetInfoLogLevel() <= InfoLogLevel::ERROR_LEVEL) {
     va_list ap;
     va_start(ap, format);
     info_log->Logv(InfoLogLevel::ERROR_LEVEL, format, ap);
@@ -94,7 +103,7 @@ void Error(Logger* info_log, const char* format, ...) {
   }
 }
 void Fatal(Logger* info_log, const char* format, ...) {
-  if (info_log) {
+  if (info_log && info_log->GetInfoLogLevel() <= InfoLogLevel::FATAL_LEVEL) {
     va_list ap;
     va_start(ap, format);
     info_log->Logv(InfoLogLevel::FATAL_LEVEL, format, ap);
@@ -114,6 +123,15 @@ void Log(const InfoLogLevel log_level, const shared_ptr<Logger>& info_log,
     va_list ap;
     va_start(ap, format);
     info_log->Logv(log_level, format, ap);
+    va_end(ap);
+  }
+}
+
+void Header(const shared_ptr<Logger>& info_log, const char* format, ...) {
+  if (info_log) {
+    va_list ap;
+    va_start(ap, format);
+    info_log->LogHeader(format, ap);
     va_end(ap);
   }
 }
@@ -226,12 +244,16 @@ void AssignEnvOptions(EnvOptions* env_options, const DBOptions& options) {
   env_options->use_mmap_writes = options.allow_mmap_writes;
   env_options->set_fd_cloexec = options.is_fd_close_on_exec;
   env_options->bytes_per_sync = options.bytes_per_sync;
+  env_options->rate_limiter = options.rate_limiter.get();
 }
 
 }
 
-EnvOptions Env::OptimizeForLogWrite(const EnvOptions& env_options) const {
-  return env_options;
+EnvOptions Env::OptimizeForLogWrite(const EnvOptions& env_options,
+                                    const DBOptions& db_options) const {
+  EnvOptions optimized_env_options(env_options);
+  optimized_env_options.bytes_per_sync = db_options.wal_bytes_per_sync;
+  return optimized_env_options;
 }
 
 EnvOptions Env::OptimizeForManifestWrite(const EnvOptions& env_options) const {

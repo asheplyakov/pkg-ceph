@@ -30,8 +30,8 @@ namespace librados
   struct ObjListCtx;
   struct PoolAsyncCompletionImpl;
   class RadosClient;
-  class ListObjectImpl;
-  struct NObjectIteratorImpl;
+  struct ListObjectImpl;
+  class NObjectIteratorImpl;
 
   typedef void *list_ctx_t;
   typedef uint64_t auid_t;
@@ -108,6 +108,12 @@ namespace librados
 
     /// move the iterator to a given hash position.  this may (will!) be rounded to the nearest pg.
     uint32_t seek(uint32_t pos);
+
+    /**
+     * Configure PGLS filter to be applied OSD-side (requires caller
+     * to know/understand the format expected by the OSD)
+     */
+    void set_filter(const bufferlist &bl);
 
   private:
     NObjectIterator(ObjListCtx *ctx_);
@@ -252,13 +258,17 @@ namespace librados
    * for CACHE_FLUSH and CACHE_EVICT operations.
    */
   enum ObjectOperationGlobalFlags {
-    OPERATION_NOFLAG         = 0,
-    OPERATION_BALANCE_READS  = 1,
-    OPERATION_LOCALIZE_READS = 2,
-    OPERATION_ORDER_READS_WRITES = 4,
-    OPERATION_IGNORE_CACHE = 8,
-    OPERATION_SKIPRWLOCKS = 16,
-    OPERATION_IGNORE_OVERLAY = 32,
+    OPERATION_NOFLAG             = LIBRADOS_OPERATION_NOFLAG,
+    OPERATION_BALANCE_READS      = LIBRADOS_OPERATION_BALANCE_READS,
+    OPERATION_LOCALIZE_READS     = LIBRADOS_OPERATION_LOCALIZE_READS,
+    OPERATION_ORDER_READS_WRITES = LIBRADOS_OPERATION_ORDER_READS_WRITES,
+    OPERATION_IGNORE_CACHE       = LIBRADOS_OPERATION_IGNORE_CACHE,
+    OPERATION_SKIPRWLOCKS        = LIBRADOS_OPERATION_SKIPRWLOCKS,
+    OPERATION_IGNORE_OVERLAY     = LIBRADOS_OPERATION_IGNORE_OVERLAY,
+    // send requests to cluster despite the cluster or pool being
+    // marked full; ops will either succeed (e.g., delete) or return
+    // EDQUOT or ENOSPC
+    OPERATION_FULL_TRY           = LIBRADOS_OPERATION_FULL_TRY,
   };
 
   /*
@@ -408,10 +418,13 @@ namespace librados
      *
      * @param src source object name
      * @param src_ioctx ioctx for the source object
-     * @param version current version of the source object
+     * @param src_version current version of the source object
+     * @param src_fadvise_flags the fadvise flags for source object
      */
     void copy_from(const std::string& src, const IoCtx& src_ioctx,
 		   uint64_t src_version);
+    void copy_from2(const std::string& src, const IoCtx& src_ioctx,
+                    uint64_t src_version, uint32_t src_fadvise_flags);
 
     /**
      * undirty an object
@@ -460,7 +473,7 @@ namespace librados
      * Get up to max_return keys and values beginning after start_after
      *
      * @param start_after [in] list no keys smaller than start_after
-     * @parem max_return [in] list no more than max_return key/value pairs
+     * @param max_return [in] list no more than max_return key/value pairs
      * @param out_vals [out] place returned values in out_vals on completion
      * @param prval [out] place error code in prval upon completion
      */
@@ -477,7 +490,7 @@ namespace librados
      *
      * @param start_after [in] list keys starting after start_after
      * @param filter_prefix [in] list only keys beginning with filter_prefix
-     * @parem max_return [in] list no more than max_return key/value pairs
+     * @param max_return [in] list no more than max_return key/value pairs
      * @param out_vals [out] place returned values in out_vals on completion
      * @param prval [out] place error code in prval upon completion
      */
@@ -495,7 +508,7 @@ namespace librados
      * Get up to max_return keys beginning after start_after
      *
      * @param start_after [in] list keys starting after start_after
-     * @parem max_return [in] list no more than max_return keys
+     * @param max_return [in] list no more than max_return keys
      * @param out_keys [out] place returned values in out_keys on completion
      * @param prval [out] place error code in prval upon completion
      */
@@ -515,8 +528,8 @@ namespace librados
     /**
      * get key/value pairs for specified keys
      *
-     * @param to_get [in] keys to get
-     * @param out_vals [out] place key/value pairs found here on completion
+     * @param keys [in] keys to get
+     * @param map [out] place key/value pairs found here on completion
      * @param prval [out] place error code in prval upon completion
      */
     void omap_get_vals_by_keys(const std::set<std::string> &keys,
@@ -550,7 +563,7 @@ namespace librados
     /**
      * query dirty state of an object
      *
-     * @param out_dirty [out] pointer to resulting bool
+     * @param isdirty [out] pointer to resulting bool
      * @param prval [out] place error code in prval upon completion
      */
     void is_dirty(bool *isdirty, int *prval);
@@ -765,8 +778,11 @@ namespace librados
 
     /// Start enumerating objects for a pool
     NObjectIterator nobjects_begin();
+    NObjectIterator nobjects_begin(const bufferlist &filter);
     /// Start enumerating objects for a pool starting from a hash position
     NObjectIterator nobjects_begin(uint32_t start_hash_position);
+    NObjectIterator nobjects_begin(uint32_t start_hash_position,
+                                   const bufferlist &filter);
     /// Iterator indicating the end of a pool
     const NObjectIterator& nobjects_end() const;
 
@@ -790,7 +806,7 @@ namespace librados
     /**
      * Retrieve hit set for a given hash, and time
      *
-     * @param uint32_t [in] hash position
+     * @param hash [in] hash position
      * @param c [in] completion
      * @param stamp [in] time interval that falls within the hit set's interval
      * @param pbl [out] buffer to store the result in
@@ -864,9 +880,8 @@ namespace librados
      * The return value of the completion will be 0 on success, negative
      * error code on failure.
      *
-     * @param io the context to operate in
      * @param oid the name of the object
-     * @param completion what to do when the remove is safe and complete
+     * @param c what to do when the remove is safe and complete
      * @returns 0 on success, -EROFS if the io context specifies a snap_seq
      * other than SNAP_HEAD
      */

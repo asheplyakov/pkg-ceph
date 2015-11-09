@@ -224,11 +224,13 @@ protected:
     return osdmap_ref;
   }
 
+public:
   OSDMapRef get_osdmap() const {
     assert(is_locked());
     assert(osdmap_ref);
     return osdmap_ref;
   }
+protected:
 
   /** locking and reference counting.
    * I destroy myself when the reference count hits zero.
@@ -237,7 +239,7 @@ protected:
    * put() should be called on destruction of some previously copied pointer.
    * put_unlock() when done with the current pointer (_most common_).
    */  
-  Mutex _lock;
+  mutable Mutex _lock;
   atomic_t ref;
 
 #ifdef PG_DEBUG_REFS
@@ -252,8 +254,8 @@ public:
 
 
   void lock_suspend_timeout(ThreadPool::TPHandle &handle);
-  void lock(bool no_lockdep = false);
-  void unlock() {
+  void lock(bool no_lockdep = false) const;
+  void unlock() const {
     //generic_dout(0) << this << " " << info.pgid << " unlock" << dendl;
     assert(!dirty_info);
     assert(!dirty_big_info);
@@ -294,10 +296,7 @@ public:
   bool can_upgrade() {
     return info_struct_v >= compat_struct_v;
   }
-  void upgrade(
-    ObjectStore *store,
-    const interval_set<snapid_t> &snapcolls);
-  void _upgrade_v7(ObjectStore *store, const interval_set<snapid_t> &snapcolls);
+  void upgrade(ObjectStore *store);
 
   const coll_t coll;
   PGLog  pg_log;
@@ -313,8 +312,8 @@ public:
   ghobject_t    pgmeta_oid;
 
   class MissingLoc {
-    map<hobject_t, pg_missing_t::item> needs_recovery_map;
-    map<hobject_t, set<pg_shard_t> > missing_loc;
+    map<hobject_t, pg_missing_t::item, hobject_t::BitwiseComparator> needs_recovery_map;
+    map<hobject_t, set<pg_shard_t>, hobject_t::BitwiseComparator > missing_loc;
     set<pg_shard_t> missing_loc_sources;
     PG *pg;
     set<pg_shard_t> empty_set;
@@ -333,7 +332,7 @@ public:
     bool needs_recovery(
       const hobject_t &hoid,
       eversion_t *v = 0) const {
-      map<hobject_t, pg_missing_t::item>::const_iterator i =
+      map<hobject_t, pg_missing_t::item, hobject_t::BitwiseComparator>::const_iterator i =
 	needs_recovery_map.find(hoid);
       if (i == needs_recovery_map.end())
 	return false;
@@ -351,7 +350,7 @@ public:
       const set<pg_shard_t> &acting) const;
     uint64_t num_unfound() const {
       uint64_t ret = 0;
-      for (map<hobject_t, pg_missing_t::item>::const_iterator i =
+      for (map<hobject_t, pg_missing_t::item, hobject_t::BitwiseComparator>::const_iterator i =
 	     needs_recovery_map.begin();
 	   i != needs_recovery_map.end();
 	   ++i) {
@@ -359,10 +358,6 @@ public:
 	  ++ret;
       }
       return ret;
-    }
-
-    const map<hobject_t, pg_missing_t::item> &get_all_missing() const {
-      return needs_recovery_map;
     }
 
     void clear() {
@@ -378,11 +373,11 @@ public:
       missing_loc[hoid].erase(location);
     }
     void add_active_missing(const pg_missing_t &missing) {
-      for (map<hobject_t, pg_missing_t::item>::const_iterator i =
+      for (map<hobject_t, pg_missing_t::item, hobject_t::BitwiseComparator>::const_iterator i =
 	     missing.missing.begin();
 	   i != missing.missing.end();
 	   ++i) {
-	map<hobject_t, pg_missing_t::item>::const_iterator j =
+	map<hobject_t, pg_missing_t::item, hobject_t::BitwiseComparator>::const_iterator j =
 	  needs_recovery_map.find(i->first);
 	if (j == needs_recovery_map.end()) {
 	  needs_recovery_map.insert(*i);
@@ -405,8 +400,14 @@ public:
       pg_shard_t source,           ///< [in] source
       const pg_info_t &oinfo,      ///< [in] info
       const pg_missing_t &omissing, ///< [in] (optional) missing
+      bool sort_bitwise,            ///< [in] local sort bitwise (vs nibblewise)
       ThreadPool::TPHandle* handle  ///< [in] ThreadPool handle
       ); ///< @return whether a new object location was discovered
+
+    /// Adds recovery sources in batch
+    void add_batch_sources_info(
+      const set<pg_shard_t> &sources  ///< [in] a set of resources which can be used for all objects
+      );
 
     /// Uses osdmap to update structures for now down sources
     void check_recovery_sources(const OSDMapRef osdmap);
@@ -421,10 +422,10 @@ public:
       return missing_loc.count(hoid) ?
 	missing_loc.find(hoid)->second : empty_set;
     }
-    const map<hobject_t, set<pg_shard_t> > &get_missing_locs() const {
+    const map<hobject_t, set<pg_shard_t>, hobject_t::BitwiseComparator> &get_missing_locs() const {
       return missing_loc;
     }
-    const map<hobject_t, pg_missing_t::item> &get_needs_recovery() const {
+    const map<hobject_t, pg_missing_t::item, hobject_t::BitwiseComparator> &get_needs_recovery() const {
       return needs_recovery_map;
     }
   } missing_loc;
@@ -435,11 +436,14 @@ public:
 
   /* You should not use these items without taking their respective queue locks
    * (if they have one) */
-  xlist<PG*>::item recovery_item, scrub_item, snap_trim_item, stat_queue_item;
+  xlist<PG*>::item recovery_item, stat_queue_item;
+  bool snap_trim_queued;
+  bool scrub_queued;
+
   int recovery_ops_active;
   set<pg_shard_t> waiting_on_backfill;
 #ifdef DEBUG_RECOVERY_OIDS
-  set<hobject_t> recovering_oids;
+  set<hobject_t, hobject_t::BitwiseComparator> recovering_oids;
 #endif
 
   utime_t replay_until;
@@ -636,7 +640,6 @@ public:
   set<int> heartbeat_peers;
   set<int> probe_targets;
 
-protected:
   /**
    * BackfillInterval
    *
@@ -649,17 +652,31 @@ protected:
   struct BackfillInterval {
     // info about a backfill interval on a peer
     eversion_t version; /// version at which the scan occurred
-    map<hobject_t,eversion_t> objects;
+    map<hobject_t,eversion_t,hobject_t::Comparator> objects;
+    bool sort_bitwise;
     hobject_t begin;
     hobject_t end;
+
+    BackfillInterval(bool bitwise=true)
+      : objects(hobject_t::Comparator(bitwise)),
+	sort_bitwise(bitwise)
+    {}
     
     /// clear content
-    void clear() {
-      *this = BackfillInterval();
+    void clear(bool bitwise=true) {
+      *this = BackfillInterval(bitwise);
     }
 
-    void reset(hobject_t start) {
-      clear();
+    /// clear objects list only
+    void clear_objects() {
+      // make sure we preserve the allocator and ordering!
+      objects = map<hobject_t,eversion_t,hobject_t::Comparator>(
+        hobject_t::Comparator(sort_bitwise));
+    }
+
+    /// reinstantiate with a new start+end position and sort order
+    void reset(hobject_t start, bool bitwise) {
+      clear(bitwise);
       begin = end = start;
     }
 
@@ -676,7 +693,8 @@ protected:
     /// removes items <= soid and adjusts begin to the first object
     void trim_to(const hobject_t &soid) {
       trim();
-      while (!objects.empty() && objects.begin()->first <= soid) {
+      while (!objects.empty() &&
+	     cmp(objects.begin()->first, soid, sort_bitwise) <= 0) {
 	pop_front();
       }
     }
@@ -701,7 +719,8 @@ protected:
       f->dump_stream("begin") << begin;
       f->dump_stream("end") << end;
       f->open_array_section("objects");
-      for (map<hobject_t, eversion_t>::const_iterator i = objects.begin();
+      for (map<hobject_t, eversion_t, hobject_t::Comparator>::const_iterator i =
+	     objects.begin();
 	   i != objects.end();
 	   ++i) {
 	f->open_object_section("object");
@@ -712,7 +731,8 @@ protected:
       f->close_section();
     }
   };
-  
+
+protected:
   BackfillInterval backfill_info;
   map<pg_shard_t, BackfillInterval> peer_backfill_info;
   bool backfill_reserved;
@@ -741,11 +761,24 @@ protected:
 
   list<OpRequestRef>            waiting_for_cache_not_full;
   list<OpRequestRef>            waiting_for_all_missing;
-  map<hobject_t, list<OpRequestRef> > waiting_for_unreadable_object,
+  map<hobject_t, list<OpRequestRef>, hobject_t::BitwiseComparator> waiting_for_unreadable_object,
 			     waiting_for_degraded_object,
 			     waiting_for_blocked_object;
+
+  set<
+    hobject_t,
+    hobject_t::BitwiseComparator> objects_blocked_on_cache_full;
+  map<
+    hobject_t,
+    snapid_t,
+    hobject_t::BitwiseComparator> objects_blocked_on_degraded_snap;
+  map<
+    hobject_t,
+    ObjectContextRef,
+    hobject_t::BitwiseComparator> objects_blocked_on_snap_promotion;
+
   // Callbacks should assume pg (and nothing else) is locked
-  map<hobject_t, list<Context*> > callbacks_for_degraded_object;
+  map<hobject_t, list<Context*>, hobject_t::BitwiseComparator> callbacks_for_degraded_object;
 
   map<eversion_t,
       list<pair<OpRequestRef, version_t> > > waiting_for_ack, waiting_for_ondisk;
@@ -753,7 +786,7 @@ protected:
   map<eversion_t,OpRequestRef>   replay_queue;
   void split_ops(PG *child, unsigned split_bits);
 
-  void requeue_object_waiters(map<hobject_t, list<OpRequestRef> >& m);
+  void requeue_object_waiters(map<hobject_t, list<OpRequestRef>, hobject_t::BitwiseComparator>& m);
   void requeue_op(OpRequestRef op);
   void requeue_ops(list<OpRequestRef> &l);
 
@@ -782,14 +815,14 @@ public:
   }
   bool is_acting(pg_shard_t osd) const {
     if (pool.info.ec_pool()) {
-      return acting.size() > osd.shard && acting[osd.shard] == osd.osd;
+      return acting.size() > (unsigned)osd.shard && acting[osd.shard] == osd.osd;
     } else {
       return std::find(acting.begin(), acting.end(), osd.osd) != acting.end();
     }
   }
   bool is_up(pg_shard_t osd) const {
     if (pool.info.ec_pool()) {
-      return up.size() > osd.shard && up[osd.shard] == osd.osd;
+      return up.size() > (unsigned)osd.shard && up[osd.shard] == osd.osd;
     } else {
       return std::find(up.begin(), up.end(), osd.osd) != up.end();
     }
@@ -808,7 +841,7 @@ public:
   bool _calc_past_interval_range(epoch_t *start, epoch_t *end, epoch_t oldest_map);
   void generate_past_intervals();
   void trim_past_intervals();
-  void build_prior(std::auto_ptr<PriorSet> &prior_set);
+  void build_prior(std::unique_ptr<PriorSet> &prior_set);
 
   void remove_down_peer_info(const OSDMapRef osdmap);
 
@@ -843,7 +876,8 @@ public:
 			pg_missing_t& omissing, pg_shard_t from);
   void proc_master_log(ObjectStore::Transaction& t, pg_info_t &oinfo, pg_log_t &olog,
 		       pg_missing_t& omissing, pg_shard_t from);
-  bool proc_replica_info(pg_shard_t from, const pg_info_t &info);
+  bool proc_replica_info(
+    pg_shard_t from, const pg_info_t &info, epoch_t send_epoch);
 
 
   struct LogEntryTrimmer : public ObjectModDesc::Visitor {
@@ -878,7 +912,7 @@ public:
 
   struct PGLogEntryHandler : public PGLog::LogEntryHandler {
     list<pg_log_entry_t> to_rollback;
-    set<hobject_t> to_remove;
+    set<hobject_t, hobject_t::BitwiseComparator> to_remove;
     list<pg_log_entry_t> to_trim;
     
     // LogEntryHandler
@@ -901,7 +935,7 @@ public:
 	SnapRollBacker rollbacker(j->soid, pg, t);
 	j->mod_desc.visit(&rollbacker);
       }
-      for (set<hobject_t>::iterator i = to_remove.begin();
+      for (set<hobject_t, hobject_t::BitwiseComparator>::iterator i = to_remove.begin();
 	   i != to_remove.end();
 	   ++i) {
 	pg->get_pgbackend()->rollback_create(*i, t);
@@ -1002,8 +1036,7 @@ public:
    * @returns true if any useful work was accomplished; false otherwise
    */
   virtual bool start_recovery_ops(
-    int max, RecoveryCtx *prctx,
-    ThreadPool::TPHandle &handle,
+    int max, ThreadPool::TPHandle &handle,
     int *ops_begun) = 0;
 
   void purge_strays();
@@ -1038,7 +1071,6 @@ public:
       epoch_start(0),
       active(false), queue_snap_trim(false),
       waiting_on(0), shallow_errors(0), deep_errors(0), fixed(0),
-      active_rep_scrub(0),
       must_scrub(false), must_deep_scrub(false), must_repair(false),
       num_digest_updates_pending(0),
       state(INACTIVE),
@@ -1062,18 +1094,18 @@ public:
     int fixed;
     ScrubMap primary_scrubmap;
     map<pg_shard_t, ScrubMap> received_maps;
-    MOSDRepScrub *active_rep_scrub;
+    OpRequestRef active_rep_scrub;
     utime_t scrub_reg_stamp;  // stamp we registered for
 
     // flags to indicate explicitly requested scrubs (by admin)
     bool must_scrub, must_deep_scrub, must_repair;
 
     // Maps from objects with errors to missing/inconsistent peers
-    map<hobject_t, set<pg_shard_t> > missing;
-    map<hobject_t, set<pg_shard_t> > inconsistent;
+    map<hobject_t, set<pg_shard_t>, hobject_t::BitwiseComparator> missing;
+    map<hobject_t, set<pg_shard_t>, hobject_t::BitwiseComparator> inconsistent;
 
     // Map from object with errors to good peers
-    map<hobject_t, list<pair<ScrubMap::object, pg_shard_t> > > authoritative;
+    map<hobject_t, list<pair<ScrubMap::object, pg_shard_t> >, hobject_t::BitwiseComparator> authoritative;
 
     // digest updates which we are waiting on
     int num_digest_updates_pending;
@@ -1134,8 +1166,9 @@ public:
 
     // classic (non chunk) scrubs block all writes
     // chunky scrubs only block writes to a range
-    bool write_blocked_by_scrub(const hobject_t &soid) {
-      if (soid >= start && soid < end)
+    bool write_blocked_by_scrub(const hobject_t &soid, bool sort_bitwise) {
+      if (cmp(soid, start, sort_bitwise) >= 0 &&
+	  cmp(soid, end, sort_bitwise) < 0)
 	return true;
 
       return false;
@@ -1148,8 +1181,7 @@ public:
       waiting_on = 0;
       waiting_on_whom.clear();
       if (active_rep_scrub) {
-        active_rep_scrub->put();
-        active_rep_scrub = NULL;
+        active_rep_scrub = OpRequestRef();
       }
       received_maps.clear();
 
@@ -1183,7 +1215,7 @@ public:
     const hobject_t& soid, list<pair<ScrubMap::object, pg_shard_t> > *ok_peers,
     pg_shard_t bad_peer);
 
-  void scrub(ThreadPool::TPHandle &handle);
+  void scrub(epoch_t queued, ThreadPool::TPHandle &handle);
   void chunky_scrub(ThreadPool::TPHandle &handle);
   void scrub_compare_maps();
   void scrub_process_inconsistent();
@@ -1209,10 +1241,9 @@ public:
     const hobject_t &begin, const hobject_t &end) = 0;
   virtual void _scrub(
     ScrubMap &map,
-    const std::map<hobject_t, pair<uint32_t, uint32_t> > &missing_digest) { }
+    const std::map<hobject_t, pair<uint32_t, uint32_t>, hobject_t::BitwiseComparator> &missing_digest) { }
   virtual void _scrub_clear_state() { }
   virtual void _scrub_finish() { }
-  virtual void get_colls(list<coll_t> *out) = 0;
   virtual void split_colls(
     spg_t child,
     int split_bits,
@@ -1233,7 +1264,7 @@ public:
   void unreg_next_scrub();
 
   void replica_scrub(
-    struct MOSDRepScrub *op,
+    OpRequestRef op,
     ThreadPool::TPHandle &handle);
   void sub_op_scrub_map(OpRequestRef op);
   void sub_op_scrub_reserve(OpRequestRef op);
@@ -1640,7 +1671,7 @@ public:
     struct Active;
 
     struct Peering : boost::statechart::state< Peering, Primary, GetInfo >, NamedState {
-      std::auto_ptr< PriorSet > prior_set;
+      std::unique_ptr< PriorSet > prior_set;
 
       Peering(my_context ctx);
       void exit();
@@ -2008,18 +2039,32 @@ public:
 
  private:
   // Prevent copying
-  PG(const PG& rhs);
+  explicit PG(const PG& rhs);
   PG& operator=(const PG& rhs);
   const spg_t pg_id;
   uint64_t peer_features;
+  uint64_t acting_features;
+  uint64_t upacting_features;
+
+  bool do_sort_bitwise;
 
  public:
   const spg_t&      get_pgid() const { return pg_id; }
   int        get_nrep() const { return acting.size(); }
 
-  void reset_peer_features() { peer_features = (uint64_t)-1; }
+  void reset_min_peer_features() {
+    peer_features = CEPH_FEATURES_SUPPORTED_DEFAULT;
+  }
   uint64_t get_min_peer_features() const { return peer_features; }
   void apply_peer_features(uint64_t f) { peer_features &= f; }
+
+  uint64_t get_min_acting_features() const { return acting_features; }
+  uint64_t get_min_upacting_features() const { return upacting_features; }
+
+  /// true if we will sort hobjects bitwise for this pg interval
+  bool get_sort_bitwise() const {
+    return do_sort_bitwise;
+  }
 
   void init_primary_up_acting(
     const vector<int> &newup,
@@ -2078,6 +2123,7 @@ public:
 
   int get_state() const { return state; }
   bool       is_active() const { return state_test(PG_STATE_ACTIVE); }
+  bool       is_activating() const { return state_test(PG_STATE_ACTIVATING); }
   bool       is_peering() const { return state_test(PG_STATE_PEERING); }
   bool       is_down() const { return state_test(PG_STATE_DOWN); }
   bool       is_replay() const { return state_test(PG_STATE_REPLAY); }
@@ -2106,15 +2152,16 @@ public:
   // pg on-disk state
   void do_pending_flush();
 
-  static void _create(ObjectStore::Transaction& t, spg_t pgid);
+  static void _create(ObjectStore::Transaction& t, spg_t pgid, int bits);
   static void _init(ObjectStore::Transaction& t,
 		    spg_t pgid, const pg_pool_t *pool);
 
 private:
-  void write_info(ObjectStore::Transaction& t);
+  void prepare_write_info(map<string,bufferlist> *km);
 
 public:
-  static int _write_info(ObjectStore::Transaction& t, epoch_t epoch,
+  static int _prepare_write_info(map<string,bufferlist> *km,
+    epoch_t epoch,
     pg_info_t &info, coll_t coll,
     map<epoch_t,pg_interval_t> &past_intervals,
     ghobject_t &pgmeta_oid,
@@ -2129,7 +2176,7 @@ public:
     return at_version;
   }
 
-  void add_log_entry(const pg_log_entry_t& e, bufferlist& log_bl);
+  void add_log_entry(const pg_log_entry_t& e);
   void append_log(
     const vector<pg_log_entry_t>& logv,
     eversion_t trim_to,
@@ -2157,6 +2204,7 @@ public:
   void log_weirdness();
 
   void queue_snap_trim();
+  bool requeue_scrub();
   bool queue_scrub();
 
   /// share pg info after a pg is active
@@ -2170,6 +2218,8 @@ public:
     const vector<int>& newup, int up_primary,
     const vector<int>& newacting, int acting_primary,
     ObjectStore::Transaction *t);
+  void on_new_interval();
+  virtual void _on_new_interval() = 0;
   void start_flush(ObjectStore::Transaction *t,
 		   list<Context *> *on_applied,
 		   list<Context *> *on_safe);
@@ -2183,6 +2233,8 @@ public:
   void fulfill_info(pg_shard_t from, const pg_query_t &query,
 		    pair<pg_shard_t, pg_info_t> &notify_info);
   void fulfill_log(pg_shard_t from, const pg_query_t &query, epoch_t query_epoch);
+
+  void check_full_transition(OSDMapRef lastmap, OSDMapRef osdmap);
 
   bool should_restart_peering(
     int newupprimary,
@@ -2252,7 +2304,7 @@ public:
     ThreadPool::TPHandle &handle
   ) = 0;
   virtual void do_backfill(OpRequestRef op) = 0;
-  virtual void snap_trimmer() = 0;
+  virtual void snap_trimmer(epoch_t epoch_queued) = 0;
 
   virtual int do_command(cmdmap_t cmdmap, ostream& ss,
 			 bufferlist& idata, bufferlist& odata) = 0;
@@ -2267,6 +2319,7 @@ public:
   virtual void get_watchers(std::list<obj_watch_item_t>&) = 0;
 
   virtual bool agent_work(int max) = 0;
+  virtual bool agent_work(int max, int agent_flush_quota) = 0;
   virtual void agent_stop() = 0;
   virtual void agent_delay() = 0;
   virtual void agent_clear() = 0;
@@ -2274,5 +2327,7 @@ public:
 };
 
 ostream& operator<<(ostream& out, const PG& pg);
+
+ostream& operator<<(ostream& out, const PG::BackfillInterval& bi);
 
 #endif

@@ -32,24 +32,24 @@ int rgw_perf_start(CephContext *cct)
 {
   PerfCountersBuilder plb(cct, cct->_conf->name.to_str(), l_rgw_first, l_rgw_last);
 
-  plb.add_u64_counter(l_rgw_req, "req");
-  plb.add_u64_counter(l_rgw_failed_req, "failed_req");
+  plb.add_u64_counter(l_rgw_req, "req", "Requests");
+  plb.add_u64_counter(l_rgw_failed_req, "failed_req", "Aborted requests");
 
-  plb.add_u64_counter(l_rgw_get, "get");
-  plb.add_u64_counter(l_rgw_get_b, "get_b");
-  plb.add_time_avg(l_rgw_get_lat, "get_initial_lat");
-  plb.add_u64_counter(l_rgw_put, "put");
-  plb.add_u64_counter(l_rgw_put_b, "put_b");
-  plb.add_time_avg(l_rgw_put_lat, "put_initial_lat");
+  plb.add_u64_counter(l_rgw_get, "get", "Gets");
+  plb.add_u64_counter(l_rgw_get_b, "get_b", "Size of gets");
+  plb.add_time_avg(l_rgw_get_lat, "get_initial_lat", "Get latency");
+  plb.add_u64_counter(l_rgw_put, "put", "Puts");
+  plb.add_u64_counter(l_rgw_put_b, "put_b", "Size of puts");
+  plb.add_time_avg(l_rgw_put_lat, "put_initial_lat", "Put latency");
 
-  plb.add_u64(l_rgw_qlen, "qlen");
-  plb.add_u64(l_rgw_qactive, "qactive");
+  plb.add_u64(l_rgw_qlen, "qlen", "Queue length");
+  plb.add_u64(l_rgw_qactive, "qactive", "Active requests queue");
 
-  plb.add_u64_counter(l_rgw_cache_hit, "cache_hit");
-  plb.add_u64_counter(l_rgw_cache_miss, "cache_miss");
+  plb.add_u64_counter(l_rgw_cache_hit, "cache_hit", "Cache hits");
+  plb.add_u64_counter(l_rgw_cache_miss, "cache_miss", "Cache miss");
 
-  plb.add_u64_counter(l_rgw_keystone_token_cache_hit, "keystone_token_cache_hit");
-  plb.add_u64_counter(l_rgw_keystone_token_cache_miss, "keystone_token_cache_miss");
+  plb.add_u64_counter(l_rgw_keystone_token_cache_hit, "keystone_token_cache_hit", "Keystone token cache hits");
+  plb.add_u64_counter(l_rgw_keystone_token_cache_miss, "keystone_token_cache_miss", "Keystone token cache miss");
 
   perfcounter = plb.create_perf_counters();
   cct->get_perfcounters_collection()->add(perfcounter);
@@ -197,6 +197,7 @@ struct str_len meta_prefixes[] = { STR_LEN_ENTRY("HTTP_X_AMZ"),
                                    STR_LEN_ENTRY("HTTP_X_RGW"),
                                    STR_LEN_ENTRY("HTTP_X_OBJECT"),
                                    STR_LEN_ENTRY("HTTP_X_CONTAINER"),
+                                   STR_LEN_ENTRY("HTTP_X_ACCOUNT"),
                                    {NULL, 0} };
 
 
@@ -417,9 +418,6 @@ void calc_hmac_sha1(const char *key, int key_len,
   HMACSHA1 hmac((const unsigned char *)key, key_len);
   hmac.Update((const unsigned char *)msg, msg_len);
   hmac.Final((unsigned char *)dest);
-  
-  char hex_str[(CEPH_CRYPTO_HMACSHA1_DIGESTSIZE * 2) + 1];
-  buf_to_hex((unsigned char *)dest, CEPH_CRYPTO_HMACSHA1_DIGESTSIZE, hex_str);
 }
 
 int gen_rand_base64(CephContext *cct, char *dest, int size) /* size should be the required string size + 1 */
@@ -442,7 +440,7 @@ int gen_rand_base64(CephContext *cct, char *dest, int size) /* size should be th
   }
   tmp_dest[ret] = '\0';
   memcpy(dest, tmp_dest, size);
-  dest[size] = '\0';
+  dest[size-1] = '\0';
 
   return 0;
 }

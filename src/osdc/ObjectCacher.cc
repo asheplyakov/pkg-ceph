@@ -34,6 +34,7 @@ ObjectCacher::BufferHead *ObjectCacher::Object::split(BufferHead *left, loff_t o
 
   //inherit and if later access, this auto clean.
   right->set_dontneed(left->get_dontneed());
+  right->set_nocache(left->get_nocache());
 
   right->last_write_tid = left->last_write_tid;
   right->last_read_tid = left->last_read_tid;
@@ -103,6 +104,7 @@ void ObjectCacher::Object::merge_left(BufferHead *left, BufferHead *right)
   left->last_write = MAX( left->last_write, right->last_write );
 
   left->set_dontneed(right->get_dontneed() ? left->get_dontneed() : false);
+  left->set_nocache(right->get_nocache() ? left->get_nocache() : false);
 
   // waiters
   for (map<loff_t, list<Context*> >::iterator p = right->waitfor_read.begin();
@@ -560,18 +562,18 @@ void ObjectCacher::perf_start()
   string n = "objectcacher-" + name;
   PerfCountersBuilder plb(cct, n, l_objectcacher_first, l_objectcacher_last);
 
-  plb.add_u64_counter(l_objectcacher_cache_ops_hit, "cache_ops_hit");
-  plb.add_u64_counter(l_objectcacher_cache_ops_miss, "cache_ops_miss");
-  plb.add_u64_counter(l_objectcacher_cache_bytes_hit, "cache_bytes_hit");
-  plb.add_u64_counter(l_objectcacher_cache_bytes_miss, "cache_bytes_miss");
-  plb.add_u64_counter(l_objectcacher_data_read, "data_read");
-  plb.add_u64_counter(l_objectcacher_data_written, "data_written");
-  plb.add_u64_counter(l_objectcacher_data_flushed, "data_flushed");
+  plb.add_u64_counter(l_objectcacher_cache_ops_hit, "cache_ops_hit", "Hit operations");
+  plb.add_u64_counter(l_objectcacher_cache_ops_miss, "cache_ops_miss", "Miss operations");
+  plb.add_u64_counter(l_objectcacher_cache_bytes_hit, "cache_bytes_hit", "Hit data");
+  plb.add_u64_counter(l_objectcacher_cache_bytes_miss, "cache_bytes_miss", "Miss data");
+  plb.add_u64_counter(l_objectcacher_data_read, "data_read", "Read data");
+  plb.add_u64_counter(l_objectcacher_data_written, "data_written", "Data written to cache");
+  plb.add_u64_counter(l_objectcacher_data_flushed, "data_flushed", "Data flushed");
   plb.add_u64_counter(l_objectcacher_overwritten_in_flush,
-                      "data_overwritten_while_flushing");
-  plb.add_u64_counter(l_objectcacher_write_ops_blocked, "write_ops_blocked");
-  plb.add_u64_counter(l_objectcacher_write_bytes_blocked, "write_bytes_blocked");
-  plb.add_time(l_objectcacher_write_time_blocked, "write_time_blocked");
+                      "data_overwritten_while_flushing", "Data overwritten while flushing");
+  plb.add_u64_counter(l_objectcacher_write_ops_blocked, "write_ops_blocked", "Write operations, delayed due to dirty limits");
+  plb.add_u64_counter(l_objectcacher_write_bytes_blocked, "write_bytes_blocked", "Write data blocked on dirty limit");
+  plb.add_time(l_objectcacher_write_time_blocked, "write_time_blocked", "Time spent blocking a write due to dirty limits");
 
   perfcounter = plb.create_perf_counters();
   cct->get_perfcounters_collection()->add(perfcounter);
@@ -918,6 +920,8 @@ void ObjectCacher::bh_write_commit(int64_t poolid, sobject_t oid, loff_t start,
       if (r >= 0) {
 	// ok!  mark bh clean and error-free
 	mark_clean(bh);
+	if (bh->get_nocache())
+	  bh_lru_rest.lru_bottouch(bh);
 	hit.push_back(bh);
 	ldout(cct, 10) << "bh_write_commit clean " << *bh << dendl;
       } else {
@@ -1068,6 +1072,7 @@ int ObjectCacher::_readx(OSDRead *rd, ObjectSet *oset, Context *onfinish,
   uint64_t total_bytes_read = 0;
   map<uint64_t, bufferlist> stripe_map;  // final buffer offset -> substring
   bool dontneed = rd->fadvise_flags & LIBRADOS_OP_FLAG_FADVISE_DONTNEED;
+  bool nocache = rd->fadvise_flags & LIBRADOS_OP_FLAG_FADVISE_NOCACHE;
 
   /*
    * WARNING: we can only meaningfully return ENOENT if the read request
@@ -1158,7 +1163,7 @@ int ObjectCacher::_readx(OSDRead *rd, ObjectSet *oset, Context *onfinish,
 	uint64_t rx_bytes = static_cast<uint64_t>(
 	  stat_rx + bh_it->second->length());
         bytes_not_in_cache += bh_it->second->length();
-	if (!waitfor_read.empty() || rx_bytes > max_size) {
+	if (!waitfor_read.empty() || (stat_rx > 0 && rx_bytes > max_size)) {
 	  // cache is full with concurrent reads -- wait for rx's to complete
 	  // to constrain memory growth (especially during copy-ups)
 	  if (success) {
@@ -1172,6 +1177,7 @@ int ObjectCacher::_readx(OSDRead *rd, ObjectSet *oset, Context *onfinish,
 	  bh_remove(o, bh_it->second);
 	  delete bh_it->second;
 	} else {
+	  bh_it->second->set_nocache(nocache);
 	  bh_read(bh_it->second, rd->fadvise_flags);
 	  if ((success && onfinish) || last != missing.end())
 	    last = bh_it;
@@ -1218,7 +1224,10 @@ int ObjectCacher::_readx(OSDRead *rd, ObjectSet *oset, Context *onfinish,
 	  error = bh->error;
         bytes_in_cache += bh->length();
 
-	touch_bh(bh);
+	if (bh->get_nocache() && bh->is_clean())
+	  bh_lru_rest.lru_bottouch(bh);
+	else
+	  touch_bh(bh);
 	//must be after touch_bh because touch_bh set dontneed false
 	if (dontneed &&
 	    ((loff_t)ex_it->offset <= bh->start() && (bh->end() <= (loff_t)(ex_it->offset + ex_it->length)))) {
@@ -1361,6 +1370,7 @@ int ObjectCacher::writex(OSDWrite *wr, ObjectSet *oset, Context *onfreespace)
   uint64_t bytes_written = 0;
   uint64_t bytes_written_in_flush = 0;
   bool dontneed = wr->fadvise_flags & LIBRADOS_OP_FLAG_FADVISE_DONTNEED;
+  bool nocache = wr->fadvise_flags & LIBRADOS_OP_FLAG_FADVISE_NOCACHE;
   
   for (vector<ObjectExtent>::iterator ex_it = wr->extents.begin();
        ex_it != wr->extents.end();
@@ -1372,6 +1382,7 @@ int ObjectCacher::writex(OSDWrite *wr, ObjectSet *oset, Context *onfreespace)
 
     // map it all into a single bufferhead.
     BufferHead *bh = o->map_write(wr);
+    bool missing = bh->is_missing();
     bh->snapc = wr->snapc;
     
     bytes_written += bh->length();
@@ -1411,6 +1422,8 @@ int ObjectCacher::writex(OSDWrite *wr, ObjectSet *oset, Context *onfreespace)
     mark_dirty(bh);
     if (dontneed)
       bh->set_dontneed(true);
+    else if (nocache && missing)
+      bh->set_nocache(true);
     else
       touch_bh(bh);
 
@@ -1825,7 +1838,7 @@ loff_t ObjectCacher::release(Object *ob)
        p != ob->data.end();
        ++p) {
     BufferHead *bh = p->second;
-    if (bh->is_clean() || bh->is_zero())
+    if (bh->is_clean() || bh->is_zero() || bh->is_error())
       clean.push_back(bh);
     else 
       o_unclean += bh->length();

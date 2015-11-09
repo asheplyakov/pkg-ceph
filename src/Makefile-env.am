@@ -5,6 +5,7 @@ DIST_SUBDIRS =
 BUILT_SOURCES =
 EXTRA_DIST =
 CLEANFILES =
+dist_noinst_DATA =
 
 noinst_HEADERS =
 bin_PROGRAMS =
@@ -29,8 +30,9 @@ ceph_sbindir = $(sbindir)
 # certain things go straight into /sbin, though!
 su_sbindir = /sbin
 
-# C/C++ tests to build will be appended to this
-check_PROGRAMS =
+# C/C++ tests to build and executed will be appended to this
+check_TESTPROGRAMS =
+check_PROGRAMS = $(check_TESTPROGRAMS)
 
 # tests scripts will be appended to this
 check_SCRIPTS =
@@ -50,6 +52,31 @@ endif
 ##################################
 ## automake environment
 
+HARDENING_CFLAGS = \
+                   -O2 \
+                   -g \
+                   -pipe \
+                   -Wall \
+                   -Wp,-D_FORTIFY_SOURCE=2 \
+                   -fexceptions \
+                   --param=ssp-buffer-size=4 \
+                   -fPIE
+
+SET_STACK_PROTECTOR_STRONG = $(shell expr `gcc -dumpversion` \>= 4.9)
+
+		ifeq ($(SET_STACK_PROTECTOR_STRONG),1)
+				HARDENING_CFLAGS += -fstack-protector-strong
+		else
+				HARDENING_CFLAGS += -fstack-protector
+		endif
+
+
+HARDENING_LDFLAGS =  \
+                     -pie \
+                     -Wl,-z,relro \
+                     -Wl,-z,now
+
+
 AM_COMMON_CPPFLAGS = \
 	-D__CEPH__ \
 	-D_FILE_OFFSET_BITS=64 \
@@ -59,7 +86,7 @@ AM_COMMON_CPPFLAGS = \
 	-D_GNU_SOURCE \
 	-DCEPH_LIBDIR=\"${libdir}\" \
 	-DCEPH_PKGLIBDIR=\"${pkglibdir}\" \
-	-DGTEST_HAS_TR1_TUPLE=0
+	-DGTEST_USE_OWN_TR1_TUPLE=0
 
 AM_COMMON_CFLAGS = \
 	-Wall \
@@ -74,14 +101,14 @@ if !CLANG
 	AM_COMMON_CFLAGS += -rdynamic
 endif
 
-AM_CFLAGS = $(AM_COMMON_CFLAGS)
+AM_CFLAGS = $(AM_COMMON_CFLAGS) $(HARDENING_CFLAGS)
 AM_CPPFLAGS = $(AM_COMMON_CPPFLAGS)
 AM_CXXFLAGS = \
 	@AM_CXXFLAGS@ \
 	$(AM_COMMON_CFLAGS) \
 	-ftemplate-depth-1024 \
 	-Wnon-virtual-dtor \
-	-Wno-invalid-offsetof
+	-Wno-invalid-offsetof $(HARDENING_CFLAGS)
 if !CLANG
 	AM_CXXFLAGS += -Wstrict-null-sentinel
 endif
@@ -96,7 +123,7 @@ endif
 # http://sigquit.wordpress.com/2011/02/16/why-asneeded-doesnt-work-as-expected-for-your-libraries-on-your-autotools-project/
 AM_LDFLAGS =
 if LINUX
-AM_LDFLAGS += -Wl,--as-needed
+AM_LDFLAGS += -Wl,--as-needed $(HARDENING_LDFLAGS)
 endif
 
 if USE_BOOST_SPIRIT_OLD_HDR
@@ -119,7 +146,7 @@ AM_CCASFLAGS = -f elf64
 #####################
 ## library definitions and dependencies
 
-EXTRALIBS = -luuid -lm
+EXTRALIBS = -lm
 if FREEBSD
 EXTRALIBS += -lexecinfo
 endif # FREEBSD
@@ -140,6 +167,7 @@ LIBPERFGLUE = libperfglue.la
 LIBAUTH = libauth.la
 LIBMSG = libmsg.la
 LIBCRUSH = libcrush.la
+LIBCOMPRESSOR = libcompressor.la -lsnappy
 LIBJSON_SPIRIT = libjson_spirit.la
 LIBLOG = liblog.la
 LIBOS = libos.la
@@ -161,10 +189,6 @@ LIBRBD_TYPES = librbd_types.la
 LIBKRBD = libkrbd.la
 LIBCEPHFS = libcephfs.la
 LIBERASURE_CODE = liberasure_code.la
-LIBOSD_TP = tracing/libosd_tp.la
-LIBRADOS_TP = tracing/librados_tp.la
-LIBRBD_TP = tracing/librbd_tp.la
-LIBOS_TP = tracing/libos_tp.la
 
 if WITH_LIBAIO
 LIBOS += -laio

@@ -34,7 +34,6 @@ using namespace std;
 
 #define SOCKET_PRIORITY_MIN_DELAY 6
 
-class MDS;
 class Timer;
 
 
@@ -151,12 +150,29 @@ public:
    * @param name entity name to register
    * @param lname logical name of the messenger in this process (e.g., "client")
    * @param nonce nonce value to uniquely identify this instance on the current host
+   * @param features bits for the local connection
    */
   static Messenger *create(CephContext *cct,
                            const string &type,
                            entity_name_t name,
 			   string lname,
-                           uint64_t nonce);
+                           uint64_t nonce,
+			   uint64_t features = 0);
+
+  /**
+   * create a new messenger
+   *
+   * Create a new messenger instance.
+   * Same as the above, but a slightly simpler interface for clients:
+   * - Generate a random nonce
+   * - use the default feature bits
+   * - get the messenger type from cct
+   * - use the client entity_type
+   *
+   * @param cct context
+   * @param lname logical name of the messenger in this process (e.g., "client")
+   */
+  static Messenger *create_client_messenger(CephContext *cct, string lname);
 
   /**
    * @defgroup Accessors
@@ -287,16 +303,16 @@ public:
    */
   virtual Policy get_default_policy() = 0;
   /**
-   * Set a Throttler which is applied to all Messages from the given
-   * type of peer.
+   * Set Throttlers applied to all Messages from the given type of peer
    *
    * This is an init-time function and cannot be called after calling
    * start() or bind().
    *
-   * @param type The peer type this Throttler will apply to.
-   * @param t The Throttler to apply. The Messenger does not take
-   * ownership of this pointer, but you must not destroy it before
-   * you destroy the Messenger.
+   * @param type The peer type the Throttlers will apply to.
+   * @param bytes The Throttle for the number of bytes carried by the message
+   * @param msgs The Throttle for the number of messages for this @p type
+   * @note The Messenger does not take ownership of the Throttle pointers, but
+   * you must not destroy them before you destroy the Messenger.
    */
   virtual void set_policy_throttlers(int type, Throttle *bytes, Throttle *msgs=NULL) = 0;
   /**

@@ -19,7 +19,14 @@ AC_CHECK_LIB([snappy], [snappy_compress], [HAVE_LIBSNAPPY=yes], [AC_MSG_FAILURE(
 AC_CHECK_LIB([z], [gzread], [HAVE_LIBZ=yes], [AC_MSG_FAILURE([libz not found])])
 AC_CHECK_LIB([bz2], [BZ2_bzCompressInit], [HAVE_LIBBZ2=yes], [AC_MSG_FAILURE([libbz2 not found])])
 AC_CHECK_LIB([rt], [clock_gettime], [HAVE_LIBRT=yes], [AC_MSG_FAILURE([librt not found])])
-AC_CHECK_LIB([tcmalloc], [malloc],  [HAVE_LIBTCMALLOC=yes],[AC_MSG_FAILURE([no tcmalloc found ])])
+
+AC_ARG_WITH([tcmalloc],
+	    [AS_HELP_STRING([--without-tcmalloc], [disable tcmalloc for memory allocations])],
+	    [],
+	    [with_tcmalloc=no])
+AS_IF([test "x$with_tcmalloc" != xno],
+	    [AC_CHECK_LIB([tcmalloc], [malloc],  [HAVE_LIBTCMALLOC=yes],[AC_MSG_FAILURE([no tcmalloc found ])])]
+	    [])
 
 OLD_CXXFLAGS="$CXXFLAGS"
 CXXFLAGS="$CXXFLAGS -std=c++11"

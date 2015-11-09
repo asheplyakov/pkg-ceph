@@ -12,6 +12,7 @@
 #include "db/filename.h"
 #include "db/version_set.h"
 #include "db/write_batch_internal.h"
+#include "util/string_util.h"
 #include "util/testharness.h"
 #include "util/testutil.h"
 #include "rocksdb/env.h"
@@ -23,7 +24,7 @@
 
 namespace rocksdb {
 
-class DeleteFileTest {
+class DeleteFileTest : public testing::Test {
  public:
   std::string dbname_;
   Options options_;
@@ -34,6 +35,8 @@ class DeleteFileTest {
   DeleteFileTest() {
     db_ = nullptr;
     env_ = Env::Default();
+    options_.enable_thread_tracking = true;
+    options_.max_background_flushes = 0;
     options_.write_buffer_size = 1024*1024*1000;
     options_.target_file_size_base = 1024*1024*1000;
     options_.max_bytes_for_level_base = 1024*1024*1000;
@@ -55,7 +58,7 @@ class DeleteFileTest {
 
     DestroyDB(dbname_, options_);
     numlevels_ = 7;
-    ASSERT_OK(ReopenDB(true));
+    EXPECT_OK(ReopenDB(true));
   }
 
   Status ReopenDB(bool create) {
@@ -77,7 +80,7 @@ class DeleteFileTest {
     options.sync = false;
     ReadOptions roptions;
     for (int i = startkey; i < (numkeys + startkey) ; i++) {
-      std::string temp = std::to_string(i);
+      std::string temp = ToString(i);
       Slice key(temp);
       Slice value(temp);
       ASSERT_OK(db_->Put(options, key, value));
@@ -144,10 +147,9 @@ class DeleteFileTest {
 
 };
 
-TEST(DeleteFileTest, AddKeysAndQueryLevels) {
+TEST_F(DeleteFileTest, AddKeysAndQueryLevels) {
   CreateTwoLevels();
   std::vector<LiveFileMetaData> metadata;
-  std::vector<int> keysinlevel;
   db_->GetLiveFilesMetaData(&metadata);
 
   std::string level1file = "";
@@ -191,7 +193,7 @@ TEST(DeleteFileTest, AddKeysAndQueryLevels) {
   CloseDB();
 }
 
-TEST(DeleteFileTest, PurgeObsoleteFilesTest) {
+TEST_F(DeleteFileTest, PurgeObsoleteFilesTest) {
   CreateTwoLevels();
   // there should be only one (empty) log file because CreateTwoLevels()
   // flushes the memtables to disk
@@ -219,7 +221,7 @@ TEST(DeleteFileTest, PurgeObsoleteFilesTest) {
   CloseDB();
 }
 
-TEST(DeleteFileTest, DeleteFileWithIterator) {
+TEST_F(DeleteFileTest, DeleteFileWithIterator) {
   CreateTwoLevels();
   ReadOptions options;
   Iterator* it = db_->NewIterator(options);
@@ -250,7 +252,7 @@ TEST(DeleteFileTest, DeleteFileWithIterator) {
   CloseDB();
 }
 
-TEST(DeleteFileTest, DeleteLogFiles) {
+TEST_F(DeleteFileTest, DeleteLogFiles) {
   AddKeys(10, 0);
   VectorLogPtr logfiles;
   db_->GetSortedWalFiles(logfiles);
@@ -287,9 +289,79 @@ TEST(DeleteFileTest, DeleteLogFiles) {
   CloseDB();
 }
 
+TEST_F(DeleteFileTest, DeleteNonDefaultColumnFamily) {
+  CloseDB();
+  DBOptions db_options;
+  db_options.create_if_missing = true;
+  db_options.create_missing_column_families = true;
+  std::vector<ColumnFamilyDescriptor> column_families;
+  column_families.emplace_back();
+  column_families.emplace_back("new_cf", ColumnFamilyOptions());
+
+  std::vector<rocksdb::ColumnFamilyHandle*> handles;
+  rocksdb::DB* db;
+  ASSERT_OK(DB::Open(db_options, dbname_, column_families, &handles, &db));
+
+  Random rnd(5);
+  for (int i = 0; i < 1000; ++i) {
+    ASSERT_OK(db->Put(WriteOptions(), handles[1], test::RandomKey(&rnd, 10),
+                      test::RandomKey(&rnd, 10)));
+  }
+  ASSERT_OK(db->Flush(FlushOptions(), handles[1]));
+  for (int i = 0; i < 1000; ++i) {
+    ASSERT_OK(db->Put(WriteOptions(), handles[1], test::RandomKey(&rnd, 10),
+                      test::RandomKey(&rnd, 10)));
+  }
+  ASSERT_OK(db->Flush(FlushOptions(), handles[1]));
+
+  std::vector<LiveFileMetaData> metadata;
+  db->GetLiveFilesMetaData(&metadata);
+  ASSERT_EQ(2U, metadata.size());
+  ASSERT_EQ("new_cf", metadata[0].column_family_name);
+  ASSERT_EQ("new_cf", metadata[1].column_family_name);
+  auto old_file = metadata[0].smallest_seqno < metadata[1].smallest_seqno
+                      ? metadata[0].name
+                      : metadata[1].name;
+  auto new_file = metadata[0].smallest_seqno > metadata[1].smallest_seqno
+                      ? metadata[0].name
+                      : metadata[1].name;
+  ASSERT_TRUE(db->DeleteFile(new_file).IsInvalidArgument());
+  ASSERT_OK(db->DeleteFile(old_file));
+
+  {
+    std::unique_ptr<Iterator> itr(db->NewIterator(ReadOptions(), handles[1]));
+    int count = 0;
+    for (itr->SeekToFirst(); itr->Valid(); itr->Next()) {
+      ASSERT_OK(itr->status());
+      ++count;
+    }
+    ASSERT_EQ(count, 1000);
+  }
+
+  delete handles[0];
+  delete handles[1];
+  delete db;
+
+  ASSERT_OK(DB::Open(db_options, dbname_, column_families, &handles, &db));
+  {
+    std::unique_ptr<Iterator> itr(db->NewIterator(ReadOptions(), handles[1]));
+    int count = 0;
+    for (itr->SeekToFirst(); itr->Valid(); itr->Next()) {
+      ASSERT_OK(itr->status());
+      ++count;
+    }
+    ASSERT_EQ(count, 1000);
+  }
+
+  delete handles[0];
+  delete handles[1];
+  delete db;
+}
+
 } //namespace rocksdb
 
 int main(int argc, char** argv) {
-  return rocksdb::test::RunAllTests();
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
 }
 

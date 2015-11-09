@@ -161,7 +161,8 @@ string camelcase_dash_http_attr(const string& orig)
   return string(buf);
 }
 
-static list<string> hostnames_list;
+/* avoid duplicate hostnames in hostnames list */
+static set<string> hostnames_set;
 
 void rgw_rest_init(CephContext *cct, RGWRegion& region)
 {
@@ -193,18 +194,19 @@ void rgw_rest_init(CephContext *cct, RGWRegion& region)
     http_status_names[h->code] = h->name;
   }
 
-  /* avoid duplicate hostnames in hostnames list */
-  map<string, bool> hostnames_map;
   if (!cct->_conf->rgw_dns_name.empty()) {
-    hostnames_map[cct->_conf->rgw_dns_name] = true;
+    hostnames_set.insert(cct->_conf->rgw_dns_name);
   }
-  for (list<string>::iterator iter = region.hostnames.begin(); iter != region.hostnames.end(); ++iter) {
-    hostnames_map[*iter] = true;
-  }
-
-  for (map<string, bool>::iterator iter = hostnames_map.begin(); iter != hostnames_map.end(); ++iter) {
-    hostnames_list.push_back(iter->first);
-  }
+  hostnames_set.insert(region.hostnames.begin(),  region.hostnames.end());
+  /* TODO: We should have a sanity check that no hostname matches the end of
+   * any other hostname, otherwise we will get ambigious results from
+   * rgw_find_host_in_domains.
+   * Eg: 
+   * Hostnames: [A, B.A]
+   * Inputs: [Z.A, X.B.A]
+   * Z.A clearly splits to subdomain=Z, domain=Z
+   * X.B.A ambigously splits to both {X, B.A} and {X.B, A}
+   */
 }
 
 static bool str_ends_with(const string& s, const string& suffix, size_t *pos)
@@ -224,8 +226,8 @@ static bool str_ends_with(const string& s, const string& suffix, size_t *pos)
 
 static bool rgw_find_host_in_domains(const string& host, string *domain, string *subdomain)
 {
-  list<string>::iterator iter;
-  for (iter = hostnames_list.begin(); iter != hostnames_list.end(); ++iter) {
+  set<string>::iterator iter;
+  for (iter = hostnames_set.begin(); iter != hostnames_set.end(); ++iter) {
     size_t pos;
     if (!str_ends_with(host, *iter, &pos))
       continue;
@@ -337,13 +339,19 @@ void dump_content_length(struct req_state *s, uint64_t len)
   }
 }
 
-void dump_etag(struct req_state *s, const char *etag)
+void dump_etag(struct req_state * const s, const char * const etag)
 {
+  if ('\0' == *etag) {
+    return;
+  }
+
   int r;
-  if (s->prot_flags & RGW_REST_SWIFT)
+  if (s->prot_flags & RGW_REST_SWIFT) {
     r = s->cio->print("etag: %s\r\n", etag);
-  else
+  } else {
     r = s->cio->print("ETag: \"%s\"\r\n", etag);
+  }
+
   if (r < 0) {
     ldout(s->cct, 0) << "ERROR: s->cio->print() returned err=" << r << dendl;
   }
@@ -545,6 +553,8 @@ void end_header(struct req_state *s, RGWOp *op, const char *content_type, const 
       s->formatter->dump_string("Code", s->err.s3_code);
     if (!s->err.message.empty())
       s->formatter->dump_string("Message", s->err.message);
+    if (!s->trans_id.empty())
+      s->formatter->dump_string("RequestId", s->trans_id);
     s->formatter->close_section();
     dump_content_length(s, s->formatter->get_len());
   } else {
@@ -555,7 +565,7 @@ void end_header(struct req_state *s, RGWOp *op, const char *content_type, const 
 
   int r;
   if (content_type) {
-      r = s->cio->print("Content-type: %s\r\n", content_type);
+      r = s->cio->print("Content-Type: %s\r\n", content_type);
       if (r < 0) {
 	ldout(s->cct, 0) << "ERROR: s->cio->print() returned err=" << r << dendl;
       }
@@ -817,7 +827,7 @@ int RGWPutObj_ObjStore::verify_params()
 {
   if (s->length) {
     off_t len = atoll(s->length);
-    if (len > (off_t)RGW_MAX_PUT_SIZE) {
+    if (len > (off_t)(s->cct->_conf->rgw_max_put_size)) {
       return -ERR_TOO_LARGE;
     }
   }
@@ -856,7 +866,7 @@ int RGWPutObj_ObjStore::get_data(bufferlist& bl)
     bl.append(bp, 0, len);
   }
 
-  if ((uint64_t)ofs + len > RGW_MAX_PUT_SIZE) {
+  if ((uint64_t)ofs + len > s->cct->_conf->rgw_max_put_size) {
     return -ERR_TOO_LARGE;
   }
 
@@ -875,7 +885,7 @@ int RGWPostObj_ObjStore::verify_params()
     return -ERR_LENGTH_REQUIRED;
   }
   off_t len = atoll(s->length);
-  if (len > (off_t)RGW_MAX_PUT_SIZE) {
+  if (len > (off_t)(s->cct->_conf->rgw_max_put_size)) {
     return -ERR_TOO_LARGE;
   }
 

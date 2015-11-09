@@ -23,11 +23,13 @@
 #include "rocksdb/slice_transform.h"
 #include "rocksdb/table.h"
 #include "table/meta_blocks.h"
+#include "table/bloom_block.h"
 #include "table/plain_table_factory.h"
 #include "table/plain_table_reader.h"
 #include "util/hash.h"
 #include "util/logging.h"
 #include "util/mutexlock.h"
+#include "util/string_util.h"
 #include "util/testharness.h"
 #include "util/testutil.h"
 #include "utilities/merge_operators.h"
@@ -36,7 +38,7 @@ using std::unique_ptr;
 
 namespace rocksdb {
 
-class PlainTableDBTest {
+class PlainTableDBTest : public testing::Test {
  protected:
  private:
   std::string dbname_;
@@ -48,20 +50,33 @@ class PlainTableDBTest {
  public:
   PlainTableDBTest() : env_(Env::Default()) {
     dbname_ = test::TmpDir() + "/plain_table_db_test";
-    ASSERT_OK(DestroyDB(dbname_, Options()));
+    EXPECT_OK(DestroyDB(dbname_, Options()));
     db_ = nullptr;
     Reopen();
   }
 
   ~PlainTableDBTest() {
     delete db_;
-    ASSERT_OK(DestroyDB(dbname_, Options()));
+    EXPECT_OK(DestroyDB(dbname_, Options()));
   }
 
   // Return the current option configuration.
   Options CurrentOptions() {
     Options options;
-    options.table_factory.reset(NewPlainTableFactory(16, 2, 0.8, 3));
+
+    PlainTableOptions plain_table_options;
+    plain_table_options.user_key_len = 0;
+    plain_table_options.bloom_bits_per_key = 2;
+    plain_table_options.hash_table_ratio = 0.8;
+    plain_table_options.index_sparseness = 3;
+    plain_table_options.huge_page_tlb_size = 0;
+    plain_table_options.encoding_type = kPrefix;
+    plain_table_options.full_scan_mode = false;
+    plain_table_options.store_index_in_file = false;
+
+    options.table_factory.reset(NewPlainTableFactory(plain_table_options));
+    options.memtable_factory.reset(NewHashLinkListRepFactory(4, 0, 3, true));
+
     options.prefix_extractor.reset(NewFixedPrefixTransform(8));
     options.allow_mmap_reads = true;
     return options;
@@ -135,16 +150,15 @@ class PlainTableDBTest {
 
   int NumTableFilesAtLevel(int level) {
     std::string property;
-    ASSERT_TRUE(
-        db_->GetProperty("rocksdb.num-files-at-level" + NumberToString(level),
-                         &property));
+    EXPECT_TRUE(db_->GetProperty(
+        "rocksdb.num-files-at-level" + NumberToString(level), &property));
     return atoi(property.c_str());
   }
 
   // Return spread of files per level
   std::string FilesPerLevel() {
     std::string result;
-    int last_non_zero_offset = 0;
+    size_t last_non_zero_offset = 0;
     for (int level = 0; level < db_->NumberLevels(); level++) {
       int f = NumTableFilesAtLevel(level);
       char buf[100];
@@ -169,26 +183,48 @@ class PlainTableDBTest {
   }
 };
 
-TEST(PlainTableDBTest, Empty) {
+TEST_F(PlainTableDBTest, Empty) {
   ASSERT_TRUE(dbfull() != nullptr);
   ASSERT_EQ("NOT_FOUND", Get("0000000000000foo"));
 }
 
+extern const uint64_t kPlainTableMagicNumber;
+
 class TestPlainTableReader : public PlainTableReader {
  public:
-  TestPlainTableReader(const EnvOptions& storage_options,
+  TestPlainTableReader(const EnvOptions& env_options,
                        const InternalKeyComparator& icomparator,
-                       uint64_t file_size, int bloom_bits_per_key,
-                       double hash_table_ratio, size_t index_sparseness,
+                       EncodingType encoding_type, uint64_t file_size,
+                       int bloom_bits_per_key, double hash_table_ratio,
+                       size_t index_sparseness,
                        const TableProperties* table_properties,
                        unique_ptr<RandomAccessFile>&& file,
-                       const Options& options, bool* expect_bloom_not_match)
-      : PlainTableReader(options, std::move(file), storage_options, icomparator,
-                         file_size, bloom_bits_per_key, hash_table_ratio,
-                         index_sparseness, table_properties, 2 * 1024 * 1024),
+                       const ImmutableCFOptions& ioptions,
+                       bool* expect_bloom_not_match,
+                       bool store_index_in_file)
+      : PlainTableReader(ioptions, std::move(file), env_options, icomparator,
+                         encoding_type, file_size, table_properties),
         expect_bloom_not_match_(expect_bloom_not_match) {
-    Status s = PopulateIndex(const_cast<TableProperties*>(table_properties));
-    ASSERT_TRUE(s.ok());
+    Status s = MmapDataFile();
+    EXPECT_TRUE(s.ok());
+
+    s = PopulateIndex(const_cast<TableProperties*>(table_properties),
+                      bloom_bits_per_key, hash_table_ratio, index_sparseness,
+                      2 * 1024 * 1024);
+    EXPECT_TRUE(s.ok());
+
+    TableProperties* props = const_cast<TableProperties*>(table_properties);
+    if (store_index_in_file) {
+      auto bloom_version_ptr = props->user_collected_properties.find(
+          PlainTablePropertyNames::kBloomVersion);
+      EXPECT_TRUE(bloom_version_ptr != props->user_collected_properties.end());
+      EXPECT_EQ(bloom_version_ptr->second, std::string("1"));
+      if (ioptions.bloom_locality > 0) {
+        auto num_blocks_ptr = props->user_collected_properties.find(
+            PlainTablePropertyNames::kNumBloomBlocks);
+        EXPECT_TRUE(num_blocks_ptr != props->user_collected_properties.end());
+      }
+    }
   }
 
   virtual ~TestPlainTableReader() {}
@@ -196,7 +232,11 @@ class TestPlainTableReader : public PlainTableReader {
  private:
   virtual bool MatchBloom(uint32_t hash) const override {
     bool ret = PlainTableReader::MatchBloom(hash);
-    ASSERT_TRUE(!*expect_bloom_not_match_ || !ret);
+    if (*expect_bloom_not_match_) {
+      EXPECT_TRUE(!ret);
+    } else {
+      EXPECT_TRUE(ret);
+    }
     return ret;
   }
   bool* expect_bloom_not_match_;
@@ -206,30 +246,50 @@ extern const uint64_t kPlainTableMagicNumber;
 class TestPlainTableFactory : public PlainTableFactory {
  public:
   explicit TestPlainTableFactory(bool* expect_bloom_not_match,
-                                 uint32_t user_key_len, int bloom_bits_per_key,
-                                 double hash_table_ratio,
-                                 size_t index_sparseness,
-                                 size_t huge_page_tlb_size)
-      : PlainTableFactory(user_key_len, user_key_len, hash_table_ratio,
-                          index_sparseness, huge_page_tlb_size),
-        bloom_bits_per_key_(bloom_bits_per_key),
-        hash_table_ratio_(hash_table_ratio),
-        index_sparseness_(index_sparseness),
+                                 const PlainTableOptions& options)
+      : PlainTableFactory(options),
+        bloom_bits_per_key_(options.bloom_bits_per_key),
+        hash_table_ratio_(options.hash_table_ratio),
+        index_sparseness_(options.index_sparseness),
+        store_index_in_file_(options.store_index_in_file),
         expect_bloom_not_match_(expect_bloom_not_match) {}
 
-  Status NewTableReader(const Options& options, const EnvOptions& soptions,
+  Status NewTableReader(const ImmutableCFOptions& ioptions,
+                        const EnvOptions& env_options,
                         const InternalKeyComparator& internal_comparator,
                         unique_ptr<RandomAccessFile>&& file, uint64_t file_size,
                         unique_ptr<TableReader>* table) const override {
     TableProperties* props = nullptr;
     auto s = ReadTableProperties(file.get(), file_size, kPlainTableMagicNumber,
-                                 options.env, options.info_log.get(), &props);
-    ASSERT_TRUE(s.ok());
+                                 ioptions.env, ioptions.info_log, &props);
+    EXPECT_TRUE(s.ok());
+
+    if (store_index_in_file_) {
+      BlockHandle bloom_block_handle;
+      s = FindMetaBlock(file.get(), file_size, kPlainTableMagicNumber,
+                        ioptions.env, BloomBlockBuilder::kBloomBlock,
+                        &bloom_block_handle);
+      EXPECT_TRUE(s.ok());
+
+      BlockHandle index_block_handle;
+      s = FindMetaBlock(
+          file.get(), file_size, kPlainTableMagicNumber, ioptions.env,
+          PlainTableIndexBuilder::kPlainTableIndexBlock, &index_block_handle);
+      EXPECT_TRUE(s.ok());
+    }
+
+    auto& user_props = props->user_collected_properties;
+    auto encoding_type_prop =
+        user_props.find(PlainTablePropertyNames::kEncodingType);
+    assert(encoding_type_prop != user_props.end());
+    EncodingType encoding_type = static_cast<EncodingType>(
+        DecodeFixed32(encoding_type_prop->second.c_str()));
 
     std::unique_ptr<PlainTableReader> new_reader(new TestPlainTableReader(
-        soptions, internal_comparator, file_size, bloom_bits_per_key_,
-        hash_table_ratio_, index_sparseness_, props, std::move(file), options,
-        expect_bloom_not_match_));
+        env_options, internal_comparator, encoding_type, file_size,
+        bloom_bits_per_key_, hash_table_ratio_, index_sparseness_, props,
+        std::move(file), ioptions, expect_bloom_not_match_,
+        store_index_in_file_));
 
     *table = std::move(new_reader);
     return s;
@@ -239,69 +299,136 @@ class TestPlainTableFactory : public PlainTableFactory {
   int bloom_bits_per_key_;
   double hash_table_ratio_;
   size_t index_sparseness_;
+  bool store_index_in_file_;
   bool* expect_bloom_not_match_;
 };
 
-TEST(PlainTableDBTest, Flush) {
+TEST_F(PlainTableDBTest, Flush) {
   for (size_t huge_page_tlb_size = 0; huge_page_tlb_size <= 2 * 1024 * 1024;
        huge_page_tlb_size += 2 * 1024 * 1024) {
+    for (EncodingType encoding_type : {kPlain, kPrefix}) {
     for (int bloom_bits = 0; bloom_bits <= 117; bloom_bits += 117) {
       for (int total_order = 0; total_order <= 1; total_order++) {
-        Options options = CurrentOptions();
-        options.create_if_missing = true;
-        // Set only one bucket to force bucket conflict.
-        // Test index interval for the same prefix to be 1, 2 and 4
-        if (total_order) {
-          options.table_factory.reset(NewTotalOrderPlainTableFactory(
-              16, bloom_bits, 2, huge_page_tlb_size));
-        } else {
-          options.table_factory.reset(NewPlainTableFactory(
-              16, bloom_bits, 0.75, 16, huge_page_tlb_size));
+        for (int store_index_in_file = 0; store_index_in_file <= 1;
+             ++store_index_in_file) {
+          if (!bloom_bits && store_index_in_file) {
+            continue;
+          }
+
+          Options options = CurrentOptions();
+          options.create_if_missing = true;
+          // Set only one bucket to force bucket conflict.
+          // Test index interval for the same prefix to be 1, 2 and 4
+          if (total_order) {
+            options.prefix_extractor.reset();
+
+            PlainTableOptions plain_table_options;
+            plain_table_options.user_key_len = 0;
+            plain_table_options.bloom_bits_per_key = bloom_bits;
+            plain_table_options.hash_table_ratio = 0;
+            plain_table_options.index_sparseness = 2;
+            plain_table_options.huge_page_tlb_size = huge_page_tlb_size;
+            plain_table_options.encoding_type = encoding_type;
+            plain_table_options.full_scan_mode = false;
+            plain_table_options.store_index_in_file = store_index_in_file;
+
+            options.table_factory.reset(
+                NewPlainTableFactory(plain_table_options));
+          } else {
+            PlainTableOptions plain_table_options;
+            plain_table_options.user_key_len = 0;
+            plain_table_options.bloom_bits_per_key = bloom_bits;
+            plain_table_options.hash_table_ratio = 0.75;
+            plain_table_options.index_sparseness = 16;
+            plain_table_options.huge_page_tlb_size = huge_page_tlb_size;
+            plain_table_options.encoding_type = encoding_type;
+            plain_table_options.full_scan_mode = false;
+            plain_table_options.store_index_in_file = store_index_in_file;
+
+            options.table_factory.reset(
+                NewPlainTableFactory(plain_table_options));
+          }
+          DestroyAndReopen(&options);
+          uint64_t int_num;
+          ASSERT_TRUE(dbfull()->GetIntProperty(
+              "rocksdb.estimate-table-readers-mem", &int_num));
+          ASSERT_EQ(int_num, 0U);
+
+          ASSERT_OK(Put("1000000000000foo", "v1"));
+          ASSERT_OK(Put("0000000000000bar", "v2"));
+          ASSERT_OK(Put("1000000000000foo", "v3"));
+          dbfull()->TEST_FlushMemTable();
+
+          ASSERT_TRUE(dbfull()->GetIntProperty(
+              "rocksdb.estimate-table-readers-mem", &int_num));
+          ASSERT_GT(int_num, 0U);
+
+          TablePropertiesCollection ptc;
+          reinterpret_cast<DB*>(dbfull())->GetPropertiesOfAllTables(&ptc);
+          ASSERT_EQ(1U, ptc.size());
+          auto row = ptc.begin();
+          auto tp = row->second;
+
+          if (!store_index_in_file) {
+            ASSERT_EQ(total_order ? "4" : "12",
+                      (tp->user_collected_properties)
+                          .at("plain_table_hash_table_size"));
+            ASSERT_EQ("0", (tp->user_collected_properties)
+                               .at("plain_table_sub_index_size"));
+          } else {
+            ASSERT_EQ("0", (tp->user_collected_properties)
+                               .at("plain_table_hash_table_size"));
+            ASSERT_EQ("0", (tp->user_collected_properties)
+                               .at("plain_table_sub_index_size"));
+          }
+          ASSERT_EQ("v3", Get("1000000000000foo"));
+          ASSERT_EQ("v2", Get("0000000000000bar"));
         }
-        DestroyAndReopen(&options);
-
-        ASSERT_OK(Put("1000000000000foo", "v1"));
-        ASSERT_OK(Put("0000000000000bar", "v2"));
-        ASSERT_OK(Put("1000000000000foo", "v3"));
-        dbfull()->TEST_FlushMemTable();
-
-        TablePropertiesCollection ptc;
-        reinterpret_cast<DB*>(dbfull())->GetPropertiesOfAllTables(&ptc);
-        ASSERT_EQ(1U, ptc.size());
-        auto row = ptc.begin();
-        auto tp = row->second;
-        ASSERT_EQ(total_order ? "4" : "12", (tp->user_collected_properties).at(
-                                                "plain_table_hash_table_size"));
-        ASSERT_EQ(total_order ? "9" : "0", (tp->user_collected_properties).at(
-                                               "plain_table_sub_index_size"));
-
-        ASSERT_EQ("v3", Get("1000000000000foo"));
-        ASSERT_EQ("v2", Get("0000000000000bar"));
+        }
       }
     }
   }
 }
 
-TEST(PlainTableDBTest, Flush2) {
+TEST_F(PlainTableDBTest, Flush2) {
   for (size_t huge_page_tlb_size = 0; huge_page_tlb_size <= 2 * 1024 * 1024;
        huge_page_tlb_size += 2 * 1024 * 1024) {
+    for (EncodingType encoding_type : {kPlain, kPrefix}) {
     for (int bloom_bits = 0; bloom_bits <= 117; bloom_bits += 117) {
       for (int total_order = 0; total_order <= 1; total_order++) {
+        for (int store_index_in_file = 0; store_index_in_file <= 1;
+             ++store_index_in_file) {
+          if (encoding_type == kPrefix && total_order) {
+            continue;
+          }
+          if (!bloom_bits && store_index_in_file) {
+            continue;
+          }
+          if (total_order && store_index_in_file) {
+          continue;
+        }
         bool expect_bloom_not_match = false;
         Options options = CurrentOptions();
         options.create_if_missing = true;
         // Set only one bucket to force bucket conflict.
         // Test index interval for the same prefix to be 1, 2 and 4
+        PlainTableOptions plain_table_options;
         if (total_order) {
           options.prefix_extractor = nullptr;
-          options.table_factory.reset(
-              new TestPlainTableFactory(&expect_bloom_not_match, 16, bloom_bits,
-                                        0, 2, huge_page_tlb_size));
+          plain_table_options.hash_table_ratio = 0;
+          plain_table_options.index_sparseness = 2;
         } else {
-          options.table_factory.reset(
-              new TestPlainTableFactory(&expect_bloom_not_match, 16, bloom_bits,
-                                        0.75, 16, huge_page_tlb_size));
+          plain_table_options.hash_table_ratio = 0.75;
+          plain_table_options.index_sparseness = 16;
         }
+        plain_table_options.user_key_len = kPlainTableVariableLength;
+        plain_table_options.bloom_bits_per_key = bloom_bits;
+        plain_table_options.huge_page_tlb_size = huge_page_tlb_size;
+        plain_table_options.encoding_type = encoding_type;
+        plain_table_options.store_index_in_file = store_index_in_file;
+        options.table_factory.reset(new TestPlainTableFactory(
+            &expect_bloom_not_match, plain_table_options));
+
         DestroyAndReopen(&options);
         ASSERT_OK(Put("0000000000000bar", "b"));
         ASSERT_OK(Put("1000000000000foo", "v1"));
@@ -329,7 +456,6 @@ TEST(PlainTableDBTest, Flush2) {
           // Neither key nor value should exist.
           expect_bloom_not_match = true;
           ASSERT_EQ("NOT_FOUND", Get("5_not00000000bar"));
-
           // Key doesn't exist any more but prefix exists.
           if (total_order) {
             ASSERT_EQ("NOT_FOUND", Get("1000000000000not"));
@@ -338,15 +464,21 @@ TEST(PlainTableDBTest, Flush2) {
           expect_bloom_not_match = false;
         }
       }
+      }
+    }
     }
   }
 }
 
-TEST(PlainTableDBTest, Iterator) {
+TEST_F(PlainTableDBTest, Iterator) {
   for (size_t huge_page_tlb_size = 0; huge_page_tlb_size <= 2 * 1024 * 1024;
        huge_page_tlb_size += 2 * 1024 * 1024) {
+    for (EncodingType encoding_type : {kPlain, kPrefix}) {
     for (int bloom_bits = 0; bloom_bits <= 117; bloom_bits += 117) {
       for (int total_order = 0; total_order <= 1; total_order++) {
+        if (encoding_type == kPrefix && total_order == 1) {
+          continue;
+        }
         bool expect_bloom_not_match = false;
         Options options = CurrentOptions();
         options.create_if_missing = true;
@@ -354,13 +486,28 @@ TEST(PlainTableDBTest, Iterator) {
         // Test index interval for the same prefix to be 1, 2 and 4
         if (total_order) {
           options.prefix_extractor = nullptr;
-          options.table_factory.reset(
-              new TestPlainTableFactory(&expect_bloom_not_match, 16, bloom_bits,
-                                        0, 2, huge_page_tlb_size));
+
+          PlainTableOptions plain_table_options;
+          plain_table_options.user_key_len = 16;
+          plain_table_options.bloom_bits_per_key = bloom_bits;
+          plain_table_options.hash_table_ratio = 0;
+          plain_table_options.index_sparseness = 2;
+          plain_table_options.huge_page_tlb_size = huge_page_tlb_size;
+          plain_table_options.encoding_type = encoding_type;
+
+          options.table_factory.reset(new TestPlainTableFactory(
+              &expect_bloom_not_match, plain_table_options));
         } else {
-          options.table_factory.reset(
-              new TestPlainTableFactory(&expect_bloom_not_match, 16, bloom_bits,
-                                        0.75, 16, huge_page_tlb_size));
+          PlainTableOptions plain_table_options;
+          plain_table_options.user_key_len = 16;
+          plain_table_options.bloom_bits_per_key = bloom_bits;
+          plain_table_options.hash_table_ratio = 0.75;
+          plain_table_options.index_sparseness = 16;
+          plain_table_options.huge_page_tlb_size = huge_page_tlb_size;
+          plain_table_options.encoding_type = encoding_type;
+
+          options.table_factory.reset(new TestPlainTableFactory(
+              &expect_bloom_not_match, plain_table_options));
         }
         DestroyAndReopen(&options);
 
@@ -447,6 +594,7 @@ TEST(PlainTableDBTest, Iterator) {
         delete iter;
       }
     }
+    }
   }
 }
 
@@ -456,9 +604,15 @@ std::string MakeLongKey(size_t length, char c) {
 }
 }  // namespace
 
-TEST(PlainTableDBTest, IteratorLargeKeys) {
+TEST_F(PlainTableDBTest, IteratorLargeKeys) {
   Options options = CurrentOptions();
-  options.table_factory.reset(NewTotalOrderPlainTableFactory(0, 0, 16));
+
+  PlainTableOptions plain_table_options;
+  plain_table_options.user_key_len = 0;
+  plain_table_options.bloom_bits_per_key = 0;
+  plain_table_options.hash_table_ratio = 0;
+
+  options.table_factory.reset(NewPlainTableFactory(plain_table_options));
   options.create_if_missing = true;
   options.prefix_extractor.reset();
   DestroyAndReopen(&options);
@@ -474,7 +628,7 @@ TEST(PlainTableDBTest, IteratorLargeKeys) {
   };
 
   for (size_t i = 0; i < 7; i++) {
-    ASSERT_OK(Put(key_list[i], std::to_string(i)));
+    ASSERT_OK(Put(key_list[i], ToString(i)));
   }
 
   dbfull()->TEST_FlushMemTable();
@@ -485,7 +639,7 @@ TEST(PlainTableDBTest, IteratorLargeKeys) {
   for (size_t i = 0; i < 7; i++) {
     ASSERT_TRUE(iter->Valid());
     ASSERT_EQ(key_list[i], iter->key().ToString());
-    ASSERT_EQ(std::to_string(i), iter->value().ToString());
+    ASSERT_EQ(ToString(i), iter->value().ToString());
     iter->Next();
   }
 
@@ -494,40 +648,60 @@ TEST(PlainTableDBTest, IteratorLargeKeys) {
   delete iter;
 }
 
-// A test comparator which compare two strings in this way:
-// (1) first compare prefix of 8 bytes in alphabet order,
-// (2) if two strings share the same prefix, sort the other part of the string
-//     in the reverse alphabet order.
-class SimpleSuffixReverseComparator : public Comparator {
- public:
-  SimpleSuffixReverseComparator() {}
+namespace {
+std::string MakeLongKeyWithPrefix(size_t length, char c) {
+  return "00000000" + std::string(length - 8, c);
+}
+}  // namespace
 
-  virtual const char* Name() const { return "SimpleSuffixReverseComparator"; }
+TEST_F(PlainTableDBTest, IteratorLargeKeysWithPrefix) {
+  Options options = CurrentOptions();
 
-  virtual int Compare(const Slice& a, const Slice& b) const {
-    Slice prefix_a = Slice(a.data(), 8);
-    Slice prefix_b = Slice(b.data(), 8);
-    int prefix_comp = prefix_a.compare(prefix_b);
-    if (prefix_comp != 0) {
-      return prefix_comp;
-    } else {
-      Slice suffix_a = Slice(a.data() + 8, a.size() - 8);
-      Slice suffix_b = Slice(b.data() + 8, b.size() - 8);
-      return -(suffix_a.compare(suffix_b));
-    }
+  PlainTableOptions plain_table_options;
+  plain_table_options.user_key_len = 16;
+  plain_table_options.bloom_bits_per_key = 0;
+  plain_table_options.hash_table_ratio = 0.8;
+  plain_table_options.index_sparseness = 3;
+  plain_table_options.huge_page_tlb_size = 0;
+  plain_table_options.encoding_type = kPrefix;
+
+  options.table_factory.reset(NewPlainTableFactory(plain_table_options));
+  options.create_if_missing = true;
+  DestroyAndReopen(&options);
+
+  std::string key_list[] = {
+      MakeLongKeyWithPrefix(30, '0'), MakeLongKeyWithPrefix(16, '1'),
+      MakeLongKeyWithPrefix(32, '2'), MakeLongKeyWithPrefix(60, '3'),
+      MakeLongKeyWithPrefix(90, '4'), MakeLongKeyWithPrefix(50, '5'),
+      MakeLongKeyWithPrefix(26, '6')};
+
+  for (size_t i = 0; i < 7; i++) {
+    ASSERT_OK(Put(key_list[i], ToString(i)));
   }
-  virtual void FindShortestSeparator(std::string* start,
-                                     const Slice& limit) const {}
 
-  virtual void FindShortSuccessor(std::string* key) const {}
-};
+  dbfull()->TEST_FlushMemTable();
 
-TEST(PlainTableDBTest, IteratorReverseSuffixComparator) {
+  Iterator* iter = dbfull()->NewIterator(ReadOptions());
+  iter->Seek(key_list[0]);
+
+  for (size_t i = 0; i < 7; i++) {
+    ASSERT_TRUE(iter->Valid());
+    ASSERT_EQ(key_list[i], iter->key().ToString());
+    ASSERT_EQ(ToString(i), iter->value().ToString());
+    iter->Next();
+  }
+
+  ASSERT_TRUE(!iter->Valid());
+
+  delete iter;
+}
+
+TEST_F(PlainTableDBTest, IteratorReverseSuffixComparator) {
   Options options = CurrentOptions();
   options.create_if_missing = true;
   // Set only one bucket to force bucket conflict.
   // Test index interval for the same prefix to be 1, 2 and 4
-  SimpleSuffixReverseComparator comp;
+  test::SimpleSuffixReverseComparator comp;
   options.comparator = &comp;
   DestroyAndReopen(&options);
 
@@ -591,7 +765,7 @@ TEST(PlainTableDBTest, IteratorReverseSuffixComparator) {
   delete iter;
 }
 
-TEST(PlainTableDBTest, HashBucketConflict) {
+TEST_F(PlainTableDBTest, HashBucketConflict) {
   for (size_t huge_page_tlb_size = 0; huge_page_tlb_size <= 2 * 1024 * 1024;
        huge_page_tlb_size += 2 * 1024 * 1024) {
     for (unsigned char i = 1; i <= 3; i++) {
@@ -599,8 +773,16 @@ TEST(PlainTableDBTest, HashBucketConflict) {
       options.create_if_missing = true;
       // Set only one bucket to force bucket conflict.
       // Test index interval for the same prefix to be 1, 2 and 4
-      options.table_factory.reset(
-          NewTotalOrderPlainTableFactory(16, 0, 2 ^ i, huge_page_tlb_size));
+
+      PlainTableOptions plain_table_options;
+      plain_table_options.user_key_len = 16;
+      plain_table_options.bloom_bits_per_key = 0;
+      plain_table_options.hash_table_ratio = 0;
+      plain_table_options.index_sparseness = 2 ^ i;
+      plain_table_options.huge_page_tlb_size = huge_page_tlb_size;
+
+      options.table_factory.reset(NewPlainTableFactory(plain_table_options));
+
       DestroyAndReopen(&options);
       ASSERT_OK(Put("5000000000000fo0", "v1"));
       ASSERT_OK(Put("5000000000000fo1", "v2"));
@@ -676,18 +858,25 @@ TEST(PlainTableDBTest, HashBucketConflict) {
   }
 }
 
-TEST(PlainTableDBTest, HashBucketConflictReverseSuffixComparator) {
+TEST_F(PlainTableDBTest, HashBucketConflictReverseSuffixComparator) {
   for (size_t huge_page_tlb_size = 0; huge_page_tlb_size <= 2 * 1024 * 1024;
        huge_page_tlb_size += 2 * 1024 * 1024) {
     for (unsigned char i = 1; i <= 3; i++) {
       Options options = CurrentOptions();
       options.create_if_missing = true;
-      SimpleSuffixReverseComparator comp;
+      test::SimpleSuffixReverseComparator comp;
       options.comparator = &comp;
       // Set only one bucket to force bucket conflict.
       // Test index interval for the same prefix to be 1, 2 and 4
-      options.table_factory.reset(
-          NewTotalOrderPlainTableFactory(16, 0, 2 ^ i, huge_page_tlb_size));
+
+      PlainTableOptions plain_table_options;
+      plain_table_options.user_key_len = 16;
+      plain_table_options.bloom_bits_per_key = 0;
+      plain_table_options.hash_table_ratio = 0;
+      plain_table_options.index_sparseness = 2 ^ i;
+      plain_table_options.huge_page_tlb_size = huge_page_tlb_size;
+
+      options.table_factory.reset(NewPlainTableFactory(plain_table_options));
       DestroyAndReopen(&options);
       ASSERT_OK(Put("5000000000000fo0", "v1"));
       ASSERT_OK(Put("5000000000000fo1", "v2"));
@@ -762,12 +951,18 @@ TEST(PlainTableDBTest, HashBucketConflictReverseSuffixComparator) {
   }
 }
 
-TEST(PlainTableDBTest, NonExistingKeyToNonEmptyBucket) {
+TEST_F(PlainTableDBTest, NonExistingKeyToNonEmptyBucket) {
   Options options = CurrentOptions();
   options.create_if_missing = true;
   // Set only one bucket to force bucket conflict.
   // Test index interval for the same prefix to be 1, 2 and 4
-  options.table_factory.reset(NewTotalOrderPlainTableFactory(16, 0, 5));
+  PlainTableOptions plain_table_options;
+  plain_table_options.user_key_len = 16;
+  plain_table_options.bloom_bits_per_key = 0;
+  plain_table_options.hash_table_ratio = 0;
+  plain_table_options.index_sparseness = 5;
+
+  options.table_factory.reset(NewPlainTableFactory(plain_table_options));
   DestroyAndReopen(&options);
   ASSERT_OK(Put("5000000000000fo0", "v1"));
   ASSERT_OK(Put("5000000000000fo1", "v2"));
@@ -812,7 +1007,7 @@ static std::string RandomString(Random* rnd, int len) {
   return r;
 }
 
-TEST(PlainTableDBTest, CompactionTrigger) {
+TEST_F(PlainTableDBTest, CompactionTrigger) {
   Options options = CurrentOptions();
   options.write_buffer_size = 100 << 10; //100KB
   options.num_levels = 3;
@@ -846,8 +1041,52 @@ TEST(PlainTableDBTest, CompactionTrigger) {
   ASSERT_EQ(NumTableFilesAtLevel(1), 1);
 }
 
+TEST_F(PlainTableDBTest, AdaptiveTable) {
+  Options options = CurrentOptions();
+  options.create_if_missing = true;
+
+  options.table_factory.reset(NewPlainTableFactory());
+  DestroyAndReopen(&options);
+
+  ASSERT_OK(Put("1000000000000foo", "v1"));
+  ASSERT_OK(Put("0000000000000bar", "v2"));
+  ASSERT_OK(Put("1000000000000foo", "v3"));
+  dbfull()->TEST_FlushMemTable();
+
+  options.create_if_missing = false;
+  std::shared_ptr<TableFactory> dummy_factory;
+  std::shared_ptr<TableFactory> block_based_factory(
+      NewBlockBasedTableFactory());
+  options.table_factory.reset(NewAdaptiveTableFactory(
+      block_based_factory, dummy_factory, dummy_factory));
+  Reopen(&options);
+  ASSERT_EQ("v3", Get("1000000000000foo"));
+  ASSERT_EQ("v2", Get("0000000000000bar"));
+
+  ASSERT_OK(Put("2000000000000foo", "v4"));
+  ASSERT_OK(Put("3000000000000bar", "v5"));
+  dbfull()->TEST_FlushMemTable();
+  ASSERT_EQ("v4", Get("2000000000000foo"));
+  ASSERT_EQ("v5", Get("3000000000000bar"));
+
+  Reopen(&options);
+  ASSERT_EQ("v3", Get("1000000000000foo"));
+  ASSERT_EQ("v2", Get("0000000000000bar"));
+  ASSERT_EQ("v4", Get("2000000000000foo"));
+  ASSERT_EQ("v5", Get("3000000000000bar"));
+
+  options.table_factory.reset(NewBlockBasedTableFactory());
+  Reopen(&options);
+  ASSERT_NE("v3", Get("1000000000000foo"));
+
+  options.table_factory.reset(NewPlainTableFactory());
+  Reopen(&options);
+  ASSERT_NE("v5", Get("3000000000000bar"));
+}
+
 }  // namespace rocksdb
 
 int main(int argc, char** argv) {
-  return rocksdb::test::RunAllTests();
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
 }

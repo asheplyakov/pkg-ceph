@@ -1,35 +1,8 @@
 .\" Man page generated from reStructuredText.
 .
-.TH "CRUSHTOOL" "8" "January 12, 2014" "dev" "Ceph"
+.TH "CRUSHTOOL" "8" "November 03, 2015" "dev" "Ceph"
 .SH NAME
 crushtool \- CRUSH map manipulation tool
-.
-.nr rst2man-indent-level 0
-.
-.de1 rstReportMargin
-\\$1 \\n[an-margin]
-level \\n[rst2man-indent-level]
-level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
--
-\\n[rst2man-indent0]
-\\n[rst2man-indent1]
-\\n[rst2man-indent2]
-..
-.de1 INDENT
-.\" .rstReportMargin pre:
-. RS \\$1
-. nr rst2man-indent\\n[rst2man-indent-level] \\n[an-margin]
-. nr rst2man-indent-level +1
-.\" .rstReportMargin post:
-..
-.de UNINDENT
-. RE
-.\" indent \\n[an-margin]
-.\" old: \\n[rst2man-indent\\n[rst2man-indent-level]]
-.nr rst2man-indent-level -1
-.\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
-.in \\n[rst2man-indent\\n[rst2man-indent-level]]u
-..
 .
 .nr rst2man-indent-level 0
 .
@@ -77,7 +50,7 @@ described in detail in the following paper (although it has evolved
 some since then):
 .INDENT 0.0
 .INDENT 3.5
-\fI\%http://www.ssrc.ucsc.edu/Papers/weil-sc06.pdf\fP
+\fI\%http://www.ssrc.ucsc.edu/Papers/weil\-sc06.pdf\fP
 .UNINDENT
 .UNINDENT
 .sp
@@ -107,7 +80,7 @@ object names. See below for a detailed explanation.
 .UNINDENT
 .sp
 Unlike other Ceph tools, \fBcrushtool\fP does not accept generic options
-such as \fB\-\-debug\-crush\fP from the command line. They can however be
+such as \fB\-\-debug\-crush\fP from the command line. They can, however, be
 provided via the CEPH_ARGS environment variable. For instance, to
 silence all output from the CRUSH subsystem:
 .INDENT 0.0
@@ -125,13 +98,15 @@ CEPH_ARGS="\-\-debug\-crush 0" crushtool ...
 The test mode will use the input crush map ( as specified with \fB\-i
 map\fP ) and perform a dry run of CRUSH mapping or random placement (
 if \fB\-\-simulate\fP is set ). On completion, two kinds of reports can be
-created. The \fB\-\-show\-...\fP options output human readable information
-on stderr. The \fB\-\-output\-csv\fP option creates CSV files that are
+created.
+1) The \fB\-\-show\-...\fP option outputs human readable information
+on stderr.
+2) The \fB\-\-output\-csv\fP option creates CSV files that are
 documented by the \fB\-\-help\-output\fP option.
 .INDENT 0.0
 .TP
 .B \-\-show\-statistics
-for each rule display the mapping of each object. For instance:
+For each rule, displays the mapping of each object. For instance:
 .INDENT 7.0
 .INDENT 3.5
 .sp
@@ -161,7 +136,7 @@ shows that rule \fB1\fP which is named \fBmetadata\fP successfully
 mapped \fB1024\fP objects to \fBresult size == 5\fP devices when trying
 to map them to \fBnum_rep 5\fP replicas. When it fails to provide the
 required mapping, presumably because the number of \fBtries\fP must
-be increased, a breakdown of the failures is displays. For instance:
+be increased, a breakdown of the failures is displayed. For instance:
 .INDENT 7.0
 .INDENT 3.5
 .sp
@@ -182,7 +157,7 @@ out of \fB1024\fP objects ( \fB4/1024\fP ) were mapped to \fBresult size
 .INDENT 0.0
 .TP
 .B \-\-show\-bad\-mappings
-display which object failed to be mapped to the required number of
+Displays which object failed to be mapped to the required number of
 devices. For instance:
 .INDENT 7.0
 .INDENT 3.5
@@ -196,12 +171,12 @@ bad mapping rule 1 x 781 num_rep 7 result [8,10,2,11,6,9]
 .UNINDENT
 .sp
 shows that when rule \fB1\fP was required to map \fB7\fP devices, it
-could only map six : \fB[8,10,2,11,6,9]\fP\&.
+could map only six : \fB[8,10,2,11,6,9]\fP\&.
 .UNINDENT
 .INDENT 0.0
 .TP
 .B \-\-show\-utilization
-display the expected and actual utilisation for each device, for
+Displays the expected and actual utilisation for each device, for
 each number of replicas. For instance:
 .INDENT 7.0
 .INDENT 3.5
@@ -222,14 +197,14 @@ Implies \fB\-\-show\-statistics\fP\&.
 .INDENT 0.0
 .TP
 .B \-\-show\-utilization\-all
-displays the same as \fB\-\-show\-utilization\fP but does not suppress
+Displays the same as \fB\-\-show\-utilization\fP but does not suppress
 output when the weight of a device is zero.
 Implies \fB\-\-show\-statistics\fP\&.
 .UNINDENT
 .INDENT 0.0
 .TP
 .B \-\-show\-choose\-tries
-display how many attempts were needed to find a device mapping.
+Displays how many attempts were needed to find a device mapping.
 For instance:
 .INDENT 7.0
 .INDENT 3.5
@@ -252,10 +227,10 @@ as the value of the \fB\-\-set\-choose\-total\-tries\fP option.
 .INDENT 0.0
 .TP
 .B \-\-output\-csv
-create CSV files (in the current directory) containing information
+Creates CSV files (in the current directory) containing information
 documented by \fB\-\-help\-output\fP\&. The files are named after the rule
 used when collecting the statistics. For instance, if the rule
-metadata is used, the CSV files will be:
+: \(aqmetadata\(aq is used, the CSV files will be:
 .INDENT 7.0
 .INDENT 3.5
 .sp
@@ -288,7 +263,7 @@ Device ID, Absolute Weight
 .INDENT 0.0
 .TP
 .B \-\-output\-name NAME
-prepend \fBNAME\fP to the file names generated when \fB\-\-output\-csv\fP
+Prepend \fBNAME\fP to the file names generated when \fB\-\-output\-csv\fP
 is specified. For instance \fB\-\-output\-name FOO\fP will create
 files:
 .INDENT 7.0
@@ -417,7 +392,7 @@ crushtool \-c map.txt \-o crushmap
 .UNINDENT
 .SH AVAILABILITY
 .sp
-\fBcrushtool\fP is part of Ceph, a massively scalable, open-source, distributed storage system. Please
+\fBcrushtool\fP is part of Ceph, a massively scalable, open\-source, distributed storage system. Please
 refer to the Ceph documentation at \fI\%http://ceph.com/docs\fP for more
 information.
 .SH SEE ALSO

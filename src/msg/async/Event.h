@@ -39,6 +39,7 @@
 
 #include <pthread.h>
 
+#include "include/atomic.h"
 #include "include/Context.h"
 #include "include/unordered_map.h"
 #include "common/WorkQueue.h"
@@ -74,7 +75,7 @@ class EventDriver {
   virtual ~EventDriver() {}       // we want a virtual destructor!!!
   virtual int init(int nevent) = 0;
   virtual int add_event(int fd, int cur_mask, int mask) = 0;
-  virtual void del_event(int fd, int cur_mask, int del_mask) = 0;
+  virtual int del_event(int fd, int cur_mask, int del_mask) = 0;
   virtual int event_wait(vector<FiredFileEvent> &fired_events, struct timeval *tp) = 0;
   virtual int resize_events(int newsize) = 0;
 };
@@ -124,6 +125,8 @@ class EventCenter {
   }
 
  public:
+  atomic_t already_wakeup;
+
   EventCenter(CephContext *c):
     cct(c), nevent(0),
     external_lock("AsyncMessenger::external_lock"),
@@ -131,7 +134,7 @@ class EventCenter {
     time_lock("AsyncMessenger::time_lock"),
     file_events(NULL),
     driver(NULL), time_event_next_id(0),
-    notify_receive_fd(-1), notify_send_fd(-1), net(c), owner(0) {
+    notify_receive_fd(-1), notify_send_fd(-1), net(c), owner(0), already_wakeup(0) {
     last_time = time(NULL);
   }
   ~EventCenter();

@@ -21,6 +21,7 @@
 #include <errno.h>
 
 #include "include/types.h"
+#include "include/timegm.h"
 #include "common/strtol.h"
 
 
@@ -288,10 +289,10 @@ public:
       gmtime_r(&tt, &tm);
 
       if (nsec) {
-        *nsec = usec * 1000;
+        *nsec = (uint64_t)usec * 1000;
       }
     }
-    time_t t = timegm(&tm);
+    time_t t = internal_timegm(&tm);
     if (epoch)
       *epoch = (uint64_t)t;
 

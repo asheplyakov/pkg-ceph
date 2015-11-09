@@ -211,6 +211,7 @@ AMTAR = @AMTAR@
 AM_CXXFLAGS = @AM_CXXFLAGS@
 AM_DEFAULT_VERBOSITY = @AM_DEFAULT_VERBOSITY@
 AR = @AR@
+ARM_CRC_FLAGS = @ARM_CRC_FLAGS@
 ARM_FLAGS = @ARM_FLAGS@
 ARM_NEON_FLAGS = @ARM_NEON_FLAGS@
 AUTOCONF = @AUTOCONF@
@@ -218,6 +219,7 @@ AUTOHEADER = @AUTOHEADER@
 AUTOMAKE = @AUTOMAKE@
 AWK = @AWK@
 BOOST_PROGRAM_OPTIONS_LIBS = @BOOST_PROGRAM_OPTIONS_LIBS@
+BOOST_RANDOM_LIBS = @BOOST_RANDOM_LIBS@
 BOOST_THREAD_LIBS = @BOOST_THREAD_LIBS@
 CC = @CC@
 CCAS = @CCAS@
@@ -275,7 +277,8 @@ LD = @LD@
 LDFLAGS = @LDFLAGS@
 LIBEDIT_CFLAGS = @LIBEDIT_CFLAGS@
 LIBEDIT_LIBS = @LIBEDIT_LIBS@
-LIBFUSE = @LIBFUSE@
+LIBFUSE_CFLAGS = @LIBFUSE_CFLAGS@
+LIBFUSE_LIBS = @LIBFUSE_LIBS@
 LIBJEMALLOC = @LIBJEMALLOC@
 LIBOBJS = @LIBOBJS@
 LIBROCKSDB_CFLAGS = @LIBROCKSDB_CFLAGS@
@@ -326,6 +329,7 @@ RPM_RELEASE = @RPM_RELEASE@
 SED = @SED@
 SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
+SPHINX_BUILD = @SPHINX_BUILD@
 STRIP = @STRIP@
 VERSION = @VERSION@
 WARN_ERROR_FORMAT_SECURITY = @WARN_ERROR_FORMAT_SECURITY@
@@ -359,6 +363,7 @@ datarootdir = @datarootdir@
 docdir = @docdir@
 dvidir = @dvidir@
 exec_prefix = @exec_prefix@
+group_rgw = @group_rgw@
 host = @host@
 host_alias = @host_alias@
 host_cpu = @host_cpu@
@@ -388,6 +393,8 @@ sharedstatedir = @sharedstatedir@
 srcdir = @srcdir@
 subdirs = @subdirs@
 sysconfdir = @sysconfdir@
+systemd_libexec_dir = @systemd_libexec_dir@
+systemd_unit_dir = @systemd_unit_dir@
 target = @target@
 target_alias = @target_alias@
 target_cpu = @target_cpu@
@@ -396,17 +403,26 @@ target_vendor = @target_vendor@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
+user_rgw = @user_rgw@
 AUTOMAKE_OPTIONS = gnu
 ACLOCAL_AMFLAGS = -I m4
 EXTRA_DIST = autogen.sh ceph.spec.in ceph.spec install-deps.sh \
 	src/test/run-cli-tests \
 	src/test/run-cli-tests-maybe-unset-ccache src/test/cli \
-	src/test/downloads udev/50-rbd.rules \
-	udev/60-ceph-partuuid-workaround.rules udev/95-ceph-osd.rules \
-	udev/95-ceph-osd-alt.rules share/known_hosts_drop.ceph.com \
-	share/id_dsa_drop.ceph.com share/id_dsa_drop.ceph.com.pub
+	src/test/downloads systemd/ceph.tmpfiles.d etc/default/ceph \
+	etc/sysconfig/ceph \
+	etc/sysconfig/SuSEfirewall2.d/services/ceph-mon \
+	etc/sysconfig/SuSEfirewall2.d/services/ceph-osd-mds \
+	udev/50-rbd.rules udev/60-ceph-partuuid-workaround.rules \
+	udev/95-ceph-osd.rules udev/95-ceph-osd-alt.rules \
+	share/known_hosts_drop.ceph.com share/id_dsa_drop.ceph.com \
+	share/id_dsa_drop.ceph.com.pub
 # the "." here makes sure check-local builds gtest and gmock before they are used
-SUBDIRS = . src man
+SUBDIRS = . src man doc systemd selinux
+CHECK_ULIMIT := true
+check_SCRIPTS = \
+	src/test/run-cli-tests
+
 all: all-recursive
 
 .SUFFIXES:
@@ -754,6 +770,7 @@ distcleancheck: distclean
 	       $(distcleancheck_listfiles) ; \
 	       exit 1; } >&2
 check-am: all-am
+	$(MAKE) $(AM_MAKEFLAGS) $(check_SCRIPTS)
 	$(MAKE) $(AM_MAKEFLAGS) check-local
 check: check-recursive
 all-am: Makefile all-local
@@ -880,25 +897,35 @@ uninstall-am:
 
 
 # why is it so hard to make autotools to this?
-install-data-local:
+install-data-local::
 	-mkdir -p $(DESTDIR)$(datadir)/ceph
 	-install -m 600 share/known_hosts_drop.ceph.com $(DESTDIR)$(datadir)/ceph/known_hosts_drop.ceph.com
 	-install -m 600 share/id_dsa_drop.ceph.com $(DESTDIR)$(datadir)/ceph/id_dsa_drop.ceph.com
 	-install -m 600 share/id_dsa_drop.ceph.com.pub $(DESTDIR)$(datadir)/ceph/id_dsa_drop.ceph.com.pub
 
-all-local:
+all-local::
 #	We need gtest to build the rados-api tests. We only build those in
 #	a debug build, though.
 @WITH_DEBUG_TRUE@	@cd src/gmock/gtest && $(MAKE) $(AM_MAKEFLAGS) lib/libgtest.la lib/libgtest_main.la
 @WITH_DEBUG_TRUE@	@cd src/gmock && $(MAKE) $(AM_MAKEFLAGS) lib/libgmock.la lib/libgmock_main.la
 
-check-local: all
+check-local:: all
 #	We build gtest this way, instead of using SUBDIRS, because with that,
 #	gtest's own tests would be run and that would slow us down.
 	@cd src/gmock/gtest && $(MAKE) $(AM_MAKEFLAGS) lib/libgtest.la lib/libgtest_main.la
 	@cd src/gmock && $(MAKE) $(AM_MAKEFLAGS) lib/libgmock.la lib/libgmock_main.la
 #	exercise cli tools
-	$(srcdir)/src/test/run-cli-tests '$(top_builddir)/src/test'
+	u=`ulimit -u` ; \
+	p=`expr $(shell nproc) / 2` ; \
+	n=`expr $$p \* 1024` ; \
+	if ${CHECK_ULIMIT} && echo ${MAKEFLAGS} | grep --quiet -e -j && test $$u -lt $$n ; then \
+		echo "ulimit -u is $$u which is lower than $$n = $$p / 2 * 1024" ; \
+		echo "If running make -j$$p check you will likely exceed this limit" ; \
+		echo "and the tests will fail in mysterious ways." ; \
+		echo "Update /etc/security/limits.conf to increase the limit" ; \
+		echo "or run make CHECK_ULIMIT=false -j4 check to override this safeguard." ; \
+		exit 1 ; \
+	fi
 
 # "make distclean" both runs this and recurses into src/gtest, if
 # gtest is in DIST_SUBDIRS. Take extra care to not fail when
@@ -910,6 +937,7 @@ clean-local:
 	fi
 
 	@rm -rf src/test/virtualenv
+	@rm -rf install-deps-*
 
 # NOTE: This only works when enough dependencies are installed for
 # autoconf to be happy.  These commands should be run manually to

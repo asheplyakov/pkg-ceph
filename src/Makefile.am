@@ -1,14 +1,18 @@
 include Makefile-env.am
 
-SUBDIRS += ocf java tracing
-DIST_SUBDIRS += gmock ocf libs3 java tracing
+SUBDIRS += ocf java
+DIST_SUBDIRS += gmock ocf java
 
+if NO_GIT_VERSION
+export NO_VERSION="yes"
+endif
 
 # subdirs
 
 include arch/Makefile.am
 include auth/Makefile.am
 include brag/Makefile.am
+include ceph-detect-init/Makefile.am
 include crush/Makefile.am
 include mon/Makefile.am
 include mds/Makefile.am
@@ -35,6 +39,8 @@ include rbd_replay/Makefile.am
 include test/Makefile.am
 include tools/Makefile.am
 include Makefile-rocksdb.am
+include compressor/Makefile.am
+include tracing/Makefile.am
 
 
 # shell scripts
@@ -63,7 +69,6 @@ CLEANFILES += $(shell_scripts)
 # extra bits
 
 EXTRA_DIST += \
-	$(srcdir)/verify-mds-journal.sh \
 	$(srcdir)/vstart.sh \
 	$(srcdir)/stop.sh \
 	ceph-run \
@@ -73,11 +78,11 @@ EXTRA_DIST += \
 	$(srcdir)/init-rbdmap \
 	$(srcdir)/ceph-clsinfo \
 	$(srcdir)/make_version \
-	$(srcdir)/check_version \
 	$(srcdir)/.git_version \
 	$(srcdir)/ceph-rbdnamer \
-	$(srcdir)/test/encoding/readable.sh \
+	$(srcdir)/tools/ceph-monstore-update-crush.sh \
 	$(srcdir)/upstart/ceph-all.conf \
+	$(srcdir)/upstart/ceph-disk.conf \
 	$(srcdir)/upstart/ceph-mon.conf \
 	$(srcdir)/upstart/ceph-mon-all.conf \
 	$(srcdir)/upstart/ceph-mon-all-starter.conf \
@@ -94,8 +99,6 @@ EXTRA_DIST += \
 	$(srcdir)/upstart/rbdmap.conf \
 	ceph.in \
 	ceph-disk \
-	ceph-disk-prepare \
-	ceph-disk-activate \
 	ceph-disk-udev \
 	ceph-create-keys \
 	ceph-rest-api \
@@ -106,23 +109,6 @@ EXTRA_DIST += \
 	yasm-wrapper
 
 EXTRA_DIST += \
-	libs3/COPYING \
-	libs3/ChangeLog \
-	libs3/GNUmakefile \
-	libs3/GNUmakefile.mingw \
-	libs3/GNUmakefile.osx \
-	libs3/INSTALL \
-	libs3/LICENSE \
-	libs3/README \
-	libs3/TODO \
-	libs3/archlinux \
-	libs3/debian \
-	libs3/doxyfile \
-	libs3/inc \
-	libs3/libs3.spec \
-	libs3/mswin \
-	libs3/src \
-	libs3/test \
 	unittest_bufferlist.sh
 
 
@@ -146,12 +132,12 @@ ceph_libexec_SCRIPTS = ceph-osd-prestart.sh
 # target by target
 
 TESTS = \
-	$(check_PROGRAMS) \
+	$(check_TESTPROGRAMS) \
 	$(check_SCRIPTS)
 
-check-local:
-	$(top_srcdir)/qa/workunits/erasure-code/encode-decode-non-regression.sh 
-	$(srcdir)/test/encoding/readable.sh ../ceph-object-corpus
+check_SCRIPTS += \
+	../qa/workunits/erasure-code/encode-decode-non-regression.sh \
+	test/encoding/readable.sh
 
 if WITH_LTTNG
 # TODO: If we're running the parallel test harness (the preferred harness), this should be AM_TESTS_ENVIRONMENT instead.
@@ -175,19 +161,17 @@ base: core-daemons admin-tools \
 
 FORCE:
 .git_version: FORCE
-	$(srcdir)/check_version $(srcdir)/.git_version
+	$(srcdir)/make_version -g $(srcdir)/.git_version
 
 # if NO_VERSION is set, only generate a new ceph_ver.h if there currently 
 # is none, and call "make_version -n" to fill it with a fixed string.
 # Otherwise, set it from the contents of .git_version.
 
-ceph_ver.h: .git_version
+ceph_ver.h: .git_version FORCE
 	if [ -n "$$NO_VERSION" ] ; then \
-	    if [ ! -f ./ceph_ver.h ] ; then \
-	        $(srcdir)/make_version -n ./ceph_ver.h ; \
-	    fi; \
-        else \
-	    $(srcdir)/make_version $(srcdir)/.git_version ./ceph_ver.h ; \
+		$(srcdir)/make_version -g $(srcdir)/.git_version -c $(srcdir)/ceph_ver.h -n ; \
+	else \
+		$(srcdir)/make_version -g $(srcdir)/.git_version -c $(srcdir)/ceph_ver.h ; \
 	fi
 
 ceph_ver.c: ./ceph_ver.h
@@ -198,14 +182,14 @@ sample.fetch_config: fetch_config
 	cp -f $(srcdir)/fetch_config ./sample.fetch_config
 
 dist-hook:
-	$(srcdir)/check_version $(srcdir)/.git_version
+	$(srcdir)/make_version -g $(srcdir)/.git_version
 
 CLEANFILES += ceph_ver.h sample.fetch_config
 
 
 # cleaning
 
-clean-local:
+clean-local::
 	rm -f *.so 
 	find . -name '*.gcno' -o -name '*.gcda' -o -name '*.lcov' -o -name "*.o" -o -name "*.lo" | xargs rm -f
 	rm -f ceph java/java/com/ceph/crush/Bucket.class
@@ -255,12 +239,12 @@ if ENABLE_COVERAGE
 	-test/coverage.sh -d $(srcdir) -o check-coverage make check
 endif
 
-install-data-local: install-coverage
+install-data-local:: install-coverage
 	-mkdir -p $(DESTDIR)$(sysconfdir)/ceph
 	-mkdir -p $(DESTDIR)$(localstatedir)/log/ceph
 	-mkdir -p $(DESTDIR)$(localstatedir)/lib/ceph/tmp
 
-uninstall-local: uninstall-coverage
+uninstall-local:: uninstall-coverage
 	-rmdir -p $(DESTDIR)$(sysconfdir)/ceph/
 	-rmdir -p $(DESTDIR)$(localstatedir)/log/ceph
 	-rmdir -p $(DESTDIR)$(localstatedir)/lib/ceph/tmp

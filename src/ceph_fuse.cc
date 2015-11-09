@@ -30,10 +30,11 @@ using namespace std;
 
 #include "common/Timer.h"
 #include "common/ceph_argparse.h"
+#include "common/linux_version.h"
 #include "global/global_init.h"
 #include "common/safe_io.h"
        
-#ifndef DARWIN
+#if !defined(DARWIN) && !defined(__FreeBSD__)
 #include <envz.h>
 #endif // DARWIN
 
@@ -121,20 +122,12 @@ int main(int argc, const char **argv, const char *envp[]) {
       }
       virtual ~RemountTest() {}
       virtual void *entry() {
-	struct utsname os_info;
-	int tr = uname(&os_info);
-	assert(tr == 0);
-	assert(memcmp(os_info.sysname, "Linux", 5) == 0);
-	int major, minor;	
-	char *end_num;
-	major = strtol(os_info.release, &end_num, 10);
-	assert(major > 0);
-	++end_num;
-	minor = strtol(end_num, NULL, 10);
+#if defined(__linux__)
+	int ver = get_linux_version();
+	assert(ver != 0);
 	bool can_invalidate_dentries = g_conf->client_try_dentry_invalidate &&
-	  (major < 3 ||
-	   (major == 3 && minor < 18));
-	tr = client->test_dentry_handling(can_invalidate_dentries);
+				       ver < KERNEL_VERSION(3, 18, 0);
+	int tr = client->test_dentry_handling(can_invalidate_dentries);
 	if (tr != 0) {
 	  cerr << "ceph-fuse[" << getpid()
 	       << "]: fuse failed dentry invalidate/remount test with error "
@@ -143,9 +136,25 @@ int main(int argc, const char **argv, const char *envp[]) {
 	  char buf[5050];
 	  string mountpoint = cfuse->get_mount_point();
 	  snprintf(buf, 5049, "fusermount -u -z %s", mountpoint.c_str());
-	  system(buf);
+	  int umount_r = system(buf);
+	  if (umount_r) {
+	    if (umount_r != -1) {
+	      if (WIFEXITED(umount_r)) {
+		umount_r = WEXITSTATUS(umount_r);
+		cerr << "got error " << umount_r
+		     << " when unmounting Ceph on failed remount test!" << std::endl;
+	      } else {
+		cerr << "attempt to umount on failed remount test failed (on a signal?)" << std::endl;
+	      }
+	    } else {
+	      cerr << "system() invocation failed during remount test" << std::endl;
+	    }
+	  }
 	}
 	return reinterpret_cast<void*>(tr);
+#else
+	return reinterpret_cast<void*>(0);
+#endif
       }
     } tester;
 
@@ -163,9 +172,7 @@ int main(int argc, const char **argv, const char *envp[]) {
       goto out_mc_start_failed;
 
     // start up network
-    messenger = Messenger::create(g_ceph_context, g_conf->ms_type,
-				  entity_name_t::CLIENT(), "client",
-				  getpid());
+    messenger = Messenger::create_client_messenger(g_ceph_context, "client");
     messenger->set_default_policy(Messenger::Policy::lossy_client(0, 0));
     messenger->set_policy(entity_name_t::TYPE_MDS,
 			  Messenger::Policy::lossless_client(0, 0));
@@ -201,8 +208,10 @@ int main(int argc, const char **argv, const char *envp[]) {
 
     // start up fuse
     // use my argc, argv (make sure you pass a mount point!)
-    r = client->mount(g_conf->client_mountpoint.c_str());
+    r = client->mount(g_conf->client_mountpoint.c_str(), g_ceph_context->_conf->fuse_require_active_mds);
     if (r < 0) {
+      if (r == CEPH_FUSE_NO_MDS_UP)
+        cerr << "ceph-fuse[" << getpid() << "]: probably no MDS server is up?" << std::endl;
       cerr << "ceph-fuse[" << getpid() << "]: ceph mount failed with " << cpp_strerror(-r) << std::endl;
       goto out_shutdown;
     }

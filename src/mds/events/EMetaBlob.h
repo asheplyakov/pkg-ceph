@@ -24,7 +24,7 @@
 
 #include "include/interval_set.h"
 
-class MDS;
+class MDSRank;
 class MDLog;
 class LogSegment;
 struct MDSlaveUpdate;
@@ -62,6 +62,7 @@ public:
     static const int STATE_DIRTY =	 (1<<0);
     static const int STATE_DIRTYPARENT = (1<<1);
     static const int STATE_DIRTYPOOL   = (1<<2);
+    typedef compact_map<snapid_t, old_inode_t> old_inodes_t;
     string  dn;         // dentry
     snapid_t dnfirst, dnlast;
     version_t dnv;
@@ -72,7 +73,6 @@ public:
     snapid_t oldest_snap;
     bufferlist snapbl;
     __u8 state;
-    typedef map<snapid_t, old_inode_t> old_inodes_t;
     old_inodes_t old_inodes;
 
     fullbit(const fullbit& o);
@@ -105,7 +105,7 @@ public:
     void dump(Formatter *f) const;
     static void generate_test_instances(list<EMetaBlob::fullbit*>& ls);
 
-    void update_inode(MDS *mds, CInode *in);
+    void update_inode(MDSRank *mds, CInode *in);
     bool is_dirty() const { return (state & STATE_DIRTY); }
     bool is_dirty_parent() const { return (state & STATE_DIRTYPARENT); }
     bool is_dirty_pool() const { return (state & STATE_DIRTYPOOL); }
@@ -314,6 +314,7 @@ private:
 
   // idempotent op(s)
   list<pair<metareqid_t,uint64_t> > client_reqs;
+  list<pair<metareqid_t,uint64_t> > client_flushes;
 
  public:
   void encode(bufferlist& bl) const;
@@ -346,6 +347,9 @@ private:
   void add_client_req(metareqid_t r, uint64_t tid=0) {
     client_reqs.push_back(pair<metareqid_t,uint64_t>(r, tid));
   }
+  void add_client_flush(metareqid_t r, uint64_t tid=0) {
+    client_flushes.push_back(pair<metareqid_t,uint64_t>(r, tid));
+  }
 
   void add_table_transaction(int table, version_t tid) {
     table_tids.push_back(pair<__u8, version_t>(table, tid));
@@ -376,7 +380,7 @@ private:
     truncate_finish[ino] = segoff;
   }
   
-  bool rewrite_truncate_finish(MDS const *mds, std::map<uint64_t, uint64_t> const &old_to_new);
+  bool rewrite_truncate_finish(MDSRank const *mds, std::map<uint64_t, uint64_t> const &old_to_new);
 
   void add_destroyed_inode(inodeno_t ino) {
     destroyed_inodes.push_back(ino);
@@ -574,7 +578,7 @@ private:
   }
 
   void update_segment(LogSegment *ls);
-  void replay(MDS *mds, LogSegment *ls, MDSlaveUpdate *su=NULL);
+  void replay(MDSRank *mds, LogSegment *ls, MDSlaveUpdate *su=NULL);
 };
 WRITE_CLASS_ENCODER(EMetaBlob)
 WRITE_CLASS_ENCODER(EMetaBlob::fullbit)

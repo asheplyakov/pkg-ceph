@@ -49,9 +49,9 @@ static void TestKey(const std::string& key,
   ASSERT_TRUE(!ParseInternalKey(Slice("bar"), &decoded));
 }
 
-class FormatTest { };
+class FormatTest : public testing::Test {};
 
-TEST(FormatTest, InternalKey_EncodeDecode) {
+TEST_F(FormatTest, InternalKey_EncodeDecode) {
   const char* keys[] = { "", "k", "hello", "longggggggggggggggggggggg" };
   const uint64_t seq[] = {
     1, 2, 3,
@@ -67,7 +67,7 @@ TEST(FormatTest, InternalKey_EncodeDecode) {
   }
 }
 
-TEST(FormatTest, InternalKeyShortSeparator) {
+TEST_F(FormatTest, InternalKeyShortSeparator) {
   // When user keys are same
   ASSERT_EQ(IKey("foo", 100, kTypeValue),
             Shorten(IKey("foo", 100, kTypeValue),
@@ -103,15 +103,55 @@ TEST(FormatTest, InternalKeyShortSeparator) {
                     IKey("foo", 200, kTypeValue)));
 }
 
-TEST(FormatTest, InternalKeyShortestSuccessor) {
+TEST_F(FormatTest, InternalKeyShortestSuccessor) {
   ASSERT_EQ(IKey("g", kMaxSequenceNumber, kValueTypeForSeek),
             ShortSuccessor(IKey("foo", 100, kTypeValue)));
   ASSERT_EQ(IKey("\xff\xff", 100, kTypeValue),
             ShortSuccessor(IKey("\xff\xff", 100, kTypeValue)));
 }
 
+TEST_F(FormatTest, IterKeyOperation) {
+  IterKey k;
+  const char p[] = "abcdefghijklmnopqrstuvwxyz";
+  const char q[] = "0123456789";
+
+  ASSERT_EQ(std::string(k.GetKey().data(), k.GetKey().size()),
+            std::string(""));
+
+  k.TrimAppend(0, p, 3);
+  ASSERT_EQ(std::string(k.GetKey().data(), k.GetKey().size()),
+            std::string("abc"));
+
+  k.TrimAppend(1, p, 3);
+  ASSERT_EQ(std::string(k.GetKey().data(), k.GetKey().size()),
+            std::string("aabc"));
+
+  k.TrimAppend(0, p, 26);
+  ASSERT_EQ(std::string(k.GetKey().data(), k.GetKey().size()),
+            std::string("abcdefghijklmnopqrstuvwxyz"));
+
+  k.TrimAppend(26, q, 10);
+  ASSERT_EQ(std::string(k.GetKey().data(), k.GetKey().size()),
+            std::string("abcdefghijklmnopqrstuvwxyz0123456789"));
+
+  k.TrimAppend(36, q, 1);
+  ASSERT_EQ(std::string(k.GetKey().data(), k.GetKey().size()),
+            std::string("abcdefghijklmnopqrstuvwxyz01234567890"));
+
+  k.TrimAppend(26, q, 1);
+  ASSERT_EQ(std::string(k.GetKey().data(), k.GetKey().size()),
+            std::string("abcdefghijklmnopqrstuvwxyz0"));
+
+  // Size going up, memory allocation is triggered
+  k.TrimAppend(27, p, 26);
+  ASSERT_EQ(std::string(k.GetKey().data(), k.GetKey().size()),
+            std::string("abcdefghijklmnopqrstuvwxyz0"
+              "abcdefghijklmnopqrstuvwxyz"));
+}
+
 }  // namespace rocksdb
 
 int main(int argc, char** argv) {
-  return rocksdb::test::RunAllTests();
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
 }

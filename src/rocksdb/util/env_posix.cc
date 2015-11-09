@@ -21,6 +21,7 @@
 #include <sys/stat.h>
 #ifdef OS_LINUX
 #include <sys/statfs.h>
+#include <sys/syscall.h>
 #endif
 #include <sys/time.h>
 #include <sys/types.h>
@@ -28,11 +29,9 @@
 #include <unistd.h>
 #if defined(OS_LINUX)
 #include <linux/fs.h>
-#include <fcntl.h>
 #endif
-#if defined(LEVELDB_PLATFORM_ANDROID)
-#include <sys/stat.h>
-#endif
+#include <signal.h>
+#include <algorithm>
 #include "rocksdb/env.h"
 #include "rocksdb/slice.h"
 #include "port/port.h"
@@ -40,12 +39,19 @@
 #include "util/logging.h"
 #include "util/posix_logger.h"
 #include "util/random.h"
-#include <signal.h>
+#include "util/iostats_context_imp.h"
+#include "util/rate_limiter.h"
+#include "util/sync_point.h"
+#include "util/thread_status_updater.h"
+#include "util/thread_status_util.h"
 
-// Get nano time for mach systems
-#ifdef __MACH__
+// Get nano time includes
+#if defined(OS_LINUX) || defined(OS_FREEBSD)
+#elif defined(__MACH__)
 #include <mach/clock.h>
 #include <mach/mach.h>
+#else
+#include <chrono>
 #endif
 
 #if !defined(TMPFS_MAGIC)
@@ -60,7 +66,7 @@
 
 // For non linux platform, the following macros are used only as place
 // holder.
-#ifndef OS_LINUX
+#if !(defined OS_LINUX) && !(defined CYGWIN)
 #define POSIX_FADV_NORMAL 0 /* [MC1] no further special treatment */
 #define POSIX_FADV_RANDOM 1 /* [MC1] expect random page refs */
 #define POSIX_FADV_SEQUENTIAL 2 /* [MC1] expect sequential page refs */
@@ -84,6 +90,10 @@ int Fadvise(int fd, off_t offset, size_t len, int advice) {
 #else
   return 0;  // simply do nothing.
 #endif
+}
+
+ThreadStatusUpdater* CreateThreadStatusUpdater() {
+  return new ThreadStatusUpdater();
 }
 
 // list of pathnames that are locked
@@ -172,12 +182,17 @@ class PosixSequentialFile: public SequentialFile {
   }
   virtual ~PosixSequentialFile() { fclose(file_); }
 
-  virtual Status Read(size_t n, Slice* result, char* scratch) {
+  virtual Status Read(size_t n, Slice* result, char* scratch) override {
     Status s;
     size_t r = 0;
     do {
+#ifndef CYGWIN
       r = fread_unlocked(scratch, 1, n, file_);
+#else
+      r = fread(scratch, 1, n, file_);
+#endif
     } while (r == 0 && ferror(file_) && errno == EINTR);
+    IOSTATS_ADD(bytes_read, r);
     *result = Slice(scratch, r);
     if (r < n) {
       if (feof(file_)) {
@@ -198,14 +213,14 @@ class PosixSequentialFile: public SequentialFile {
     return s;
   }
 
-  virtual Status Skip(uint64_t n) {
-    if (fseek(file_, n, SEEK_CUR)) {
+  virtual Status Skip(uint64_t n) override {
+    if (fseek(file_, static_cast<long int>(n), SEEK_CUR)) {
       return IOError(filename_, errno);
     }
     return Status::OK();
   }
 
-  virtual Status InvalidateCache(size_t offset, size_t length) {
+  virtual Status InvalidateCache(size_t offset, size_t length) override {
 #ifndef OS_LINUX
     return Status::OK();
 #else
@@ -230,18 +245,31 @@ class PosixRandomAccessFile: public RandomAccessFile {
   PosixRandomAccessFile(const std::string& fname, int fd,
                         const EnvOptions& options)
       : filename_(fname), fd_(fd), use_os_buffer_(options.use_os_buffer) {
-    assert(!options.use_mmap_reads);
+    assert(!options.use_mmap_reads || sizeof(void*) < 8);
   }
   virtual ~PosixRandomAccessFile() { close(fd_); }
 
   virtual Status Read(uint64_t offset, size_t n, Slice* result,
-                      char* scratch) const {
+                      char* scratch) const override {
     Status s;
     ssize_t r = -1;
-    do {
-      r = pread(fd_, scratch, n, static_cast<off_t>(offset));
-    } while (r < 0 && errno == EINTR);
-    *result = Slice(scratch, (r < 0) ? 0 : r);
+    size_t left = n;
+    char* ptr = scratch;
+    while (left > 0) {
+      r = pread(fd_, ptr, left, static_cast<off_t>(offset));
+      if (r <= 0) {
+        if (errno == EINTR) {
+          continue;
+        }
+        break;
+      }
+      ptr += r;
+      offset += r;
+      left -= r;
+    }
+
+    IOSTATS_ADD_IF_POSITIVE(bytes_read, n - left);
+    *result = Slice(scratch, (r < 0) ? 0 : n - left);
     if (r < 0) {
       // An error: return a non-ok status
       s = IOError(filename_, errno);
@@ -255,12 +283,12 @@ class PosixRandomAccessFile: public RandomAccessFile {
   }
 
 #ifdef OS_LINUX
-  virtual size_t GetUniqueId(char* id, size_t max_size) const {
+  virtual size_t GetUniqueId(char* id, size_t max_size) const override {
     return GetUniqueIdFromFile(fd_, id, max_size);
   }
 #endif
 
-  virtual void Hint(AccessPattern pattern) {
+  virtual void Hint(AccessPattern pattern) override {
     switch(pattern) {
       case NORMAL:
         Fadvise(fd_, 0, 0, POSIX_FADV_NORMAL);
@@ -283,7 +311,7 @@ class PosixRandomAccessFile: public RandomAccessFile {
     }
   }
 
-  virtual Status InvalidateCache(size_t offset, size_t length) {
+  virtual Status InvalidateCache(size_t offset, size_t length) override {
 #ifndef OS_LINUX
     return Status::OK();
 #else
@@ -324,7 +352,7 @@ class PosixMmapReadableFile: public RandomAccessFile {
   }
 
   virtual Status Read(uint64_t offset, size_t n, Slice* result,
-                      char* scratch) const {
+                      char* scratch) const override {
     Status s;
     if (offset + n > length_) {
       *result = Slice();
@@ -334,7 +362,7 @@ class PosixMmapReadableFile: public RandomAccessFile {
     }
     return s;
   }
-  virtual Status InvalidateCache(size_t offset, size_t length) {
+  virtual Status InvalidateCache(size_t offset, size_t length) override {
 #ifndef OS_LINUX
     return Status::OK();
 #else
@@ -380,16 +408,16 @@ class PosixMmapFile : public WritableFile {
     return s;
   }
 
-  bool UnmapCurrentRegion() {
-    bool result = true;
+  Status UnmapCurrentRegion() {
     TEST_KILL_RANDOM(rocksdb_kill_odds);
     if (base_ != nullptr) {
       if (last_sync_ < limit_) {
         // Defer syncing this data until next Sync() call, if any
         pending_sync_ = true;
       }
-      if (munmap(base_, limit_ - base_) != 0) {
-        result = false;
+      int munmap_status = munmap(base_, limit_ - base_);
+      if (munmap_status != 0) {
+        return IOError(filename_, munmap_status);
       }
       file_offset_ += limit_ - base_;
       base_ = nullptr;
@@ -402,7 +430,7 @@ class PosixMmapFile : public WritableFile {
         map_size_ *= 2;
       }
     }
-    return result;
+    return Status::OK();
   }
 
   Status MapNewRegion() {
@@ -467,27 +495,30 @@ class PosixMmapFile : public WritableFile {
     }
   }
 
-  virtual Status Append(const Slice& data) {
+  virtual Status Append(const Slice& data) override {
     const char* src = data.data();
     size_t left = data.size();
     TEST_KILL_RANDOM(rocksdb_kill_odds * REDUCE_ODDS);
-    PrepareWrite(GetFileSize(), left);
+    PrepareWrite(static_cast<size_t>(GetFileSize()), left);
     while (left > 0) {
       assert(base_ <= dst_);
       assert(dst_ <= limit_);
       size_t avail = limit_ - dst_;
       if (avail == 0) {
-        if (UnmapCurrentRegion()) {
-          Status s = MapNewRegion();
-          if (!s.ok()) {
-            return s;
-          }
-          TEST_KILL_RANDOM(rocksdb_kill_odds);
+        Status s = UnmapCurrentRegion();
+        if (!s.ok()) {
+          return s;
         }
+        s = MapNewRegion();
+        if (!s.ok()) {
+          return s;
+        }
+        TEST_KILL_RANDOM(rocksdb_kill_odds);
       }
 
       size_t n = (left <= avail) ? left : avail;
       memcpy(dst_, src, n);
+      IOSTATS_ADD(bytes_written, n);
       dst_ += n;
       src += n;
       left -= n;
@@ -496,13 +527,14 @@ class PosixMmapFile : public WritableFile {
     return Status::OK();
   }
 
-  virtual Status Close() {
+  virtual Status Close() override {
     Status s;
     size_t unused = limit_ - dst_;
 
     TEST_KILL_RANDOM(rocksdb_kill_odds);
 
-    if (!UnmapCurrentRegion()) {
+    s = UnmapCurrentRegion();
+    if (!s.ok()) {
       s = IOError(filename_, errno);
     } else if (unused > 0) {
       // Trim the extra space at the end of the file
@@ -525,12 +557,12 @@ class PosixMmapFile : public WritableFile {
     return s;
   }
 
-  virtual Status Flush() {
+  virtual Status Flush() override {
     TEST_KILL_RANDOM(rocksdb_kill_odds);
     return Status::OK();
   }
 
-  virtual Status Sync() {
+  virtual Status Sync() override {
     Status s;
 
     if (pending_sync_) {
@@ -562,7 +594,7 @@ class PosixMmapFile : public WritableFile {
   /**
    * Flush data as well as metadata to stable storage.
    */
-  virtual Status Fsync() {
+  virtual Status Fsync() override {
     if (pending_sync_) {
       // Some unmapped data was not synced
       TEST_KILL_RANDOM(rocksdb_kill_odds);
@@ -582,12 +614,12 @@ class PosixMmapFile : public WritableFile {
    * size that is returned from the filesystem because we use mmap
    * to extend file by map_size every time.
    */
-  virtual uint64_t GetFileSize() {
+  virtual uint64_t GetFileSize() override {
     size_t used = dst_ - base_;
     return file_offset_ + used;
   }
 
-  virtual Status InvalidateCache(size_t offset, size_t length) {
+  virtual Status InvalidateCache(size_t offset, size_t length) override {
 #ifndef OS_LINUX
     return Status::OK();
 #else
@@ -601,7 +633,7 @@ class PosixMmapFile : public WritableFile {
   }
 
 #ifdef ROCKSDB_FALLOCATE_PRESENT
-  virtual Status Allocate(off_t offset, off_t len) {
+  virtual Status Allocate(off_t offset, off_t len) override {
     TEST_KILL_RANDOM(rocksdb_kill_odds);
     int alloc_status = fallocate(
         fd_, fallocate_with_keep_size_ ? FALLOC_FL_KEEP_SIZE : 0, offset, len);
@@ -630,6 +662,7 @@ class PosixWritableFile : public WritableFile {
 #ifdef ROCKSDB_FALLOCATE_PRESENT
   bool fallocate_with_keep_size_;
 #endif
+  RateLimiter* rate_limiter_;
 
  public:
   PosixWritableFile(const std::string& fname, int fd, size_t capacity,
@@ -643,7 +676,8 @@ class PosixWritableFile : public WritableFile {
         pending_sync_(false),
         pending_fsync_(false),
         last_sync_size_(0),
-        bytes_per_sync_(options.bytes_per_sync) {
+        bytes_per_sync_(options.bytes_per_sync),
+        rate_limiter_(options.rate_limiter) {
 #ifdef ROCKSDB_FALLOCATE_PRESENT
     fallocate_with_keep_size_ = options.fallocate_with_keep_size;
 #endif
@@ -656,7 +690,7 @@ class PosixWritableFile : public WritableFile {
     }
   }
 
-  virtual Status Append(const Slice& data) {
+  virtual Status Append(const Slice& data) override {
     const char* src = data.data();
     size_t left = data.size();
     Status s;
@@ -665,7 +699,7 @@ class PosixWritableFile : public WritableFile {
 
     TEST_KILL_RANDOM(rocksdb_kill_odds * REDUCE_ODDS2);
 
-    PrepareWrite(GetFileSize(), left);
+    PrepareWrite(static_cast<size_t>(GetFileSize()), left);
     // if there is no space in the cache, then flush
     if (cursize_ + left > capacity_) {
       s = Flush();
@@ -687,13 +721,14 @@ class PosixWritableFile : public WritableFile {
       cursize_ += left;
     } else {
       while (left != 0) {
-        ssize_t done = write(fd_, src, left);
+        ssize_t done = write(fd_, src, RequestToken(left));
         if (done < 0) {
           if (errno == EINTR) {
             continue;
           }
           return IOError(filename_, errno);
         }
+        IOSTATS_ADD(bytes_written, done);
         TEST_KILL_RANDOM(rocksdb_kill_odds);
 
         left -= done;
@@ -704,7 +739,7 @@ class PosixWritableFile : public WritableFile {
     return Status::OK();
   }
 
-  virtual Status Close() {
+  virtual Status Close() override {
     Status s;
     s = Flush(); // flush cache to OS
     if (!s.ok()) {
@@ -718,32 +753,48 @@ class PosixWritableFile : public WritableFile {
     GetPreallocationStatus(&block_size, &last_allocated_block);
     if (last_allocated_block > 0) {
       // trim the extra space preallocated at the end of the file
+      // NOTE(ljin): we probably don't want to surface failure as an IOError,
+      // but it will be nice to log these errors.
       int dummy __attribute__((unused));
-      dummy = ftruncate(fd_, filesize_);  // ignore errors
+      dummy = ftruncate(fd_, filesize_);
+#ifdef ROCKSDB_FALLOCATE_PRESENT
+      // in some file systems, ftruncate only trims trailing space if the
+      // new file size is smaller than the current size. Calling fallocate
+      // with FALLOC_FL_PUNCH_HOLE flag to explicitly release these unused
+      // blocks. FALLOC_FL_PUNCH_HOLE is supported on at least the following
+      // filesystems:
+      //   XFS (since Linux 2.6.38)
+      //   ext4 (since Linux 3.0)
+      //   Btrfs (since Linux 3.7)
+      //   tmpfs (since Linux 3.5)
+      // We ignore error since failure of this operation does not affect
+      // correctness.
+      fallocate(fd_, FALLOC_FL_KEEP_SIZE | FALLOC_FL_PUNCH_HOLE,
+                filesize_, block_size * last_allocated_block - filesize_);
+#endif
     }
 
     if (close(fd_) < 0) {
-      if (s.ok()) {
-        s = IOError(filename_, errno);
-      }
+      s = IOError(filename_, errno);
     }
     fd_ = -1;
     return s;
   }
 
   // write out the cached data to the OS cache
-  virtual Status Flush() {
+  virtual Status Flush() override {
     TEST_KILL_RANDOM(rocksdb_kill_odds * REDUCE_ODDS2);
     size_t left = cursize_;
     char* src = buf_.get();
     while (left != 0) {
-      ssize_t done = write(fd_, src, left);
+      ssize_t done = write(fd_, src, RequestToken(left));
       if (done < 0) {
         if (errno == EINTR) {
           continue;
         }
         return IOError(filename_, errno);
       }
+      IOSTATS_ADD(bytes_written, done);
       TEST_KILL_RANDOM(rocksdb_kill_odds * REDUCE_ODDS2);
       left -= done;
       src += done;
@@ -763,7 +814,7 @@ class PosixWritableFile : public WritableFile {
     return Status::OK();
   }
 
-  virtual Status Sync() {
+  virtual Status Sync() override {
     Status s = Flush();
     if (!s.ok()) {
       return s;
@@ -777,7 +828,7 @@ class PosixWritableFile : public WritableFile {
     return Status::OK();
   }
 
-  virtual Status Fsync() {
+  virtual Status Fsync() override {
     Status s = Flush();
     if (!s.ok()) {
       return s;
@@ -792,11 +843,9 @@ class PosixWritableFile : public WritableFile {
     return Status::OK();
   }
 
-  virtual uint64_t GetFileSize() {
-    return filesize_;
-  }
+  virtual uint64_t GetFileSize() override { return filesize_; }
 
-  virtual Status InvalidateCache(size_t offset, size_t length) {
+  virtual Status InvalidateCache(size_t offset, size_t length) override {
 #ifndef OS_LINUX
     return Status::OK();
 #else
@@ -810,7 +859,7 @@ class PosixWritableFile : public WritableFile {
   }
 
 #ifdef ROCKSDB_FALLOCATE_PRESENT
-  virtual Status Allocate(off_t offset, off_t len) {
+  virtual Status Allocate(off_t offset, off_t len) override {
     TEST_KILL_RANDOM(rocksdb_kill_odds);
     int alloc_status = fallocate(
         fd_, fallocate_with_keep_size_ ? FALLOC_FL_KEEP_SIZE : 0, offset, len);
@@ -821,17 +870,27 @@ class PosixWritableFile : public WritableFile {
     }
   }
 
-  virtual Status RangeSync(off_t offset, off_t nbytes) {
+  virtual Status RangeSync(off_t offset, off_t nbytes) override {
     if (sync_file_range(fd_, offset, nbytes, SYNC_FILE_RANGE_WRITE) == 0) {
       return Status::OK();
     } else {
       return IOError(filename_, errno);
     }
   }
-  virtual size_t GetUniqueId(char* id, size_t max_size) const {
+  virtual size_t GetUniqueId(char* id, size_t max_size) const override {
     return GetUniqueIdFromFile(fd_, id, max_size);
   }
 #endif
+
+ private:
+  inline size_t RequestToken(size_t bytes) {
+    if (rate_limiter_ && io_priority_ < Env::IO_TOTAL) {
+      bytes = std::min(bytes,
+          static_cast<size_t>(rate_limiter_->GetSingleBurstBytes()));
+      rate_limiter_->Request(bytes, io_priority_);
+    }
+    return bytes;
+  }
 };
 
 class PosixRandomRWFile : public RandomRWFile {
@@ -862,7 +921,7 @@ class PosixRandomRWFile : public RandomRWFile {
     }
   }
 
-  virtual Status Write(uint64_t offset, const Slice& data) {
+  virtual Status Write(uint64_t offset, const Slice& data) override {
     const char* src = data.data();
     size_t left = data.size();
     Status s;
@@ -877,6 +936,7 @@ class PosixRandomRWFile : public RandomRWFile {
         }
         return IOError(filename_, errno);
       }
+      IOSTATS_ADD(bytes_written, done);
 
       left -= done;
       src += done;
@@ -887,17 +947,32 @@ class PosixRandomRWFile : public RandomRWFile {
   }
 
   virtual Status Read(uint64_t offset, size_t n, Slice* result,
-                      char* scratch) const {
+                      char* scratch) const override {
     Status s;
-    ssize_t r = pread(fd_, scratch, n, static_cast<off_t>(offset));
-    *result = Slice(scratch, (r < 0) ? 0 : r);
+    ssize_t r = -1;
+    size_t left = n;
+    char* ptr = scratch;
+    while (left > 0) {
+      r = pread(fd_, ptr, left, static_cast<off_t>(offset));
+      if (r <= 0) {
+        if (errno == EINTR) {
+          continue;
+        }
+        break;
+      }
+      ptr += r;
+      offset += r;
+      left -= r;
+    }
+    IOSTATS_ADD_IF_POSITIVE(bytes_read, n - left);
+    *result = Slice(scratch, (r < 0) ? 0 : n - left);
     if (r < 0) {
       s = IOError(filename_, errno);
     }
     return s;
   }
 
-  virtual Status Close() {
+  virtual Status Close() override {
     Status s = Status::OK();
     if (fd_ >= 0 && close(fd_) < 0) {
       s = IOError(filename_, errno);
@@ -906,7 +981,7 @@ class PosixRandomRWFile : public RandomRWFile {
     return s;
   }
 
-  virtual Status Sync() {
+  virtual Status Sync() override {
     if (pending_sync_ && fdatasync(fd_) < 0) {
       return IOError(filename_, errno);
     }
@@ -914,7 +989,7 @@ class PosixRandomRWFile : public RandomRWFile {
     return Status::OK();
   }
 
-  virtual Status Fsync() {
+  virtual Status Fsync() override {
     if (pending_fsync_ && fsync(fd_) < 0) {
       return IOError(filename_, errno);
     }
@@ -924,7 +999,7 @@ class PosixRandomRWFile : public RandomRWFile {
   }
 
 #ifdef ROCKSDB_FALLOCATE_PRESENT
-  virtual Status Allocate(off_t offset, off_t len) {
+  virtual Status Allocate(off_t offset, off_t len) override {
     TEST_KILL_RANDOM(rocksdb_kill_odds);
     int alloc_status = fallocate(
         fd_, fallocate_with_keep_size_ ? FALLOC_FL_KEEP_SIZE : 0, offset, len);
@@ -944,7 +1019,7 @@ class PosixDirectory : public Directory {
     close(fd_);
   }
 
-  virtual Status Fsync() {
+  virtual Status Fsync() override {
     if (fsync(fd_) == -1) {
       return IOError("directory", errno);
     }
@@ -999,24 +1074,27 @@ class PosixFileLock : public FileLock {
   std::string filename;
 };
 
-
-namespace {
 void PthreadCall(const char* label, int result) {
   if (result != 0) {
     fprintf(stderr, "pthread %s: %s\n", label, strerror(result));
-    exit(1);
+    abort();
   }
-}
 }
 
 class PosixEnv : public Env {
  public:
   PosixEnv();
 
-  virtual ~PosixEnv(){
+  virtual ~PosixEnv() {
     for (const auto tid : threads_to_join_) {
       pthread_join(tid, nullptr);
     }
+    for (int pool_id = 0; pool_id < Env::Priority::TOTAL; ++pool_id) {
+      thread_pools_[pool_id].JoinAllThreads();
+    }
+    // All threads must be joined before the deletion of
+    // thread_status_updater_.
+    delete thread_status_updater_;
   }
 
   void SetFD_CLOEXEC(int fd, const EnvOptions* options) {
@@ -1027,7 +1105,7 @@ class PosixEnv : public Env {
 
   virtual Status NewSequentialFile(const std::string& fname,
                                    unique_ptr<SequentialFile>* result,
-                                   const EnvOptions& options) {
+                                   const EnvOptions& options) override {
     result->reset();
     FILE* f = nullptr;
     do {
@@ -1046,7 +1124,7 @@ class PosixEnv : public Env {
 
   virtual Status NewRandomAccessFile(const std::string& fname,
                                      unique_ptr<RandomAccessFile>* result,
-                                     const EnvOptions& options) {
+                                     const EnvOptions& options) override {
     result->reset();
     Status s;
     int fd = open(fname.c_str(), O_RDONLY);
@@ -1077,7 +1155,7 @@ class PosixEnv : public Env {
 
   virtual Status NewWritableFile(const std::string& fname,
                                  unique_ptr<WritableFile>* result,
-                                 const EnvOptions& options) {
+                                 const EnvOptions& options) override {
     result->reset();
     Status s;
     int fd = -1;
@@ -1115,7 +1193,7 @@ class PosixEnv : public Env {
 
   virtual Status NewRandomRWFile(const std::string& fname,
                                  unique_ptr<RandomRWFile>* result,
-                                 const EnvOptions& options) {
+                                 const EnvOptions& options) override {
     result->reset();
     // no support for mmap yet
     if (options.use_mmap_writes || options.use_mmap_reads) {
@@ -1133,7 +1211,7 @@ class PosixEnv : public Env {
   }
 
   virtual Status NewDirectory(const std::string& name,
-                              unique_ptr<Directory>* result) {
+                              unique_ptr<Directory>* result) override {
     result->reset();
     const int fd = open(name.c_str(), 0);
     if (fd < 0) {
@@ -1144,12 +1222,12 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  virtual bool FileExists(const std::string& fname) {
+  virtual bool FileExists(const std::string& fname) override {
     return access(fname.c_str(), F_OK) == 0;
   }
 
   virtual Status GetChildren(const std::string& dir,
-                             std::vector<std::string>* result) {
+                             std::vector<std::string>* result) override {
     result->clear();
     DIR* d = opendir(dir.c_str());
     if (d == nullptr) {
@@ -1163,7 +1241,7 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  virtual Status DeleteFile(const std::string& fname) {
+  virtual Status DeleteFile(const std::string& fname) override {
     Status result;
     if (unlink(fname.c_str()) != 0) {
       result = IOError(fname, errno);
@@ -1171,7 +1249,7 @@ class PosixEnv : public Env {
     return result;
   };
 
-  virtual Status CreateDir(const std::string& name) {
+  virtual Status CreateDir(const std::string& name) override {
     Status result;
     if (mkdir(name.c_str(), 0755) != 0) {
       result = IOError(name, errno);
@@ -1179,7 +1257,7 @@ class PosixEnv : public Env {
     return result;
   };
 
-  virtual Status CreateDirIfMissing(const std::string& name) {
+  virtual Status CreateDirIfMissing(const std::string& name) override {
     Status result;
     if (mkdir(name.c_str(), 0755) != 0) {
       if (errno != EEXIST) {
@@ -1193,7 +1271,7 @@ class PosixEnv : public Env {
     return result;
   };
 
-  virtual Status DeleteDir(const std::string& name) {
+  virtual Status DeleteDir(const std::string& name) override {
     Status result;
     if (rmdir(name.c_str()) != 0) {
       result = IOError(name, errno);
@@ -1201,7 +1279,8 @@ class PosixEnv : public Env {
     return result;
   };
 
-  virtual Status GetFileSize(const std::string& fname, uint64_t* size) {
+  virtual Status GetFileSize(const std::string& fname,
+                             uint64_t* size) override {
     Status s;
     struct stat sbuf;
     if (stat(fname.c_str(), &sbuf) != 0) {
@@ -1214,7 +1293,7 @@ class PosixEnv : public Env {
   }
 
   virtual Status GetFileModificationTime(const std::string& fname,
-                                         uint64_t* file_mtime) {
+                                         uint64_t* file_mtime) override {
     struct stat s;
     if (stat(fname.c_str(), &s) !=0) {
       return IOError(fname, errno);
@@ -1222,7 +1301,8 @@ class PosixEnv : public Env {
     *file_mtime = static_cast<uint64_t>(s.st_mtime);
     return Status::OK();
   }
-  virtual Status RenameFile(const std::string& src, const std::string& target) {
+  virtual Status RenameFile(const std::string& src,
+                            const std::string& target) override {
     Status result;
     if (rename(src.c_str(), target.c_str()) != 0) {
       result = IOError(src, errno);
@@ -1230,7 +1310,19 @@ class PosixEnv : public Env {
     return result;
   }
 
-  virtual Status LockFile(const std::string& fname, FileLock** lock) {
+  virtual Status LinkFile(const std::string& src,
+                          const std::string& target) override {
+    Status result;
+    if (link(src.c_str(), target.c_str()) != 0) {
+      if (errno == EXDEV) {
+        return Status::NotSupported("No cross FS links allowed");
+      }
+      result = IOError(src, errno);
+    }
+    return result;
+  }
+
+  virtual Status LockFile(const std::string& fname, FileLock** lock) override {
     *lock = nullptr;
     Status result;
     int fd = open(fname.c_str(), O_RDWR | O_CREAT, 0644);
@@ -1249,7 +1341,7 @@ class PosixEnv : public Env {
     return result;
   }
 
-  virtual Status UnlockFile(FileLock* lock) {
+  virtual Status UnlockFile(FileLock* lock) override {
     PosixFileLock* my_lock = reinterpret_cast<PosixFileLock*>(lock);
     Status result;
     if (LockOrUnlock(my_lock->filename, my_lock->fd_, false) == -1) {
@@ -1260,15 +1352,18 @@ class PosixEnv : public Env {
     return result;
   }
 
-  virtual void Schedule(void (*function)(void*), void* arg, Priority pri = LOW);
+  virtual void Schedule(void (*function)(void* arg1), void* arg,
+                        Priority pri = LOW, void* tag = nullptr) override;
 
-  virtual void StartThread(void (*function)(void* arg), void* arg);
+  virtual int UnSchedule(void* arg, Priority pri) override;
 
-  virtual void WaitForJoin();
+  virtual void StartThread(void (*function)(void* arg), void* arg) override;
+
+  virtual void WaitForJoin() override;
 
   virtual unsigned int GetThreadPoolQueueLen(Priority pri = LOW) const override;
 
-  virtual Status GetTestDirectory(std::string* result) {
+  virtual Status GetTestDirectory(std::string* result) override {
     const char* env = getenv("TEST_TMPDIR");
     if (env && env[0] != '\0') {
       *result = env;
@@ -1282,15 +1377,25 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  static uint64_t gettid() {
-    pthread_t tid = pthread_self();
+  virtual Status GetThreadList(
+      std::vector<ThreadStatus>* thread_list) override {
+    assert(thread_status_updater_);
+    return thread_status_updater_->GetThreadList(thread_list);
+  }
+
+  static uint64_t gettid(pthread_t tid) {
     uint64_t thread_id = 0;
     memcpy(&thread_id, &tid, std::min(sizeof(thread_id), sizeof(tid)));
     return thread_id;
   }
 
+  static uint64_t gettid() {
+    pthread_t tid = pthread_self();
+    return gettid(tid);
+  }
+
   virtual Status NewLogger(const std::string& fname,
-                           shared_ptr<Logger>* result) {
+                           shared_ptr<Logger>* result) override {
     FILE* f = fopen(fname.c_str(), "w");
     if (f == nullptr) {
       result->reset();
@@ -1303,34 +1408,34 @@ class PosixEnv : public Env {
     }
   }
 
-  virtual uint64_t NowMicros() {
+  virtual uint64_t NowMicros() override {
     struct timeval tv;
-    // TODO(kailiu) MAC DON'T HAVE THIS
     gettimeofday(&tv, nullptr);
     return static_cast<uint64_t>(tv.tv_sec) * 1000000 + tv.tv_usec;
   }
 
-  virtual uint64_t NowNanos() {
-#ifdef OS_LINUX
+  virtual uint64_t NowNanos() override {
+#if defined(OS_LINUX) || defined(OS_FREEBSD)
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return static_cast<uint64_t>(ts.tv_sec) * 1000000000 + ts.tv_nsec;
-#elif __MACH__
+#elif defined(__MACH__)
     clock_serv_t cclock;
     mach_timespec_t ts;
     host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
     clock_get_time(cclock, &ts);
     mach_port_deallocate(mach_task_self(), cclock);
-#endif
     return static_cast<uint64_t>(ts.tv_sec) * 1000000000 + ts.tv_nsec;
+#else
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+       std::chrono::steady_clock::now().time_since_epoch()).count();
+#endif
   }
 
-  virtual void SleepForMicroseconds(int micros) {
-    usleep(micros);
-  }
+  virtual void SleepForMicroseconds(int micros) override { usleep(micros); }
 
-  virtual Status GetHostName(char* name, uint64_t len) {
-    int ret = gethostname(name, len);
+  virtual Status GetHostName(char* name, uint64_t len) override {
+    int ret = gethostname(name, static_cast<size_t>(len));
     if (ret < 0) {
       if (errno == EFAULT || errno == EINVAL)
         return Status::InvalidArgument(strerror(errno));
@@ -1340,7 +1445,7 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
-  virtual Status GetCurrentTime(int64_t* unix_time) {
+  virtual Status GetCurrentTime(int64_t* unix_time) override {
     time_t ret = time(nullptr);
     if (ret == (time_t) -1) {
       return IOError("GetCurrentTime", errno);
@@ -1350,7 +1455,7 @@ class PosixEnv : public Env {
   }
 
   virtual Status GetAbsolutePath(const std::string& db_path,
-      std::string* output_path) {
+                                 std::string* output_path) override {
     if (db_path.find('/') == 0) {
       *output_path = db_path;
       return Status::OK();
@@ -1367,12 +1472,25 @@ class PosixEnv : public Env {
   }
 
   // Allow increasing the number of worker threads.
-  virtual void SetBackgroundThreads(int num, Priority pri) {
+  virtual void SetBackgroundThreads(int num, Priority pri) override {
     assert(pri >= Priority::LOW && pri <= Priority::HIGH);
     thread_pools_[pri].SetBackgroundThreads(num);
   }
 
-  virtual std::string TimeToString(uint64_t secondsSince1970) {
+  // Allow increasing the number of worker threads.
+  virtual void IncBackgroundThreadsIfNeeded(int num, Priority pri) override {
+    assert(pri >= Priority::LOW && pri <= Priority::HIGH);
+    thread_pools_[pri].IncBackgroundThreadsIfNeeded(num);
+  }
+
+  virtual void LowerThreadPoolIOPriority(Priority pool = LOW) override {
+    assert(pool >= Priority::LOW && pool <= Priority::HIGH);
+#ifdef OS_LINUX
+    thread_pools_[pool].LowerIOPriority();
+#endif
+  }
+
+  virtual std::string TimeToString(uint64_t secondsSince1970) override {
     const time_t seconds = (time_t)secondsSince1970;
     struct tm t;
     int maxsize = 64;
@@ -1392,17 +1510,22 @@ class PosixEnv : public Env {
     return dummy;
   }
 
-  EnvOptions OptimizeForLogWrite(const EnvOptions& env_options) const {
+  EnvOptions OptimizeForLogWrite(const EnvOptions& env_options,
+                                 const DBOptions& db_options) const override {
     EnvOptions optimized = env_options;
     optimized.use_mmap_writes = false;
+    optimized.bytes_per_sync = db_options.wal_bytes_per_sync;
     // TODO(icanadi) it's faster if fallocate_with_keep_size is false, but it
     // breaks TransactionLogIteratorStallAtLastRecord unit test. Fix the unit
     // test and make this false
-    optimized.fallocate_with_keep_size = true;
+    // CEPH: we don't care about replication and want to avoid updating the
+    // inode... set this to false! [-sage]
+    optimized.fallocate_with_keep_size = false;  //true;
     return optimized;
   }
 
-  EnvOptions OptimizeForManifestWrite(const EnvOptions& env_options) const {
+  EnvOptions OptimizeForManifestWrite(
+      const EnvOptions& env_options) const override {
     EnvOptions optimized = env_options;
     optimized.use_mmap_writes = false;
     optimized.fallocate_with_keep_size = true;
@@ -1454,12 +1577,18 @@ class PosixEnv : public Env {
           bgthreads_(0),
           queue_(),
           queue_len_(0),
-          exit_all_threads_(false) {
+          exit_all_threads_(false),
+          low_io_priority_(false),
+          env_(nullptr) {
       PthreadCall("mutex_init", pthread_mutex_init(&mu_, nullptr));
       PthreadCall("cvar_init", pthread_cond_init(&bgsignal_, nullptr));
     }
 
     ~ThreadPool() {
+      assert(bgthreads_.size() == 0U);
+    }
+
+    void JoinAllThreads() {
       PthreadCall("lock", pthread_mutex_lock(&mu_));
       assert(!exit_all_threads_);
       exit_all_threads_ = true;
@@ -1468,59 +1597,176 @@ class PosixEnv : public Env {
       for (const auto tid : bgthreads_) {
         pthread_join(tid, nullptr);
       }
+      bgthreads_.clear();
     }
 
-    void BGThread() {
+    void SetHostEnv(Env* env) {
+      env_ = env;
+    }
+
+    void LowerIOPriority() {
+#ifdef OS_LINUX
+      PthreadCall("lock", pthread_mutex_lock(&mu_));
+      low_io_priority_ = true;
+      PthreadCall("unlock", pthread_mutex_unlock(&mu_));
+#endif
+    }
+
+    // Return true if there is at least one thread needs to terminate.
+    bool HasExcessiveThread() {
+      return static_cast<int>(bgthreads_.size()) > total_threads_limit_;
+    }
+
+    // Return true iff the current thread is the excessive thread to terminate.
+    // Always terminate the running thread that is added last, even if there are
+    // more than one thread to terminate.
+    bool IsLastExcessiveThread(size_t thread_id) {
+      return HasExcessiveThread() && thread_id == bgthreads_.size() - 1;
+    }
+
+    // Is one of the threads to terminate.
+    bool IsExcessiveThread(size_t thread_id) {
+      return static_cast<int>(thread_id) >= total_threads_limit_;
+    }
+
+    // Return the thread priority.
+    // This would allow its member-thread to know its priority.
+    Env::Priority GetThreadPriority() {
+      return priority_;
+    }
+
+    // Set the thread priority.
+    void SetThreadPriority(Env::Priority priority) {
+      priority_ = priority;
+    }
+
+    void BGThread(size_t thread_id) {
+      bool low_io_priority = false;
       while (true) {
         // Wait until there is an item that is ready to run
         PthreadCall("lock", pthread_mutex_lock(&mu_));
-        while (queue_.empty() && !exit_all_threads_) {
+        // Stop waiting if the thread needs to do work or needs to terminate.
+        while (!exit_all_threads_ && !IsLastExcessiveThread(thread_id) &&
+               (queue_.empty() || IsExcessiveThread(thread_id))) {
           PthreadCall("wait", pthread_cond_wait(&bgsignal_, &mu_));
         }
         if (exit_all_threads_) { // mechanism to let BG threads exit safely
           PthreadCall("unlock", pthread_mutex_unlock(&mu_));
           break;
         }
+        if (IsLastExcessiveThread(thread_id)) {
+          // Current thread is the last generated one and is excessive.
+          // We always terminate excessive thread in the reverse order of
+          // generation time.
+          auto terminating_thread = bgthreads_.back();
+          pthread_detach(terminating_thread);
+          bgthreads_.pop_back();
+          if (HasExcessiveThread()) {
+            // There is still at least more excessive thread to terminate.
+            WakeUpAllThreads();
+          }
+          PthreadCall("unlock", pthread_mutex_unlock(&mu_));
+          break;
+        }
         void (*function)(void*) = queue_.front().function;
         void* arg = queue_.front().arg;
         queue_.pop_front();
-        queue_len_.store(queue_.size(), std::memory_order_relaxed);
+        queue_len_.store(static_cast<unsigned int>(queue_.size()),
+                         std::memory_order_relaxed);
 
+        bool decrease_io_priority = (low_io_priority != low_io_priority_);
         PthreadCall("unlock", pthread_mutex_unlock(&mu_));
+
+#ifdef OS_LINUX
+        if (decrease_io_priority) {
+          #define IOPRIO_CLASS_SHIFT               (13)
+          #define IOPRIO_PRIO_VALUE(class, data)   \
+              (((class) << IOPRIO_CLASS_SHIFT) | data)
+          // Put schedule into IOPRIO_CLASS_IDLE class (lowest)
+          // These system calls only have an effect when used in conjunction
+          // with an I/O scheduler that supports I/O priorities. As at
+          // kernel 2.6.17 the only such scheduler is the Completely
+          // Fair Queuing (CFQ) I/O scheduler.
+          // To change scheduler:
+          //  echo cfq > /sys/block/<device_name>/queue/schedule
+          // Tunables to consider:
+          //  /sys/block/<device_name>/queue/slice_idle
+          //  /sys/block/<device_name>/queue/slice_sync
+          syscall(SYS_ioprio_set,
+                  1,  // IOPRIO_WHO_PROCESS
+                  0,  // current thread
+                  IOPRIO_PRIO_VALUE(3, 0));
+          low_io_priority = true;
+        }
+#else
+        (void)decrease_io_priority; // avoid 'unused variable' error
+#endif
         (*function)(arg);
       }
     }
 
+    // Helper struct for passing arguments when creating threads.
+    struct BGThreadMetadata {
+      ThreadPool* thread_pool_;
+      size_t thread_id_;  // Thread count in the thread.
+      explicit BGThreadMetadata(ThreadPool* thread_pool, size_t thread_id)
+          : thread_pool_(thread_pool), thread_id_(thread_id) {}
+    };
+
     static void* BGThreadWrapper(void* arg) {
-      reinterpret_cast<ThreadPool*>(arg)->BGThread();
+      BGThreadMetadata* meta = reinterpret_cast<BGThreadMetadata*>(arg);
+      size_t thread_id = meta->thread_id_;
+      ThreadPool* tp = meta->thread_pool_;
+#if ROCKSDB_USING_THREAD_STATUS
+      // for thread-status
+      ThreadStatusUtil::SetThreadType(tp->env_,
+          (tp->GetThreadPriority() == Env::Priority::HIGH ?
+              ThreadStatus::HIGH_PRIORITY :
+              ThreadStatus::LOW_PRIORITY));
+#endif
+      delete meta;
+      tp->BGThread(thread_id);
+#if ROCKSDB_USING_THREAD_STATUS
+      ThreadStatusUtil::UnregisterThread();
+#endif
       return nullptr;
     }
 
-    void SetBackgroundThreads(int num) {
-      PthreadCall("lock", pthread_mutex_lock(&mu_));
-      if (num > total_threads_limit_) {
-        total_threads_limit_ = num;
-      }
-      assert(total_threads_limit_ > 0);
-      PthreadCall("unlock", pthread_mutex_unlock(&mu_));
+    void WakeUpAllThreads() {
+      PthreadCall("signalall", pthread_cond_broadcast(&bgsignal_));
     }
 
-    void Schedule(void (*function)(void*), void* arg) {
+    void SetBackgroundThreadsInternal(int num, bool allow_reduce) {
       PthreadCall("lock", pthread_mutex_lock(&mu_));
-
       if (exit_all_threads_) {
         PthreadCall("unlock", pthread_mutex_unlock(&mu_));
         return;
       }
+      if (num > total_threads_limit_ ||
+          (num < total_threads_limit_ && allow_reduce)) {
+        total_threads_limit_ = std::max(1, num);
+        WakeUpAllThreads();
+        StartBGThreads();
+      }
+      PthreadCall("unlock", pthread_mutex_unlock(&mu_));
+    }
+
+    void IncBackgroundThreadsIfNeeded(int num) {
+      SetBackgroundThreadsInternal(num, false);
+    }
+
+    void SetBackgroundThreads(int num) {
+      SetBackgroundThreadsInternal(num, true);
+    }
+
+    void StartBGThreads() {
       // Start background thread if necessary
       while ((int)bgthreads_.size() < total_threads_limit_) {
         pthread_t t;
         PthreadCall(
-          "create thread",
-          pthread_create(&t,
-                         nullptr,
-                         &ThreadPool::BGThreadWrapper,
-                         this));
+            "create thread",
+            pthread_create(&t, nullptr, &ThreadPool::BGThreadWrapper,
+                           new BGThreadMetadata(this, bgthreads_.size())));
 
         // Set the thread name to aid debugging
 #if defined(_GNU_SOURCE) && defined(__GLIBC_PREREQ)
@@ -1534,17 +1780,56 @@ class PosixEnv : public Env {
 
         bgthreads_.push_back(t);
       }
+    }
+
+    void Schedule(void (*function)(void* arg1), void* arg, void* tag) {
+      PthreadCall("lock", pthread_mutex_lock(&mu_));
+
+      if (exit_all_threads_) {
+        PthreadCall("unlock", pthread_mutex_unlock(&mu_));
+        return;
+      }
+
+      StartBGThreads();
 
       // Add to priority queue
       queue_.push_back(BGItem());
       queue_.back().function = function;
       queue_.back().arg = arg;
-      queue_len_.store(queue_.size(), std::memory_order_relaxed);
+      queue_.back().tag = tag;
+      queue_len_.store(static_cast<unsigned int>(queue_.size()),
+                       std::memory_order_relaxed);
 
-      // always wake up at least one waiting thread.
-      PthreadCall("signal", pthread_cond_signal(&bgsignal_));
+      if (!HasExcessiveThread()) {
+        // Wake up at least one waiting thread.
+        PthreadCall("signal", pthread_cond_signal(&bgsignal_));
+      } else {
+        // Need to wake up all threads to make sure the one woken
+        // up is not the one to terminate.
+        WakeUpAllThreads();
+      }
 
       PthreadCall("unlock", pthread_mutex_unlock(&mu_));
+    }
+
+    int UnSchedule(void* arg) {
+      int count = 0;
+      PthreadCall("lock", pthread_mutex_lock(&mu_));
+
+      // Remove from priority queue
+      BGQueue::iterator it = queue_.begin();
+      while (it != queue_.end()) {
+        if (arg == (*it).tag) {
+          it = queue_.erase(it);
+          count++;
+        } else {
+          it++;
+        }
+      }
+      queue_len_.store(static_cast<unsigned int>(queue_.size()),
+                       std::memory_order_relaxed);
+      PthreadCall("unlock", pthread_mutex_unlock(&mu_));
+      return count;
     }
 
     unsigned int GetQueueLen() const {
@@ -1553,7 +1838,11 @@ class PosixEnv : public Env {
 
    private:
     // Entry per Schedule() call
-    struct BGItem { void* arg; void (*function)(void*); };
+    struct BGItem {
+      void* arg;
+      void (*function)(void*);
+      void* tag;
+    };
     typedef std::deque<BGItem> BGQueue;
 
     pthread_mutex_t mu_;
@@ -1563,6 +1852,9 @@ class PosixEnv : public Env {
     BGQueue queue_;
     std::atomic_uint queue_len_;  // Queue length. Used for stats reporting
     bool exit_all_threads_;
+    bool low_io_priority_;
+    Env::Priority priority_;
+    Env* env_;
   };
 
   std::vector<ThreadPool> thread_pools_;
@@ -1577,11 +1869,23 @@ PosixEnv::PosixEnv() : checkedDiskForMmap_(false),
                        page_size_(getpagesize()),
                        thread_pools_(Priority::TOTAL) {
   PthreadCall("mutex_init", pthread_mutex_init(&mu_, nullptr));
+  for (int pool_id = 0; pool_id < Env::Priority::TOTAL; ++pool_id) {
+    thread_pools_[pool_id].SetThreadPriority(
+        static_cast<Env::Priority>(pool_id));
+    // This allows later initializing the thread-local-env of each thread.
+    thread_pools_[pool_id].SetHostEnv(this);
+  }
+  thread_status_updater_ = CreateThreadStatusUpdater();
 }
 
-void PosixEnv::Schedule(void (*function)(void*), void* arg, Priority pri) {
+void PosixEnv::Schedule(void (*function)(void* arg1), void* arg, Priority pri,
+                        void* tag) {
   assert(pri >= Priority::LOW && pri <= Priority::HIGH);
-  thread_pools_[pri].Schedule(function, arg);
+  thread_pools_[pri].Schedule(function, arg, tag);
+}
+
+int PosixEnv::UnSchedule(void* arg, Priority pri) {
+  return thread_pools_[pri].UnSchedule(arg);
 }
 
 unsigned int PosixEnv::GetThreadPoolQueueLen(Priority pri) const {
@@ -1589,12 +1893,11 @@ unsigned int PosixEnv::GetThreadPoolQueueLen(Priority pri) const {
   return thread_pools_[pri].GetQueueLen();
 }
 
-namespace {
 struct StartThreadState {
   void (*user_function)(void*);
   void* arg;
 };
-}
+
 static void* StartThreadWrapper(void* arg) {
   StartThreadState* state = reinterpret_cast<StartThreadState*>(arg);
   state->user_function(state->arg);

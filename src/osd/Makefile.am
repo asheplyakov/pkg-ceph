@@ -16,7 +16,6 @@ libosd_la_SOURCES = \
 	osd/ECMsgTypes.cc \
 	osd/ECTransaction.cc \
 	osd/PGBackend.cc \
-	osd/Ager.cc \
 	osd/HitSet.cc \
 	osd/OSD.cc \
 	osd/OSDCap.cc \
@@ -32,13 +31,9 @@ if WITH_KINETIC
 libosd_la_CXXFLAGS += -std=gnu++11
 endif
 libosd_la_LIBADD = $(LIBOSDC) $(LIBOS) $(LIBOSD_TYPES) $(LIBOS_TYPES)
-if WITH_LTTNG
-libosd_la_LIBADD += $(LIBOSD_TP)
-endif
 noinst_LTLIBRARIES += libosd.la
 
 noinst_HEADERS += \
-	osd/Ager.h \
 	osd/ClassHandler.h \
 	osd/HitSet.h \
 	osd/OSD.h \
