@@ -1,4 +1,4 @@
-ceph (0.94.5-1) UNRELEASED; urgency=medium
+ceph (0.94.5-1) experimental; urgency=medium
 
   * [2d330d6] New upstream release:
     - [1e93090] Drop patch for CVE-2015-5245, included upstream.
@@ -6,7 +6,7 @@ ceph (0.94.5-1) UNRELEASED; urgency=medium
   * [9255e5d] Ensure any erasure coding test libraries and dangling symlinks
               are not included in the ceph package.
 
- -- James Page <james.page@ubuntu.com>  Wed, 04 Nov 2015 11:25:52 +0000
+ -- James Page <james.page@ubuntu.com>  Mon, 09 Nov 2015 12:09:51 +0000
 
 ceph (0.94.3-1) experimental; urgency=medium
 
