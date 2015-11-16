@@ -20,10 +20,12 @@ Build-Depends: debhelper (>= 9~),
                libbabeltrace-ctf-dev,
                libbabeltrace-dev,
                libblkid-dev,
-               libboost-dev,
-               libboost-program-options-dev,
-               libboost-system-dev,
-               libboost-thread-dev,
+               libboost-dev (>= 1.42),
+               libboost-program-options-dev (>= 1.42),
+               libboost-random-dev,
+               libboost-regex-dev,
+               libboost-system-dev (>= 1.42),
+               libboost-thread-dev (>= 1.42),
                libbz2-dev,
                libcurl4-gnutls-dev,
                libedit-dev,
@@ -34,7 +36,6 @@ Build-Depends: debhelper (>= 9~),
                libkeyutils-dev,
                libleveldb-dev,
                libnss3-dev,
-               libs3-dev,
                libsnappy-dev,
                libtool,
                libudev-dev,
@@ -47,6 +48,8 @@ Build-Depends: debhelper (>= 9~),
                valgrind [amd64 armhf i386 powerpc],
                virtualenv,
                xfslibs-dev,
+               xfsprogs,
+               xmlstarlet,
                yasm [amd64],
                zlib1g-dev
 Build-Conflicts: libcrypto++-dev
@@ -69,15 +72,17 @@ Depends: binutils,
          ${python:Depends},
          ${shlibs:Depends}
 Pre-Depends: ${misc:Pre-Depends}
-Breaks: python-ceph (<< 0.94.1-1~)
-Conflicts: gceph, librgw-dev, librgw1, librgw1-dbg, obsync
-Replaces: gceph,
-          librgw-dev,
-          librgw1,
-          librgw1-dbg,
-          obsync,
+Breaks: ceph-common (<< 9.2.0-1~),
+        ceph-test (<< 9.2.0-1~),
+        python-ceph (<< 0.94.1-1~)
+Replaces: ceph-common (<< 9.2.0-1~),
+          ceph-test (<< 9.2.0-1~),
           python-ceph (<< 0.94.1-1~)
-Recommends: libcephfs1, librados2, librbd1, ntp | time-daemon | chrony
+Recommends: libcephfs1,
+            librados2,
+            libradosstriper1,
+            librbd1,
+            ntp | time-daemon | chrony
 Suggests: logrotate
 Description: distributed storage and file system
  Ceph is a distributed storage system designed to provide excellent
@@ -93,8 +98,8 @@ Architecture: linux-any
 Section: debug
 Priority: extra
 Depends: ceph (= ${binary:Version}), ${misc:Depends}
-Conflicts: gceph-dbg
-Replaces: gceph-dbg
+Replaces: ceph-test-dbg (<< 9.2.0-1~)
+Breaks: ceph-test-dbg (<< 9.2.0-1~)
 Description: debugging symbols for ceph
  Ceph is a distributed storage system designed to provide excellent
  performance, reliability, and scalability.
@@ -113,10 +118,12 @@ Depends: librbd1 (= ${binary:Version}),
          ${shlibs:Depends}
 Conflicts: ceph-client-tools
 Breaks: ceph (<< 0.93-0ubuntu3~),
+        ceph-test (<< 9.2.0-1~),
         librbd1 (<< 0.94.1-1~),
         python-ceph (<< 0.94.1-1~)
 Replaces: ceph (<< 0.93-0ubuntu3~),
           ceph-client-tools,
+          ceph-test (<< 9.2.0-1~),
           librbd1 (<< 0.94.1-1~),
           python-ceph (<< 0.94.1-1~)
 Suggests: ceph, ceph-mds
@@ -257,8 +264,8 @@ Description: OCF-compliant resource agents for Ceph
 Package: librados2
 Architecture: linux-any
 Section: libs
-Conflicts: libcrush, libcrush1, librados, librados1
-Replaces: libcrush, libcrush1, librados, librados1
+Conflicts: librados, librados1
+Replaces: librados, librados1
 Depends: ${misc:Depends}, ${shlibs:Depends}
 Pre-Depends: ${misc:Pre-Depends}
 Description: RADOS distributed object store client library
@@ -271,8 +278,8 @@ Package: librados2-dbg
 Architecture: linux-any
 Section: debug
 Priority: extra
-Conflicts: libcrush1-dbg, librados1-dbg
-Replaces: libcrush1-dbg, librados1-dbg
+Conflicts: librados1-dbg
+Replaces: librados1-dbg
 Depends: librados2 (= ${binary:Version}), ${misc:Depends}
 Description: debugging symbols for librados2
  RADOS is a reliable, autonomic distributed object storage cluster
@@ -286,8 +293,8 @@ Package: librados-dev
 Architecture: linux-any
 Section: libdevel
 Depends: librados2 (= ${binary:Version}), ${misc:Depends}, ${shlibs:Depends}
-Conflicts: libcrush-dev, libcrush1-dev, librados1-dev, librados2-dev
-Replaces: libcrush-dev, libcrush1-dev, librados1-dev, librados2-dev
+Conflicts: librados1-dev, librados2-dev
+Replaces: librados1-dev, librados2-dev
 Description: RADOS distributed object store client library (development files)
  RADOS is a reliable, autonomic distributed object storage cluster
  developed as part of the Ceph distributed storage system.  This is a
@@ -437,25 +444,14 @@ Description: debugging symbols for radosgw
  .
  This package contains debugging symbols for radosgw.
 
-Package: rest-bench
-Architecture: linux-any
-Depends: ceph-common, curl, xml2, ${misc:Depends}, ${shlibs:Depends}
-Description: RESTful bencher that can be used to benchmark radosgw performance
- Simple tool to benchmark radosgw (or S3) (based on 'rados-bench' command).
-
-Package: rest-bench-dbg
-Architecture: linux-any
-Section: debug
-Priority: extra
-Depends: rest-bench (= ${binary:Version}), ${misc:Depends}
-Description: debugging symbols for rest-bench
- Simple tool to benchmark radosgw (or S3) (based on 'rados-bench' command).
- .
- This package contains the debugging symbols for rest-bench.
-
 Package: ceph-test
 Architecture: linux-any
-Depends: ceph-common, curl, xml2, ${misc:Depends}, ${shlibs:Depends}
+Depends: ceph-common,
+         curl,
+         xml2,
+         xmlstarlet,
+         ${misc:Depends},
+         ${shlibs:Depends}
 Description: Ceph test and benchmarking tools
  Ceph is a distributed storage system designed to provide excellent
  performance, reliability, and scalability.

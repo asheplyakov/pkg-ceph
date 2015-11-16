@@ -1,7 +1,6 @@
 usr/bin/ceph-coverage /usr/lib/ceph/bin
 usr/bin/ceph-kvstore-tool /usr/lib/ceph/bin
 usr/bin/ceph-monstore-tool /usr/lib/ceph/bin
-usr/bin/ceph-objectstore-tool /usr/lib/ceph/bin
 usr/bin/ceph-osdomap-tool /usr/lib/ceph/bin
 usr/bin/ceph_bench_log /usr/lib/ceph/bin
 usr/bin/ceph_erasure_code /usr/lib/ceph/bin
@@ -9,6 +8,7 @@ usr/bin/ceph_erasure_code_benchmark /usr/lib/ceph/bin
 usr/bin/ceph_kvstorebench /usr/lib/ceph/bin
 usr/bin/ceph_multi_stress_watch /usr/lib/ceph/bin
 usr/bin/ceph_omapbench /usr/lib/ceph/bin
+usr/bin/ceph_perf_* /usr/lib/ceph/bin
 usr/bin/ceph_psim /usr/lib/ceph/bin
 usr/bin/ceph_radosacl /usr/lib/ceph/bin
 usr/bin/ceph_rgw_jsonparser /usr/lib/ceph/bin
@@ -23,6 +23,5 @@ usr/bin/ceph_streamtest /usr/lib/ceph/bin
 usr/bin/ceph_test_* /usr/lib/ceph/bin
 usr/bin/ceph_tpbench /usr/lib/ceph/bin
 usr/bin/ceph_xattr_bench /usr/lib/ceph/bin
-usr/bin/rbd-replay* /usr/lib/ceph/bin
+usr/lib/ceph/ceph-monstore-update-crush.sh
 usr/share/java/libcephfs-test.jar
-usr/share/man/man8/rbd-replay*.8

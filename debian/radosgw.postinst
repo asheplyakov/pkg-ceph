@@ -24,6 +24,9 @@ set -e
 # for details, see http://www.debian.org/doc/debian-policy/ or
 # the debian-policy package
 
+[ -f "/etc/default/ceph" ] && . /etc/default/ceph
+[ -z "$SERVER_USER" ] && SERVER_USER=ceph
+[ -z "$SERVER_GROUP" ] && SERVER_GROUP=ceph
 
 case "$1" in
     configure)
@@ -34,6 +37,9 @@ case "$1" in
 	                exit $RESULT
         	    fi
 	        }
+	fi
+	if ! dpkg-statoverride --list /var/lib/ceph/radosgw >/dev/null; then
+	    chown $SERVER_USER:$SERVER_GROUP /var/lib/ceph/radosgw
 	fi
     ;;
     abort-upgrade|abort-remove|abort-deconfigure)
