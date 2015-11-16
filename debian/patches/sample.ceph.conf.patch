@@ -95,7 +95,7 @@ Description: sample.ceph.conf updates:
  
      # where the mds keeps it's secret encryption keys
      ;keyring                    = /var/lib/ceph/mds/$name/keyring
-@@ -279,7 +283,7 @@
+@@ -277,7 +281,7 @@
  # You need at least one.  Two or more if you want data to be replicated.
  # Define as many as you like.
  [osd]
@@ -104,7 +104,7 @@ Description: sample.ceph.conf updates:
  
      # The path to the OSDs data.
      # You must create the directory when deploying Ceph.
-@@ -339,7 +343,7 @@
+@@ -337,7 +341,7 @@
      # (Default: false)
      ;osd check for log corruption = true
  
@@ -113,7 +113,7 @@ Description: sample.ceph.conf updates:
  
      # The size of the journal in megabytes. If this is 0,
      # and the journal is a block device, the entire block device is used.
-@@ -365,7 +369,7 @@
+@@ -363,7 +367,7 @@
      ;debug filestore              = 20
      ;debug journal                = 20
  
@@ -122,7 +122,7 @@ Description: sample.ceph.conf updates:
  
      # The maximum interval in seconds for synchronizing the filestore.
      # Type: Double (optional)
-@@ -378,12 +382,6 @@
+@@ -376,12 +380,6 @@
      # (Default: true)
      ;filestore btrfs snap        = false
  
@@ -135,7 +135,7 @@ Description: sample.ceph.conf updates:
      # Defines the maximum number of in progress operations the file store
      # accepts before blocking on queuing new operations.
      # Type: Integer
-@@ -393,7 +391,7 @@
+@@ -391,7 +389,7 @@
  
      ## Filestore and OSD settings can be tweak to achieve better performance
  
@@ -144,7 +144,7 @@ Description: sample.ceph.conf updates:
  
      # Min number of files in a subdir before merging into parent NOTE: A negative value means to disable subdir merging
      # Type: Integer
-@@ -426,6 +424,7 @@
+@@ -424,6 +422,7 @@
      # (Default: true)
      ;osd crush update on start    = false
  
@@ -152,7 +152,7 @@ Description: sample.ceph.conf updates:
  ;[osd.0]
  ;    host                         = delta
  
-@@ -443,7 +442,7 @@
+@@ -441,7 +440,7 @@
  ## client settings
  [client]
  
@@ -161,7 +161,7 @@ Description: sample.ceph.conf updates:
  
      # Enable caching for RADOS Block Device (RBD).
      # Type: Boolean
-@@ -499,7 +498,7 @@
+@@ -497,7 +496,7 @@
  ## radosgw client settings
  [client.radosgw.gateway]
  
