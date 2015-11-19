@@ -4,6 +4,7 @@ libradosstriper.so.1 libradosstriper1 #MINVER#
  MDS_RANK_NONE@Base 0.93
  (regex|c++)"^_.*" 0.87
  (regex)"^ceph_ver__[0-9a-f]{40}@Base$" 0.87
+ ceph_arch_aarch64_crc32@Base 9.2.0
  ceph_arch_arm_probe@Base 0.93
  ceph_arch_intel_pclmul@Base 0.93
  ceph_arch_intel_probe@Base 0.93
@@ -82,7 +83,6 @@ libradosstriper.so.1 libradosstriper1 #MINVER#
  crush_hash32_4@Base 0.93
  crush_hash32_5@Base 0.93
  crush_hash_name@Base 0.93
- crush_ln@Base 0.93
  crush_make_bucket@Base 0.93
  crush_make_list_bucket@Base 0.93
  crush_make_rule@Base 0.93
