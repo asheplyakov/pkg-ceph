@@ -39,9 +39,9 @@ case "$1" in
 				fi
 			}
 		fi
-		for DIR in /var/lib/ceph/* ; do
-		    if ! dpkg-statoverride --list $DIR >/dev/null
-			chown $SERVER_USER:$SERVER_GROUP $DIR
+		for DIR in `ls -1 /var/lib/ceph` ; do
+		    if ! dpkg-statoverride --list /var/lib/ceph/$DIR >/dev/null; then
+			chown $SERVER_USER:$SERVER_GROUP /var/lib/ceph/$DIR
 		    fi
 		done
 	;;
