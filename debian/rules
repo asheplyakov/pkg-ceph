@@ -54,7 +54,7 @@ override_dh_auto_configure:
 
 override_dh_auto_build:
 	dh_auto_build
-	cp -v src/upstart/rbdmap.conf debian/ceph.rbdmap.upstart
+	cp -v src/upstart/rbdmap.conf debian/ceph-common.rbdmap.upstart
 
 override_dh_auto_clean:
 	dh_auto_clean
@@ -69,7 +69,7 @@ override_dh_auto_install:
 
 override_dh_installinit:
 	dh_installinit --no-start
-	dh_installinit -pceph --no-start --name=rbdmap
+	dh_installinit -pceph-common --no-start --name=rbdmap
 	# Install upstart configurations using dh_installinit
 	for conf in `ls -1 src/upstart/ceph*.conf | grep -v mds`; do \
         name=`basename $$conf | cut -d . -f 1`; \
