@@ -1,3 +1,90 @@
+ceph (9.2.0-1) experimental; urgency=medium
+
+  ## systemd Enablement
+
+  For all distributions that support systemd (Debian Jessie 8.x,
+  Ubuntu >= 16.04), Ceph daemons are now managed using native systemd
+  files instead of the legacy sysvinit scripts.  For example:
+
+    systemctl start ceph.target       # start all daemons
+    systemctl status ceph-osd@12      # check status of osd.12
+
+  The main notable distro that is *not* yet using systemd is Ubuntu 14.04
+  (The next Ubuntu LTS, 16.04, will use systemd instead of upstart).
+
+  ## Ceph daemons no longer run as root
+
+  Ceph daemons now run as user and group 'ceph' by default.  The
+  ceph user has a static UID assigned by Debian to ensure consistency
+  across servers within a Ceph deployment.
+
+  If your systems already have a ceph user, upgrading the package will cause
+  problems.  We suggest you first remove or rename the existing 'ceph' user
+  and 'ceph' group before upgrading.
+
+  When upgrading, administrators have two options:
+
+  1. Add the following line to 'ceph.conf' on all hosts:
+
+       setuser match path = /var/lib/ceph/$type/$cluster-$id
+
+     This will make the Ceph daemons run as root (i.e., not drop
+     privileges and switch to user ceph) if the daemon's data
+     directory is still owned by root.  Newly deployed daemons will
+     be created with data owned by user ceph and will run with
+     reduced privileges, but upgraded daemons will continue to run as
+     root.
+
+  2. Fix the data ownership during the upgrade.  This is the
+     preferred option, but it is more work and can be very time
+     consuming.  The process for each host is to:
+
+     1. Upgrade the ceph package.  This creates the ceph user and group.  For
+        example:
+
+          apt-get install ceph
+
+     2. Stop the daemon(s).:
+
+          service ceph stop           # debian, ubuntu >= 15.04
+          stop ceph-all               # ubuntu 14.04
+
+     3. Fix the ownership::
+
+          chown -R ceph:ceph /var/lib/ceph
+
+     4. Restart the daemon(s).:
+
+          start ceph-all                # ubuntu 14.04
+          systemctl start ceph.target   # debian, ubuntu >= 15.04
+
+     Alternatively, the same process can be done with a single daemon
+     type, for example by stopping only monitors and chowning only
+     '/var/lib/ceph/mon'.
+
+  ## KeyValueStore OSD on-disk format changes
+
+  The on-disk format for the experimental KeyValueStore OSD backend has
+  changed.  You will need to remove any OSDs using that backend before you
+  upgrade any test clusters that use it.
+
+  ## Deprecated commands
+
+  'ceph scrub', 'ceph compact' and 'ceph sync force' are now DEPRECATED.
+  Users should instead use 'ceph mon scrub', 'ceph mon compact' and
+  'ceph mon sync force'.
+
+  ## Full pool behaviour
+
+  When a pool quota is reached, librados operations now block indefinitely,
+  the same way they do when the cluster fills up.  (Previously they would
+  return -ENOSPC).  By default, a full cluster or pool will now block.  If
+  your librados application can handle ENOSPC or EDQUOT errors gracefully,
+  you can get error returns instead by using the new librados
+  OPERATION_FULL_TRY flag.
+
+ -- James Page <james.page@ubuntu.com>  Mon, 30 Nov 2015 09:23:09 +0000
+
 ceph (0.80.9-2) unstable; urgency=medium
 
   ## CRUSH fixes in 0.80.9
