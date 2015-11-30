@@ -19,3 +19,4 @@ fix-argparse-defaults.patch
 fix-cycles-arch.patch
 #vivid-does-systemd.patch
 flock-location-debian.patch
+ceph-detect-init-ubuntu.patch
