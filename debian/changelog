@@ -10,6 +10,9 @@ ceph (9.2.0-1) UNRELEASED; urgency=medium
                and installed.
     - [3ead6e] Correct install location for ceph-monstore-update tool.
     - [269754] [177b7a] Update symbols for new release.
+  * [4c45629] Update NEWS file for infernalis changes.
+  * [940491e] Limit number of parallel builds to 2 to reduce memory footprint
+              on builders.
 
  -- James Page <james.page@ubuntu.com>  Mon, 09 Nov 2015 12:38:52 +0000
 
