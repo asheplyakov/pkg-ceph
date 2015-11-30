@@ -120,11 +120,11 @@ Depends: librbd1 (= ${binary:Version}),
          ${python:Depends},
          ${shlibs:Depends}
 Conflicts: ceph-client-tools
-Breaks: ceph (<< 0.93-0ubuntu3~),
+Breaks: ceph (<< 9.2.0-1~),
         ceph-test (<< 9.2.0-1~),
         librbd1 (<< 0.94.1-1~),
         python-ceph (<< 0.94.1-1~)
-Replaces: ceph (<< 0.93-0ubuntu3~),
+Replaces: ceph (<< 9.2.0-1~),
           ceph-client-tools,
           ceph-test (<< 9.2.0-1~),
           librbd1 (<< 0.94.1-1~),
