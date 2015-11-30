@@ -2,6 +2,8 @@
 # -*- makefile -*-
 #export DH_VERBOSE=1
 
+# Limit parallel builds to 2 for now
+
 # minimise needless linking
 export DEB_LDFLAGS_MAINT_APPEND= -Wl,--as-needed
 
@@ -40,7 +42,7 @@ endif
 extraopts += --with-system-libs3
 
 %:
-	dh $@ --with javahelper,python2,autoreconf,systemd --parallel
+	dh $@ --with javahelper,python2,autoreconf,systemd --parallel --max-parallel=2
 
 # use --as-needed only if supported by dh-autoreconf (to simplify backporting)
 DH_AS_NEEDED=$(shell dpkg --compare-versions $$(dpkg --status dh-autoreconf | grep Version | cut -d' ' -f2) ge 6 && echo --as-needed)
