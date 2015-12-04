@@ -1,18 +1,19 @@
 [Unit]
-Description=Ceph cluster monitor daemon (MON)
+Description=Ceph cluster monitor daemon
 Documentation=man:ceph-mon
-After=network-online.target
-Wants=network-online.target
-Requires=ceph-create-keys.service
-Before=ceph-create-keys.service
-PartOf=ceph.service
+
+After=network-online.target local-fs.target ceph-create-keys@%H.service
+Wants=network-online.target local-fs.target ceph-create-keys@%H.service
+
+PartOf=ceph.target
 
 [Service]
-Environment=CLUSTER=ceph
-Environment=CONFIG=/etc/ceph/ceph.conf
+LimitNOFILE=1048576
+LimitNPROC=1048576
 EnvironmentFile=-/etc/default/ceph
-ExecStart=/usr/bin/ceph-mon --id %H --foreground --cluster ${CLUSTER} -c ${CONFIG}
-LimitNOFILE=16384
+Environment=CLUSTER=ceph
+ExecStart=/usr/bin/ceph-mon -f --cluster ${CLUSTER} --id %H --setuser ceph --setgroup ceph
+ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=30
 
