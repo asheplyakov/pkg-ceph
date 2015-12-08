@@ -2,8 +2,8 @@
 Description=Ceph cluster monitor daemon
 Documentation=man:ceph-mon
 
-After=network-online.target local-fs.target ceph-create-keys@%H.service
-Wants=network-online.target local-fs.target ceph-create-keys@%H.service
+After=network-online.target local-fs.target ceph-create-keys.service
+Wants=network-online.target local-fs.target ceph-create-keys.service
 
 PartOf=ceph.target
 
