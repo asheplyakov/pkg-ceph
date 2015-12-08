@@ -3,13 +3,28 @@ ceph (9.2.0-1) experimental; urgency=medium
   ## systemd Enablement
 
   For all distributions that support systemd (Debian Jessie 8.x,
-  Ubuntu >= 16.04), Ceph daemons are now managed using native systemd
-  files instead of the legacy sysvinit scripts.  For example:
+  Ubuntu >= 16.04), Ceph daemons are now managed using upstream provided
+  systemd files instead of the legacy sysvinit scripts or distro provided
+  systemd files.  For example:
 
     systemctl start ceph.target       # start all daemons
     systemctl status ceph-osd@12      # check status of osd.12
 
-  The main notable distro that is *not* yet using systemd is Ubuntu 14.04
+  To upgrade existing deployments that use the older systemd service
+  configurations (Ubuntu >= 15.04, Debian >= Jessie), you need to switch
+  to using the new ceph-mon@ service:
+
+    systemctl stop ceph-mon
+    systemctl disable ceph-mon
+
+    systemctl start ceph-mon@`hostname`
+    systemctl enable ceph-mon@`hostname`
+
+  and also enable the ceph target post upgrade:
+
+    systemctl enable ceph.target
+
+  The main notable distro that is *not* using systemd is Ubuntu 14.04
   (The next Ubuntu LTS, 16.04, will use systemd instead of upstart).
 
   ## Ceph daemons no longer run as root
@@ -44,23 +59,30 @@ ceph (9.2.0-1) experimental; urgency=medium
 
           apt-get install ceph
 
-     2. Stop the daemon(s).:
+        NOTE: the permissions on /var/lib/ceph/mon will be set to ceph:ceph
+              as part of the package upgrade process on existing *systemd*
+              based installations; the ceph-mon systemd service will be
+              automatically restarted as part of the upgrade.  All other
+              filesystem permissions on systemd based installs will
+              remain unmodified by the upgrade.
 
-          service ceph stop           # debian, ubuntu >= 15.04
+     2. Stop the daemon(s):
+
+          systemctl stop ceph-osd@*   # debian, ubuntu >= 15.04
           stop ceph-all               # ubuntu 14.04
 
-     3. Fix the ownership::
+     3. Fix the ownership:
 
           chown -R ceph:ceph /var/lib/ceph
 
-     4. Restart the daemon(s).:
+     4. Restart the daemon(s):
 
           start ceph-all                # ubuntu 14.04
           systemctl start ceph.target   # debian, ubuntu >= 15.04
 
      Alternatively, the same process can be done with a single daemon
      type, for example by stopping only monitors and chowning only
-     '/var/lib/ceph/mon'.
+     '/var/lib/ceph/osd'.
 
   ## KeyValueStore OSD on-disk format changes
 
