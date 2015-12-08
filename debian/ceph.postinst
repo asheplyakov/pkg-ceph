@@ -41,7 +41,14 @@ case "$1" in
 		fi
 		for DIR in `ls -1 /var/lib/ceph` ; do
 		    if ! dpkg-statoverride --list /var/lib/ceph/$DIR >/dev/null; then
-			chown $SERVER_USER:$SERVER_GROUP /var/lib/ceph/$DIR
+			if [ -d /run/systemd/system ] && [ $DIR = 'mon' ]; then
+			    # NOTE: upgrade file permissions for mon filesystem on
+			    #       systemd based installs only due to automatic
+			    #       restarting of ceph-mon daemon
+			    chown -R $SERVER_USER:$SERVER_GROUP /var/lib/ceph/$DIR
+			else
+                            chown $SERVER_USER:$SERVER_GROUP /var/lib/ceph/$DIR
+			fi
 		    fi
 		done
 	;;
