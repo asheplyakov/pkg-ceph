@@ -263,8 +263,8 @@ Files: src/mount/mtab.c
 Copyright: util-linux-ng AUTHORS
 License: GPL-2+
 Comment:
- "mount/fstab.c" from line 565:
- http://git.kernel.org/pub/scm/utils/util-linux/util-linux.git/source/d8c36bdf037b901d92c8cbe45546b210dc5f8b90:mount/fstab.c#L565
+ "mount/fstab.c" from line 559:
+ https://git.kernel.org/cgit/utils/util-linux/util-linux.git/tree/mount-deprecated/fstab.c?h=v2.22#n559
  https://git.kernel.org/cgit/utils/util-linux/util-linux.git/tree/README.licensing
 
 Files: src/test/librbd/fsx.c
