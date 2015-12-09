@@ -1,4 +1,4 @@
-ceph (9.2.0-0ubuntu1) UNRELEASED; urgency=medium
+ceph (9.2.0-0ubuntu1) xenial; urgency=medium
 
   * [754935] Imported Upstream version 9.2.0
     - [df85c3] Resync relevant packaging changes with upstream.
@@ -14,7 +14,7 @@ ceph (9.2.0-0ubuntu1) UNRELEASED; urgency=medium
   * [940491e] Limit number of parallel builds to 2 to reduce memory footprint
               on builders.
 
- -- James Page <james.page@ubuntu.com>  Mon, 09 Nov 2015 12:38:52 +0000
+ -- James Page <james.page@ubuntu.com>  Wed, 09 Dec 2015 18:02:30 +0000
 
 ceph (0.94.5-1) experimental; urgency=medium
 
