@@ -1,7 +1,8 @@
 Source: ceph
 Section: admin
 Priority: optional
-Maintainer: Ceph Maintainers <ceph-maintainers@lists.ceph.com>
+Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
+XSBC-Original-Maintainer: Ceph Maintainers <ceph-maintainers@lists.ceph.com>
 Uploaders: Laszlo Boszormenyi (GCS) <gcs@debian.org>,
            James Page <jamespage@debian.org>
 Homepage: http://ceph.com/

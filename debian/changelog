@@ -1,4 +1,4 @@
-ceph (9.2.0-1) UNRELEASED; urgency=medium
+ceph (9.2.0-0ubuntu1) UNRELEASED; urgency=medium
 
   * [754935] Imported Upstream version 9.2.0
     - [df85c3] Resync relevant packaging changes with upstream.
