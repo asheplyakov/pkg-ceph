@@ -1,6 +1,6 @@
 Description: Fixup handling of init detection for newer Ubuntu releases
 Author: James Page <james.page@ubuntu.com>
-Forwarded: no
+Forwarded: https://github.com/ceph/ceph/pull/6873
 
 --- a/src/ceph-detect-init/ceph_detect_init/debian/__init__.py
 +++ b/src/ceph-detect-init/ceph_detect_init/debian/__init__.py

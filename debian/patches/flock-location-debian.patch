@@ -1,3 +1,7 @@
+Description: Correct flock location for Debian
+Author: James Page <james.page@ubuntu.com>
+Forwarded: no
+
 --- a/systemd/ceph-disk@.service
 +++ b/systemd/ceph-disk@.service
 @@ -4,5 +4,5 @@ Description=Ceph disk activation: %f
