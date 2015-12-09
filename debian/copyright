@@ -285,7 +285,7 @@ License: APSL-2.0
  under the License.
 Comment:
  http://codemonkey.org.uk/projects/fsx/
- https://gitorious.org/freebsd/freebsd/source/35d508eed26d6b836a57b4aa6dba5677e171efde:tools/regression/fsx/fsx.c
+ http://codemonkey.org.uk/projects/fsx/fsx-macosforge/fsx.c
 
 Files: man/*
        debian/man/*
