@@ -74,11 +74,11 @@ Depends: binutils,
          ${python:Depends},
          ${shlibs:Depends}
 Pre-Depends: ${misc:Pre-Depends}
-Breaks: ceph-common (<< 9.2.0-1~),
-        ceph-test (<< 9.2.0-1~),
+Breaks: ceph-common (<< 9.2.0-0ubuntu1~),
+        ceph-test (<< 9.2.0-0ubuntu1~),
         python-ceph (<< 0.94.1-1~)
-Replaces: ceph-common (<< 9.2.0-1~),
-          ceph-test (<< 9.2.0-1~),
+Replaces: ceph-common (<< 9.2.0-0ubuntu1~),
+          ceph-test (<< 9.2.0-0ubuntu1~),
           python-ceph (<< 0.94.1-1~)
 Recommends: libcephfs1,
             librados2,
@@ -100,8 +100,8 @@ Architecture: linux-any
 Section: debug
 Priority: extra
 Depends: ceph (= ${binary:Version}), ${misc:Depends}
-Replaces: ceph-test-dbg (<< 9.2.0-1~)
-Breaks: ceph-test-dbg (<< 9.2.0-1~)
+Replaces: ceph-test-dbg (<< 9.2.0-0ubuntu1~)
+Breaks: ceph-test-dbg (<< 9.2.0-0ubuntu1~)
 Description: debugging symbols for ceph
  Ceph is a distributed storage system designed to provide excellent
  performance, reliability, and scalability.
@@ -119,13 +119,13 @@ Depends: librbd1 (= ${binary:Version}),
          ${python:Depends},
          ${shlibs:Depends}
 Conflicts: ceph-client-tools
-Breaks: ceph (<< 9.2.0-1~),
-        ceph-test (<< 9.2.0-1~),
+Breaks: ceph (<< 9.2.0-0ubuntu1~),
+        ceph-test (<< 9.2.0-0ubuntu1~),
         librbd1 (<< 0.94.1-1~),
         python-ceph (<< 0.94.1-1~)
-Replaces: ceph (<< 9.2.0-1~),
+Replaces: ceph (<< 9.2.0-0ubuntu1~),
           ceph-client-tools,
-          ceph-test (<< 9.2.0-1~),
+          ceph-test (<< 9.2.0-0ubuntu1~),
           librbd1 (<< 0.94.1-1~),
           python-ceph (<< 0.94.1-1~)
 Suggests: ceph, ceph-mds
