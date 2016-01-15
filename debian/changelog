@@ -2,6 +2,8 @@ ceph (9.2.0-0ubuntu3) xenial; urgency=medium
 
   * d/ceph{-common}.install: Move ceph_daemon module to common package
     as its required to use the ceph command.
+  * d/rules: Disable parallel builds on arm64, resolving FTBFS due to
+    memory constraints in builders.
 
  -- James Page <james.page@ubuntu.com>  Fri, 15 Jan 2016 10:00:47 +0200
 
