@@ -1,3 +1,10 @@
+ceph (9.2.0-0ubuntu3) UNRELEASED; urgency=medium
+
+  * d/ceph{-common}.install: Move ceph_daemon module to common package
+    as its required to use the ceph command.
+
+ -- James Page <james.page@ubuntu.com>  Fri, 15 Jan 2016 09:57:34 +0200
+
 ceph (9.2.0-0ubuntu2) xenial; urgency=medium
 
   * d/control: Fixup broken Breaks/Replaces for backports to 14.04.

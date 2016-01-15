@@ -18,7 +18,6 @@ usr/lib/*/ceph/ceph-osd-prestart.sh    /usr/lib/ceph/
 usr/lib/*/ceph/ceph_common.sh
 usr/lib/*/ceph/erasure-code/libec_*.so
 usr/lib/*/rados-classes/*.so
-usr/lib/python*/dist-packages/ceph_daemon.py*
 usr/lib/python*/dist-packages/ceph_detect_init*
 usr/lib/python*/dist-packages/ceph_rest_api.py
 usr/sbin/ceph-create-keys
