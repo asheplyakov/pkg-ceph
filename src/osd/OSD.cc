@@ -2177,6 +2177,8 @@ void OSD::create_logger()
       "Latency of client operations (including queue time)", "lat");       // client op latency
   osd_plb.add_time_avg(l_osd_op_process_lat, "op_process_latency", 
       "Latency of client operations (excluding queue time)");   // client op process latency
+  osd_plb.add_time_avg(l_osd_op_prepare_lat, "op_prepare_latency",
+      "Latency of client operations (excluding queue time and wait for finished)"); // client op prepare latency
 
   osd_plb.add_u64_counter(l_osd_op_r,      "op_r", 
       "Client read operations");        // client reads
@@ -2186,6 +2188,8 @@ void OSD::create_logger()
       "Latency of read operation (including queue time)");    // client read latency
   osd_plb.add_time_avg(l_osd_op_r_process_lat, "op_r_process_latency", 
       "Latency of read operation (excluding queue time)");   // client read process latency
+  osd_plb.add_time_avg(l_osd_op_r_prepare_lat, "op_r_prepare_latency",
+      "Latency of read operations (excluding queue time and wait for finished)"); // client read prepare latency
   osd_plb.add_u64_counter(l_osd_op_w,      "op_w", 
       "Client write operations");        // client writes
   osd_plb.add_u64_counter(l_osd_op_w_inb,  "op_w_in_bytes", 
@@ -2196,6 +2200,8 @@ void OSD::create_logger()
       "Latency of write operation (including queue time)");    // client write latency
   osd_plb.add_time_avg(l_osd_op_w_process_lat, "op_w_process_latency", 
       "Latency of write operation (excluding queue time)");   // client write process latency
+  osd_plb.add_time_avg(l_osd_op_w_prepare_lat, "op_w_prepare_latency",
+      "Latency of write operations (excluding queue time and wait for finished)"); // client write prepare latency
   osd_plb.add_u64_counter(l_osd_op_rw,     "op_rw", 
       "Client read-modify-write operations");       // client rmw
   osd_plb.add_u64_counter(l_osd_op_rw_inb, "op_rw_in_bytes", 
@@ -2208,6 +2214,8 @@ void OSD::create_logger()
       "Latency of read-modify-write operation (including queue time)");   // client rmw latency
   osd_plb.add_time_avg(l_osd_op_rw_process_lat, "op_rw_process_latency", 
       "Latency of read-modify-write operation (excluding queue time)");   // client rmw process latency
+  osd_plb.add_time_avg(l_osd_op_rw_prepare_lat, "op_rw_prepare_latency", 
+      "Latency of read-modify-write operations (excluding queue time and wait for finished)"); // client rmw prepare latency
 
   osd_plb.add_u64_counter(l_osd_sop,       "subop", "Suboperations");         // subops
   osd_plb.add_u64_counter(l_osd_sop_inb,   "subop_in_bytes", "Suboperations total size");     // subop in bytes
@@ -2234,6 +2242,10 @@ void OSD::create_logger()
 
   osd_plb.add_u64(l_osd_loadavg, "loadavg", "CPU load");
   osd_plb.add_u64(l_osd_buf, "buffer_bytes", "Total allocated buffer size");       // total ceph::buffer bytes
+  osd_plb.add_u64(l_osd_history_alloc_bytes, "history_alloc_Mbytes");       // total ceph::buffer bytes in history
+  osd_plb.add_u64(l_osd_history_alloc_num, "history_alloc_num");       // total ceph::buffer num in history
+  osd_plb.add_u64(l_osd_cached_crc, "cached_crc", "Total number getting crc from crc_cache"); // total ceph::buffer buffer_cached_crc_adjusted
+  osd_plb.add_u64(l_osd_cached_crc_adjusted, "cached_crc_adjusted", "Total number getting crc from crc_cache with adjusting"); // total ceph::buffer buffer_cached_crc_adjusted
 
   osd_plb.add_u64(l_osd_pg, "numpg", "Placement groups");   // num pgs
   osd_plb.add_u64(l_osd_pg_primary, "numpg_primary", "Placement groups for which this osd is primary"); // num primary pgs
@@ -3950,6 +3962,10 @@ void OSD::tick()
   dout(5) << "tick" << dendl;
 
   logger->set(l_osd_buf, buffer::get_total_alloc());
+  logger->set(l_osd_history_alloc_bytes, SHIFT_ROUND_UP(buffer::get_history_alloc_bytes(), 20));
+  logger->set(l_osd_history_alloc_num, buffer::get_history_alloc_num());
+  logger->set(l_osd_cached_crc, buffer::get_cached_crc());
+  logger->set(l_osd_cached_crc_adjusted, buffer::get_cached_crc_adjusted());
 
   if (is_active() || is_waiting_for_healthy()) {
     map_lock.get_read();
@@ -5933,6 +5949,10 @@ void OSD::_dispatch(Message *m)
   dout(20) << "_dispatch " << m << " " << *m << dendl;
 
   logger->set(l_osd_buf, buffer::get_total_alloc());
+  logger->set(l_osd_history_alloc_bytes, SHIFT_ROUND_UP(buffer::get_history_alloc_bytes(), 20));
+  logger->set(l_osd_history_alloc_num, buffer::get_history_alloc_num());
+  logger->set(l_osd_cached_crc, buffer::get_cached_crc());
+  logger->set(l_osd_cached_crc_adjusted, buffer::get_cached_crc_adjusted());
 
   switch (m->get_type()) {
 
@@ -5985,6 +6005,8 @@ void OSD::_dispatch(Message *m)
   }
 
   logger->set(l_osd_buf, buffer::get_total_alloc());
+  logger->set(l_osd_history_alloc_bytes, SHIFT_ROUND_UP(buffer::get_history_alloc_bytes(), 20));
+  logger->set(l_osd_history_alloc_num, buffer::get_history_alloc_num());
 
 }
 
@@ -6051,19 +6073,25 @@ bool OSD::scrub_random_backoff()
   return false;
 }
 
-OSDService::ScrubJob::ScrubJob(const spg_t& pg, const utime_t& timestamp, bool must)
+OSDService::ScrubJob::ScrubJob(const spg_t& pg, const utime_t& timestamp,
+			       double pool_scrub_min_interval,
+			       double pool_scrub_max_interval, bool must)
   : pgid(pg),
     sched_time(timestamp),
     deadline(timestamp)
 {
   // if not explicitly requested, postpone the scrub with a random delay
   if (!must) {
-    sched_time += g_conf->osd_scrub_min_interval;
-    if (g_conf->osd_scrub_interval_randomize_ratio > 0) {
-      sched_time += rand() % (int)(g_conf->osd_scrub_min_interval *
-				   g_conf->osd_scrub_interval_randomize_ratio);
-    }
-    deadline += g_conf->osd_scrub_max_interval;
+    double scrub_min_interval = pool_scrub_min_interval > 0 ?
+      pool_scrub_min_interval : g_conf->osd_scrub_min_interval;
+    double scrub_max_interval = pool_scrub_max_interval > 0 ?
+      pool_scrub_max_interval : g_conf->osd_scrub_max_interval;
+
+    sched_time += scrub_min_interval;
+    double r = rand() / RAND_MAX;
+    sched_time +=
+      scrub_min_interval * g_conf->osd_scrub_interval_randomize_ratio * r;
+    deadline += scrub_max_interval;
   }
 }
 
@@ -6154,7 +6182,7 @@ void OSD::sched_scrub()
 
       if (scrub.sched_time > now) {
 	// save ourselves some effort
-	dout(10) << "sched_scrub " << scrub.pgid << " schedued at " << scrub.sched_time
+	dout(10) << "sched_scrub " << scrub.pgid << " scheduled at " << scrub.sched_time
 		 << " > " << now << dendl;
 	break;
       }
@@ -6488,6 +6516,7 @@ void OSD::handle_osd_map(MOSDMap *m)
 
   bool do_shutdown = false;
   bool do_restart = false;
+  bool network_error = false;
   if (osdmap->get_epoch() > 0 &&
       is_active()) {
     if (!osdmap->exists(whoami)) {
@@ -6539,16 +6568,22 @@ void OSD::handle_osd_map(MOSDMap *m)
 	avoid_ports.insert(hb_front_server_messenger->get_myaddr().get_port());
 
 	int r = cluster_messenger->rebind(avoid_ports);
-	if (r != 0)
+	if (r != 0) {
 	  do_shutdown = true;  // FIXME: do_restart?
+          network_error = true;
+        }
 
 	r = hb_back_server_messenger->rebind(avoid_ports);
-	if (r != 0)
+	if (r != 0) {
 	  do_shutdown = true;  // FIXME: do_restart?
+          network_error = true;
+        }
 
 	r = hb_front_server_messenger->rebind(avoid_ports);
-	if (r != 0)
+	if (r != 0) {
 	  do_shutdown = true;  // FIXME: do_restart?
+          network_error = true;
+        }
 
 	hbclient_messenger->mark_down_all();
 
@@ -6598,6 +6633,14 @@ void OSD::handle_osd_map(MOSDMap *m)
   else if (do_shutdown) {
     osd_lock.Unlock();
     shutdown();
+    if (network_error) {
+      map<int,pair<utime_t,entity_inst_t>>::iterator it = failure_pending.begin();
+      while (it != failure_pending.end()) {
+        dout(10) << "handle_osd_ping canceling in-flight failure report for osd." << it->first << dendl;
+        send_still_alive(osdmap->get_epoch(), it->second.second);
+        failure_pending.erase(it++);
+      }
+    }
     osd_lock.Lock();
   }
   else if (is_preboot()) {
@@ -6608,7 +6651,6 @@ void OSD::handle_osd_map(MOSDMap *m)
   }
   else if (do_restart)
     start_boot();
-
 
   m->put();
 }

@@ -46,6 +46,7 @@ void AsyncOperation::start_op(ImageCtx &image_ctx) {
 
 void AsyncOperation::finish_op() {
   ldout(m_image_ctx->cct, 20) << this << " " << __func__ << dendl;
+
   {
     Mutex::Locker l(m_image_ctx->async_ops_lock);
     xlist<AsyncOperation *>::iterator iter(&m_xlist_item);
@@ -63,9 +64,11 @@ void AsyncOperation::finish_op() {
     }
   }
 
-  C_CompleteFlushes *ctx = new C_CompleteFlushes(m_image_ctx,
-                                                 std::move(m_flush_contexts));
-  m_image_ctx->op_work_queue->queue(ctx);
+  if (!m_flush_contexts.empty()) {
+    C_CompleteFlushes *ctx = new C_CompleteFlushes(m_image_ctx,
+                                                   std::move(m_flush_contexts));
+    m_image_ctx->op_work_queue->queue(ctx);
+  }
 }
 
 void AsyncOperation::add_flush_context(Context *on_finish) {

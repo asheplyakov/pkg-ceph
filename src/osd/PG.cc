@@ -222,7 +222,8 @@ PG::PG(OSDService *o, OSDMapRef curmap,
   peer_features(CEPH_FEATURES_SUPPORTED_DEFAULT),
   acting_features(CEPH_FEATURES_SUPPORTED_DEFAULT),
   upacting_features(CEPH_FEATURES_SUPPORTED_DEFAULT),
-  do_sort_bitwise(false)
+  do_sort_bitwise(false),
+  last_epoch(0)
 {
 #ifdef PG_DEBUG_REFS
   osd->add_pgid(p, this);
@@ -292,7 +293,8 @@ void PG::proc_master_log(
   if (oinfo.last_epoch_started > info.last_epoch_started)
     info.last_epoch_started = oinfo.last_epoch_started;
   info.history.merge(oinfo.history);
-  assert(info.last_epoch_started >= info.history.last_epoch_started);
+  assert(cct->_conf->osd_find_best_info_ignore_history_les ||
+	 info.last_epoch_started >= info.history.last_epoch_started);
 
   peer_missing[from].swap(omissing);
 }
@@ -2078,26 +2080,33 @@ void PG::mark_clean()
 unsigned PG::get_recovery_priority()
 {
   // a higher value -> a higher priority
-  return OSD_RECOVERY_PRIORITY_MAX;
+
+  int pool_recovery_priority = 0;
+  pool.info.opts.get(pool_opts_t::RECOVERY_PRIORITY, &pool_recovery_priority);
+
+  unsigned ret = OSD_RECOVERY_PRIORITY_BASE + pool_recovery_priority;
+  if (ret > OSD_RECOVERY_PRIORITY_MAX)
+    ret = OSD_RECOVERY_PRIORITY_MAX;
+  return ret;
 }
 
 unsigned PG::get_backfill_priority()
 {
   // a higher value -> a higher priority
 
-  // undersized: 200 + num missing replicas
+  unsigned ret = OSD_BACKFILL_PRIORITY_BASE;
   if (is_undersized()) {
+    // undersized: OSD_BACKFILL_DEGRADED_PRIORITY_BASE + num missing replicas
     assert(pool.info.size > actingset.size());
-    return 200 + (pool.info.size - actingset.size());
-  }
+    ret = OSD_BACKFILL_DEGRADED_PRIORITY_BASE + (pool.info.size - actingset.size());
 
-  // degraded: baseline degraded
-  if (is_degraded()) {
-    return 200;
+  } else if (is_degraded()) {
+    // degraded: baseline degraded
+    ret = OSD_BACKFILL_DEGRADED_PRIORITY_BASE;
   }
+  assert (ret < OSD_RECOVERY_PRIORITY_MAX);
 
-  // baseline
-  return 1;
+  return ret;
 }
 
 void PG::finish_recovery(list<Context*>& tfin)
@@ -2441,6 +2450,19 @@ void PG::_update_calc_stats()
       pg_log.get_missing().num_missing();
     degraded += pg_log.get_missing().num_missing();
 
+    // num_objects_missing on each peer
+    for (map<pg_shard_t, pg_info_t>::iterator pi =
+        peer_info.begin();
+        pi != peer_info.end();
+        ++pi) {
+      map<pg_shard_t, pg_missing_t>::const_iterator pm =
+        peer_missing.find(pi->first);
+      if (pm != peer_missing.end()) {
+        pi->second.stats.stats.sum.num_objects_missing =
+          pm->second.num_missing();
+      }
+    }
+
     assert(!acting.empty());
     for (set<pg_shard_t>::iterator i = actingset.begin();
 	 i != actingset.end();
@@ -2703,11 +2725,13 @@ int PG::_prepare_write_info(map<string,bufferlist> *km,
 			    pg_info_t &info, coll_t coll,
 			    map<epoch_t,pg_interval_t> &past_intervals,
 			    ghobject_t &pgmeta_oid,
-			    bool dirty_big_info)
+			    bool dirty_big_info,
+			    bool dirty_epoch)
 {
   // info.  store purged_snaps separately.
   interval_set<snapid_t> purged_snaps;
-  ::encode(epoch, (*km)[epoch_key]);
+  if (dirty_epoch)
+    ::encode(epoch, (*km)[epoch_key]);
   purged_snaps.swap(info.purged_snaps);
   ::encode(info, (*km)[info_key]);
   purged_snaps.swap(info.purged_snaps);
@@ -2757,10 +2781,13 @@ void PG::prepare_write_info(map<string,bufferlist> *km)
   info.stats.stats.add(unstable_stats);
   unstable_stats.clear();
 
+  bool need_update_epoch = last_epoch < get_osdmap()->get_epoch();
   int ret = _prepare_write_info(km, get_osdmap()->get_epoch(), info, coll,
 				past_intervals, pgmeta_oid,
-				dirty_big_info);
+				dirty_big_info, need_update_epoch);
   assert(ret == 0);
+  if (need_update_epoch)
+    last_epoch = get_osdmap()->get_epoch();
   last_persisted_osdmap_ref = osdmap_ref;
 
   dirty_info = false;
@@ -2871,7 +2898,7 @@ void PG::write_if_dirty(ObjectStore::Transaction& t)
   map<string,bufferlist> km;
   if (dirty_big_info || dirty_info)
     prepare_write_info(&km);
-  pg_log.write_log(t, &km, coll, pgmeta_oid);
+  pg_log.write_log(t, &km, coll, pgmeta_oid, pool.info.require_rollback());
   if (!km.empty())
     t.omap_setkeys(coll, pgmeta_oid, km);
 }
@@ -3245,8 +3272,13 @@ bool PG::sched_scrub()
     return false;
   }
 
-  bool time_for_deep = (ceph_clock_now(cct) >=
-    info.history.last_deep_scrub_stamp + cct->_conf->osd_deep_scrub_interval);
+  double deep_scrub_interval = 0;
+  pool.info.opts.get(pool_opts_t::DEEP_SCRUB_INTERVAL, &deep_scrub_interval);
+  if (deep_scrub_interval <= 0) {
+    deep_scrub_interval = cct->_conf->osd_deep_scrub_interval;
+  }
+  bool time_for_deep = ceph_clock_now(cct) >=
+    info.history.last_deep_scrub_stamp + deep_scrub_interval;
 
   bool deep_coin_flip = false;
   // Only add random deep scrubs when NOT user initiated scrub
@@ -3334,8 +3366,13 @@ void PG::reg_next_scrub()
   }
   // note down the sched_time, so we can locate this scrub, and remove it
   // later on.
+  double scrub_min_interval = 0, scrub_max_interval = 0;
+  pool.info.opts.get(pool_opts_t::SCRUB_MIN_INTERVAL, &scrub_min_interval);
+  pool.info.opts.get(pool_opts_t::SCRUB_MAX_INTERVAL, &scrub_max_interval);
   scrubber.scrub_reg_stamp = osd->reg_pg_scrub(info.pgid,
 					       reg_stamp,
+					       scrub_min_interval,
+					       scrub_max_interval,
 					       scrubber.must_scrub);
 }
 
@@ -3762,7 +3799,6 @@ void PG::replica_scrub(
   if (last_update_applied < msg->scrub_to) {
     dout(10) << "waiting for last_update_applied to catch up" << dendl;
     scrubber.active_rep_scrub = op;
-    msg->get();
     return;
   }
 
@@ -6513,11 +6549,11 @@ boost::statechart::result PG::RecoveryState::Active::react(const ActMap&)
   if (unfound > 0 &&
       pg->all_unfound_are_queried_or_lost(pg->get_osdmap())) {
     if (pg->cct->_conf->osd_auto_mark_unfound_lost) {
-      pg->osd->clog->error() << pg->info.pgid << " has " << unfound
+      pg->osd->clog->error() << pg->info.pgid.pgid << " has " << unfound
 			    << " objects unfound and apparently lost, would automatically marking lost but NOT IMPLEMENTED\n";
       //pg->mark_all_unfound_lost(*context< RecoveryMachine >().get_cur_transaction());
     } else
-      pg->osd->clog->error() << pg->info.pgid << " has " << unfound << " objects unfound and apparently lost\n";
+      pg->osd->clog->error() << pg->info.pgid.pgid << " has " << unfound << " objects unfound and apparently lost\n";
   }
 
   if (!pg->snap_trimq.empty() &&
@@ -6637,6 +6673,12 @@ boost::statechart::result PG::RecoveryState::Active::react(const QueryState& q)
     q.f->open_object_section("scrub");
     q.f->dump_stream("scrubber.epoch_start") << pg->scrubber.epoch_start;
     q.f->dump_int("scrubber.active", pg->scrubber.active);
+    q.f->dump_string("scrubber.state", Scrubber::state_string(pg->scrubber.state));
+    q.f->dump_stream("scrubber.start") << pg->scrubber.start;
+    q.f->dump_stream("scrubber.end") << pg->scrubber.end;
+    q.f->dump_stream("scrubber.subset_last_update") << pg->scrubber.subset_last_update;
+    q.f->dump_bool("scrubber.deep", pg->scrubber.deep);
+    q.f->dump_int("scrubber.seed", pg->scrubber.seed);
     q.f->dump_int("scrubber.waiting_on", pg->scrubber.waiting_on);
     {
       q.f->open_array_section("scrubber.waiting_on_whom");

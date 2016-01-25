@@ -59,6 +59,12 @@
 /* Define to 1 if you have the <dlfcn.h> header file. */
 #undef HAVE_DLFCN_H
 
+/* Have eventfd extension. */
+#undef HAVE_EVENTFD
+
+/* Define to 1 if you have the <execinfo.h> header file. */
+#undef HAVE_EXECINFO_H
+
 /* Define to 1 if you have fdatasync. */
 #undef HAVE_FDATASYNC
 
@@ -232,6 +238,9 @@
 /* Define if you have pthread_spin_init */
 #undef HAVE_PTHREAD_SPINLOCK
 
+/* Define if you have res_nquery */
+#undef HAVE_RES_NQUERY
+
 /* Define to 1 if you have sched.h. */
 #undef HAVE_SCHED
 
@@ -292,6 +301,9 @@
 /* Define to 1 if you have the <sys/dir.h> header file, and it defines `DIR'.
    */
 #undef HAVE_SYS_DIR_H
+
+/* Define to 1 if you have the <sys/eventfd.h> header file. */
+#undef HAVE_SYS_EVENTFD_H
 
 /* Define to 1 if you have the <sys/file.h> header file. */
 #undef HAVE_SYS_FILE_H

@@ -674,6 +674,7 @@ template<typename T, int MSGTYPE>
 void ReplicatedBackend::sub_op_modify_reply(OpRequestRef op)
 {
   T *r = static_cast<T *>(op->get_req());
+  r->finish_decode();
   assert(r->get_header().type == MSGTYPE);
   assert(MSGTYPE == MSG_OSD_SUBOPREPLY || MSGTYPE == MSG_OSD_REPOPREPLY);
 
@@ -817,8 +818,9 @@ void ReplicatedBackend::be_deep_scrub(
     }
     ++keys_scanned;
 
-    dout(25) << "CRC key " << iter->key() << " value "
-	     << string(iter->value().c_str(), iter->value().length()) << dendl;
+    dout(25) << "CRC key " << iter->key() << " value:\n";
+    iter->value().hexdump(*_dout);
+    *_dout << dendl;
 
     ::encode(iter->key(), bl);
     ::encode(iter->value(), bl);
@@ -1127,6 +1129,7 @@ template<typename T, int MSGTYPE>
 void ReplicatedBackend::sub_op_modify_impl(OpRequestRef op)
 {
   T *m = static_cast<T *>(op->get_req());
+  m->finish_decode();
   int msg_type = m->get_type();
   assert(MSGTYPE == msg_type);
   assert(msg_type == MSG_OSD_SUBOP || msg_type == MSG_OSD_REPOP);
@@ -1200,8 +1203,6 @@ void ReplicatedBackend::sub_op_modify_impl(OpRequestRef op)
     &(rm->localt));
 
   rm->bytes_written = rm->opt.get_encoded_bytes();
-
-  op->mark_started();
 
   rm->opt.register_on_commit(
     parent->bless_context(

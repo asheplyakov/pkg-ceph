@@ -68,7 +68,10 @@ libcommon_internal_la_SOURCES = \
 	common/Readahead.cc \
 	common/Cycles.cc \
 	common/ContextCompletion.cc \
-	common/TracepointProvider.cc
+	common/TracepointProvider.cc \
+	common/PluginRegistry.cc
+
+common/PluginRegistry.cc: ./ceph_ver.h
 
 if ENABLE_SERVER
 libcommon_internal_la_SOURCES += \
@@ -89,11 +92,15 @@ libcommon_internal_la_SOURCES += \
         common/solaris_errno.cc
 endif
 
-if WITH_RBD
+if AIX
+libcommon_internal_la_SOURCES += \
+        common/aix_errno.cc
+endif
+
+# used by RBD and FileStore
 if LINUX
 libcommon_internal_la_SOURCES += \
 	common/blkdev.cc
-endif
 endif
 
 if ENABLE_XIO
@@ -254,7 +261,9 @@ noinst_HEADERS += \
 	common/bit_vector.hpp \
 	common/SubProcess.h \
 	common/valgrind.h \
-	common/TracepointProvider.h
+	common/TracepointProvider.h \
+	common/event_socket.h \
+	common/PluginRegistry.h
 
 if ENABLE_XIO
 noinst_HEADERS += \

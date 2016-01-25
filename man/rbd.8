@@ -1,6 +1,6 @@
 .\" Man page generated from reStructuredText.
 .
-.TH "RBD" "8" "December 14, 2015" "dev" "Ceph"
+.TH "RBD" "8" "January 13, 2016" "dev" "Ceph"
 .SH NAME
 rbd \- manage rados block device (RBD) images
 .
@@ -33,7 +33,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .SH SYNOPSIS
 .nf
 \fBrbd\fP [ \-c \fIceph.conf\fP ] [ \-m \fImonaddr\fP ] [\-\-cluster \fIcluster name\fP]
-[ \-p | \-\-pool \fIpool\fP ] [\-\-size \fIsize\fP ] [ \-\-order \fIbits\fP ] [ \fIcommand\fP ... ]
+[ \-p | \-\-pool \fIpool\fP ] [\-\-size \fIsize\fP ] [ \-\-object\-size \fIB/K/M\fP ] [ \fIcommand\fP ... ]
 .fi
 .sp
 .SH DESCRIPTION
@@ -95,9 +95,9 @@ Specifies the size (in M/G/T) of the new rbd image.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-\-order bits
-Specifies the object size expressed as a number of bits, such that
-the object size is \fB1 << order\fP\&. The default is 22 (4 MB).
+.B \-\-object\-size B/K/M
+Specifies the object size in B/K/M, it will be rounded up the nearest power of two.
+The default object size is 4 MB, smallest is 4K and maximum is 32M.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -222,17 +222,17 @@ If the RBD fast\-diff feature isn\(aqt enabled on images, this operation will
 require querying the OSDs for every potential object within the image.
 .TP
 .B \fBinfo\fP \fIimage\-spec\fP | \fIsnap\-spec\fP
-Will dump information (such as size and order) about a specific rbd image.
+Will dump information (such as size and object size) about a specific rbd image.
 If image is a clone, information about its parent is also displayed.
 If a snapshot is specified, whether it is protected is shown as well.
 .TP
-.B \fBcreate\fP (\-s | \-\-size \fIsize\-in\-M/G/T\fP) [\-\-image\-format \fIformat\-id\fP] [\-\-order \fIbits\fP] [\-\-stripe\-unit \fIsize\-in\-B/K/M\fP \-\-stripe\-count \fInum\fP] [\-\-image\-feature \fIfeature\-name\fP]... [\-\-image\-shared] \fIimage\-spec\fP
+.B \fBcreate\fP (\-s | \-\-size \fIsize\-in\-M/G/T\fP) [\-\-image\-format \fIformat\-id\fP] [\-\-object\-size \fIB/K/M\fP] [\-\-stripe\-unit \fIsize\-in\-B/K/M\fP \-\-stripe\-count \fInum\fP] [\-\-image\-feature \fIfeature\-name\fP]... [\-\-image\-shared] \fIimage\-spec\fP
 Will create a new rbd image. You must also specify the size via \-\-size.  The
 \-\-stripe\-unit and \-\-stripe\-count arguments are optional, but must be used together.
 .TP
-.B \fBclone\fP [\-\-order \fIbits\fP] [\-\-stripe\-unit \fIsize\-in\-B/K/M\fP \-\-stripe\-count \fInum\fP] [\-\-image\-feature \fIfeature\-name\fP] [\-\-image\-shared] \fIparent\-snap\-spec\fP \fIchild\-image\-spec\fP
+.B \fBclone\fP [\-\-object\-size \fIB/K/M\fP] [\-\-stripe\-unit \fIsize\-in\-B/K/M\fP \-\-stripe\-count \fInum\fP] [\-\-image\-feature \fIfeature\-name\fP] [\-\-image\-shared] \fIparent\-snap\-spec\fP \fIchild\-image\-spec\fP
 Will create a clone (copy\-on\-write child) of the parent snapshot.
-Object order will be identical to that of the parent image unless
+Object size will be identical to that of the parent image unless
 specified. Size will be the same as the parent snapshot. The \-\-stripe\-unit
 and \-\-stripe\-count arguments are optional, but must be used together.
 .sp
@@ -264,11 +264,11 @@ snapshots, this fails and nothing is deleted.
 .B \fBexport\fP (\fIimage\-spec\fP | \fIsnap\-spec\fP) [\fIdest\-path\fP]
 Exports image to dest path (use \- for stdout).
 .TP
-.B \fBimport\fP [\-\-image\-format \fIformat\-id\fP] [\-\-order \fIbits\fP] [\-\-stripe\-unit \fIsize\-in\-B/K/M\fP \-\-stripe\-count \fInum\fP] [\-\-image\-feature \fIfeature\-name\fP]... [\-\-image\-shared] \fIsrc\-path\fP [\fIimage\-spec\fP]
+.B \fBimport\fP [\-\-image\-format \fIformat\-id\fP] [\-\-object\-size \fIB/K/M\fP] [\-\-stripe\-unit \fIsize\-in\-B/K/M\fP \-\-stripe\-count \fInum\fP] [\-\-image\-feature \fIfeature\-name\fP]... [\-\-image\-shared] \fIsrc\-path\fP [\fIimage\-spec\fP]
 Creates a new image and imports its data from path (use \- for
 stdin).  The import operation will try to create sparse rbd images
 if possible.  For import from stdin, the sparsification unit is
-the data block size of the destination image (1 << order).
+the data block size of the destination image (object size).
 .sp
 The \-\-stripe\-unit and \-\-stripe\-count arguments are optional, but must be
 used together.
@@ -303,7 +303,7 @@ whether the region is known to be zeros or may contain other data.
 .TP
 .B \fBcp\fP (\fIsrc\-image\-spec\fP | \fIsrc\-snap\-spec\fP) \fIdest\-image\-spec\fP
 Copies the content of a src\-image into the newly created dest\-image.
-dest\-image will have the same size, order, and image format as src\-image.
+dest\-image will have the same size, object size, and image format as src\-image.
 .TP
 .B \fBmv\fP \fIsrc\-image\-spec\fP \fIdest\-image\-spec\fP
 Renames an image.  Note: rename across pools is not supported.
@@ -366,6 +366,15 @@ Unmaps the block device that was mapped via the rbd kernel module.
 .B \fBshowmapped\fP
 Show the rbd images that are mapped via the rbd kernel module.
 .TP
+.B \fBnbd map\fP [\-\-device \fIdevice\-path\fP] [\-\-read\-only] \fIimage\-spec\fP | \fIsnap\-spec\fP
+Maps the specified image to a block device via the rbd\-nbd tool.
+.TP
+.B \fBnbd unmap\fP \fIdevice\-path\fP
+Unmaps the block device that was mapped via the rbd\-nbd tool.
+.TP
+.B \fBnbd list\fP
+Show the list of used nbd devices via the rbd\-nbd tool.
+.TP
 .B \fBstatus\fP \fIimage\-spec\fP
 Show the status of the image, including which clients have it open.
 .TP
@@ -421,9 +430,9 @@ bottleneck when individual images get large or busy.
 The striping is controlled by three parameters:
 .INDENT 0.0
 .TP
-.B order
-The size of objects we stripe over is a power of two, specifically 2^[\fIorder\fP] bytes.  The default
-is 22, or 4 MB.
+.B object\-size
+The size of objects we stripe over is a power of two. It will be rounded up the nearest power of two.
+The default object size is 4 MB, smallest is 4K and maximum is 32M.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -435,8 +444,8 @@ to the next object.
 .TP
 .B stripe_count
 After we write [\fIstripe_unit\fP] bytes to [\fIstripe_count\fP] objects, we loop back to the initial object
-and write another stripe, until the object reaches its maximum size (as specified by [\fIorder\fP].  At that
-point, we move on to the next [\fIstripe_count\fP] objects.
+and write another stripe, until the object reaches its maximum size.  At that point,
+we move on to the next [\fIstripe_count\fP] objects.
 .UNINDENT
 .sp
 By default, [\fIstripe_unit\fP] is the same as the object size and [\fIstripe_count\fP] is 1.  Specifying a different
@@ -518,7 +527,7 @@ To use a non\-default object size (8 MB):
 .sp
 .nf
 .ft C
-rbd create mypool/myimage \-\-size 102400 \-\-order 23
+rbd create mypool/myimage \-\-size 102400 \-\-object\-size 8M
 .ft P
 .fi
 .UNINDENT
