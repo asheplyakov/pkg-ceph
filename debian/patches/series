@@ -4,7 +4,6 @@ sleep-recover.patch
 ## Debian
 #rbdmap3-lazyumount.patch
 arch.patch
-modules.patch
 sample.ceph.conf.patch
 # Disabled until adopted upstream
 # use_system_jerasure.patch
@@ -17,6 +16,3 @@ tests-disable.patch
 ceph-osd-prestart-path.patch
 fix-argparse-defaults.patch
 fix-cycles-arch.patch
-#vivid-does-systemd.patch
-flock-location-debian.patch
-ceph-detect-init-ubuntu.patch
