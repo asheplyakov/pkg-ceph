@@ -1,4 +1,4 @@
-ceph (9.2.0-1) UNRELEASED; urgency=medium
+ceph (10.0.2-1) UNRELEASED; urgency=medium
 
   * [754935] Imported Upstream version 9.2.0
     - [df85c3] Resync relevant packaging changes with upstream.
@@ -13,6 +13,9 @@ ceph (9.2.0-1) UNRELEASED; urgency=medium
   * [4c45629] Update NEWS file for infernalis changes.
   * [940491e] Limit number of parallel builds to 2 to reduce memory footprint
               on builders.
+  * [398a4cb] Imported Upstream version 10.0.1
+  * [6f322e5] Imported Upstream version 10.0.2
+  * [438f348] Sync upstream changes around rbdmap install and conf files.
 
  -- James Page <james.page@ubuntu.com>  Mon, 09 Nov 2015 12:38:52 +0000
 
