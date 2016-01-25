@@ -153,14 +153,13 @@ class PlainTableFactory : public TableFactory {
         full_scan_mode_(options.full_scan_mode),
         store_index_in_file_(options.store_index_in_file) {}
   const char* Name() const override { return "PlainTable"; }
-  Status NewTableReader(
-      const ImmutableCFOptions& options, const EnvOptions& soptions,
-      const InternalKeyComparator& internal_comparator,
-      unique_ptr<RandomAccessFile>&& file, uint64_t file_size,
-      unique_ptr<TableReader>* table) const override;
+  Status NewTableReader(const TableReaderOptions& table_reader_options,
+                        unique_ptr<RandomAccessFileReader>&& file,
+                        uint64_t file_size,
+                        unique_ptr<TableReader>* table) const override;
   TableBuilder* NewTableBuilder(
       const TableBuilderOptions& table_builder_options,
-      WritableFile* file) const override;
+      WritableFileWriter* file) const override;
 
   std::string GetPrintableTableOptions() const override;
 
@@ -169,10 +168,6 @@ class PlainTableFactory : public TableFactory {
   // Sanitizes the specified DB Options.
   Status SanitizeOptions(const DBOptions& db_opts,
                          const ColumnFamilyOptions& cf_opts) const override {
-    if (db_opts.allow_mmap_reads == false) {
-      return Status::NotSupported(
-          "PlainTable with allow_mmap_reads == false is not supported.");
-    }
     return Status::OK();
   }
 

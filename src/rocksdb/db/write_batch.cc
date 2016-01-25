@@ -13,39 +13,58 @@
 //    data: record[count]
 // record :=
 //    kTypeValue varstring varstring
-//    kTypeMerge varstring varstring
 //    kTypeDeletion varstring
+//    kTypeSingleDeletion varstring
+//    kTypeMerge varstring varstring
 //    kTypeColumnFamilyValue varint32 varstring varstring
-//    kTypeColumnFamilyMerge varint32 varstring varstring
 //    kTypeColumnFamilyDeletion varint32 varstring varstring
+//    kTypeColumnFamilySingleDeletion varint32 varstring varstring
+//    kTypeColumnFamilyMerge varint32 varstring varstring
 // varstring :=
 //    len: varint32
 //    data: uint8[len]
 
 #include "rocksdb/write_batch.h"
-#include "rocksdb/merge_operator.h"
-#include "db/dbformat.h"
-#include "db/db_impl.h"
-#include "db/column_family.h"
-#include "db/memtable.h"
-#include "db/snapshot.h"
-#include "db/write_batch_internal.h"
-#include "util/coding.h"
-#include "util/statistics.h"
+
+#include <stack>
 #include <stdexcept>
+
+#include "db/column_family.h"
+#include "db/db_impl.h"
+#include "db/dbformat.h"
+#include "db/memtable.h"
+#include "db/snapshot_impl.h"
+#include "db/write_batch_internal.h"
+#include "rocksdb/merge_operator.h"
+#include "util/coding.h"
 #include "util/perf_context_imp.h"
+#include "util/statistics.h"
 
 namespace rocksdb {
 
 // WriteBatch header has an 8-byte sequence number followed by a 4-byte count.
 static const size_t kHeader = 12;
 
-WriteBatch::WriteBatch(size_t reserved_bytes) {
+struct SavePoint {
+  size_t size;  // size of rep_
+  int count;    // count of elements in rep_
+  SavePoint(size_t s, int c) : size(s), count(c) {}
+};
+
+struct SavePoints {
+  std::stack<SavePoint> stack;
+};
+
+WriteBatch::WriteBatch(size_t reserved_bytes) : save_points_(nullptr) {
   rep_.reserve((reserved_bytes > kHeader) ? reserved_bytes : kHeader);
   Clear();
 }
 
-WriteBatch::~WriteBatch() { }
+WriteBatch::~WriteBatch() {
+  if (save_points_ != nullptr) {
+    delete save_points_;
+  }
+}
 
 WriteBatch::Handler::~Handler() { }
 
@@ -61,6 +80,12 @@ bool WriteBatch::Handler::Continue() {
 void WriteBatch::Clear() {
   rep_.clear();
   rep_.resize(kHeader);
+
+  if (save_points_ != nullptr) {
+    while (!save_points_->stack.empty()) {
+      save_points_->stack.pop();
+    }
+  }
 }
 
 int WriteBatch::Count() const {
@@ -87,11 +112,13 @@ Status ReadRecordFromWriteBatch(Slice* input, char* tag,
       }
       break;
     case kTypeColumnFamilyDeletion:
+    case kTypeColumnFamilySingleDeletion:
       if (!GetVarint32(input, column_family)) {
         return Status::Corruption("bad WriteBatch Delete");
       }
     // intentional fallthrough
     case kTypeDeletion:
+    case kTypeSingleDeletion:
       if (!GetLengthPrefixedSlice(input, key)) {
         return Status::Corruption("bad WriteBatch Delete");
       }
@@ -150,6 +177,11 @@ Status WriteBatch::Iterate(Handler* handler) const {
         s = handler->DeleteCF(column_family, key);
         found++;
         break;
+      case kTypeColumnFamilySingleDeletion:
+      case kTypeSingleDeletion:
+        s = handler->SingleDeleteCF(column_family, key);
+        found++;
+        break;
       case kTypeColumnFamilyMerge:
       case kTypeMerge:
         s = handler->MergeCF(column_family, key, value);
@@ -187,6 +219,8 @@ SequenceNumber WriteBatchInternal::Sequence(const WriteBatch* b) {
 void WriteBatchInternal::SetSequence(WriteBatch* b, SequenceNumber seq) {
   EncodeFixed64(&b->rep_[0], seq);
 }
+
+size_t WriteBatchInternal::GetFirstOffset(WriteBatch* b) { return kHeader; }
 
 void WriteBatchInternal::Put(WriteBatch* b, uint32_t column_family_id,
                              const Slice& key, const Slice& value) {
@@ -257,6 +291,40 @@ void WriteBatch::Delete(ColumnFamilyHandle* column_family,
   WriteBatchInternal::Delete(this, GetColumnFamilyID(column_family), key);
 }
 
+void WriteBatchInternal::SingleDelete(WriteBatch* b, uint32_t column_family_id,
+                                      const Slice& key) {
+  WriteBatchInternal::SetCount(b, WriteBatchInternal::Count(b) + 1);
+  if (column_family_id == 0) {
+    b->rep_.push_back(static_cast<char>(kTypeSingleDeletion));
+  } else {
+    b->rep_.push_back(static_cast<char>(kTypeColumnFamilySingleDeletion));
+    PutVarint32(&b->rep_, column_family_id);
+  }
+  PutLengthPrefixedSlice(&b->rep_, key);
+}
+
+void WriteBatch::SingleDelete(ColumnFamilyHandle* column_family,
+                              const Slice& key) {
+  WriteBatchInternal::SingleDelete(this, GetColumnFamilyID(column_family), key);
+}
+
+void WriteBatchInternal::SingleDelete(WriteBatch* b, uint32_t column_family_id,
+                                      const SliceParts& key) {
+  WriteBatchInternal::SetCount(b, WriteBatchInternal::Count(b) + 1);
+  if (column_family_id == 0) {
+    b->rep_.push_back(static_cast<char>(kTypeSingleDeletion));
+  } else {
+    b->rep_.push_back(static_cast<char>(kTypeColumnFamilySingleDeletion));
+    PutVarint32(&b->rep_, column_family_id);
+  }
+  PutLengthPrefixedSliceParts(&b->rep_, key);
+}
+
+void WriteBatch::SingleDelete(ColumnFamilyHandle* column_family,
+                              const SliceParts& key) {
+  WriteBatchInternal::SingleDelete(this, GetColumnFamilyID(column_family), key);
+}
+
 void WriteBatchInternal::Merge(WriteBatch* b, uint32_t column_family_id,
                                const Slice& key, const Slice& value) {
   WriteBatchInternal::SetCount(b, WriteBatchInternal::Count(b) + 1);
@@ -275,9 +343,62 @@ void WriteBatch::Merge(ColumnFamilyHandle* column_family, const Slice& key,
   WriteBatchInternal::Merge(this, GetColumnFamilyID(column_family), key, value);
 }
 
+void WriteBatchInternal::Merge(WriteBatch* b, uint32_t column_family_id,
+                               const SliceParts& key,
+                               const SliceParts& value) {
+  WriteBatchInternal::SetCount(b, WriteBatchInternal::Count(b) + 1);
+  if (column_family_id == 0) {
+    b->rep_.push_back(static_cast<char>(kTypeMerge));
+  } else {
+    b->rep_.push_back(static_cast<char>(kTypeColumnFamilyMerge));
+    PutVarint32(&b->rep_, column_family_id);
+  }
+  PutLengthPrefixedSliceParts(&b->rep_, key);
+  PutLengthPrefixedSliceParts(&b->rep_, value);
+}
+
+void WriteBatch::Merge(ColumnFamilyHandle* column_family,
+                       const SliceParts& key,
+                       const SliceParts& value) {
+  WriteBatchInternal::Merge(this, GetColumnFamilyID(column_family),
+                            key, value);
+}
+
 void WriteBatch::PutLogData(const Slice& blob) {
   rep_.push_back(static_cast<char>(kTypeLogData));
   PutLengthPrefixedSlice(&rep_, blob);
+}
+
+void WriteBatch::SetSavePoint() {
+  if (save_points_ == nullptr) {
+    save_points_ = new SavePoints();
+  }
+  // Record length and count of current batch of writes.
+  save_points_->stack.push(SavePoint(GetDataSize(), Count()));
+}
+
+Status WriteBatch::RollbackToSavePoint() {
+  if (save_points_ == nullptr || save_points_->stack.size() == 0) {
+    return Status::NotFound();
+  }
+
+  // Pop the most recent savepoint off the stack
+  SavePoint savepoint = save_points_->stack.top();
+  save_points_->stack.pop();
+
+  assert(savepoint.size <= rep_.size());
+
+  if (savepoint.size == rep_.size()) {
+    // No changes to rollback
+  } else if (savepoint.size == 0) {
+    // Rollback everything
+    Clear();
+  } else {
+    rep_.resize(savepoint.size);
+    WriteBatchInternal::SetCount(this, savepoint.count);
+  }
+
+  return Status::OK();
 }
 
 namespace {
@@ -388,6 +509,66 @@ class MemTableInserter : public WriteBatch::Handler {
     return Status::OK();
   }
 
+  virtual Status DeleteCF(uint32_t column_family_id,
+                          const Slice& key) override {
+    Status seek_status;
+    if (!SeekToColumnFamily(column_family_id, &seek_status)) {
+      ++sequence_;
+      return seek_status;
+    }
+    MemTable* mem = cf_mems_->GetMemTable();
+    auto* moptions = mem->GetMemTableOptions();
+    if (!dont_filter_deletes_ && moptions->filter_deletes) {
+      SnapshotImpl read_from_snapshot;
+      read_from_snapshot.number_ = sequence_;
+      ReadOptions ropts;
+      ropts.snapshot = &read_from_snapshot;
+      std::string value;
+      auto cf_handle = cf_mems_->GetColumnFamilyHandle();
+      if (cf_handle == nullptr) {
+        cf_handle = db_->DefaultColumnFamily();
+      }
+      if (!db_->KeyMayExist(ropts, cf_handle, key, &value)) {
+        RecordTick(moptions->statistics, NUMBER_FILTERED_DELETES);
+        return Status::OK();
+      }
+    }
+    mem->Add(sequence_, kTypeDeletion, key, Slice());
+    sequence_++;
+    cf_mems_->CheckMemtableFull();
+    return Status::OK();
+  }
+
+  virtual Status SingleDeleteCF(uint32_t column_family_id,
+                                const Slice& key) override {
+    Status seek_status;
+    if (!SeekToColumnFamily(column_family_id, &seek_status)) {
+      ++sequence_;
+      return seek_status;
+    }
+    MemTable* mem = cf_mems_->GetMemTable();
+    auto* moptions = mem->GetMemTableOptions();
+    if (!dont_filter_deletes_ && moptions->filter_deletes) {
+      SnapshotImpl read_from_snapshot;
+      read_from_snapshot.number_ = sequence_;
+      ReadOptions ropts;
+      ropts.snapshot = &read_from_snapshot;
+      std::string value;
+      auto cf_handle = cf_mems_->GetColumnFamilyHandle();
+      if (cf_handle == nullptr) {
+        cf_handle = db_->DefaultColumnFamily();
+      }
+      if (!db_->KeyMayExist(ropts, cf_handle, key, &value)) {
+        RecordTick(moptions->statistics, NUMBER_FILTERED_DELETES);
+        return Status::OK();
+      }
+    }
+    mem->Add(sequence_, kTypeSingleDeletion, key, Slice());
+    sequence_++;
+    cf_mems_->CheckMemtableFull();
+    return Status::OK();
+  }
+
   virtual Status MergeCF(uint32_t column_family_id, const Slice& key,
                          const Slice& value) override {
     Status seek_status;
@@ -463,36 +644,6 @@ class MemTableInserter : public WriteBatch::Handler {
       mem->Add(sequence_, kTypeMerge, key, value);
     }
 
-    sequence_++;
-    cf_mems_->CheckMemtableFull();
-    return Status::OK();
-  }
-
-  virtual Status DeleteCF(uint32_t column_family_id,
-                          const Slice& key) override {
-    Status seek_status;
-    if (!SeekToColumnFamily(column_family_id, &seek_status)) {
-      ++sequence_;
-      return seek_status;
-    }
-    MemTable* mem = cf_mems_->GetMemTable();
-    auto* moptions = mem->GetMemTableOptions();
-    if (!dont_filter_deletes_ && moptions->filter_deletes) {
-      SnapshotImpl read_from_snapshot;
-      read_from_snapshot.number_ = sequence_;
-      ReadOptions ropts;
-      ropts.snapshot = &read_from_snapshot;
-      std::string value;
-      auto cf_handle = cf_mems_->GetColumnFamilyHandle();
-      if (cf_handle == nullptr) {
-        cf_handle = db_->DefaultColumnFamily();
-      }
-      if (!db_->KeyMayExist(ropts, cf_handle, key, &value)) {
-        RecordTick(moptions->statistics, NUMBER_FILTERED_DELETES);
-        return Status::OK();
-      }
-    }
-    mem->Add(sequence_, kTypeDeletion, key, Slice());
     sequence_++;
     cf_mems_->CheckMemtableFull();
     return Status::OK();

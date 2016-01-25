@@ -54,7 +54,7 @@ restorecon -R /var/log/ceph > /dev/null 2>&1;
 # common
 #################################################################################
 Name:		ceph
-Version:	9.2.0
+Version:	10.0.1
 Release:	0%{?dist}
 Epoch:		1
 Summary:	User space components of the Ceph file system
@@ -590,6 +590,11 @@ export RPM_OPT_FLAGS=`echo $RPM_OPT_FLAGS | sed -e 's/i386/i486/'`
 		%{?_with_tcmalloc} \
 		CFLAGS="$RPM_OPT_FLAGS" CXXFLAGS="$RPM_OPT_FLAGS"
 
+%if %{with lowmem_builder}
+%if 0%{?jobs} > 8
+%define _smp_mflags -j8
+%endif
+%endif
 
 make %{?_smp_mflags}
 
@@ -607,8 +612,7 @@ make %{?_smp_mflags} check-local
 make DESTDIR=$RPM_BUILD_ROOT install
 find $RPM_BUILD_ROOT -type f -name "*.la" -exec rm -f {} ';'
 find $RPM_BUILD_ROOT -type f -name "*.a" -exec rm -f {} ';'
-install -D src/rbdmap $RPM_BUILD_ROOT%{_sysconfdir}/ceph/rbdmap
-install -D src/init-rbdmap $RPM_BUILD_ROOT%{_initrddir}/rbdmap
+install -D src/etc-rbdmap $RPM_BUILD_ROOT%{_sysconfdir}/ceph/rbdmap
 %if 0%{?fedora} || 0%{?rhel}
 install -m 0644 -D etc/sysconfig/ceph $RPM_BUILD_ROOT%{_sysconfdir}/sysconfig/ceph
 %endif
@@ -617,6 +621,7 @@ install -m 0644 -D etc/sysconfig/ceph $RPM_BUILD_ROOT%{_localstatedir}/adm/fillu
 %endif
 %if 0%{?_with_systemd}
   install -m 0644 -D systemd/ceph.tmpfiles.d $RPM_BUILD_ROOT%{_tmpfilesdir}/ceph-common.conf
+  install -m 0644 -D systemd/rbdmap.service $RPM_BUILD_ROOT%{_unitdir}/rbdmap.service
   install -m 0644 -D systemd/ceph-osd@.service $RPM_BUILD_ROOT%{_unitdir}/ceph-osd@.service
   install -m 0644 -D systemd/ceph-mon@.service $RPM_BUILD_ROOT%{_unitdir}/ceph-mon@.service
   install -m 0644 -D systemd/ceph-create-keys@.service $RPM_BUILD_ROOT%{_unitdir}/ceph-create-keys@.service
@@ -626,6 +631,7 @@ install -m 0644 -D etc/sysconfig/ceph $RPM_BUILD_ROOT%{_localstatedir}/adm/fillu
   install -m 0644 -D systemd/ceph-disk@.service $RPM_BUILD_ROOT%{_unitdir}/ceph-disk@.service
   install -m 0755 -D systemd/ceph $RPM_BUILD_ROOT%{_sbindir}/rcceph
 %else
+  install -D src/init-rbdmap $RPM_BUILD_ROOT%{_initrddir}/rbdmap
   install -D src/init-ceph $RPM_BUILD_ROOT%{_initrddir}/ceph
   install -D src/init-radosgw $RPM_BUILD_ROOT%{_initrddir}/ceph-radosgw
   ln -sf ../../etc/init.d/ceph %{buildroot}/%{_sbindir}/rcceph
@@ -810,6 +816,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_libdir}/rados-classes/libcls_timeindex.so*
 %{_libdir}/rados-classes/libcls_user.so*
 %{_libdir}/rados-classes/libcls_version.so*
+%{_libdir}/rados-classes/libcls_journal.so*
 %dir %{_libdir}/ceph/erasure-code
 %{_libdir}/ceph/erasure-code/libec_*.so*
 %if 0%{?_with_lttng}
@@ -872,6 +879,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_bindir}/rbd
 %{_bindir}/rbd-replay
 %{_bindir}/rbd-replay-many
+%{_bindir}/rbdmap
 %if 0%{?_with_lttng}
 %{_bindir}/rbd-replay-prep
 %endif
@@ -901,7 +909,11 @@ rm -rf $RPM_BUILD_ROOT
 %config %{_sysconfdir}/bash_completion.d/rados
 %config %{_sysconfdir}/bash_completion.d/rbd
 %config(noreplace) %{_sysconfdir}/ceph/rbdmap
+%if 0%{?_with_systemd}
+%{_unitdir}/rbdmap.service
+%else
 %{_initrddir}/rbdmap
+%endif
 %{python_sitelib}/ceph_argparse.py*
 %{python_sitelib}/ceph_daemon.py*
 %{_udevrulesdir}/50-rbd.rules
@@ -1302,12 +1314,12 @@ exit 0
 %files libs-compat
 # We need an empty %%files list for ceph-libs-compat, to tell rpmbuild to actually
 # build this meta package.
+%endif
 
 #################################################################################
 %files devel-compat
 # We need an empty %%files list for ceph-devel-compat, to tell rpmbuild to
 # actually build this meta package.
-%endif
 
 #################################################################################
 %files -n python-ceph-compat

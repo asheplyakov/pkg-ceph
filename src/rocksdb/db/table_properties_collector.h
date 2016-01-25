@@ -32,9 +32,11 @@ class IntTblPropCollector {
                              uint64_t file_size) = 0;
 
   virtual UserCollectedProperties GetReadableProperties() const = 0;
+
+  virtual bool NeedCompact() const { return false; }
 };
 
-// Facrtory for internal table properties collector.
+// Factory for internal table properties collector.
 class IntTblPropCollectorFactory {
  public:
   virtual ~IntTblPropCollectorFactory() {}
@@ -97,6 +99,10 @@ class UserKeyTablePropertiesCollector : public IntTblPropCollector {
   virtual const char* Name() const override { return collector_->Name(); }
 
   UserCollectedProperties GetReadableProperties() const override;
+
+  virtual bool NeedCompact() const override {
+    return collector_->NeedCompact();
+  }
 
  protected:
   std::unique_ptr<TablePropertiesCollector> collector_;

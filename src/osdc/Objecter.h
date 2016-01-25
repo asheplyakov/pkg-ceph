@@ -904,10 +904,14 @@ struct ObjectOperation {
     osd_op.op.watch.op = op;
   }
 
-  void notify(uint64_t cookie, bufferlist& inbl) {
+  void notify(uint64_t cookie, uint32_t prot_ver, uint32_t timeout,
+              bufferlist &bl, bufferlist *inbl) {
     OSDOp& osd_op = add_op(CEPH_OSD_OP_NOTIFY);
     osd_op.op.notify.cookie = cookie;
-    osd_op.indata.append(inbl);
+    ::encode(prot_ver, *inbl);
+    ::encode(timeout, *inbl);
+    ::encode(bl, *inbl);
+    osd_op.indata.append(*inbl);
   }
 
   void notify_ack(uint64_t notify_id, uint64_t cookie,
@@ -1052,6 +1056,17 @@ struct ObjectOperation {
       out_rval[i] = &sops[i].rval;
     }
   }
+
+  /**
+   * Pin/unpin an object in cache tier
+   */
+  void cache_pin() {
+    add_op(CEPH_OSD_OP_CACHE_PIN);
+  }
+
+  void cache_unpin() {
+    add_op(CEPH_OSD_OP_CACHE_UNPIN);
+  }
 };
 
 
@@ -1112,6 +1127,7 @@ private:
 
   void schedule_tick();
   void tick();
+  void update_crush_location();
 
   class RequestStateHook : public AdminSocketHook {
     Objecter *m_objecter;

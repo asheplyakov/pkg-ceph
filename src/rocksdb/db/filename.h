@@ -25,7 +25,7 @@ namespace rocksdb {
 
 class Env;
 class Directory;
-class WritableFile;
+class WritableFileWriter;
 
 enum FileType {
   kLogFile,
@@ -55,6 +55,10 @@ extern std::string ArchivedLogFileName(const std::string& dbname,
 
 extern std::string MakeTableFileName(const std::string& name, uint64_t number);
 
+// Return the name of sstable with LevelDB suffix
+// created from RocksDB sstable suffixed name
+extern std::string Rocks2LevelTableFileName(const std::string& fullname);
+
 // the reverse function of MakeTableFileName
 // TODO(yhchiang): could merge this function with ParseFileName()
 extern uint64_t TableFileNameToNumber(const std::string& name);
@@ -66,7 +70,7 @@ extern std::string TableFileName(const std::vector<DbPath>& db_paths,
                                  uint64_t number, uint32_t path_id);
 
 // Sufficient buffer size for FormatFileNumber.
-extern const size_t kFormatFileNumberBufSize;
+const size_t kFormatFileNumberBufSize = 38;
 
 extern void FormatFileNumber(uint64_t number, uint32_t path_id, char* out_buf,
                              size_t out_buf_size);
@@ -102,11 +106,13 @@ struct InfoLogPrefix {
 
 // Return the name of the info log file for "dbname".
 extern std::string InfoLogFileName(const std::string& dbname,
-    const std::string& db_path="", const std::string& log_dir="");
+                                   const std::string& db_path = "",
+                                   const std::string& log_dir = "");
 
 // Return the name of the old info log file for "dbname".
 extern std::string OldInfoLogFileName(const std::string& dbname, uint64_t ts,
-    const std::string& db_path="", const std::string& log_dir="");
+                                      const std::string& db_path = "",
+                                      const std::string& log_dir = "");
 
 // Return the name to use for a metadatabase. The result will be prefixed with
 // "dbname".
@@ -140,6 +146,6 @@ extern Status SetIdentityFile(Env* env, const std::string& dbname);
 
 // Sync manifest file `file`.
 extern Status SyncManifest(Env* env, const DBOptions* db_options,
-                           WritableFile* file);
+                           WritableFileWriter* file);
 
 }  // namespace rocksdb

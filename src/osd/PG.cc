@@ -2039,7 +2039,7 @@ bool PG::queue_scrub()
     state_set(PG_STATE_DEEP_SCRUB);
     scrubber.must_deep_scrub = false;
   }
-  if (scrubber.must_repair) {
+  if (scrubber.must_repair || scrubber.auto_repair) {
     state_set(PG_STATE_REPAIR);
     scrubber.must_repair = false;
   }
@@ -2272,6 +2272,8 @@ void PG::split_into(pg_t child_pgid, PG *child, unsigned split_bits)
 
   split_ops(child, split_bits);
   _split_into(child_pgid, child, split_bits);
+
+  child->on_new_interval();
 
   child->dirty_info = true;
   child->dirty_big_info = true;
@@ -2525,7 +2527,6 @@ void PG::publish_stats_to_osd()
 
   utime_t now = ceph_clock_now(cct);
   if (info.stats.state != state) {
-    info.stats.state = state;
     info.stats.last_change = now;
     if ((state & PG_STATE_ACTIVE) &&
 	!(info.stats.state & PG_STATE_ACTIVE))
@@ -2533,6 +2534,7 @@ void PG::publish_stats_to_osd()
     if ((state & (PG_STATE_ACTIVE|PG_STATE_PEERED)) &&
 	!(info.stats.state & (PG_STATE_ACTIVE|PG_STATE_PEERED)))
       info.stats.last_became_peered = now;
+    info.stats.state = state;
   }
 
   _update_calc_stats();
@@ -3243,8 +3245,16 @@ bool PG::sched_scrub()
     return false;
   }
 
-  bool time_for_deep = (ceph_clock_now(cct) >
+  bool time_for_deep = (ceph_clock_now(cct) >=
     info.history.last_deep_scrub_stamp + cct->_conf->osd_deep_scrub_interval);
+
+  bool deep_coin_flip = false;
+  // Only add random deep scrubs when NOT user initiated scrub
+  if (!scrubber.must_scrub)
+      deep_coin_flip = (rand() % 100) < cct->_conf->osd_deep_scrub_randomize_ratio * 100;
+  dout(20) << __func__ << ": time_for_deep=" << time_for_deep << " deep_coin_flip=" << deep_coin_flip << dendl;
+
+  time_for_deep = (time_for_deep || deep_coin_flip);
 
   //NODEEP_SCRUB so ignore time initiated deep-scrub
   if (osd->osd->get_osdmap()->test_flag(CEPH_OSDMAP_NODEEP_SCRUB) ||
@@ -3258,6 +3268,21 @@ bool PG::sched_scrub()
     if ((osd->osd->get_osdmap()->test_flag(CEPH_OSDMAP_NOSCRUB) ||
 	 pool.info.has_flag(pg_pool_t::FLAG_NOSCRUB)) && !time_for_deep)
       return false;
+  }
+
+  if (cct->_conf->osd_scrub_auto_repair
+      && get_pgbackend()->auto_repair_supported()
+      && time_for_deep
+      // respect the command from user, and not do auto-repair
+      && !scrubber.must_repair
+      && !scrubber.must_scrub
+      && !scrubber.must_deep_scrub) {
+    dout(20) << __func__ << ": auto repair with deep scrubbing" << dendl;
+    scrubber.auto_repair = true;
+  } else {
+    // this happens when user issue the scrub/repair command during
+    // the scheduling of the scrub/repair (e.g. request reservation)
+    scrubber.auto_repair = false;
   }
 
   bool ret = true;
@@ -3568,8 +3593,18 @@ void PG::_scan_snaps(ScrubMap &smap)
     if (hoid.snap < CEPH_MAXSNAP) {
       // fake nlinks for old primaries
       bufferlist bl;
+      if (o.attrs.find(OI_ATTR) == o.attrs.end()) {
+	o.nlinks = 0;
+	continue;
+      }
       bl.push_back(o.attrs[OI_ATTR]);
-      object_info_t oi(bl);
+      object_info_t oi;
+      try {
+	oi = bl;
+      } catch(...) {
+	o.nlinks = 0;
+	continue;
+      }
       if (oi.snaps.empty()) {
 	// Just head
 	o.nlinks = 1;
@@ -4001,12 +4036,14 @@ void PG::chunky_scrub(ThreadPool::TPHandle &handle)
 
         // walk the log to find the latest update that affects our chunk
         scrubber.subset_last_update = pg_log.get_tail();
-        for (list<pg_log_entry_t>::const_iterator p = pg_log.get_log().log.begin();
-             p != pg_log.get_log().log.end();
+        for (list<pg_log_entry_t>::const_reverse_iterator p = pg_log.get_log().log.rbegin();
+             p != pg_log.get_log().log.rend();
              ++p) {
           if (cmp(p->soid, scrubber.start, get_sort_bitwise()) >= 0 &&
-	      cmp(p->soid, scrubber.end, get_sort_bitwise()) < 0)
+	      cmp(p->soid, scrubber.end, get_sort_bitwise()) < 0) {
             scrubber.subset_last_update = p->version;
+            break;
+          }
         }
 
         // ask replicas to wait until last_update_applied >= scrubber.subset_last_update and then scan
@@ -4231,7 +4268,7 @@ void PG::scrub_compare_maps()
   _scrub(authmap, missing_digest);
 }
 
-void PG::scrub_process_inconsistent()
+bool PG::scrub_process_inconsistent()
 {
   dout(10) << __func__ << ": checking authoritative" << dendl;
   bool repair = state_test(PG_STATE_REPAIR);
@@ -4278,19 +4315,27 @@ void PG::scrub_process_inconsistent()
       }
     }
   }
+  return (!scrubber.authoritative.empty() && repair);
 }
 
 // the part that actually finalizes a scrub
 void PG::scrub_finish() 
 {
   bool repair = state_test(PG_STATE_REPAIR);
+  // if the repair request comes from auto-repair and large number of errors,
+  // we would like to cancel auto-repair
+  if (repair && scrubber.auto_repair
+      && scrubber.authoritative.size() > cct->_conf->osd_scrub_auto_repair_num_errors) {
+    state_clear(PG_STATE_REPAIR);
+    repair = false;
+  }
   bool deep_scrub = state_test(PG_STATE_DEEP_SCRUB);
   const char *mode = (repair ? "repair": (deep_scrub ? "deep-scrub" : "scrub"));
 
   // type-specific finish (can tally more errors)
   _scrub_finish();
 
-  scrub_process_inconsistent();
+  bool has_error = scrub_process_inconsistent();
 
   {
     stringstream oss;
@@ -4358,7 +4403,7 @@ void PG::scrub_finish()
   }
 
 
-  if (repair) {
+  if (has_error) {
     queue_peering_event(
       CephPeeringEvtRef(
 	new CephPeeringEvt(
@@ -5019,6 +5064,8 @@ ostream& operator<<(ostream& out, const PG& pg)
 
   if (pg.scrubber.must_repair)
     out << " MUST_REPAIR";
+  if (pg.scrubber.auto_repair)
+    out << " AUTO_REPAIR";
   if (pg.scrubber.must_deep_scrub)
     out << " MUST_DEEP_SCRUB";
   if (pg.scrubber.must_scrub)
@@ -5048,6 +5095,7 @@ ostream& operator<<(ostream& out, const PG& pg)
 bool PG::can_discard_op(OpRequestRef& op)
 {
   MOSDOp *m = static_cast<MOSDOp*>(op->get_req());
+
   if (OSD::op_is_discardable(m)) {
     dout(20) << " discard " << *m << dendl;
     return true;
@@ -5066,22 +5114,6 @@ bool PG::can_discard_op(OpRequestRef& op)
     return true;
   }
 
-  if ((m->get_flags() & (CEPH_OSD_FLAG_BALANCE_READS |
-			 CEPH_OSD_FLAG_LOCALIZE_READS)) &&
-      op->may_read() &&
-      !(op->may_write() || op->may_cache())) {
-    // balanced reads; any replica will do
-    if (!(is_primary() || is_replica())) {
-      osd->handle_misdirected_op(this, op);
-      return true;
-    }
-  } else {
-    // normal case; must be primary
-    if (!is_primary()) {
-      osd->handle_misdirected_op(this, op);
-      return true;
-    }
-  }
   if (is_replay()) {
     if (m->get_version().version > 0) {
       dout(7) << " queueing replay at " << m->get_version()

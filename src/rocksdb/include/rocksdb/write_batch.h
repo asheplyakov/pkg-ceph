@@ -25,7 +25,9 @@
 #ifndef STORAGE_ROCKSDB_INCLUDE_WRITE_BATCH_H_
 #define STORAGE_ROCKSDB_INCLUDE_WRITE_BATCH_H_
 
+#include <stack>
 #include <string>
+#include <stdint.h>
 #include "rocksdb/status.h"
 #include "rocksdb/write_batch_base.h"
 
@@ -33,6 +35,7 @@ namespace rocksdb {
 
 class Slice;
 class ColumnFamilyHandle;
+struct SavePoints;
 struct SliceParts;
 
 class WriteBatch : public WriteBatchBase {
@@ -57,15 +60,6 @@ class WriteBatch : public WriteBatchBase {
     Put(nullptr, key, value);
   }
 
-  using WriteBatchBase::Merge;
-  // Merge "value" with the existing value of "key" in the database.
-  // "key->merge(existing, value)"
-  void Merge(ColumnFamilyHandle* column_family, const Slice& key,
-             const Slice& value) override;
-  void Merge(const Slice& key, const Slice& value) override {
-    Merge(nullptr, key, value);
-  }
-
   using WriteBatchBase::Delete;
   // If the database contains a mapping for "key", erase it.  Else do nothing.
   void Delete(ColumnFamilyHandle* column_family, const Slice& key) override;
@@ -75,6 +69,36 @@ class WriteBatch : public WriteBatchBase {
   void Delete(ColumnFamilyHandle* column_family,
               const SliceParts& key) override;
   void Delete(const SliceParts& key) override { Delete(nullptr, key); }
+
+  using WriteBatchBase::SingleDelete;
+  // If the database contains a mapping for "key", erase it. Expects that the
+  // key was not overwritten. Else do nothing.
+  void SingleDelete(ColumnFamilyHandle* column_family,
+                    const Slice& key) override;
+  void SingleDelete(const Slice& key) override { SingleDelete(nullptr, key); }
+
+  // variant that takes SliceParts
+  void SingleDelete(ColumnFamilyHandle* column_family,
+                    const SliceParts& key) override;
+  void SingleDelete(const SliceParts& key) override {
+    SingleDelete(nullptr, key);
+  }
+
+  using WriteBatchBase::Merge;
+  // Merge "value" with the existing value of "key" in the database.
+  // "key->merge(existing, value)"
+  void Merge(ColumnFamilyHandle* column_family, const Slice& key,
+             const Slice& value) override;
+  void Merge(const Slice& key, const Slice& value) override {
+    Merge(nullptr, key, value);
+  }
+
+  // variant that takes SliceParts
+  void Merge(ColumnFamilyHandle* column_family, const SliceParts& key,
+             const SliceParts& value) override;
+  void Merge(const SliceParts& key, const SliceParts& value) override {
+    Merge(nullptr, key, value);
+  }
 
   using WriteBatchBase::PutLogData;
   // Append a blob of arbitrary size to the records in this batch. The blob will
@@ -92,6 +116,17 @@ class WriteBatch : public WriteBatchBase {
   using WriteBatchBase::Clear;
   // Clear all updates buffered in this batch.
   void Clear() override;
+
+  // Records the state of the batch for future calls to RollbackToSavePoint().
+  // May be called multiple times to set multiple save points.
+  void SetSavePoint() override;
+
+  // Remove all entries in this batch (Put, Merge, Delete, PutLogData) since the
+  // most recent call to SetSavePoint() and removes the most recent save point.
+  // If there is no previous call to SetSavePoint(), Status::NotFound()
+  // will be returned.
+  // Oterwise returns Status::OK().
+  Status RollbackToSavePoint() override;
 
   // Support for iterating over the contents of a batch.
   class Handler {
@@ -114,6 +149,26 @@ class WriteBatch : public WriteBatchBase {
     }
     virtual void Put(const Slice& key, const Slice& value) {}
 
+    virtual Status DeleteCF(uint32_t column_family_id, const Slice& key) {
+      if (column_family_id == 0) {
+        Delete(key);
+        return Status::OK();
+      }
+      return Status::InvalidArgument(
+          "non-default column family and DeleteCF not implemented");
+    }
+    virtual void Delete(const Slice& key) {}
+
+    virtual Status SingleDeleteCF(uint32_t column_family_id, const Slice& key) {
+      if (column_family_id == 0) {
+        SingleDelete(key);
+        return Status::OK();
+      }
+      return Status::InvalidArgument(
+          "non-default column family and SingleDeleteCF not implemented");
+    }
+    virtual void SingleDelete(const Slice& key) {}
+
     // Merge and LogData are not pure virtual. Otherwise, we would break
     // existing clients of Handler on a source code level. The default
     // implementation of Merge does nothing.
@@ -130,15 +185,6 @@ class WriteBatch : public WriteBatchBase {
 
     // The default implementation of LogData does nothing.
     virtual void LogData(const Slice& blob);
-    virtual Status DeleteCF(uint32_t column_family_id, const Slice& key) {
-      if (column_family_id == 0) {
-        Delete(key);
-        return Status::OK();
-      }
-      return Status::InvalidArgument(
-          "non-default column family and DeleteCF not implemented");
-    }
-    virtual void Delete(const Slice& key) {}
 
     // Continue is called by WriteBatch::Iterate. If it returns false,
     // iteration is halted. Otherwise, it continues iterating. The default
@@ -160,10 +206,12 @@ class WriteBatch : public WriteBatchBase {
   WriteBatch* GetWriteBatch() override { return this; }
 
   // Constructor with a serialized string object
-  explicit WriteBatch(std::string rep): rep_(rep) {}
+  explicit WriteBatch(const std::string& rep)
+      : save_points_(nullptr), rep_(rep) {}
 
  private:
   friend class WriteBatchInternal;
+  SavePoints* save_points_;
 
  protected:
   std::string rep_;  // See comment in write_batch.cc for the format of rep_

@@ -889,7 +889,6 @@ void pool_snap_info_t::generate_test_instances(list<pool_snap_info_t*>& o)
   o.back()->name = "foo";
 }
 
-
 // -- pg_pool_t --
 
 void pg_pool_t::dump(Formatter *f) const
@@ -947,6 +946,12 @@ void pg_pool_t::dump(Formatter *f) const
   f->dump_bool("use_gmt_hitset", use_gmt_hitset);
   f->dump_unsigned("min_read_recency_for_promote", min_read_recency_for_promote);
   f->dump_unsigned("min_write_recency_for_promote", min_write_recency_for_promote);
+  f->dump_unsigned("hit_set_grade_decay_rate", hit_set_grade_decay_rate);
+  f->dump_unsigned("hit_set_search_last_n", hit_set_search_last_n);
+  f->open_array_section("grade_table");
+  for (unsigned i = 0; i < hit_set_count; ++i)
+    f->dump_unsigned("value", get_grade(i));
+  f->close_section();
   f->dump_unsigned("stripe_width", get_stripe_width());
   f->dump_unsigned("expected_num_objects", expected_num_objects);
   f->dump_bool("fast_read", fast_read);
@@ -1259,7 +1264,7 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
     return;
   }
 
-  ENCODE_START(22, 5, bl);
+  ENCODE_START(23, 5, bl);
   ::encode(type, bl);
   ::encode(size, bl);
   ::encode(crush_ruleset, bl);
@@ -1305,12 +1310,14 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
   ::encode(min_write_recency_for_promote, bl);
   ::encode(use_gmt_hitset, bl);
   ::encode(fast_read, bl);
+  ::encode(hit_set_grade_decay_rate, bl);
+  ::encode(hit_set_search_last_n, bl);
   ENCODE_FINISH(bl);
 }
 
 void pg_pool_t::decode(bufferlist::iterator& bl)
 {
-  DECODE_START_LEGACY_COMPAT_LEN(22, 5, 5, bl);
+  DECODE_START_LEGACY_COMPAT_LEN(23, 5, 5, bl);
   ::decode(type, bl);
   ::decode(size, bl);
   ::decode(crush_ruleset, bl);
@@ -1442,8 +1449,16 @@ void pg_pool_t::decode(bufferlist::iterator& bl)
   } else {
     fast_read = false;
   }
+  if (struct_v >= 23) {
+    ::decode(hit_set_grade_decay_rate, bl);
+    ::decode(hit_set_search_last_n, bl);
+  } else {
+    hit_set_grade_decay_rate = 0;
+    hit_set_search_last_n = 1;
+  }
   DECODE_FINISH(bl);
   calc_pg_masks();
+  calc_grade_table();
 }
 
 void pg_pool_t::generate_test_instances(list<pg_pool_t*>& o)
@@ -1489,6 +1504,9 @@ void pg_pool_t::generate_test_instances(list<pg_pool_t*>& o)
   a.hit_set_count = 8;
   a.min_read_recency_for_promote = 1;
   a.min_write_recency_for_promote = 1;
+  a.hit_set_grade_decay_rate = 50;
+  a.hit_set_search_last_n = 1;
+  a.calc_grade_table();
   a.set_stripe_width(12345);
   a.target_max_bytes = 1238132132;
   a.target_max_objects = 1232132;
@@ -1542,7 +1560,9 @@ ostream& operator<<(ostream& out, const pg_pool_t& p)
   if (p.hit_set_params.get_type() != HitSet::TYPE_NONE) {
     out << " hit_set " << p.hit_set_params
 	<< " " << p.hit_set_period << "s"
-	<< " x" << p.hit_set_count;
+	<< " x" << p.hit_set_count << " decay_rate "
+	<< p.hit_set_grade_decay_rate
+	<< " search_last_n " << p.hit_set_search_last_n;
   }
   if (p.min_read_recency_for_promote)
     out << " min_read_recency_for_promote " << p.min_read_recency_for_promote;
@@ -1593,11 +1613,12 @@ void object_stat_sum_t::dump(Formatter *f) const
   f->dump_int("num_flush_mode_low", num_flush_mode_low);
   f->dump_int("num_evict_mode_some", num_evict_mode_some);
   f->dump_int("num_evict_mode_full", num_evict_mode_full);
+  f->dump_int("num_objects_pinned", num_objects_pinned);
 }
 
 void object_stat_sum_t::encode(bufferlist& bl) const
 {
-  ENCODE_START(13, 3, bl);
+  ENCODE_START(14, 3, bl);
   ::encode(num_bytes, bl);
   ::encode(num_objects, bl);
   ::encode(num_object_clones, bl);
@@ -1630,12 +1651,13 @@ void object_stat_sum_t::encode(bufferlist& bl) const
   ::encode(num_flush_mode_low, bl);
   ::encode(num_evict_mode_some, bl);
   ::encode(num_evict_mode_full, bl);
+  ::encode(num_objects_pinned, bl);
   ENCODE_FINISH(bl);
 }
 
 void object_stat_sum_t::decode(bufferlist::iterator& bl)
 {
-  DECODE_START_LEGACY_COMPAT_LEN(13, 3, 3, bl);
+  DECODE_START_LEGACY_COMPAT_LEN(14, 3, 3, bl);
   ::decode(num_bytes, bl);
   if (struct_v < 3) {
     uint64_t num_kb;
@@ -1723,6 +1745,11 @@ void object_stat_sum_t::decode(bufferlist::iterator& bl)
     num_evict_mode_some = 0;
     num_evict_mode_full = 0;
   }
+  if (struct_v >= 14) {
+    ::decode(num_objects_pinned, bl);
+  } else {
+    num_objects_pinned = 0;
+  }
   DECODE_FINISH(bl);
 }
 
@@ -1759,6 +1786,7 @@ void object_stat_sum_t::generate_test_instances(list<object_stat_sum_t*>& o)
   a.num_flush_mode_low = 1;
   a.num_evict_mode_some = 1;
   a.num_evict_mode_full = 0;
+  a.num_objects_pinned = 20;
   o.push_back(new object_stat_sum_t(a));
 }
 
@@ -1796,6 +1824,7 @@ void object_stat_sum_t::add(const object_stat_sum_t& o)
   num_flush_mode_low += o.num_flush_mode_low;
   num_evict_mode_some += o.num_evict_mode_some;
   num_evict_mode_full += o.num_evict_mode_full;
+  num_objects_pinned += o.num_objects_pinned;
 }
 
 void object_stat_sum_t::sub(const object_stat_sum_t& o)
@@ -1832,6 +1861,7 @@ void object_stat_sum_t::sub(const object_stat_sum_t& o)
   num_flush_mode_low -= o.num_flush_mode_low;
   num_evict_mode_some -= o.num_evict_mode_some;
   num_evict_mode_full -= o.num_evict_mode_full;
+  num_objects_pinned -= o.num_objects_pinned;
 }
 
 bool operator==(const object_stat_sum_t& l, const object_stat_sum_t& r)
@@ -1868,7 +1898,8 @@ bool operator==(const object_stat_sum_t& l, const object_stat_sum_t& r)
     l.num_flush_mode_high == r.num_flush_mode_high &&
     l.num_flush_mode_low == r.num_flush_mode_low &&
     l.num_evict_mode_some == r.num_evict_mode_some &&
-    l.num_evict_mode_full == r.num_evict_mode_full;
+    l.num_evict_mode_full == r.num_evict_mode_full &&
+    l.num_objects_pinned == r.num_objects_pinned;
 }
 
 // -- object_stat_collection_t --
@@ -1995,7 +2026,7 @@ void pg_stat_t::dump_brief(Formatter *f) const
 
 void pg_stat_t::encode(bufferlist &bl) const
 {
-  ENCODE_START(21, 8, bl);
+  ENCODE_START(22, 8, bl);
   ::encode(version, bl);
   ::encode(reported_seq, bl);
   ::encode(reported_epoch, bl);
@@ -2035,12 +2066,13 @@ void pg_stat_t::encode(bufferlist &bl) const
   ::encode(hitset_bytes_stats_invalid, bl);
   ::encode(last_peered, bl);
   ::encode(last_became_peered, bl);
+  ::encode(pin_stats_invalid, bl);
   ENCODE_FINISH(bl);
 }
 
 void pg_stat_t::decode(bufferlist::iterator &bl)
 {
-  DECODE_START_LEGACY_COMPAT_LEN(20, 8, 8, bl);
+  DECODE_START_LEGACY_COMPAT_LEN(22, 8, 8, bl);
   ::decode(version, bl);
   ::decode(reported_seq, bl);
   ::decode(reported_epoch, bl);
@@ -2174,6 +2206,13 @@ void pg_stat_t::decode(bufferlist::iterator &bl)
     last_peered = last_active;
     last_became_peered = last_became_active;
   }
+  if (struct_v >= 22) {
+    ::decode(pin_stats_invalid, bl);
+  } else {
+    // if we are decoding an old encoding of this object, then the
+    // encoder may not have supported num_objects_pinned accounting.
+    pin_stats_invalid = true;
+  }
   DECODE_FINISH(bl);
 }
 
@@ -2264,7 +2303,8 @@ bool operator==(const pg_stat_t& l, const pg_stat_t& r)
     l.hitset_stats_invalid == r.hitset_stats_invalid &&
     l.hitset_bytes_stats_invalid == r.hitset_bytes_stats_invalid &&
     l.up_primary == r.up_primary &&
-    l.acting_primary == r.acting_primary;
+    l.acting_primary == r.acting_primary &&
+    l.pin_stats_invalid == r.pin_stats_invalid;
 }
 
 // -- pool_stat_t --
@@ -5133,6 +5173,8 @@ ostream& operator<<(ostream& out, const OSDOp& op)
     case CEPH_OSD_OP_CACHE_FLUSH:
     case CEPH_OSD_OP_CACHE_TRY_FLUSH:
     case CEPH_OSD_OP_CACHE_EVICT:
+    case CEPH_OSD_OP_CACHE_PIN:
+    case CEPH_OSD_OP_CACHE_UNPIN:
       break;
     case CEPH_OSD_OP_ASSERT_VER:
       out << " v" << op.op.assert_ver.ver;

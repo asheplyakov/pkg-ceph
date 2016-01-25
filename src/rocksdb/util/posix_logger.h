@@ -13,14 +13,14 @@
 #pragma once
 #include <algorithm>
 #include <stdio.h>
-#include <sys/time.h>
+#include "port/sys_time.h"
 #include <time.h>
 #include <fcntl.h>
-#include <unistd.h>
 #ifdef OS_LINUX
 #include <linux/falloc.h>
 #endif
 #include "rocksdb/env.h"
+#include "util/iostats_context_imp.h"
 #include <atomic>
 
 namespace rocksdb {
@@ -61,6 +61,8 @@ class PosixLogger : public Logger {
 
   using Logger::Logv;
   virtual void Logv(const char* format, va_list ap) override {
+    IOSTATS_TIMER_GUARD(logger_nanos);
+
     const uint64_t thread_id = (*gettid_)();
 
     // We try twice: the first time with a fixed-size stack allocated buffer,

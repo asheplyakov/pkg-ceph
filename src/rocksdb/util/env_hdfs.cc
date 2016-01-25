@@ -3,6 +3,10 @@
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
 //
+
+#include "rocksdb/env.h"
+#include "hdfs/env_hdfs.h"
+
 #ifdef USE_HDFS
 #ifndef ROCKSDB_HDFS_FILE_C
 #define ROCKSDB_HDFS_FILE_C
@@ -13,9 +17,7 @@
 #include <time.h>
 #include <iostream>
 #include <sstream>
-#include "rocksdb/env.h"
 #include "rocksdb/status.h"
-#include "hdfs/env_hdfs.h"
 
 #define HDFS_EXISTS 0
 #define HDFS_DOESNT_EXIST -1
@@ -415,12 +417,6 @@ Status HdfsEnv::NewWritableFile(const std::string& fname,
   return Status::OK();
 }
 
-Status HdfsEnv::NewRandomRWFile(const std::string& fname,
-                                unique_ptr<RandomRWFile>* result,
-                                const EnvOptions& options) {
-  return Status::NotSupported("NewRandomRWFile not supported on HdfsEnv");
-}
-
 class HdfsDirectory : public Directory {
  public:
   explicit HdfsDirectory(int fd) : fd_(fd) {}
@@ -448,20 +444,18 @@ Status HdfsEnv::NewDirectory(const std::string& name,
   }
 }
 
-bool HdfsEnv::FileExists(const std::string& fname) {
-
+Status HdfsEnv::FileExists(const std::string& fname) {
   int value = hdfsExists(fileSys_, fname.c_str());
   switch (value) {
     case HDFS_EXISTS:
-    return true;
+      return Status::OK();
     case HDFS_DOESNT_EXIST:
-      return false;
+      return Status::NotFound();
     default:  // anything else should be an error
       Log(InfoLogLevel::FATAL_LEVEL,
           mylog, "FileExists hdfsExists call failed");
-      throw HdfsFatalException("hdfsExists call failed with error " +
-                               ToString(value) + " on path " + fname +
-                               ".\n");
+      return Status::IOError("hdfsExists call failed with error " +
+                             ToString(value) + " on path " + fname + ".\n");
   }
 }
 
@@ -606,8 +600,6 @@ Status HdfsEnv::NewLogger(const std::string& fname,
 #else // USE_HDFS
 
 // dummy placeholders used when HDFS is not available
-#include "rocksdb/env.h"
-#include "hdfs/env_hdfs.h"
 namespace rocksdb {
  Status HdfsEnv::NewSequentialFile(const std::string& fname,
                                    unique_ptr<SequentialFile>* result,
