@@ -1,6 +1,6 @@
 etc/bash_completion.d/rados
 etc/bash_completion.d/rbd
-src/rbdmap etc/ceph
+etc/ceph/rbdmap
 udev/50-rbd.rules /lib/udev/rules.d
 usr/bin/ceph
 usr/bin/ceph-authtool
@@ -12,6 +12,7 @@ usr/bin/ceph-rbdnamer
 usr/bin/ceph-syn
 usr/bin/rados
 usr/bin/rbd
+usr/bin/rbdmap
 usr/bin/rbd-replay*
 usr/lib/python*/dist-packages/ceph_argparse.py*
 usr/lib/python*/dist-packages/ceph_daemon.py*
