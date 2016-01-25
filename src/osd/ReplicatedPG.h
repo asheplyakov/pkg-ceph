@@ -941,10 +941,8 @@ protected:
   /// estimate object atime and temperature
   ///
   /// @param oid [in] object name
-  /// @param atime [out] seconds since last access (lower bound)
-  /// @param temperature [out] relative temperature (# hitset bins we appear in)
-  void agent_estimate_atime_temp(const hobject_t& oid,
-				 int *atime, int *temperature);
+  /// @param temperature [out] relative temperature (# consider both access time and frequency)
+  void agent_estimate_temp(const hobject_t& oid, int *temperature);
 
   /// stop the agent
   void agent_stop();
@@ -1039,7 +1037,8 @@ protected:
   SnapSetContext *get_snapset_context(
     const hobject_t& oid,
     bool can_create,
-    map<string, bufferlist> *attrs = 0
+    map<string, bufferlist> *attrs = 0,
+    bool oid_existed = true //indicate this oid whether exsited in backend
     );
   void register_snapset_context(SnapSetContext *ssc) {
     Mutex::Locker l(snapset_contexts_lock);
@@ -1492,6 +1491,22 @@ private:
   hobject_t generate_temp_object();  ///< generate a new temp object name
   /// generate a new temp object name (for recovery)
   hobject_t get_temp_recovery_object(eversion_t version, snapid_t snap);
+  void log_missing(unsigned missing,
+			const boost::optional<hobject_t> &head,
+			LogChannelRef clog,
+			const spg_t &pgid,
+			const char *func,
+			const char *mode,
+			bool allow_incomplete_clones);
+  unsigned process_clones_to(const boost::optional<hobject_t> &head,
+    const boost::optional<SnapSet> &snapset,
+    LogChannelRef clog,
+    const spg_t &pgid,
+    const char *mode,
+    bool allow_incomplete_clones,
+    boost::optional<snapid_t> target,
+    vector<snapid_t>::reverse_iterator *curclone);
+
 public:
   coll_t get_coll() {
     return coll;

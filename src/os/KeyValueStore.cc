@@ -2729,7 +2729,7 @@ int KeyValueStore::_omap_rmkeyrange(coll_t cid, const ghobject_t &hoid,
       return -ENOENT;
 
     for (iter->lower_bound(first); iter->valid() && iter->key() < last;
-         iter->next()) {
+         iter->next(false)) {
       keys.insert(iter->key());
     }
   }
@@ -2888,7 +2888,7 @@ const char** KeyValueStore::get_tracked_conf_keys() const
   static const char* KEYS[] = {
     "keyvaluestore_queue_max_ops",
     "keyvaluestore_queue_max_bytes",
-    "keyvaluestore_strip_size",
+    "keyvaluestore_default_strip_size",
     "keyvaluestore_dump_file",
     NULL
   };

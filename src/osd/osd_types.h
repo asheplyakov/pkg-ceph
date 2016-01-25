@@ -1104,6 +1104,9 @@ public:
     hit_set_params = HitSet::Params();
     hit_set_period = 0;
     hit_set_count = 0;
+    hit_set_grade_decay_rate = 0;
+    hit_set_search_last_n = 0;
+    grade_table.resize(0);
   }
 
   uint64_t target_max_bytes;   ///< tiering: target max pool size
@@ -1122,12 +1125,34 @@ public:
   bool use_gmt_hitset;	        ///< use gmt to name the hitset archive object
   uint32_t min_read_recency_for_promote;   ///< minimum number of HitSet to check before promote on read
   uint32_t min_write_recency_for_promote;  ///< minimum number of HitSet to check before promote on write
+  uint32_t hit_set_grade_decay_rate;   ///< current hit_set has highest priority on objects
+                                       ///temperature count,the follow hit_set's priority decay 
+                                       ///by this params than pre hit_set
+  uint32_t hit_set_search_last_n;   ///<accumulate atmost N hit_sets for temperature
 
   uint32_t stripe_width;        ///< erasure coded stripe size in bytes
 
   uint64_t expected_num_objects; ///< expected number of objects on this pool, a value of 0 indicates
                                  ///< user does not specify any expected value
   bool fast_read;            ///< whether turn on fast read on the pool or not
+
+private:
+  vector<uint32_t> grade_table;
+
+public:
+  uint32_t get_grade(unsigned i) const {
+    if (grade_table.size() <= i)
+      return 0;
+    return grade_table[i];
+  }
+  void calc_grade_table() {
+    unsigned v = 1000000;
+    grade_table.resize(hit_set_count);
+    for (unsigned i = 0; i < hit_set_count; i++) {
+      v = v * (1 - (hit_set_grade_decay_rate / 100.0));
+      grade_table[i] = v;
+    }
+  }
 
   pg_pool_t()
     : flags(0), type(0), size(0), min_size(0),
@@ -1154,6 +1179,8 @@ public:
       use_gmt_hitset(true),
       min_read_recency_for_promote(0),
       min_write_recency_for_promote(0),
+      hit_set_grade_decay_rate(0),
+      hit_set_search_last_n(0),
       stripe_width(0),
       expected_num_objects(0),
       fast_read(false)
@@ -1358,6 +1385,7 @@ struct object_stat_sum_t {
   int32_t num_flush_mode_low;   // 1 when in low flush mode, otherwise 0
   int32_t num_evict_mode_some;  // 1 when in evict some mode, otherwise 0
   int32_t num_evict_mode_full;  // 1 when in evict full mode, otherwise 0
+  int64_t num_objects_pinned;
 
   object_stat_sum_t()
     : num_bytes(0),
@@ -1382,7 +1410,8 @@ struct object_stat_sum_t {
       num_evict_kb(0),
       num_promote(0),
       num_flush_mode_high(0), num_flush_mode_low(0),
-      num_evict_mode_some(0), num_evict_mode_full(0)
+      num_evict_mode_some(0), num_evict_mode_full(0),
+      num_objects_pinned(0)
   {}
 
   void floor(int64_t f) {
@@ -1419,6 +1448,7 @@ struct object_stat_sum_t {
     FLOOR(num_flush_mode_low);
     FLOOR(num_evict_mode_some);
     FLOOR(num_evict_mode_full);
+    FLOOR(num_objects_pinned);
 #undef FLOOR
   }
 
@@ -1463,6 +1493,7 @@ struct object_stat_sum_t {
     SPLIT(num_flush_mode_low);
     SPLIT(num_evict_mode_some);
     SPLIT(num_evict_mode_full);
+    SPLIT(num_objects_pinned);
 #undef SPLIT
   }
 
@@ -1596,6 +1627,7 @@ struct pg_stat_t {
   bool omap_stats_invalid;
   bool hitset_stats_invalid;
   bool hitset_bytes_stats_invalid;
+  bool pin_stats_invalid;
 
   /// up, acting primaries
   int32_t up_primary;
@@ -1614,6 +1646,7 @@ struct pg_stat_t {
       omap_stats_invalid(false),
       hitset_stats_invalid(false),
       hitset_bytes_stats_invalid(false),
+      pin_stats_invalid(false),
       up_primary(-1),
       acting_primary(-1)
   { }
@@ -3012,6 +3045,7 @@ struct object_info_t {
     FLAG_OMAP     = 1 << 3,  // has (or may have) some/any omap data
     FLAG_DATA_DIGEST = 1 << 4,  // has data crc
     FLAG_OMAP_DIGEST = 1 << 5,  // has omap crc
+    FLAG_CACHE_PIN = 1 << 6,    // pin the object in cache tier
     // ...
     FLAG_USES_TMAP = 1<<8,  // deprecated; no longer used.
   } flag_t;
@@ -3034,6 +3068,8 @@ struct object_info_t {
       s += "|data_digest";
     if (flags & FLAG_OMAP_DIGEST)
       s += "|omap_digest";
+    if (flags & FLAG_CACHE_PIN)
+      s += "|cache_pin";
     if (s.length())
       return s.substr(1);
     return s;
@@ -3084,6 +3120,9 @@ struct object_info_t {
   bool is_omap_digest() const {
     return test_flag(FLAG_OMAP_DIGEST);
   }
+  bool is_cache_pinned() const {
+    return test_flag(FLAG_CACHE_PIN);
+  }
 
   void set_data_digest(__u32 d) {
     set_flag(FLAG_DATA_DIGEST);
@@ -3130,6 +3169,10 @@ struct object_info_t {
 
   object_info_t(bufferlist& bl) {
     decode(bl);
+  }
+  object_info_t operator=(bufferlist& bl) {
+    decode(bl);
+    return *this;
   }
 };
 WRITE_CLASS_ENCODER(object_info_t)

@@ -17,6 +17,7 @@
 #include "rgw_rest.h"
 #include "rgw_acl.h"
 #include "rgw_acl_s3.h"
+#include "rgw_acl_swift.h"
 #include "rgw_user.h"
 #include "rgw_bucket.h"
 #include "rgw_log.h"
@@ -356,7 +357,13 @@ static int rgw_build_policies(RGWRados *store, struct req_state *s, bool only_bu
     }
   }
 
-  s->bucket_acl = new RGWAccessControlPolicy(s->cct);
+  if(s->dialect.compare("s3") == 0) {
+    s->bucket_acl = new RGWAccessControlPolicy_S3(s->cct);
+  } else if(s->dialect.compare("swift")  == 0) {
+    s->bucket_acl = new RGWAccessControlPolicy_SWIFT(s->cct);
+  } else {
+    s->bucket_acl = new RGWAccessControlPolicy(s->cct);
+  }
 
   if (s->copy_source) { /* check if copy source is within the current domain */
     const char *src = s->copy_source;
@@ -984,7 +991,7 @@ void RGWGetObj::execute()
     goto done_err;
 
   attr_iter = attrs.find(RGW_ATTR_USER_MANIFEST);
-  if (attr_iter != attrs.end()) {
+  if (attr_iter != attrs.end() && !skip_manifest) {
     ret = handle_user_manifest(attr_iter->second.c_str());
     if (ret < 0) {
       ldout(s->cct, 0) << "ERROR: failed to handle user manifest ret=" << ret << dendl;
@@ -1017,8 +1024,11 @@ void RGWGetObj::execute()
     goto done_err;
   }
 
-done_err:
   send_response_data(bl, 0, 0);
+  return;
+
+done_err:
+  send_response_data_error();
 }
 
 int RGWGetObj::init_common()
@@ -1138,7 +1148,7 @@ void RGWStatAccount::execute()
   do {
     RGWUserBuckets buckets;
 
-    ret = rgw_read_user_buckets(store, s->user.user_id, buckets, marker, max_buckets, true);
+    ret = rgw_read_user_buckets(store, s->user.user_id, buckets, marker, max_buckets, false);
     if (ret < 0) {
       /* hmm.. something wrong here.. the user was authenticated, so it
          should exist */
@@ -2428,7 +2438,16 @@ void RGWDeleteObj::execute()
 {
   ret = -EINVAL;
   rgw_obj obj(s->bucket, s->object);
+  map<string, bufferlist> orig_attrs;
+
   if (!s->object.empty()) {
+    if (need_object_expiration()) {
+      /* check if obj exists, read orig attrs */
+      ret = get_obj_attrs(store, s, obj, orig_attrs);
+      if (ret < 0) {
+        return;
+      }
+    }
     RGWObjectCtx *obj_ctx = static_cast<RGWObjectCtx *>(s->obj_ctx);
 
     obj_ctx->set_atomic(obj);
@@ -2448,6 +2467,13 @@ void RGWDeleteObj::execute()
     if (ret >= 0) {
       delete_marker = del_op.result.delete_marker;
       version_id = del_op.result.version_id;
+    }
+
+    /* Check whether the object has expired. Swift API documentation
+     * stands that we should return 404 Not Found in such case. */
+    if (need_object_expiration() && object_is_expired(orig_attrs)) {
+      ret = -ENOENT;
+      return;
     }
   }
 }
@@ -2796,8 +2822,17 @@ void RGWPutACLs::execute()
   new_policy.encode(bl);
   obj = rgw_obj(s->bucket, s->object);
   map<string, bufferlist> attrs;
-  attrs[RGW_ATTR_ACL] = bl;
+
   store->set_atomic(s->obj_ctx, obj);
+
+  if (!s->object.empty()) {
+    ret = get_obj_attrs(store, s, obj, attrs);
+    if (ret < 0)
+      return;
+  }
+  
+  attrs[RGW_ATTR_ACL] = bl;
+
   if (!s->object.empty()) {
     ret = store->set_attrs(s->obj_ctx, obj, attrs, NULL, ptracker);
   } else {
@@ -2966,6 +3001,49 @@ void RGWOptionsCORS::execute()
     return;
   }
   return;
+}
+
+int RGWGetRequestPayment::verify_permission()
+{
+  return 0;
+}
+
+void RGWGetRequestPayment::pre_exec()
+{
+  rgw_bucket_object_pre_exec(s);
+}
+
+void RGWGetRequestPayment::execute()
+{
+  requester_pays = s->bucket_info.requester_pays;
+}
+
+int RGWSetRequestPayment::verify_permission()
+{
+  if (s->user.user_id.compare(s->bucket_owner.get_id()) != 0)
+    return -EACCES;
+
+  return 0;
+}
+
+void RGWSetRequestPayment::pre_exec()
+{
+  rgw_bucket_object_pre_exec(s);
+}
+
+void RGWSetRequestPayment::execute()
+{
+  ret = get_params();
+
+  if (ret < 0)
+    return;
+
+  s->bucket_info.requester_pays = requester_pays;
+  ret = store->put_bucket_instance_info(s->bucket_info, false, 0, &s->bucket_attrs);
+  if (ret < 0) {
+    ldout(s->cct, 0) << "NOTICE: put_bucket_info on bucket=" << s->bucket.name << " returned err=" << ret << dendl;
+    return;
+  }
 }
 
 int RGWInitMultipart::verify_permission()

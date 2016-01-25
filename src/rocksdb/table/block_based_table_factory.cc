@@ -42,18 +42,27 @@ BlockBasedTableFactory::BlockBasedTableFactory(
 }
 
 Status BlockBasedTableFactory::NewTableReader(
-    const ImmutableCFOptions& ioptions, const EnvOptions& soptions,
-    const InternalKeyComparator& internal_comparator,
-    unique_ptr<RandomAccessFile>&& file, uint64_t file_size,
+    const TableReaderOptions& table_reader_options,
+    unique_ptr<RandomAccessFileReader>&& file, uint64_t file_size,
+    unique_ptr<TableReader>* table_reader) const {
+  return NewTableReader(table_reader_options, std::move(file), file_size,
+                        table_reader,
+                        /*prefetch_index_and_filter=*/true);
+}
+
+Status BlockBasedTableFactory::NewTableReader(
+    const TableReaderOptions& table_reader_options,
+    unique_ptr<RandomAccessFileReader>&& file, uint64_t file_size,
     unique_ptr<TableReader>* table_reader, const bool prefetch_enabled) const {
-  return BlockBasedTable::Open(ioptions, soptions, table_options_,
-                               internal_comparator, std::move(file), file_size,
-                               table_reader, prefetch_enabled);
+  return BlockBasedTable::Open(
+      table_reader_options.ioptions, table_reader_options.env_options,
+      table_options_, table_reader_options.internal_comparator, std::move(file),
+      file_size, table_reader, prefetch_enabled);
 }
 
 TableBuilder* BlockBasedTableFactory::NewTableBuilder(
     const TableBuilderOptions& table_builder_options,
-    WritableFile* file) const {
+    WritableFileWriter* file) const {
   auto table_builder = new BlockBasedTableBuilder(
       table_builder_options.ioptions, table_options_,
       table_builder_options.internal_comparator,
@@ -115,7 +124,7 @@ std::string BlockBasedTableFactory::GetPrintableTableOptions() const {
            table_options_.block_cache.get());
   ret.append(buffer);
   if (table_options_.block_cache) {
-    snprintf(buffer, kBufferSize, "  block_cache_size: %zd\n",
+    snprintf(buffer, kBufferSize, "  block_cache_size: %" ROCKSDB_PRIszt "\n",
              table_options_.block_cache->GetCapacity());
     ret.append(buffer);
   }
@@ -123,11 +132,12 @@ std::string BlockBasedTableFactory::GetPrintableTableOptions() const {
            table_options_.block_cache_compressed.get());
   ret.append(buffer);
   if (table_options_.block_cache_compressed) {
-    snprintf(buffer, kBufferSize, "  block_cache_compressed_size: %zd\n",
+    snprintf(buffer, kBufferSize,
+             "  block_cache_compressed_size: %" ROCKSDB_PRIszt "\n",
              table_options_.block_cache_compressed->GetCapacity());
     ret.append(buffer);
   }
-  snprintf(buffer, kBufferSize, "  block_size: %zd\n",
+  snprintf(buffer, kBufferSize, "  block_size: %" ROCKSDB_PRIszt "\n",
            table_options_.block_size);
   ret.append(buffer);
   snprintf(buffer, kBufferSize, "  block_size_deviation: %d\n",

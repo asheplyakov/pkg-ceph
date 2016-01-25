@@ -7,6 +7,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#ifndef ROCKSDB_LITE
+
 #include "rocksdb/db.h"
 #include "db/db_impl.h"
 #include "db/filename.h"
@@ -36,7 +38,6 @@ class DeleteFileTest : public testing::Test {
     db_ = nullptr;
     env_ = Env::Default();
     options_.enable_thread_tracking = true;
-    options_.max_background_flushes = 0;
     options_.write_buffer_size = 1024*1024*1000;
     options_.target_file_size_base = 1024*1024*1000;
     options_.max_bytes_for_level_base = 1024*1024*1000;
@@ -117,10 +118,14 @@ class DeleteFileTest : public testing::Test {
     DBImpl* dbi = reinterpret_cast<DBImpl*>(db_);
     ASSERT_OK(dbi->TEST_FlushMemTable());
     ASSERT_OK(dbi->TEST_WaitForFlushMemTable());
+    for (int i = 0; i < 2; ++i) {
+      ASSERT_OK(dbi->TEST_CompactRange(i, nullptr, nullptr));
+    }
 
     AddKeys(50000, 10000);
     ASSERT_OK(dbi->TEST_FlushMemTable());
     ASSERT_OK(dbi->TEST_WaitForFlushMemTable());
+    ASSERT_OK(dbi->TEST_CompactRange(0, nullptr, nullptr));
   }
 
   void CheckFileTypeCounts(std::string& dir,
@@ -201,8 +206,11 @@ TEST_F(DeleteFileTest, PurgeObsoleteFilesTest) {
   // 2 ssts, 1 manifest
   CheckFileTypeCounts(dbname_, 0, 2, 1);
   std::string first("0"), last("999999");
+  CompactRangeOptions compact_options;
+  compact_options.change_level = true;
+  compact_options.target_level = 2;
   Slice first_slice(first), last_slice(last);
-  db_->CompactRange(&first_slice, &last_slice, true, 2);
+  db_->CompactRange(compact_options, &first_slice, &last_slice);
   // 1 sst after compaction
   CheckFileTypeCounts(dbname_, 0, 1, 1);
 
@@ -211,7 +219,7 @@ TEST_F(DeleteFileTest, PurgeObsoleteFilesTest) {
   Iterator *itr = 0;
   CreateTwoLevels();
   itr = db_->NewIterator(ReadOptions());
-  db_->CompactRange(&first_slice, &last_slice, true, 2);
+  db_->CompactRange(compact_options, &first_slice, &last_slice);
   // 3 sst after compaction with live iterator
   CheckFileTypeCounts(dbname_, 0, 3, 1);
   delete itr;
@@ -261,11 +269,11 @@ TEST_F(DeleteFileTest, DeleteLogFiles) {
   // Should not succeed because live logs are not allowed to be deleted
   std::unique_ptr<LogFile> alive_log = std::move(logfiles.back());
   ASSERT_EQ(alive_log->Type(), kAliveLogFile);
-  ASSERT_TRUE(env_->FileExists(options_.wal_dir + "/" + alive_log->PathName()));
+  ASSERT_OK(env_->FileExists(options_.wal_dir + "/" + alive_log->PathName()));
   fprintf(stdout, "Deleting alive log file %s\n",
           alive_log->PathName().c_str());
   ASSERT_TRUE(!db_->DeleteFile(alive_log->PathName()).ok());
-  ASSERT_TRUE(env_->FileExists(options_.wal_dir + "/" + alive_log->PathName()));
+  ASSERT_OK(env_->FileExists(options_.wal_dir + "/" + alive_log->PathName()));
   logfiles.clear();
 
   // Call Flush to bring about a new working log file and add more keys
@@ -279,13 +287,13 @@ TEST_F(DeleteFileTest, DeleteLogFiles) {
   ASSERT_GT(logfiles.size(), 0UL);
   std::unique_ptr<LogFile> archived_log = std::move(logfiles.front());
   ASSERT_EQ(archived_log->Type(), kArchivedLogFile);
-  ASSERT_TRUE(env_->FileExists(options_.wal_dir + "/" +
-        archived_log->PathName()));
+  ASSERT_OK(
+      env_->FileExists(options_.wal_dir + "/" + archived_log->PathName()));
   fprintf(stdout, "Deleting archived log file %s\n",
           archived_log->PathName().c_str());
   ASSERT_OK(db_->DeleteFile(archived_log->PathName()));
-  ASSERT_TRUE(!env_->FileExists(options_.wal_dir + "/" +
-        archived_log->PathName()));
+  ASSERT_EQ(Status::NotFound(), env_->FileExists(options_.wal_dir + "/" +
+                                                 archived_log->PathName()));
   CloseDB();
 }
 
@@ -365,3 +373,13 @@ int main(int argc, char** argv) {
   return RUN_ALL_TESTS();
 }
 
+#else
+#include <stdio.h>
+
+int main(int argc, char** argv) {
+  fprintf(stderr,
+          "SKIPPED as DBImpl::DeleteFile is not supported in ROCKSDB_LITE\n");
+  return 0;
+}
+
+#endif  // !ROCKSDB_LITE

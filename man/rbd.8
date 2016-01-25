@@ -1,6 +1,6 @@
 .\" Man page generated from reStructuredText.
 .
-.TH "RBD" "8" "November 03, 2015" "dev" "Ceph"
+.TH "RBD" "8" "December 14, 2015" "dev" "Ceph"
 .SH NAME
 rbd \- manage rados block device (RBD) images
 .
@@ -32,8 +32,8 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 ..
 .SH SYNOPSIS
 .nf
-\fBrbd\fP [ \-c \fIceph.conf\fP ] [ \-m \fImonaddr\fP ] [ \-p | \-\-pool \fIpool\fP ] [
-\-\-size \fIsize\fP ] [ \-\-order \fIbits\fP ] [ \fIcommand\fP ... ]
+\fBrbd\fP [ \-c \fIceph.conf\fP ] [ \-m \fImonaddr\fP ] [\-\-cluster \fIcluster name\fP]
+[ \-p | \-\-pool \fIpool\fP ] [\-\-size \fIsize\fP ] [ \-\-order \fIbits\fP ] [ \fIcommand\fP ... ]
 .fi
 .sp
 .SH DESCRIPTION
@@ -54,6 +54,11 @@ determine monitor addresses during startup.
 .TP
 .B \-m monaddress[:port]
 Connect to specified monitor (instead of looking through ceph.conf).
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-cluster cluster name
+Use different cluster name as compared to default cluster name \fIceph\fP\&.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -179,6 +184,8 @@ object\-map: object map support (requires exclusive\-lock)
 fast\-diff: fast diff calculations (requires object\-map)
 .IP \(bu 2
 deep\-flatten: snapshot flatten support
+.IP \(bu 2
+journaling: journaled IO support (requires exclusive\-lock)
 .UNINDENT
 .UNINDENT
 .INDENT 0.0
@@ -468,6 +475,10 @@ default).
 .IP \(bu 2
 notcp_nodelay \- Enable Nagle\(aqs algorithm on client sockets (since 4.0).
 .IP \(bu 2
+cephx_sign_messages \- Enable message signing (since 4.4, default).
+.IP \(bu 2
+nocephx_sign_messages \- Disable message signing (since 4.4).
+.IP \(bu 2
 mount_timeout=x \- A timeout on various steps in \fIrbd map\fP and \fIrbd unmap\fP
 sequences (default is 60 seconds).  In particular, since 4.2 this can be used
 to ensure that \fIrbd unmap\fP eventually times out when there is no network
@@ -582,6 +593,13 @@ To map an image via the kernel with cephx enabled:
 rbd map mypool/myimage \-\-id admin \-\-keyfile secretfile
 .ft P
 .fi
+.UNINDENT
+.UNINDENT
+.sp
+To map an image via the kernel with different cluster name other than default \fIceph\fP\&.
+.INDENT 0.0
+.INDENT 3.5
+rbd map mypool/myimage \-\-cluster \fIcluster name\fP
 .UNINDENT
 .UNINDENT
 .sp

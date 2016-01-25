@@ -31,10 +31,11 @@ namespace rocksdb {
 // -- Block-based Table
 class FlushBlockPolicyFactory;
 class RandomAccessFile;
+struct TableReaderOptions;
 struct TableBuilderOptions;
 class TableBuilder;
 class TableReader;
-class WritableFile;
+class WritableFileWriter;
 struct EnvOptions;
 struct Options;
 
@@ -315,6 +316,8 @@ extern TableFactory* NewCuckooTableFactory(
 
 #endif  // ROCKSDB_LITE
 
+class RandomAccessFileReader;
+
 // A base class for table factories.
 class TableFactory {
  public:
@@ -333,22 +336,22 @@ class TableFactory {
   // in parameter file. It's the caller's responsibility to make sure
   // file is in the correct format.
   //
-  // NewTableReader() is called in two places:
+  // NewTableReader() is called in three places:
   // (1) TableCache::FindTable() calls the function when table cache miss
   //     and cache the table object returned.
-  // (1) SstFileReader (for SST Dump) opens the table and dump the table
+  // (2) SstFileReader (for SST Dump) opens the table and dump the table
   //     contents using the interator of the table.
-  // ImmutableCFOptions is a subset of Options that can not be altered.
-  // EnvOptions is a subset of Options that will be used by Env.
-  // Multiple configured can be accessed from there, including and not
-  // limited to block cache and key comparators.
-  // file is a file handler to handle the file for the table
-  // file_size is the physical file size of the file
-  // table_reader is the output table reader
+  // (3) DBImpl::AddFile() calls this function to read the contents of
+  //     the sst file it's attempting to add
+  //
+  // table_reader_options is a TableReaderOptions which contain all the
+  //    needed parameters and configuration to open the table.
+  // file is a file handler to handle the file for the table.
+  // file_size is the physical file size of the file.
+  // table_reader is the output table reader.
   virtual Status NewTableReader(
-      const ImmutableCFOptions& ioptions, const EnvOptions& env_options,
-      const InternalKeyComparator& internal_comparator,
-      unique_ptr<RandomAccessFile>&& file, uint64_t file_size,
+      const TableReaderOptions& table_reader_options,
+      unique_ptr<RandomAccessFileReader>&& file, uint64_t file_size,
       unique_ptr<TableReader>* table_reader) const = 0;
 
   // Return a table builder to write to a file for this table type.
@@ -372,7 +375,7 @@ class TableFactory {
   // to use in this table.
   virtual TableBuilder* NewTableBuilder(
       const TableBuilderOptions& table_builder_options,
-      WritableFile* file) const = 0;
+      WritableFileWriter* file) const = 0;
 
   // Sanitizes the specified DB Options and ColumnFamilyOptions.
   //

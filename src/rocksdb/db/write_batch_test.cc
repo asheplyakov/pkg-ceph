@@ -31,8 +31,9 @@ static std::string PrintContents(WriteBatch* b) {
   options.memtable_factory = factory;
   ImmutableCFOptions ioptions(options);
   WriteBuffer wb(options.db_write_buffer_size);
-  MemTable* mem = new MemTable(cmp, ioptions,
-                               MutableCFOptions(options, ioptions), &wb);
+  MemTable* mem =
+      new MemTable(cmp, ioptions, MutableCFOptions(options, ioptions), &wb,
+                   kMaxSequenceNumber);
   mem->Ref();
   std::string state;
   ColumnFamilyMemTablesDefault cf_mems_default(mem);
@@ -53,17 +54,23 @@ static std::string PrintContents(WriteBatch* b) {
         state.append(")");
         count++;
         break;
+      case kTypeDeletion:
+        state.append("Delete(");
+        state.append(ikey.user_key.ToString());
+        state.append(")");
+        count++;
+        break;
+      case kTypeSingleDeletion:
+        state.append("SingleDelete(");
+        state.append(ikey.user_key.ToString());
+        state.append(")");
+        count++;
+        break;
       case kTypeMerge:
         state.append("Merge(");
         state.append(ikey.user_key.ToString());
         state.append(", ");
         state.append(iter->value().ToString());
-        state.append(")");
-        count++;
-        break;
-      case kTypeDeletion:
-        state.append("Delete(");
-        state.append(ikey.user_key.ToString());
         state.append(")");
         count++;
         break;
@@ -150,6 +157,22 @@ TEST_F(WriteBatchTest, Append) {
   ASSERT_EQ(4, b1.Count());
 }
 
+TEST_F(WriteBatchTest, SingleDeletion) {
+  WriteBatch batch;
+  WriteBatchInternal::SetSequence(&batch, 100);
+  ASSERT_EQ("", PrintContents(&batch));
+  ASSERT_EQ(0, batch.Count());
+  batch.Put("a", "va");
+  ASSERT_EQ("Put(a, va)@100", PrintContents(&batch));
+  ASSERT_EQ(1, batch.Count());
+  batch.SingleDelete("a");
+  ASSERT_EQ(
+      "SingleDelete(a)@101"
+      "Put(a, va)@100",
+      PrintContents(&batch));
+  ASSERT_EQ(2, batch.Count());
+}
+
 namespace {
   struct TestHandler : public WriteBatch::Handler {
     std::string seen;
@@ -160,6 +183,26 @@ namespace {
       } else {
         seen += "PutCF(" + ToString(column_family_id) + ", " +
                 key.ToString() + ", " + value.ToString() + ")";
+      }
+      return Status::OK();
+    }
+    virtual Status DeleteCF(uint32_t column_family_id,
+                            const Slice& key) override {
+      if (column_family_id == 0) {
+        seen += "Delete(" + key.ToString() + ")";
+      } else {
+        seen += "DeleteCF(" + ToString(column_family_id) + ", " +
+                key.ToString() + ")";
+      }
+      return Status::OK();
+    }
+    virtual Status SingleDeleteCF(uint32_t column_family_id,
+                                  const Slice& key) override {
+      if (column_family_id == 0) {
+        seen += "SingleDelete(" + key.ToString() + ")";
+      } else {
+        seen += "SingleDeleteCF(" + ToString(column_family_id) + ", " +
+                key.ToString() + ")";
       }
       return Status::OK();
     }
@@ -176,36 +219,14 @@ namespace {
     virtual void LogData(const Slice& blob) override {
       seen += "LogData(" + blob.ToString() + ")";
     }
-    virtual Status DeleteCF(uint32_t column_family_id,
-                            const Slice& key) override {
-      if (column_family_id == 0) {
-        seen += "Delete(" + key.ToString() + ")";
-      } else {
-        seen += "DeleteCF(" + ToString(column_family_id) + ", " +
-                key.ToString() + ")";
-      }
-      return Status::OK();
-    }
   };
-}
-
-TEST_F(WriteBatchTest, MergeNotImplemented) {
-  WriteBatch batch;
-  batch.Merge(Slice("foo"), Slice("bar"));
-  ASSERT_EQ(1, batch.Count());
-  ASSERT_EQ("Merge(foo, bar)@0",
-            PrintContents(&batch));
-
-  WriteBatch::Handler handler;
-  ASSERT_OK(batch.Iterate(&handler));
 }
 
 TEST_F(WriteBatchTest, PutNotImplemented) {
   WriteBatch batch;
   batch.Put(Slice("k1"), Slice("v1"));
   ASSERT_EQ(1, batch.Count());
-  ASSERT_EQ("Put(k1, v1)@0",
-            PrintContents(&batch));
+  ASSERT_EQ("Put(k1, v1)@0", PrintContents(&batch));
 
   WriteBatch::Handler handler;
   ASSERT_OK(batch.Iterate(&handler));
@@ -215,8 +236,27 @@ TEST_F(WriteBatchTest, DeleteNotImplemented) {
   WriteBatch batch;
   batch.Delete(Slice("k2"));
   ASSERT_EQ(1, batch.Count());
-  ASSERT_EQ("Delete(k2)@0",
-            PrintContents(&batch));
+  ASSERT_EQ("Delete(k2)@0", PrintContents(&batch));
+
+  WriteBatch::Handler handler;
+  ASSERT_OK(batch.Iterate(&handler));
+}
+
+TEST_F(WriteBatchTest, SingleDeleteNotImplemented) {
+  WriteBatch batch;
+  batch.SingleDelete(Slice("k2"));
+  ASSERT_EQ(1, batch.Count());
+  ASSERT_EQ("SingleDelete(k2)@0", PrintContents(&batch));
+
+  WriteBatch::Handler handler;
+  ASSERT_OK(batch.Iterate(&handler));
+}
+
+TEST_F(WriteBatchTest, MergeNotImplemented) {
+  WriteBatch batch;
+  batch.Merge(Slice("foo"), Slice("bar"));
+  ASSERT_EQ(1, batch.Count());
+  ASSERT_EQ("Merge(foo, bar)@0", PrintContents(&batch));
 
   WriteBatch::Handler handler;
   ASSERT_OK(batch.Iterate(&handler));
@@ -229,27 +269,31 @@ TEST_F(WriteBatchTest, Blob) {
   batch.Put(Slice("k3"), Slice("v3"));
   batch.PutLogData(Slice("blob1"));
   batch.Delete(Slice("k2"));
+  batch.SingleDelete(Slice("k3"));
   batch.PutLogData(Slice("blob2"));
   batch.Merge(Slice("foo"), Slice("bar"));
-  ASSERT_EQ(5, batch.Count());
-  ASSERT_EQ("Merge(foo, bar)@4"
-            "Put(k1, v1)@0"
-            "Delete(k2)@3"
-            "Put(k2, v2)@1"
-            "Put(k3, v3)@2",
-            PrintContents(&batch));
+  ASSERT_EQ(6, batch.Count());
+  ASSERT_EQ(
+      "Merge(foo, bar)@5"
+      "Put(k1, v1)@0"
+      "Delete(k2)@3"
+      "Put(k2, v2)@1"
+      "SingleDelete(k3)@4"
+      "Put(k3, v3)@2",
+      PrintContents(&batch));
 
   TestHandler handler;
   batch.Iterate(&handler);
   ASSERT_EQ(
-            "Put(k1, v1)"
-            "Put(k2, v2)"
-            "Put(k3, v3)"
-            "LogData(blob1)"
-            "Delete(k2)"
-            "LogData(blob2)"
-            "Merge(foo, bar)",
-            handler.seen);
+      "Put(k1, v1)"
+      "Put(k2, v2)"
+      "Put(k3, v3)"
+      "LogData(blob1)"
+      "Delete(k2)"
+      "SingleDelete(k3)"
+      "LogData(blob2)"
+      "Merge(foo, bar)",
+      handler.seen);
 }
 
 TEST_F(WriteBatchTest, Continue) {
@@ -262,6 +306,16 @@ TEST_F(WriteBatchTest, Continue) {
       ++num_seen;
       return TestHandler::PutCF(column_family_id, key, value);
     }
+    virtual Status DeleteCF(uint32_t column_family_id,
+                            const Slice& key) override {
+      ++num_seen;
+      return TestHandler::DeleteCF(column_family_id, key);
+    }
+    virtual Status SingleDeleteCF(uint32_t column_family_id,
+                                  const Slice& key) override {
+      ++num_seen;
+      return TestHandler::SingleDeleteCF(column_family_id, key);
+    }
     virtual Status MergeCF(uint32_t column_family_id, const Slice& key,
                            const Slice& value) override {
       ++num_seen;
@@ -271,27 +325,24 @@ TEST_F(WriteBatchTest, Continue) {
       ++num_seen;
       TestHandler::LogData(blob);
     }
-    virtual Status DeleteCF(uint32_t column_family_id,
-                            const Slice& key) override {
-      ++num_seen;
-      return TestHandler::DeleteCF(column_family_id, key);
-    }
-    virtual bool Continue() override {
-      return num_seen < 3;
-    }
+    virtual bool Continue() override { return num_seen < 5; }
   } handler;
 
   batch.Put(Slice("k1"), Slice("v1"));
+  batch.Put(Slice("k2"), Slice("v2"));
   batch.PutLogData(Slice("blob1"));
   batch.Delete(Slice("k1"));
+  batch.SingleDelete(Slice("k2"));
   batch.PutLogData(Slice("blob2"));
   batch.Merge(Slice("foo"), Slice("bar"));
   batch.Iterate(&handler);
   ASSERT_EQ(
-            "Put(k1, v1)"
-            "LogData(blob1)"
-            "Delete(k1)",
-            handler.seen);
+      "Put(k1, v1)"
+      "Put(k2, v2)"
+      "LogData(blob1)"
+      "Delete(k1)"
+      "SingleDelete(k2)",
+      handler.seen);
 }
 
 TEST_F(WriteBatchTest, PutGatherSlices) {
@@ -344,6 +395,7 @@ TEST_F(WriteBatchTest, ColumnFamiliesBatchTest) {
   batch.Put(&two, Slice("twofoo"), Slice("bar2"));
   batch.Put(&eight, Slice("eightfoo"), Slice("bar8"));
   batch.Delete(&eight, Slice("eightfoo"));
+  batch.SingleDelete(&two, Slice("twofoo"));
   batch.Merge(&three, Slice("threethree"), Slice("3three"));
   batch.Put(&zero, Slice("foo"), Slice("bar"));
   batch.Merge(Slice("omom"), Slice("nom"));
@@ -355,12 +407,14 @@ TEST_F(WriteBatchTest, ColumnFamiliesBatchTest) {
       "PutCF(2, twofoo, bar2)"
       "PutCF(8, eightfoo, bar8)"
       "DeleteCF(8, eightfoo)"
+      "SingleDeleteCF(2, twofoo)"
       "MergeCF(3, threethree, 3three)"
       "Put(foo, bar)"
       "Merge(omom, nom)",
       handler.seen);
 }
 
+#ifndef ROCKSDB_LITE
 TEST_F(WriteBatchTest, ColumnFamiliesBatchWithIndexTest) {
   WriteBatchWithIndex batch;
   ColumnFamilyHandleImplDummy zero(0), two(2), three(3), eight(8);
@@ -368,6 +422,7 @@ TEST_F(WriteBatchTest, ColumnFamiliesBatchWithIndexTest) {
   batch.Put(&two, Slice("twofoo"), Slice("bar2"));
   batch.Put(&eight, Slice("eightfoo"), Slice("bar8"));
   batch.Delete(&eight, Slice("eightfoo"));
+  batch.SingleDelete(&two, Slice("twofoo"));
   batch.Merge(&three, Slice("threethree"), Slice("3three"));
   batch.Put(&zero, Slice("foo"), Slice("bar"));
   batch.Merge(Slice("omom"), Slice("nom"));
@@ -387,6 +442,24 @@ TEST_F(WriteBatchTest, ColumnFamiliesBatchWithIndexTest) {
   ASSERT_TRUE(iter->Valid());
   ASSERT_EQ(WriteType::kDeleteRecord, iter->Entry().type);
   ASSERT_EQ("eightfoo", iter->Entry().key.ToString());
+
+  iter->Next();
+  ASSERT_OK(iter->status());
+  ASSERT_TRUE(!iter->Valid());
+
+  iter.reset(batch.NewIterator(&two));
+  iter->Seek("twofoo");
+  ASSERT_OK(iter->status());
+  ASSERT_TRUE(iter->Valid());
+  ASSERT_EQ(WriteType::kPutRecord, iter->Entry().type);
+  ASSERT_EQ("twofoo", iter->Entry().key.ToString());
+  ASSERT_EQ("bar2", iter->Entry().value.ToString());
+
+  iter->Next();
+  ASSERT_OK(iter->status());
+  ASSERT_TRUE(iter->Valid());
+  ASSERT_EQ(WriteType::kSingleDeleteRecord, iter->Entry().type);
+  ASSERT_EQ("twofoo", iter->Entry().key.ToString());
 
   iter->Next();
   ASSERT_OK(iter->status());
@@ -437,10 +510,117 @@ TEST_F(WriteBatchTest, ColumnFamiliesBatchWithIndexTest) {
       "PutCF(2, twofoo, bar2)"
       "PutCF(8, eightfoo, bar8)"
       "DeleteCF(8, eightfoo)"
+      "SingleDeleteCF(2, twofoo)"
       "MergeCF(3, threethree, 3three)"
       "Put(foo, bar)"
       "Merge(omom, nom)",
       handler.seen);
+}
+#endif  // !ROCKSDB_LITE
+
+TEST_F(WriteBatchTest, SavePointTest) {
+  Status s;
+  WriteBatch batch;
+  batch.SetSavePoint();
+
+  batch.Put("A", "a");
+  batch.Put("B", "b");
+  batch.SetSavePoint();
+
+  batch.Put("C", "c");
+  batch.Delete("A");
+  batch.SetSavePoint();
+  batch.SetSavePoint();
+
+  ASSERT_OK(batch.RollbackToSavePoint());
+  ASSERT_EQ(
+      "Delete(A)@3"
+      "Put(A, a)@0"
+      "Put(B, b)@1"
+      "Put(C, c)@2",
+      PrintContents(&batch));
+
+  ASSERT_OK(batch.RollbackToSavePoint());
+  ASSERT_OK(batch.RollbackToSavePoint());
+  ASSERT_EQ(
+      "Put(A, a)@0"
+      "Put(B, b)@1",
+      PrintContents(&batch));
+
+  batch.Delete("A");
+  batch.Put("B", "bb");
+
+  ASSERT_OK(batch.RollbackToSavePoint());
+  ASSERT_EQ("", PrintContents(&batch));
+
+  s = batch.RollbackToSavePoint();
+  ASSERT_TRUE(s.IsNotFound());
+  ASSERT_EQ("", PrintContents(&batch));
+
+  batch.Put("D", "d");
+  batch.Delete("A");
+
+  batch.SetSavePoint();
+
+  batch.Put("A", "aaa");
+
+  ASSERT_OK(batch.RollbackToSavePoint());
+  ASSERT_EQ(
+      "Delete(A)@1"
+      "Put(D, d)@0",
+      PrintContents(&batch));
+
+  batch.SetSavePoint();
+
+  batch.Put("D", "d");
+  batch.Delete("A");
+
+  ASSERT_OK(batch.RollbackToSavePoint());
+  ASSERT_EQ(
+      "Delete(A)@1"
+      "Put(D, d)@0",
+      PrintContents(&batch));
+
+  s = batch.RollbackToSavePoint();
+  ASSERT_TRUE(s.IsNotFound());
+  ASSERT_EQ(
+      "Delete(A)@1"
+      "Put(D, d)@0",
+      PrintContents(&batch));
+
+  WriteBatch batch2;
+
+  s = batch2.RollbackToSavePoint();
+  ASSERT_TRUE(s.IsNotFound());
+  ASSERT_EQ("", PrintContents(&batch2));
+
+  batch2.Delete("A");
+  batch2.SetSavePoint();
+
+  s = batch2.RollbackToSavePoint();
+  ASSERT_OK(s);
+  ASSERT_EQ("Delete(A)@0", PrintContents(&batch2));
+
+  batch2.Clear();
+  ASSERT_EQ("", PrintContents(&batch2));
+
+  batch2.SetSavePoint();
+
+  batch2.Delete("B");
+  ASSERT_EQ("Delete(B)@0", PrintContents(&batch2));
+
+  batch2.SetSavePoint();
+  s = batch2.RollbackToSavePoint();
+  ASSERT_OK(s);
+  ASSERT_EQ("Delete(B)@0", PrintContents(&batch2));
+
+  s = batch2.RollbackToSavePoint();
+  ASSERT_OK(s);
+  ASSERT_EQ("", PrintContents(&batch2));
+
+  s = batch2.RollbackToSavePoint();
+  ASSERT_TRUE(s.IsNotFound());
+  ASSERT_EQ("", PrintContents(&batch2));
 }
 
 }  // namespace rocksdb

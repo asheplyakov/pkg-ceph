@@ -167,6 +167,7 @@ AUTOMAKE = @AUTOMAKE@
 AWK = @AWK@
 BOOST_PROGRAM_OPTIONS_LIBS = @BOOST_PROGRAM_OPTIONS_LIBS@
 BOOST_RANDOM_LIBS = @BOOST_RANDOM_LIBS@
+BOOST_REGEX_LIBS = @BOOST_REGEX_LIBS@
 BOOST_THREAD_LIBS = @BOOST_THREAD_LIBS@
 CC = @CC@
 CCAS = @CCAS@
@@ -358,7 +359,8 @@ unitfiles = \
 	ceph-create-keys@.service \
 	ceph-osd@.service \
 	ceph-radosgw@.service \
-	ceph-disk@.service
+	ceph-disk@.service \
+	rbdmap.service
 
 unitdir = $(systemd_unit_dir)
 unit_DATA = $(unitfiles)

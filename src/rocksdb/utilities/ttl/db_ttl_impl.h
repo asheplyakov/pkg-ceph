@@ -17,6 +17,12 @@
 #include "rocksdb/utilities/db_ttl.h"
 #include "db/db_impl.h"
 
+#ifdef _WIN32
+// Windows API macro interference
+#undef GetCurrentTime
+#endif
+
+
 namespace rocksdb {
 
 class DBWithTTLImpl : public DBWithTTL {
@@ -188,9 +194,15 @@ class TtlCompactionFilterFactory : public CompactionFilterFactory {
 
   virtual std::unique_ptr<CompactionFilter> CreateCompactionFilter(
       const CompactionFilter::Context& context) override {
+    std::unique_ptr<const CompactionFilter> user_comp_filter_from_factory =
+        nullptr;
+    if (user_comp_filter_factory_) {
+      user_comp_filter_from_factory =
+          user_comp_filter_factory_->CreateCompactionFilter(context);
+    }
+
     return std::unique_ptr<TtlCompactionFilter>(new TtlCompactionFilter(
-        ttl_, env_, nullptr,
-        std::move(user_comp_filter_factory_->CreateCompactionFilter(context))));
+        ttl_, env_, nullptr, std::move(user_comp_filter_from_factory)));
   }
 
   virtual const char* Name() const override {
