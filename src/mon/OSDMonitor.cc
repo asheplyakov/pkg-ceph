@@ -1429,7 +1429,7 @@ bool OSDMonitor::preprocess_failure(MonOpRequestRef op)
     int from = m->get_orig_source().num();
     if (!osdmap.exists(from) ||
 	osdmap.get_addr(from) != m->get_orig_source_inst().addr ||
-	osdmap.is_down(from)) {
+	(osdmap.is_down(from) && m->if_osd_failed())) {
       dout(5) << "preprocess_failure from dead osd." << from << ", ignoring" << dendl;
       send_incremental(op, m->get_epoch()+1);
       goto didit;
@@ -1635,6 +1635,8 @@ void OSDMonitor::check_failures(utime_t now)
 
 bool OSDMonitor::check_failure(utime_t now, int target_osd, failure_info_t& fi)
 {
+  set<string> reporters_by_subtree;
+  string reporter_subtree_level = g_conf->mon_osd_reporter_subtree_level;
   utime_t orig_grace(g_conf->osd_heartbeat_grace, 0);
   utime_t max_failed_since = fi.get_failed_since();
   utime_t failed_for = now - max_failed_since;
@@ -1663,6 +1665,16 @@ bool OSDMonitor::check_failure(utime_t now, int target_osd, failure_info_t& fi)
     for (map<int,failure_reporter_t>::iterator p = fi.reporters.begin();
 	 p != fi.reporters.end();
 	 ++p) {
+      // get the parent bucket whose type matches with "reporter_subtree_level".
+      // fall back to OSD if the level doesn't exist.
+      map<string, string> reporter_loc = osdmap.crush->get_full_location(p->first);
+      map<string, string>::iterator iter = reporter_loc.find(reporter_subtree_level);
+      if (iter == reporter_loc.end()) {
+	reporters_by_subtree.insert("osd." + to_string(p->first));
+      } else {
+	reporters_by_subtree.insert(iter->second);
+      }
+
       const osd_xinfo_t& xi = osdmap.get_xinfo(p->first);
       utime_t elapsed = now - xi.down_stamp;
       double decay = exp((double)elapsed * decay_k);
@@ -1685,15 +1697,17 @@ bool OSDMonitor::check_failure(utime_t now, int target_osd, failure_info_t& fi)
     return true;
   }
 
+
   if (failed_for >= grace &&
-      ((int)fi.reporters.size() >= g_conf->mon_osd_min_down_reporters)) {
+      (int)reporters_by_subtree.size() >= g_conf->mon_osd_min_down_reporters) {
     dout(1) << " we have enough reporters to mark osd." << target_osd
 	    << " down" << dendl;
     pending_inc.new_state[target_osd] = CEPH_OSD_UP;
 
     mon->clog->info() << osdmap.get_inst(target_osd) << " failed ("
-		     << (int)fi.reporters.size() << " reporters after "
-		     << failed_for << " >= grace " << grace << ")\n";
+		      << (int)reporters_by_subtree.size() << " reporters from different "
+		      << reporter_subtree_level << " after "
+		      << failed_for << " >= grace " << grace << ")\n";
     return true;
   }
   return false;
@@ -2907,7 +2921,9 @@ namespace {
     CACHE_MIN_FLUSH_AGE, CACHE_MIN_EVICT_AGE,
     ERASURE_CODE_PROFILE, MIN_READ_RECENCY_FOR_PROMOTE,
     MIN_WRITE_RECENCY_FOR_PROMOTE, FAST_READ,
-    HIT_SET_GRADE_DECAY_RATE, HIT_SET_SEARCH_LAST_N};
+    HIT_SET_GRADE_DECAY_RATE, HIT_SET_SEARCH_LAST_N,
+    SCRUB_MIN_INTERVAL, SCRUB_MAX_INTERVAL, DEEP_SCRUB_INTERVAL,
+    RECOVERY_PRIORITY, RECOVERY_OP_PRIORITY};
 
   std::set<osd_pool_get_choices>
     subtract_second_from_first(const std::set<osd_pool_get_choices>& first,
@@ -3383,7 +3399,12 @@ bool OSDMonitor::preprocess_command(MonOpRequestRef op)
       ("min_write_recency_for_promote", MIN_WRITE_RECENCY_FOR_PROMOTE)
       ("fast_read", FAST_READ)
       ("hit_set_grade_decay_rate", HIT_SET_GRADE_DECAY_RATE)
-      ("hit_set_search_last_n", HIT_SET_SEARCH_LAST_N);
+      ("hit_set_search_last_n", HIT_SET_SEARCH_LAST_N)
+      ("scrub_min_interval", SCRUB_MIN_INTERVAL)
+      ("scrub_max_interval", SCRUB_MAX_INTERVAL)
+      ("deep_scrub_interval", DEEP_SCRUB_INTERVAL)
+      ("recovery_priority", RECOVERY_PRIORITY)
+      ("recovery_op_priority", RECOVERY_OP_PRIORITY);
 
     typedef std::set<osd_pool_get_choices> choices_set_t;
 
@@ -3562,6 +3583,18 @@ bool OSDMonitor::preprocess_command(MonOpRequestRef op)
 	    f->dump_int("hit_set_search_last_n",
 			p->hit_set_search_last_n);
 	    break;
+	  case SCRUB_MIN_INTERVAL:
+	  case SCRUB_MAX_INTERVAL:
+	  case DEEP_SCRUB_INTERVAL:
+          case RECOVERY_PRIORITY:
+          case RECOVERY_OP_PRIORITY:
+	    for (i = ALL_CHOICES.begin(); i != ALL_CHOICES.end(); ++i) {
+	      if (i->second == *it)
+		break;
+	    }
+	    assert(i != ALL_CHOICES.end());
+	    p->opts.dump(i->first, f.get());
+            break;
 	}
 	f->close_section();
 	f->flush(rdata);
@@ -3683,6 +3716,23 @@ bool OSDMonitor::preprocess_command(MonOpRequestRef op)
           case FAST_READ:
             ss << "fast_read: " << p->fast_read << "\n";
             break;
+	  case SCRUB_MIN_INTERVAL:
+	  case SCRUB_MAX_INTERVAL:
+	  case DEEP_SCRUB_INTERVAL:
+          case RECOVERY_PRIORITY:
+          case RECOVERY_OP_PRIORITY:
+	    for (i = ALL_CHOICES.begin(); i != ALL_CHOICES.end(); ++i) {
+	      if (i->second == *it)
+		break;
+	    }
+	    assert(i != ALL_CHOICES.end());
+	    {
+	      pool_opts_t::key_t key = pool_opts_t::get_opt_desc(i->first).key;
+	      if (p->opts.is_set(key)) {
+		ss << i->first << ": " << p->opts.get(key) << "\n";
+	      }
+	    }
+	    break;
 	}
 	rdata.append(ss.str());
 	ss.str("");
@@ -5087,6 +5137,41 @@ int OSDMonitor::prepare_command_pool_set(map<string,cmd_vartype> &cmdmap,
       p.fast_read = true;
     } else if (val == "false" || (interr.empty() && n == 0)) {
       p.fast_read = false;
+    }
+  } else if (pool_opts_t::is_opt_name(var)) {
+    pool_opts_t::opt_desc_t desc = pool_opts_t::get_opt_desc(var);
+    switch (desc.type) {
+    case pool_opts_t::STR:
+      if (val.empty()) {
+	p.opts.unset(desc.key);
+      } else {
+	p.opts.set(desc.key, static_cast<std::string>(val));
+      }
+      break;
+    case pool_opts_t::INT:
+      if (interr.length()) {
+	ss << "error parsing integer value '" << val << "': " << interr;
+	return -EINVAL;
+      }
+      if (n == 0) {
+	p.opts.unset(desc.key);
+      } else {
+	p.opts.set(desc.key, static_cast<int>(n));
+      }
+      break;
+    case pool_opts_t::DOUBLE:
+      if (floaterr.length()) {
+	ss << "error parsing floating point value '" << val << "': " << floaterr;
+	return -EINVAL;
+      }
+      if (f == 0) {
+	p.opts.unset(desc.key);
+      } else {
+	p.opts.set(desc.key, static_cast<double>(f));
+      }
+      break;
+    default:
+      assert(!"unknown type");
     }
   } else {
     ss << "unrecognized variable '" << var << "'";

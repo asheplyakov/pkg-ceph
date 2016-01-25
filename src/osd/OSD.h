@@ -67,21 +67,25 @@ enum {
   l_osd_op_outb,
   l_osd_op_lat,
   l_osd_op_process_lat,
+  l_osd_op_prepare_lat,
   l_osd_op_r,
   l_osd_op_r_outb,
   l_osd_op_r_lat,
   l_osd_op_r_process_lat,
+  l_osd_op_r_prepare_lat,
   l_osd_op_w,
   l_osd_op_w_inb,
   l_osd_op_w_rlat,
   l_osd_op_w_lat,
   l_osd_op_w_process_lat,
+  l_osd_op_w_prepare_lat,
   l_osd_op_rw,
   l_osd_op_rw_inb,
   l_osd_op_rw_outb,
   l_osd_op_rw_rlat,
   l_osd_op_rw_lat,
   l_osd_op_rw_process_lat,
+  l_osd_op_rw_prepare_lat,
 
   l_osd_sop,
   l_osd_sop_inb,
@@ -106,6 +110,10 @@ enum {
 
   l_osd_loadavg,
   l_osd_buf,
+  l_osd_history_alloc_bytes,
+  l_osd_history_alloc_num,
+  l_osd_cached_crc,
+  l_osd_cached_crc_adjusted,
 
   l_osd_pg,
   l_osd_pg_primary,
@@ -590,15 +598,19 @@ public:
     /// the hard upper bound of scrub time
     utime_t deadline;
     ScrubJob() {}
-    explicit ScrubJob(const spg_t& pg, const utime_t& timestamp, bool must = true);
+    explicit ScrubJob(const spg_t& pg, const utime_t& timestamp,
+		      double pool_scrub_min_interval = 0,
+		      double pool_scrub_max_interval = 0, bool must = true);
     /// order the jobs by sched_time
     bool operator<(const ScrubJob& rhs) const;
   };
   set<ScrubJob> sched_scrub_pg;
 
   /// @returns the scrub_reg_stamp used for unregister the scrub job
-  utime_t reg_pg_scrub(spg_t pgid, utime_t t, bool must) {
-    ScrubJob scrub(pgid, t, must);
+  utime_t reg_pg_scrub(spg_t pgid, utime_t t, double pool_scrub_min_interval,
+		       double pool_scrub_max_interval, bool must) {
+    ScrubJob scrub(pgid, t, pool_scrub_min_interval, pool_scrub_max_interval,
+		   must);
     Mutex::Locker l(sched_scrub_lock);
     sched_scrub_pg.insert(scrub);
     return scrub.sched_time;
@@ -1617,9 +1629,9 @@ private:
       PrioritizedQueue< pair<PGRef, PGQueueable>, entity_inst_t> pqueue;
       ShardData(
 	string lock_name, string ordering_lock,
-	uint64_t max_tok_per_prio, uint64_t min_cost)
-	: sdata_lock(lock_name.c_str()),
-	  sdata_op_ordering_lock(ordering_lock.c_str()),
+	uint64_t max_tok_per_prio, uint64_t min_cost, CephContext *cct)
+	: sdata_lock(lock_name.c_str(), false, true, false, cct),
+	  sdata_op_ordering_lock(ordering_lock.c_str(), false, true, false, cct),
 	  pqueue(max_tok_per_prio, min_cost) {}
     };
     
@@ -1641,7 +1653,7 @@ private:
 	ShardData* one_shard = new ShardData(
 	  lock_name, order_lock,
 	  osd->cct->_conf->osd_op_pq_max_tokens_per_priority, 
-	  osd->cct->_conf->osd_op_pq_min_cost);
+	  osd->cct->_conf->osd_op_pq_min_cost, osd->cct);
 	shard_list.push_back(one_shard);
       }
     }

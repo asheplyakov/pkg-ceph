@@ -12,15 +12,14 @@ librbd_internal_la_SOURCES = \
 	librbd/AioImageRequest.cc \
 	librbd/AioImageRequestWQ.cc \
 	librbd/AioObjectRequest.cc \
-	librbd/AsyncFlattenRequest.cc \
 	librbd/AsyncObjectThrottle.cc \
 	librbd/AsyncOperation.cc \
 	librbd/AsyncRequest.cc \
-	librbd/AsyncResizeRequest.cc \
-	librbd/AsyncTrimRequest.cc \
 	librbd/CopyupRequest.cc \
 	librbd/DiffIterate.cc \
+	librbd/ExclusiveLock.cc \
 	librbd/ImageCtx.cc \
+	librbd/ImageState.cc \
 	librbd/ImageWatcher.cc \
 	librbd/internal.cc \
 	librbd/Journal.cc \
@@ -28,7 +27,36 @@ librbd_internal_la_SOURCES = \
 	librbd/LibrbdAdminSocketHook.cc \
 	librbd/LibrbdWriteback.cc \
 	librbd/ObjectMap.cc \
-	librbd/RebuildObjectMapRequest.cc
+	librbd/Utils.cc \
+	librbd/exclusive_lock/AcquireRequest.cc \
+	librbd/exclusive_lock/ReleaseRequest.cc \
+	librbd/image/CloseRequest.cc \
+	librbd/image/OpenRequest.cc \
+	librbd/image/RefreshParentRequest.cc \
+	librbd/image/RefreshRequest.cc \
+	librbd/image/SetSnapRequest.cc \
+	librbd/object_map/InvalidateRequest.cc \
+	librbd/object_map/LockRequest.cc \
+	librbd/object_map/Request.cc \
+	librbd/object_map/RefreshRequest.cc \
+	librbd/object_map/ResizeRequest.cc \
+	librbd/object_map/SnapshotCreateRequest.cc \
+	librbd/object_map/SnapshotRemoveRequest.cc \
+	librbd/object_map/SnapshotRollbackRequest.cc \
+	librbd/object_map/UnlockRequest.cc \
+	librbd/object_map/UpdateRequest.cc \
+	librbd/operation/FlattenRequest.cc \
+	librbd/operation/RebuildObjectMapRequest.cc \
+	librbd/operation/RenameRequest.cc \
+	librbd/operation/Request.cc \
+	librbd/operation/ResizeRequest.cc \
+	librbd/operation/SnapshotCreateRequest.cc \
+	librbd/operation/SnapshotProtectRequest.cc \
+	librbd/operation/SnapshotRemoveRequest.cc \
+	librbd/operation/SnapshotRenameRequest.cc \
+	librbd/operation/SnapshotRollbackRequest.cc \
+	librbd/operation/SnapshotUnprotectRequest.cc \
+	librbd/operation/TrimRequest.cc
 noinst_LTLIBRARIES += librbd_internal.la
 
 librbd_api_la_SOURCES = \
@@ -58,15 +86,14 @@ noinst_HEADERS += \
 	librbd/AioImageRequest.h \
 	librbd/AioImageRequestWQ.h \
 	librbd/AioObjectRequest.h \
-	librbd/AsyncFlattenRequest.h \
 	librbd/AsyncObjectThrottle.h \
 	librbd/AsyncOperation.h \
 	librbd/AsyncRequest.h \
-	librbd/AsyncResizeRequest.h \
-	librbd/AsyncTrimRequest.h \
 	librbd/CopyupRequest.h \
 	librbd/DiffIterate.h \
+	librbd/ExclusiveLock.h \
 	librbd/ImageCtx.h \
+	librbd/ImageState.h \
 	librbd/ImageWatcher.h \
 	librbd/internal.h \
 	librbd/Journal.h \
@@ -76,10 +103,39 @@ noinst_HEADERS += \
 	librbd/LibrbdWriteback.h \
 	librbd/ObjectMap.h \
 	librbd/parent_types.h \
-	librbd/RebuildObjectMapRequest.h \
 	librbd/SnapInfo.h \
 	librbd/TaskFinisher.h \
-	librbd/WatchNotifyTypes.h
+	librbd/Utils.h \
+	librbd/WatchNotifyTypes.h \
+	librbd/exclusive_lock/AcquireRequest.h \
+	librbd/exclusive_lock/ReleaseRequest.h \
+	librbd/image/CloseRequest.h \
+	librbd/image/OpenRequest.h \
+	librbd/image/RefreshParentRequest.h \
+	librbd/image/RefreshRequest.h \
+	librbd/image/SetSnapRequest.h \
+	librbd/object_map/InvalidateRequest.h \
+	librbd/object_map/LockRequest.h \
+	librbd/object_map/Request.h \
+	librbd/object_map/RefreshRequest.h \
+	librbd/object_map/ResizeRequest.h \
+	librbd/object_map/SnapshotCreateRequest.h \
+	librbd/object_map/SnapshotRemoveRequest.h \
+	librbd/object_map/SnapshotRollbackRequest.h \
+	librbd/object_map/UnlockRequest.h \
+	librbd/object_map/UpdateRequest.h \
+	librbd/operation/FlattenRequest.h \
+	librbd/operation/RebuildObjectMapRequest.h \
+	librbd/operation/RenameRequest.h \
+	librbd/operation/Request.h \
+	librbd/operation/ResizeRequest.h \
+	librbd/operation/SnapshotCreateRequest.h \
+	librbd/operation/SnapshotProtectRequest.h \
+	librbd/operation/SnapshotRemoveRequest.h \
+	librbd/operation/SnapshotRenameRequest.h \
+	librbd/operation/SnapshotRollbackRequest.h \
+	librbd/operation/SnapshotUnprotectRequest.h \
+	librbd/operation/TrimRequest.h
 
 endif # WITH_RBD
 endif # WITH_RADOS
