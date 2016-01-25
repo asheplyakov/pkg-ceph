@@ -7,7 +7,8 @@ Uploaders: Laszlo Boszormenyi (GCS) <gcs@debian.org>,
 Homepage: http://ceph.com/
 Vcs-Git: git://anonscm.debian.org/pkg-ceph/ceph.git
 Vcs-Browser: http://anonscm.debian.org/gitweb/?p=pkg-ceph/ceph.git
-Build-Depends: debhelper (>= 9~),
+Build-Depends: cython,
+               debhelper (>= 9~),
                default-jdk,
                dh-autoreconf,
                dh-python,
@@ -26,7 +27,6 @@ Build-Depends: debhelper (>= 9~),
                libboost-regex-dev,
                libboost-system-dev (>= 1.42),
                libboost-thread-dev (>= 1.42),
-               libbz2-dev,
                libcurl4-gnutls-dev,
                libedit-dev,
                libexpat1-dev,
@@ -44,8 +44,8 @@ Build-Depends: debhelper (>= 9~),
                pkg-config,
                python-all (>= 2.6.6-3~),
                python-nose,
-               python-sphinx,
                python-setuptools,
+               python-sphinx,
                uuid-dev,
                uuid-runtime,
                valgrind [amd64 armhf i386 powerpc],
@@ -107,6 +107,33 @@ Description: debugging symbols for ceph
  performance, reliability, and scalability.
  .
  This package contains the debugging symbols for ceph.
+
+Package: rbd-nbd
+Architecture: linux-any
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: NBD-based rbd client for the Ceph distributed file system
+ Ceph is a massively scalable, open-source, distributed
+ storage system that runs on commodity hardware and delivers object,
+ block and file system storage.  This is a
+ NBD-based client that allows one to map Ceph rbd images as local
+ block device.
+ .
+ NBD base client that allows one to map Ceph rbd images as local
+ block device.
+
+Package: rbd-nbd-dbg
+Architecture: linux-any
+Section: debug
+Priority: extra
+Depends: rbd-nbd (= ${binary:Version}), ${misc:Depends}
+Description: debugging symbols for rbd-nbd
+ Ceph is a massively scalable, open-source, distributed
+ storage system that runs on commodity hardware and delivers object,
+ block and file system storage.  This is a
+ NBD-based client that allows one to map Ceph rbd images as local
+ block device.
+ .
+ This package contains the debugging symbols for rbd-nbd.
 
 Package: ceph-common
 Architecture: linux-any
