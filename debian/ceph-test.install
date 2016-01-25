@@ -19,7 +19,6 @@ usr/bin/ceph_smalliobench /usr/lib/ceph/bin
 usr/bin/ceph_smalliobenchdumb /usr/lib/ceph/bin
 usr/bin/ceph_smalliobenchfs /usr/lib/ceph/bin
 usr/bin/ceph_smalliobenchrbd /usr/lib/ceph/bin
-usr/bin/ceph_streamtest /usr/lib/ceph/bin
 usr/bin/ceph_test_* /usr/lib/ceph/bin
 usr/bin/ceph_tpbench /usr/lib/ceph/bin
 usr/bin/ceph_xattr_bench /usr/lib/ceph/bin
