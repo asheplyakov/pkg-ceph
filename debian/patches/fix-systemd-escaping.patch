@@ -1,7 +1,7 @@
 Description: Ensure that leading / is stripped from device paths
 Author: James Page <james.page@ubuntu.com>
 Bug: http://tracker.ceph.com/issues/14706
-Forwarded: no
+Forwarded: https://github.com/ceph/ceph/pull/7579
 
 --- a/src/ceph-disk
 +++ b/src/ceph-disk
