@@ -17,3 +17,4 @@ ceph-osd-prestart-path.patch
 fix-argparse-defaults.patch
 fix-cycles-arch.patch
 pybind-flags.patch
+fix-systemd-escaping.patch

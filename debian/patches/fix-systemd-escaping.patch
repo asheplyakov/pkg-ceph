@@ -1,0 +1,16 @@
+Description: Ensure that leading / is stripped from device paths
+Author: James Page <james.page@ubuntu.com>
+Bug: http://tracker.ceph.com/issues/14706
+Forwarded: no
+
+--- a/src/ceph-disk
++++ b/src/ceph-disk
+@@ -2998,7 +2998,7 @@ def main_trigger(args):
+     LOG.debug("main_trigger: " + str(args))
+     if is_systemd() and not args.sync:
+         # http://www.freedesktop.org/software/systemd/man/systemd-escape.html
+-        escaped_dev = args.dev.replace('-', '\\x2d')
++        escaped_dev = args.dev[1:].replace('-', '\\x2d')
+         service='ceph-disk@{dev}.service'.format(dev=escaped_dev)
+         LOG.info('systemd detected, triggering %s' % service)
+         command(
