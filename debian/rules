@@ -73,7 +73,7 @@ override_dh_auto_install:
 	#       from the package install - package ships unversioned modules.
 	rm -f $(CURDIR)/debian/tmp/usr/lib/*/ceph/erasure-code/libec_*.so.*
 	find $(CURDIR)/debian/tmp/usr/lib/*/ceph/erasure-code -type l -delete || :
-	install -D -m 644 src/etc-rbdmap $(DESTDIR)/etc/ceph/rbdmap
+	install -D -m 644 src/etc-rbdmap $(CURDIR)/debian/tmp/etc/ceph/rbdmap
 
 override_dh_installinit:
 	dh_installinit --no-start
