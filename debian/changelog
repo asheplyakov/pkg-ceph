@@ -1,3 +1,10 @@
+ceph (9.2.0-0ubuntu5) UNRELEASED; urgency=medium
+
+  [ guessi ]
+  * d/ceph-mds.postinst: Fixup syntax error (LP: #1544647).
+
+ -- James Page <james.page@ubuntu.com>  Tue, 16 Feb 2016 12:50:04 +0000
+
 ceph (9.2.0-0ubuntu4) xenial; urgency=medium
 
   * d/p/fix-systemd-escaping.patch: Ensure that leading '/' is stripped

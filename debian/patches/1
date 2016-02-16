@@ -1,0 +1,19 @@
+## Backported / Upstream
+sleep-recover.patch
+
+## Debian
+#rbdmap3-lazyumount.patch
+arch.patch
+sample.ceph.conf.patch
+# Disabled until adopted upstream
+# use_system_jerasure.patch
+virtualenv-never-download.patch
+# Testing patches
+tests-disable-ceph-disk.patch
+tests-disable.patch
+
+## From Ubuntu
+ceph-osd-prestart-path.patch
+fix-argparse-defaults.patch
+fix-cycles-arch.patch
+fix-systemd-escaping.patch
