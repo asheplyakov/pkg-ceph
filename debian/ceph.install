@@ -3,7 +3,6 @@ debian/etc/pm/sleep.d/*    /etc/pm/sleep.d/
 etc/bash_completion.d/ceph
 udev/60-ceph-partuuid-workaround.rules lib/udev/rules.d
 udev/95-ceph-osd.rules lib/udev/rules.d
-usr/bin/ceph-bluefs-tool
 usr/bin/ceph-clsinfo
 usr/bin/ceph-debugpack
 usr/bin/ceph-detect-init
