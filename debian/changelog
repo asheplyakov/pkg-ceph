@@ -2,6 +2,8 @@ ceph (9.2.0-0ubuntu6) UNRELEASED; urgency=medium
 
   * d/ceph-mds.dirs: Actually create /var/lib/ceph/mds prior to changing
     permissions (LP: #1544647).
+  * d/ceph.init: Restore link to init-ceph, resolving un-install failures
+    due to missing init script (LP: #1546112).
 
  -- James Page <james.page@ubuntu.com>  Wed, 17 Feb 2016 09:58:30 +0000
 
