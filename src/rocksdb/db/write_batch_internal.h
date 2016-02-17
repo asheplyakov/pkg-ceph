@@ -73,8 +73,17 @@ class WriteBatchInternal {
   static void Delete(WriteBatch* batch, uint32_t column_family_id,
                      const Slice& key);
 
+  static void SingleDelete(WriteBatch* batch, uint32_t column_family_id,
+                           const SliceParts& key);
+
+  static void SingleDelete(WriteBatch* batch, uint32_t column_family_id,
+                           const Slice& key);
+
   static void Merge(WriteBatch* batch, uint32_t column_family_id,
                     const Slice& key, const Slice& value);
+
+  static void Merge(WriteBatch* batch, uint32_t column_family_id,
+                    const SliceParts& key, const SliceParts& value);
 
   // Return the number of entries in the batch.
   static int Count(const WriteBatch* batch);
@@ -88,6 +97,10 @@ class WriteBatchInternal {
   // Store the specified number as the seqeunce number for the start of
   // this batch.
   static void SetSequence(WriteBatch* batch, SequenceNumber seq);
+
+  // Returns the offset of the first entry in the batch.
+  // This offset is only valid if the batch is not empty.
+  static size_t GetFirstOffset(WriteBatch* batch);
 
   static Slice Contents(const WriteBatch* batch) {
     return Slice(batch->rep_);

@@ -22,6 +22,7 @@ int main() {
 #include "table/plain_table_factory.h"
 #include "table/table_builder.h"
 #include "table/get_context.h"
+#include "util/file_reader_writer.h"
 #include "util/histogram.h"
 #include "util/testharness.h"
 #include "util/testutil.h"
@@ -78,23 +79,26 @@ void TableReaderBenchmark(Options& opts, EnvOptions& env_options,
       + "/rocksdb_table_reader_benchmark";
   std::string dbname = test::TmpDir() + "/rocksdb_table_reader_bench_db";
   WriteOptions wo;
-  unique_ptr<WritableFile> file;
   Env* env = Env::Default();
   TableBuilder* tb = nullptr;
   DB* db = nullptr;
   Status s;
   const ImmutableCFOptions ioptions(opts);
+  unique_ptr<WritableFileWriter> file_writer;
   if (!through_db) {
+    unique_ptr<WritableFile> file;
     env->NewWritableFile(file_name, &file, env_options);
 
     std::vector<std::unique_ptr<IntTblPropCollectorFactory> >
         int_tbl_prop_collector_factories;
 
+    file_writer.reset(new WritableFileWriter(std::move(file), env_options));
+
     tb = opts.table_factory->NewTableBuilder(
         TableBuilderOptions(ioptions, ikc, &int_tbl_prop_collector_factories,
                             CompressionType::kNoCompression,
                             CompressionOptions(), false),
-        file.get());
+        file_writer.get());
   } else {
     s = DB::Open(opts, dbname, &db);
     ASSERT_OK(s);
@@ -113,19 +117,30 @@ void TableReaderBenchmark(Options& opts, EnvOptions& env_options,
   }
   if (!through_db) {
     tb->Finish();
-    file->Close();
+    file_writer->Close();
   } else {
     db->Flush(FlushOptions());
   }
 
   unique_ptr<TableReader> table_reader;
-  unique_ptr<RandomAccessFile> raf;
   if (!through_db) {
+    unique_ptr<RandomAccessFile> raf;
     s = env->NewRandomAccessFile(file_name, &raf, env_options);
+    if (!s.ok()) {
+      fprintf(stderr, "Create File Error: %s\n", s.ToString().c_str());
+      exit(1);
+    }
     uint64_t file_size;
     env->GetFileSize(file_name, &file_size);
+    unique_ptr<RandomAccessFileReader> file_reader(
+        new RandomAccessFileReader(std::move(raf)));
     s = opts.table_factory->NewTableReader(
-        ioptions, env_options, ikc, std::move(raf), file_size, &table_reader);
+        TableReaderOptions(ioptions, env_options, ikc), std::move(file_reader),
+        file_size, &table_reader);
+    if (!s.ok()) {
+      fprintf(stderr, "Open Table Error: %s\n", s.ToString().c_str());
+      exit(1);
+    }
   }
 
   Random rnd(301);

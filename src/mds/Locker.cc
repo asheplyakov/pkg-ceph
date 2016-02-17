@@ -2463,6 +2463,11 @@ void Locker::handle_client_caps(MClientCaps *m)
 	  << " op " << ceph_cap_op_name(m->get_op()) << dendl;
 
   if (!mds->is_clientreplay() && !mds->is_active() && !mds->is_stopping()) {
+    if (mds->is_reconnect() &&
+	m->get_dirty() && m->get_client_tid() > 0 &&
+	session->have_completed_flush(m->get_client_tid())) {
+      mdcache->set_reconnect_dirty_caps(m->get_ino(), m->get_dirty());
+    }
     mds->wait_for_replay(new C_MDS_RetryMessage(mds, m));
     return;
   }
@@ -3131,6 +3136,12 @@ bool Locker::_do_cap_update(CInode *in, Capability *cap,
   if (!dirty && !change_max)
     return false;
 
+  Session *session = static_cast<Session *>(m->get_connection()->get_priv());
+  if (!session->check_access(in, MAY_WRITE, m->caller_uid, m->caller_gid, 0, 0)) {
+    dout(10) << "check_access failed, dropping cap update on " << *in << dendl;
+    return false;
+  }
+  session->put();
 
   // do the update.
   EUpdate *le = new EUpdate(mds->mdlog, "cap update");

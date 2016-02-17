@@ -6,6 +6,12 @@
 #include <string>
 #include "rocksdb/db.h"
 
+#ifdef _WIN32
+// Windows API macro interference
+#undef DeleteFile
+#endif
+
+
 namespace rocksdb {
 
 // This class contains APIs to stack rocksdb wrappers.Eg. Stack TTL over base d
@@ -21,6 +27,8 @@ class StackableDB : public DB {
   virtual DB* GetBaseDB() {
     return db_;
   }
+
+  virtual DB* GetRootDB() override { return db_->GetRootDB(); }
 
   virtual Status CreateColumnFamily(const ColumnFamilyOptions& options,
                                     const std::string& column_family_name,
@@ -55,6 +63,18 @@ class StackableDB : public DB {
     return db_->MultiGet(options, column_family, keys, values);
   }
 
+  using DB::AddFile;
+  virtual Status AddFile(ColumnFamilyHandle* column_family,
+                         const ExternalSstFileInfo* file_info,
+                         bool move_file) override {
+    return db_->AddFile(column_family, file_info, move_file);
+  }
+  virtual Status AddFile(ColumnFamilyHandle* column_family,
+                         const std::string& file_path,
+                         bool move_file) override {
+    return db_->AddFile(column_family, file_path, move_file);
+  }
+
   using DB::KeyMayExist;
   virtual bool KeyMayExist(const ReadOptions& options,
                            ColumnFamilyHandle* column_family, const Slice& key,
@@ -68,6 +88,13 @@ class StackableDB : public DB {
                         ColumnFamilyHandle* column_family,
                         const Slice& key) override {
     return db_->Delete(wopts, column_family, key);
+  }
+
+  using DB::SingleDelete;
+  virtual Status SingleDelete(const WriteOptions& wopts,
+                              ColumnFamilyHandle* column_family,
+                              const Slice& key) override {
+    return db_->SingleDelete(wopts, column_family, key);
   }
 
   using DB::Merge;
@@ -119,18 +146,16 @@ class StackableDB : public DB {
 
   using DB::GetApproximateSizes;
   virtual void GetApproximateSizes(ColumnFamilyHandle* column_family,
-                                   const Range* r, int n,
-                                   uint64_t* sizes) override {
+                                   const Range* r, int n, uint64_t* sizes,
+                                   bool include_memtable = false) override {
       return db_->GetApproximateSizes(column_family, r, n, sizes);
   }
 
   using DB::CompactRange;
-  virtual Status CompactRange(ColumnFamilyHandle* column_family,
-                              const Slice* begin, const Slice* end,
-                              bool reduce_level = false, int target_level = -1,
-                              uint32_t target_path_id = 0) override {
-    return db_->CompactRange(column_family, begin, end, reduce_level,
-                             target_level, target_path_id);
+  virtual Status CompactRange(const CompactRangeOptions& options,
+                              ColumnFamilyHandle* column_family,
+                              const Slice* begin, const Slice* end) override {
+    return db_->CompactRange(options, column_family, begin, end);
   }
 
   using DB::CompactFiles;
@@ -142,6 +167,13 @@ class StackableDB : public DB {
     return db_->CompactFiles(
         compact_options, column_family, input_file_names,
         output_level, output_path_id);
+  }
+
+  virtual Status PauseBackgroundWork() override {
+    return db_->PauseBackgroundWork();
+  }
+  virtual Status ContinueBackgroundWork() override {
+    return db_->ContinueBackgroundWork();
   }
 
   using DB::NumberLevels;
@@ -186,6 +218,10 @@ class StackableDB : public DB {
     return db_->Flush(fopts, column_family);
   }
 
+  virtual Status SyncWAL() override {
+    return db_->SyncWAL();
+  }
+
 #ifndef ROCKSDB_LITE
 
   virtual Status DisableFileDeletions() override {
@@ -226,7 +262,7 @@ class StackableDB : public DB {
     return db_->DeleteFile(name);
   }
 
-  virtual Status GetDbIdentity(std::string& identity) override {
+  virtual Status GetDbIdentity(std::string& identity) const override {
     return db_->GetDbIdentity(identity);
   }
 

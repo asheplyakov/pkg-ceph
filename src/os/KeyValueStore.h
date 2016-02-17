@@ -36,7 +36,7 @@ using namespace std;
 
 #include "common/Mutex.h"
 #include "GenericObjectMap.h"
-#include "KeyValueDB.h"
+#include "kv/KeyValueDB.h"
 #include "common/random_cache.hpp"
 
 #include "include/uuid.h"
@@ -493,10 +493,6 @@ class KeyValueStore : public ObjectStore,
   int update_version_stamp();
   uint32_t get_target_version() {
     return target_version;
-  }
-  int peek_journal_fsid(uuid_d *id) {
-    *id = fsid;
-    return 0;
   }
 
   int write_version_stamp();

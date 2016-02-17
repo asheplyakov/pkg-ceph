@@ -73,6 +73,7 @@ override_dh_auto_install:
 	#       from the package install - package ships unversioned modules.
 	rm -f $(CURDIR)/debian/tmp/usr/lib/*/ceph/erasure-code/libec_*.so.*
 	find $(CURDIR)/debian/tmp/usr/lib/*/ceph/erasure-code -type l -delete || :
+	install -D -m 644 src/etc-rbdmap $(CURDIR)/debian/tmp/etc/ceph/rbdmap
 
 override_dh_installinit:
 	dh_installinit --no-start
@@ -138,6 +139,7 @@ override_dh_strip:
 	dh_strip -pceph-mds --dbg-package=ceph-mds-dbg
 	dh_strip -pceph-fuse --dbg-package=ceph-fuse-dbg
 	dh_strip -prbd-fuse --dbg-package=rbd-fuse-dbg
+	dh_strip -prbd-nbd --dbg-package=rbd-nbd-dbg
 	dh_strip -pceph-common --dbg-package=ceph-common-dbg
 	dh_strip -pceph-fs-common --dbg-package=ceph-fs-common-dbg
 	dh_strip -plibrados2 --dbg-package=librados2-dbg

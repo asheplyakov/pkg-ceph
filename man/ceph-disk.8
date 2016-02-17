@@ -1,8 +1,8 @@
 .\" Man page generated from reStructuredText.
 .
-.TH "CEPH-DISK" "8" "November 03, 2015" "dev" "Ceph"
+.TH "CEPH-DISK" "8" "January 13, 2016" "dev" "Ceph"
 .SH NAME
-ceph-disk \- Ceph disk preparation and activation utility for OSD
+ceph-disk \- Ceph disk utility for OSD
 .
 .nr rst2man-indent-level 0
 .
@@ -39,7 +39,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .nf
 \fBceph\-disk\fP \fBactivate\fP [\fIdata\-path\fP] [\-\-activate\-key \fIpath\fP]
 [\-\-mark\-init \fIsysvinit|upstart|systemd|auto|none\fP]
-[\-\-no\-start\-daemon]
+[\-\-no\-start\-daemon] [\-\-reactivate]
 .fi
 .sp
 .nf
@@ -48,6 +48,16 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .sp
 .nf
 \fBceph\-disk\fP \fBlist\fP
+.fi
+.sp
+.nf
+\fBceph\-disk\fP \fBdeactivate\fP [\-\-cluster \fIclustername\fP] [\fIdevice\-path\fP]
+[\-\-deactivate\-by\-id \fIid\fP] [\-\-mark\-out]
+.fi
+.sp
+.nf
+\fBceph\-disk\fP \fBdestroy\fP [\-\-cluster \fIclustername\fP] [\fIdevice\-path\fP]
+[\-\-destroy\-by\-id \fIid\fP] [\-\-dmcrypt\-key\-dir \fIKEYDIR\fP] [\-\-zap]
 .fi
 .sp
 .SH DESCRIPTION
@@ -60,6 +70,10 @@ or \fBudev\fP\&. It can also be triggered by other deployment utilities like \fB
 It actually automates the multiple steps involved in manual creation and start
 of an OSD into two steps of preparing and activating the OSD by using the
 subcommands \fBprepare\fP and \fBactivate\fP\&.
+.sp
+\fBceph\-disk\fP also automates the multiple steps involved to manually stop
+and destroy an OSD into two steps of deactivating and destroying the OSD by using
+the subcommands \fBdeactivate\fP and \fBdestroy\fP\&.
 .SH SUBCOMMANDS
 .SS prepare
 .sp
@@ -109,7 +123,7 @@ ceph\-disk activate [PATH]
 .sp
 Here, [PATH] is path to a block device or a directory.
 .sp
-An additional option \fI\%\-\-activate\-key\fP has to be used with this
+An additional option \fI\-\-activate\-key\fP has to be used with this
 subcommand when a copy of \fB/var/lib/ceph/bootstrap\-osd/{cluster}.keyring\fP
 isn\(aqt present in the OSD node.
 .sp
@@ -125,7 +139,7 @@ ceph\-disk activate [PATH] [\-\-activate\-key PATH]
 .UNINDENT
 .UNINDENT
 .sp
-Another option \fI\%\-\-mark\-init\fP can also be used with this
+Another option \fI\-\-mark\-init\fP can also be used with this
 subcommand.  \fB\-\-mark\-init\fP provides init system to manage the OSD
 directory. It defaults to \fBauto\fP which detects the init system
 suitable for ceph (either \fBsysvinit\fP, \fBsystemd\fP or
@@ -150,6 +164,21 @@ ceph\-disk activate [PATH] [\-\-mark\-init *sysvinit|upstart|systemd|auto|none*]
 .sp
 If the option \fI\-\-no\-start\-daemon\fP is given, the activation
 steps are performed but the OSD daemon is not started.
+.sp
+The latest option \fI\-\-reactivate\fP can re\-activate the OSD which has been
+deactivated with the \fBdeactivate\fP subcommand.
+.sp
+Usage:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+ceph\-disk activate [PATH] [\-\-reactivate]
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
 .SS activate\-journal
 .sp
 Activate an OSD via it\(aqs journal device. \fBudev\fP triggers
@@ -169,7 +198,7 @@ ceph\-disk activate\-journal [DEV]
 .sp
 Here, [DEV] is the path to a journal block device.
 .sp
-Others options like \fI\%\-\-activate\-key\fP and \fI\%\-\-mark\-init\fP can also
+Others options like \fI\-\-activate\-key\fP and \fI\-\-mark\-init\fP can also
 be used with this subcommand.
 .sp
 \fB\-\-mark\-init\fP provides init system to manage the OSD directory.
@@ -204,7 +233,7 @@ ceph\-disk activate\-all
 .UNINDENT
 .UNINDENT
 .sp
-Others options like \fI\%\-\-activate\-key\fP and \fI\%\-\-mark\-init\fP can
+Others options like \fI\-\-activate\-key\fP and \fI\-\-mark\-init\fP can
 also be used with this subcommand.
 .sp
 \fB\-\-mark\-init\fP provides init system to manage the OSD directory.
@@ -275,6 +304,95 @@ ceph\-disk unsuppress\-activate [PATH]
 .UNINDENT
 .sp
 Here, [PATH] is path to a block device or a directory.
+.SS deactivate
+.sp
+Deactivate the Ceph OSD. It stops OSD daemon and optionally marks it out. The
+content of the OSD is left untouched but the \fIready\fP, \fIactive\fP, \fIINIT\-specific\fP
+files are removed (so that it is not automatically re\-activated by the \fBudev\fP
+rules) and the file deactive is created to remember the OSD is deactivated.
+If the OSD is dmcrypt, remove the data dmcrypt map. When deactivate finishes,
+the OSD is \fBdown\fP\&. A deactivated OSD can later be re\-activated using the
+\fI\-\-reactivate\fP option of the \fBactivate\fP subcommand.
+.sp
+Usage:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+ceph\-disk deactivate [PATH]
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.sp
+Here, [PATH] is a path to a block device or a directory.
+.sp
+Another option \fI\-\-mark\-out\fP can also be used with this subcommand.
+\fB\-\-mark\-out\fP marks the OSD out. The objects it contains will be remapped.
+If you are not sure you will destroy OSD, do not use this option.
+.sp
+You can also use \fBosd\-id\fP to deactivate an OSD with the option \fI\-\-deactivate\-by\-id\fP\&.
+.sp
+Usage:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+ceph\-disk deactivate \-\-deactivate\-by\-id [OSD\-ID]
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.SS destroy
+.sp
+Destroy the Ceph OSD. It removes the OSD from the cluster, the crushmap and
+deallocates OSD ID. It can only destroy an OSD which is \fIdown\fP\&.
+.sp
+Usage:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+ceph\-disk destroy [PATH]
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.sp
+Here, [PATH] is a path to a block device or a directory.
+.sp
+Another option \fI\-\-zap\fP can also be used with this subcommand.
+\fB\-\-zap\fP will destroy the partition table and content of the disk.
+.sp
+Usage:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+ceph\-disk destroy [PATH] [\-\-zap]
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.sp
+You can also use the id of an OSD instead of the path with the option
+\fI\-\-destroy\-by\-id\fP\&.
+.sp
+Usage:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+ceph\-disk destroy \-\-destroy\-by\-id [OSD\-ID]
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
 .SS zap
 .sp
 Zap/erase/destroy a device\(aqs partition table and contents. It actually uses
@@ -372,17 +490,6 @@ Encrypt \fB[data\-path]\fP and/or journal devices with \fBdm\-crypt\fP\&.
 .TP
 .B \-\-dmcrypt\-key\-dir
 Directory where \fBdm\-crypt\fP keys are stored.
-.UNINDENT
-.INDENT 0.0
-.TP
-.B \-\-activate\-key
-Use when a copy of \fB/var/lib/ceph/bootstrap\-osd/{cluster}.keyring\fP isn\(aqt
-present in the OSD node. Suffix the option by the path to the keyring.
-.UNINDENT
-.INDENT 0.0
-.TP
-.B \-\-mark\-init
-Provide init system to manage the OSD directory.
 .UNINDENT
 .SH AVAILABILITY
 .sp

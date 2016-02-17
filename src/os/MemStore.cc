@@ -41,12 +41,6 @@ bool operator>(const MemStore::CollectionRef& l,
 }
 
 
-int MemStore::peek_journal_fsid(uuid_d *fsid)
-{
-  *fsid = uuid_d();
-  return 0;
-}
-
 int MemStore::mount()
 {
   int r = _load();
@@ -227,6 +221,10 @@ int MemStore::mkfs()
   set<coll_t> collections;
   ::encode(collections, bl);
   r = bl.write_file(fn.c_str());
+  if (r < 0)
+    return r;
+
+  r = write_meta("type", "memstore");
   if (r < 0)
     return r;
 
@@ -851,18 +849,18 @@ void MemStore::_do_transaction(Transaction& t)
       {
         coll_t cid = i.get_cid(op->cid);
         ghobject_t oid = i.get_oid(op->oid);
-        map<string, bufferlist> aset;
-        i.decode_attrset(aset);
-	r = _omap_setkeys(cid, oid, aset);
+        bufferlist aset_bl;
+        i.decode_attrset_bl(&aset_bl);
+	r = _omap_setkeys(cid, oid, aset_bl);
       }
       break;
     case Transaction::OP_OMAP_RMKEYS:
       {
         coll_t cid = i.get_cid(op->cid);
         ghobject_t oid = i.get_oid(op->oid);
-        set<string> keys;
-        i.decode_keyset(keys);
-	r = _omap_rmkeys(cid, oid, keys);
+        bufferlist keys_bl;
+        i.decode_keyset_bl(&keys_bl);
+	r = _omap_rmkeys(cid, oid, keys_bl);
       }
       break;
     case Transaction::OP_OMAP_RMKEYRANGE:
@@ -1158,7 +1156,7 @@ int MemStore::_omap_clear(coll_t cid, const ghobject_t &oid)
 }
 
 int MemStore::_omap_setkeys(coll_t cid, const ghobject_t &oid,
-			    const map<string, bufferlist> &aset)
+			    bufferlist& aset_bl)
 {
   dout(10) << __func__ << " " << cid << " " << oid << dendl;
   CollectionRef c = get_collection(cid);
@@ -1169,13 +1167,19 @@ int MemStore::_omap_setkeys(coll_t cid, const ghobject_t &oid,
   if (!o)
     return -ENOENT;
   std::lock_guard<std::mutex> lock(o->omap_mutex);
-  for (map<string,bufferlist>::const_iterator p = aset.begin(); p != aset.end(); ++p)
-    o->omap[p->first] = p->second;
+  bufferlist::iterator p = aset_bl.begin();
+  __u32 num;
+  ::decode(num, p);
+  while (num--) {
+    string key;
+    ::decode(key, p);
+    ::decode(o->omap[key], p);
+  }
   return 0;
 }
 
 int MemStore::_omap_rmkeys(coll_t cid, const ghobject_t &oid,
-			   const set<string> &keys)
+			   bufferlist& keys_bl)
 {
   dout(10) << __func__ << " " << cid << " " << oid << dendl;
   CollectionRef c = get_collection(cid);
@@ -1186,8 +1190,14 @@ int MemStore::_omap_rmkeys(coll_t cid, const ghobject_t &oid,
   if (!o)
     return -ENOENT;
   std::lock_guard<std::mutex> lock(o->omap_mutex);
-  for (set<string>::const_iterator p = keys.begin(); p != keys.end(); ++p)
-    o->omap.erase(*p);
+  bufferlist::iterator p = keys_bl.begin();
+  __u32 num;
+  ::decode(num, p);
+  while (num--) {
+    string key;
+    ::decode(key, p);
+    o->omap.erase(key);
+  }
   return 0;
 }
 

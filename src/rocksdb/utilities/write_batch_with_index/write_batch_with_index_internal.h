@@ -2,8 +2,9 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree. An additional grant
 // of patent rights can be found in the PATENTS file in the same directory.
-
 #pragma once
+
+#ifndef ROCKSDB_LITE
 
 #include <limits>
 #include <string>
@@ -14,6 +15,7 @@
 #include "rocksdb/slice.h"
 #include "rocksdb/status.h"
 #include "rocksdb/utilities/write_batch_with_index.h"
+#include "port/port.h"
 
 namespace rocksdb {
 
@@ -29,7 +31,7 @@ struct WriteBatchIndexEntry {
 
   // If this flag appears in the offset, it indicates a key that is smaller
   // than any other entry for the same column family
-  static const size_t kFlagMin = std::numeric_limits<size_t>::max();
+  static const size_t kFlagMin = port::kMaxSizet;
 
   size_t offset;           // offset of an entry in write batch's string buffer.
   uint32_t column_family;  // column family of the entry
@@ -90,7 +92,8 @@ class WriteBatchWithIndexInternal {
       const DBOptions& options, WriteBatchWithIndex* batch,
       ColumnFamilyHandle* column_family, const Slice& key,
       MergeContext* merge_context, WriteBatchEntryComparator* cmp,
-      std::string* value, Status* s);
+      std::string* value, bool overwrite_key, Status* s);
 };
 
 }  // namespace rocksdb
+#endif  // !ROCKSDB_LITE

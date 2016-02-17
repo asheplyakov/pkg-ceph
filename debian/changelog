@@ -49,9 +49,22 @@ ceph (9.2.0-0ubuntu1) xenial; urgency=medium
                and installed.
     - [3ead6e] Correct install location for ceph-monstore-update tool.
     - [269754] [177b7a] Update symbols for new release.
+  * [6f322e5] Imported Upstream version 10.0.2
+    - [ba06deb] Add python-dev to BD's.
+    - [62c26dc] d/p/fix-systemd-escaping.patch: Ensure that leading '/' is
+                stripped from block device paths when escaping for use in
+                systemd unit names.
+    - [e02b2a1] d/p/pybind-flags.patch: Ensure that python flags are correct
+                set for cython rbd build.
+    - [d9dad09] Switch rbd python binding to cython
   * [4c45629] Update NEWS file for infernalis changes.
   * [940491e] Limit number of parallel builds to 2 to reduce memory footprint
               on builders.
+  * [23e78f3] d/ceph-mds.postinst: Fix syntax error.
+  * [26182b5] d/ceph-mds.dirs: Actually create /var/lib/ceph/mds prior
+              to changing permissions (LP: #1544647).
+  * [414f4c1] d/ceph.init: Restore link to init-ceph, resolving un-install
+              failures due to missing init script (LP: #1546112).
 
  -- James Page <james.page@ubuntu.com>  Wed, 09 Dec 2015 18:02:30 +0000
 

@@ -4,7 +4,6 @@ sleep-recover.patch
 ## Debian
 #rbdmap3-lazyumount.patch
 arch.patch
-modules.patch
 sample.ceph.conf.patch
 # Disabled until adopted upstream
 # use_system_jerasure.patch

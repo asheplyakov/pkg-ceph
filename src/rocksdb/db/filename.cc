@@ -18,10 +18,14 @@
 #include <vector>
 #include "db/dbformat.h"
 #include "rocksdb/env.h"
+#include "util/file_reader_writer.h"
 #include "util/logging.h"
 #include "util/stop_watch.h"
 
 namespace rocksdb {
+
+static const std::string kRocksDbTFileExt = "sst";
+static const std::string kLevelDbTFileExt = "ldb";
 
 // Given a path, flatten the path name by replacing all chars not in
 // {[0-9,a-z,A-Z,-,_,.]} with _. And append '_LOG\0' at the end.
@@ -77,7 +81,16 @@ std::string ArchivedLogFileName(const std::string& name, uint64_t number) {
 }
 
 std::string MakeTableFileName(const std::string& path, uint64_t number) {
-  return MakeFileName(path, number, "sst");
+  return MakeFileName(path, number, kRocksDbTFileExt.c_str());
+}
+
+std::string Rocks2LevelTableFileName(const std::string& fullname) {
+  assert(fullname.size() > kRocksDbTFileExt.size() + 1);
+  if (fullname.size() <= kRocksDbTFileExt.size() + 1) {
+    return "";
+  }
+  return fullname.substr(0, fullname.size() - kRocksDbTFileExt.size()) +
+         kLevelDbTFileExt;
 }
 
 uint64_t TableFileNameToNumber(const std::string& name) {
@@ -102,8 +115,6 @@ std::string TableFileName(const std::vector<DbPath>& db_paths, uint64_t number,
   }
   return MakeTableFileName(path, number);
 }
-
-const size_t kFormatFileNumberBufSize = 38;
 
 void FormatFileNumber(uint64_t number, uint32_t path_id, char* out_buf,
                       size_t out_buf_size) {
@@ -152,8 +163,9 @@ InfoLogPrefix::InfoLogPrefix(bool has_log_dir,
 
 std::string InfoLogFileName(const std::string& dbname,
     const std::string& db_path, const std::string& log_dir) {
-  if (log_dir.empty())
+  if (log_dir.empty()) {
     return dbname + "/LOG";
+  }
 
   InfoLogPrefix info_log_prefix(true, db_path);
   return log_dir + "/" + info_log_prefix.buf;
@@ -165,8 +177,9 @@ std::string OldInfoLogFileName(const std::string& dbname, uint64_t ts,
   char buf[50];
   snprintf(buf, sizeof(buf), "%llu", static_cast<unsigned long long>(ts));
 
-  if (log_dir.empty())
+  if (log_dir.empty()) {
     return dbname + "/LOG.old." + buf;
+  }
 
   InfoLogPrefix info_log_prefix(true, db_path);
   return log_dir + "/" + info_log_prefix.buf + ".old." + buf;
@@ -272,17 +285,23 @@ bool ParseFileName(const std::string& fname, uint64_t* number,
     if (!ConsumeDecimalNumber(&rest, &num)) {
       return false;
     }
+    if (rest.size() <= 1 || rest[0] != '.') {
+      return false;
+    }
+    rest.remove_prefix(1);
+
     Slice suffix = rest;
-    if (suffix == Slice(".log")) {
+    if (suffix == Slice("log")) {
       *type = kLogFile;
       if (log_type && !archive_dir_found) {
         *log_type = kAliveLogFile;
       }
     } else if (archive_dir_found) {
       return false; // Archive dir can contain only log files
-    } else if (suffix == Slice(".sst")) {
+    } else if (suffix == Slice(kRocksDbTFileExt) ||
+               suffix == Slice(kLevelDbTFileExt)) {
       *type = kTableFile;
-    } else if (suffix == Slice(".dbtmp")) {
+    } else if (suffix == Slice("dbtmp")) {
       *type = kTempFile;
     } else {
       return false;
@@ -330,15 +349,13 @@ Status SetIdentityFile(Env* env, const std::string& dbname) {
   return s;
 }
 
-Status SyncManifest(Env* env, const DBOptions* db_options, WritableFile* file) {
+Status SyncManifest(Env* env, const DBOptions* db_options,
+                    WritableFileWriter* file) {
   if (db_options->disableDataSync) {
     return Status::OK();
-  } else if (db_options->use_fsync) {
-    StopWatch sw(env, db_options->statistics.get(), MANIFEST_FILE_SYNC_MICROS);
-    return file->Fsync();
   } else {
     StopWatch sw(env, db_options->statistics.get(), MANIFEST_FILE_SYNC_MICROS);
-    return file->Sync();
+    return file->Sync(db_options->use_fsync);
   }
 }
 

@@ -69,6 +69,8 @@ OPTION(mon_cluster_log_file_level, OPT_STR, "info")
 
 OPTION(enable_experimental_unrecoverable_data_corrupting_features, OPT_STR, "")
 
+OPTION(plugin_dir, OPT_STR, CEPH_PKGLIBDIR)
+
 OPTION(xio_trace_mempool, OPT_BOOL, false) // mempool allocation counters
 OPTION(xio_trace_msgcnt, OPT_BOOL, false) // incoming/outgoing msg counters
 OPTION(xio_trace_xcon, OPT_BOOL, false) // Xio message encode/decode trace
@@ -194,7 +196,8 @@ OPTION(mon_compact_on_trim, OPT_BOOL, true)       // compact (a prefix) when we 
 OPTION(mon_osd_cache_size, OPT_INT, 10)  // the size of osdmaps cache, not to rely on underlying store's cache
 
 OPTION(mon_tick_interval, OPT_INT, 5)
-OPTION(mon_subscribe_interval, OPT_DOUBLE, 300)
+OPTION(mon_session_timeout, OPT_INT, 300)    // must send keepalive or subscribe
+OPTION(mon_subscribe_interval, OPT_DOUBLE, 24*3600)  // for legacy clients only
 OPTION(mon_delta_reset_interval, OPT_DOUBLE, 10)   // seconds of inactivity before we reset the pg delta to 0
 OPTION(mon_osd_laggy_halflife, OPT_INT, 60*60)        // (seconds) how quickly our laggy estimations decay
 OPTION(mon_osd_laggy_weight, OPT_DOUBLE, .3)          // weight for new 'samples's in laggy estimations
@@ -230,6 +233,7 @@ OPTION(mon_pg_warn_max_per_osd, OPT_INT, 300)  // max # pgs per (in) osd before 
 OPTION(mon_pg_warn_max_object_skew, OPT_FLOAT, 10.0) // max skew few average in objects per pg
 OPTION(mon_pg_warn_min_objects, OPT_INT, 10000)  // do not warn below this object #
 OPTION(mon_pg_warn_min_pool_objects, OPT_INT, 1000)  // do not warn on pools below this object #
+OPTION(mon_pg_check_down_all_threshold, OPT_FLOAT, .5) // threshold of down osds after which we check all pgs
 OPTION(mon_cache_target_full_warn_ratio, OPT_FLOAT, .66) // position between pool cache_target_full and max where we start warning
 OPTION(mon_osd_full_ratio, OPT_FLOAT, .95) // what % full makes an OSD "full"
 OPTION(mon_osd_nearfull_ratio, OPT_FLOAT, .85) // what % full makes an OSD near full
@@ -274,8 +278,8 @@ OPTION(mon_sync_debug_leader, OPT_INT, -1) // monitor to be used as the sync lea
 OPTION(mon_sync_debug_provider, OPT_INT, -1) // monitor to be used as the sync provider
 OPTION(mon_sync_debug_provider_fallback, OPT_INT, -1) // monitor to be used as fallback if sync provider fails
 OPTION(mon_inject_sync_get_chunk_delay, OPT_DOUBLE, 0)  // inject N second delay on each get_chunk request
-OPTION(mon_osd_min_down_reporters, OPT_INT, 1)   // number of OSDs who need to report a down OSD for it to count
-OPTION(mon_osd_min_down_reports, OPT_INT, 3)     // number of times a down OSD must be reported for it to count
+OPTION(mon_osd_min_down_reporters, OPT_INT, 2)   // number of OSDs from different subtrees who need to report a down OSD for it to count
+OPTION(mon_osd_reporter_subtree_level , OPT_STR, "host")   // in which level of parent bucket the reporters are counted
 OPTION(mon_osd_force_trim_to, OPT_INT, 0)   // force mon to trim maps to this point, regardless of min_last_epoch_clean (dangerous, use with care)
 OPTION(mon_mds_force_trim_to, OPT_INT, 0)   // force mon to trim mdsmaps to this point (dangerous, use with care)
 
@@ -339,6 +343,8 @@ OPTION(client_readahead_max_bytes, OPT_LONGLONG, 0)  //8 * 1024*1024
 OPTION(client_readahead_max_periods, OPT_LONGLONG, 4)  // as multiple of file layout period (object size * num stripes)
 OPTION(client_snapdir, OPT_STR, ".snap")
 OPTION(client_mountpoint, OPT_STR, "/")
+OPTION(client_mount_uid, OPT_INT, -1)
+OPTION(client_mount_gid, OPT_INT, -1)
 OPTION(client_notify_timeout, OPT_INT, 10) // in seconds
 OPTION(osd_client_watch_timeout, OPT_INT, 30) // in seconds
 OPTION(client_caps_release_delay, OPT_INT, 5) // in seconds
@@ -354,6 +360,7 @@ OPTION(client_debug_inject_tick_delay, OPT_INT, 0) // delay the client tick for 
 OPTION(client_max_inline_size, OPT_U64, 4096)
 OPTION(client_inject_release_failure, OPT_BOOL, false)  // synthetic client bug for testing
 OPTION(client_inject_fixed_oldest_tid, OPT_BOOL, false)  // synthetic client bug for testing
+
 // note: the max amount of "in flight" dirty data is roughly (max - target)
 OPTION(fuse_use_invalidate_cb, OPT_BOOL, false) // use fuse 2.8+ invalidate callback to keep page cache consistent
 OPTION(fuse_allow_other, OPT_BOOL, true)
@@ -363,6 +370,7 @@ OPTION(fuse_atomic_o_trunc, OPT_BOOL, true)
 OPTION(fuse_debug, OPT_BOOL, false)
 OPTION(fuse_multithreaded, OPT_BOOL, true)
 OPTION(fuse_require_active_mds, OPT_BOOL, true) // if ceph_fuse requires active mds server
+
 OPTION(client_try_dentry_invalidate, OPT_BOOL, true) // the client should try to use dentry invaldation instead of remounting, on kernels it believes that will work for
 OPTION(client_die_on_failed_remount, OPT_BOOL, true)
 OPTION(client_check_pool_perm, OPT_BOOL, true)
@@ -503,6 +511,8 @@ OPTION(mds_max_purge_ops_per_pg, OPT_FLOAT, 0.5)
 OPTION(mds_root_ino_uid, OPT_INT, 0) // The UID of / on new filesystems
 OPTION(mds_root_ino_gid, OPT_INT, 0) // The GID of / on new filesystems
 
+OPTION(mds_max_scrub_ops_in_progress, OPT_INT, 5) // the number of simultaneous scrubs allowed
+
 // If true, compact leveldb store on mount
 OPTION(osd_compact_leveldb_on_mount, OPT_BOOL, false)
 
@@ -593,6 +603,8 @@ OPTION(osd_tier_default_cache_hit_set_period, OPT_INT, 1200)
 OPTION(osd_tier_default_cache_hit_set_type, OPT_STR, "bloom")
 OPTION(osd_tier_default_cache_min_read_recency_for_promote, OPT_INT, 1) // number of recent HitSets the object must appear in to be promoted (on read)
 OPTION(osd_tier_default_cache_min_write_recency_for_promote, OPT_INT, 1) // number of recent HitSets the object must appear in to be promoted (on write)
+OPTION(osd_tier_default_cache_hit_set_grade_decay_rate, OPT_INT, 20)
+OPTION(osd_tier_default_cache_hit_set_search_last_n, OPT_INT, 1)
 
 OPTION(osd_map_dedup, OPT_BOOL, true)
 OPTION(osd_map_max_advance, OPT_INT, 150) // make this < cache_size!
@@ -612,6 +624,11 @@ OPTION(osd_recovery_threads, OPT_INT, 1)
 OPTION(osd_recover_clone_overlap, OPT_BOOL, true)   // preserve clone_overlap during recovery/migration
 OPTION(osd_op_num_threads_per_shard, OPT_INT, 2)
 OPTION(osd_op_num_shards, OPT_INT, 5)
+
+// Set to true for testing.  Users should NOT set this.
+// If set to true even after reading enough shards to
+// decode the object, any error will be reported.
+OPTION(osd_read_ec_check_for_errors, OPT_BOOL, false) // return error if any ec shard has an error
 
 // Only use clone_overlap for recovery if there are fewer than
 // osd_recover_clone_overlap_limit entries in the overlap set
@@ -644,10 +661,13 @@ OPTION(osd_pg_max_concurrent_snap_trims, OPT_U64, 2)
 OPTION(osd_heartbeat_min_healthy_ratio, OPT_FLOAT, .33)
 
 OPTION(osd_mon_heartbeat_interval, OPT_INT, 30)  // (seconds) how often to ping monitor if no peers
-OPTION(osd_mon_report_interval_max, OPT_INT, 120)
+OPTION(osd_mon_report_interval_max, OPT_INT, 600)
 OPTION(osd_mon_report_interval_min, OPT_INT, 5)  // pg stats, failures, up_thru, boot.
+OPTION(osd_mon_report_max_in_flight, OPT_INT, 2)  // max updates in flight
 OPTION(osd_pg_stat_report_interval_max, OPT_INT, 500)  // report pg stats for any given pg at least this often
 OPTION(osd_mon_ack_timeout, OPT_INT, 30) // time out a mon if it doesn't ack stats
+OPTION(osd_stats_ack_timeout_factor, OPT_DOUBLE, 2.0) // multiples of mon_ack_timeout
+OPTION(osd_stats_ack_timeout_decay, OPT_DOUBLE, .9)
 OPTION(osd_default_data_pool_replay_window, OPT_INT, 45)
 OPTION(osd_preserve_trimmed_log, OPT_BOOL, false)
 OPTION(osd_auto_mark_unfound_lost, OPT_BOOL, false)
@@ -670,7 +690,10 @@ OPTION(osd_scrub_interval_randomize_ratio, OPT_FLOAT, 0.5) // randomize the sche
 OPTION(osd_scrub_chunk_min, OPT_INT, 5)
 OPTION(osd_scrub_chunk_max, OPT_INT, 25)
 OPTION(osd_scrub_sleep, OPT_FLOAT, 0)   // sleep between [deep]scrub ops
+OPTION(osd_scrub_auto_repair, OPT_BOOL, false)   // whether auto-repair inconsistencies upon deep-scrubbing
+OPTION(osd_scrub_auto_repair_num_errors, OPT_U32, 5)   // only auto-repair when number of errors is below this threshold
 OPTION(osd_deep_scrub_interval, OPT_FLOAT, 60*60*24*7) // once a week
+OPTION(osd_deep_scrub_randomize_ratio, OPT_FLOAT, 0.15) // scrubs will randomly become deep scrubs at this rate (0.15 -> 15% of scrubs are deep)
 OPTION(osd_deep_scrub_stride, OPT_INT, 524288)
 OPTION(osd_deep_scrub_update_digest_min_age, OPT_INT, 2*60*60)   // objects must be this old (seconds) before we update the whole-object digest on scrub
 OPTION(osd_scan_list_ping_tp_interval, OPT_U64, 100)
@@ -695,8 +718,6 @@ OPTION(osd_op_log_threshold, OPT_INT, 5) // how many op log messages to show in 
 OPTION(osd_verify_sparse_read_holes, OPT_BOOL, false)  // read fiemap-reported holes and verify they are zeros
 OPTION(osd_debug_drop_ping_probability, OPT_DOUBLE, 0)
 OPTION(osd_debug_drop_ping_duration, OPT_INT, 0)
-OPTION(osd_debug_drop_pg_create_probability, OPT_DOUBLE, 0)
-OPTION(osd_debug_drop_pg_create_duration, OPT_INT, 1)
 OPTION(osd_debug_drop_op_probability, OPT_DOUBLE, 0)   // probability of stalling/dropping a client op
 OPTION(osd_debug_op_order, OPT_BOOL, false)
 OPTION(osd_debug_scrub_chance_rewrite_digest, OPT_U64, 0)
@@ -747,7 +768,7 @@ OPTION(keyvaluestore_rocksdb_options, OPT_STR, "")
 // rocksdb options that will be used for omap(if omap_backend is rocksdb)
 OPTION(filestore_rocksdb_options, OPT_STR, "")
 // rocksdb options that will be used in monstore
-OPTION(mon_rocksdb_options, OPT_STR, "")
+OPTION(mon_rocksdb_options, OPT_STR, "cache_size=536870912,write_buffer_size=33554432,block_size=65536,compression=kNoCompression")
 
 /**
  * osd_*_priority adjust the relative priority of client io, recovery io,
@@ -799,7 +820,7 @@ OPTION(memstore_page_size, OPT_U64, 64 << 10)
 OPTION(newstore_max_dir_size, OPT_U32, 1000000)
 OPTION(newstore_onode_map_size, OPT_U32, 1024)   // onodes per collection
 OPTION(newstore_backend, OPT_STR, "rocksdb")
-OPTION(newstore_backend_options, OPT_STR, "")
+OPTION(newstore_rocksdb_options, OPT_STR, "compression=kNoCompression,max_write_buffer_number=16,min_write_buffer_number_to_merge=6")
 OPTION(newstore_fail_eio, OPT_BOOL, true)
 OPTION(newstore_sync_io, OPT_BOOL, false)  // perform initial io synchronously
 OPTION(newstore_sync_transaction, OPT_BOOL, false)  // perform kv txn synchronously
@@ -821,7 +842,6 @@ OPTION(newstore_overlay_max_length, OPT_INT, 65536)
 OPTION(newstore_overlay_max, OPT_INT, 32)
 OPTION(newstore_open_by_handle, OPT_BOOL, true)
 OPTION(newstore_o_direct, OPT_BOOL, true)
-OPTION(newstore_db_path, OPT_STR, "")
 OPTION(newstore_aio, OPT_BOOL, true)
 OPTION(newstore_aio_poll_ms, OPT_INT, 250)  // milliseconds
 OPTION(newstore_aio_max_queue_depth, OPT_INT, 4096)
@@ -908,6 +928,8 @@ OPTION(filestore_update_to, OPT_INT, 1000)
 OPTION(filestore_blackhole, OPT_BOOL, false)     // drop any new transactions on the floor
 OPTION(filestore_fd_cache_size, OPT_INT, 128)    // FD lru size
 OPTION(filestore_fd_cache_shards, OPT_INT, 16)   // FD number of shards
+OPTION(filestore_ondisk_finisher_threads, OPT_INT, 1)
+OPTION(filestore_apply_finisher_threads, OPT_INT, 1)
 OPTION(filestore_dump_file, OPT_STR, "")         // file onto which store transaction dumps
 OPTION(filestore_kill_at, OPT_INT, 0)            // inject a failure at the n'th opportunity
 OPTION(filestore_inject_stall, OPT_INT, 0)       // artificially stall for N seconds in op queue thread
@@ -973,6 +995,7 @@ OPTION(rbd_request_timed_out_seconds, OPT_INT, 30) // number of seconds before m
 OPTION(rbd_skip_partial_discard, OPT_BOOL, false) // when trying to discard a range inside an object, set to true to skip zeroing the range.
 OPTION(rbd_enable_alloc_hint, OPT_BOOL, true) // when writing a object, it will issue a hint to osd backend to indicate the expected size object need
 OPTION(rbd_tracing, OPT_BOOL, false) // true if LTTng-UST tracepoints should be enabled
+OPTION(rbd_validate_pool, OPT_BOOL, true) // true if empty pools should be validated for RBD compatibility
 
 /*
  * The following options change the behavior for librbd's image creation methods that
@@ -999,6 +1022,17 @@ OPTION(rbd_default_features, OPT_INT, 3) // only applies to format 2 images
 					 // +4 for exclusive lock, +8 for object map
 
 OPTION(rbd_default_map_options, OPT_STR, "") // default rbd map -o / --options
+
+/**
+ * RBD journal options.
+ */
+OPTION(rbd_journal_order, OPT_U32, 24) // bits to shift to compute journal object max size, between 12 and 64
+OPTION(rbd_journal_splay_width, OPT_U32, 4) // number of active journal objects
+OPTION(rbd_journal_commit_age, OPT_DOUBLE, 5) // commit time interval, seconds
+OPTION(rbd_journal_object_flush_interval, OPT_INT, 0) // maximum number of pending commits per journal object
+OPTION(rbd_journal_object_flush_bytes, OPT_INT, 0) // maximum number of pending bytes per journal object
+OPTION(rbd_journal_object_flush_age, OPT_DOUBLE, 0) // maximum age (in seconds) for pending commits
+OPTION(rbd_journal_pool, OPT_STR, "") // pool for journal objects
 
 OPTION(nss_db_path, OPT_STR, "") // path to nss db
 
@@ -1117,6 +1151,8 @@ OPTION(rgw_replica_log_obj_prefix, OPT_STR, "replica_log") //
 OPTION(rgw_bucket_quota_ttl, OPT_INT, 600) // time for cached bucket stats to be cached within rgw instance
 OPTION(rgw_bucket_quota_soft_threshold, OPT_DOUBLE, 0.95) // threshold from which we don't rely on cached info for quota decisions
 OPTION(rgw_bucket_quota_cache_size, OPT_INT, 10000) // number of entries in bucket quota cache
+OPTION(rgw_bucket_default_quota_max_objects, OPT_INT, -1) // number of objects allowed
+OPTION(rgw_bucket_default_quota_max_size, OPT_LONGLONG, -1) // Max size of object in kB
 
 OPTION(rgw_expose_bucket, OPT_BOOL, false) // Return the bucket name in the 'Bucket' response header
 
@@ -1126,9 +1162,13 @@ OPTION(rgw_user_quota_bucket_sync_interval, OPT_INT, 180) // time period for acc
 OPTION(rgw_user_quota_sync_interval, OPT_INT, 3600 * 24) // time period for accumulating modified buckets before syncing entire user stats
 OPTION(rgw_user_quota_sync_idle_users, OPT_BOOL, false) // whether stats for idle users be fully synced
 OPTION(rgw_user_quota_sync_wait_time, OPT_INT, 3600 * 24) // min time between two full stats sync for non-idle users
+OPTION(rgw_user_default_quota_max_objects, OPT_INT, -1) // number of objects allowed
+OPTION(rgw_user_default_quota_max_size, OPT_LONGLONG, -1) // Max size of object in kB
 
 OPTION(rgw_multipart_min_part_size, OPT_INT, 5 * 1024 * 1024) // min size for each part (except for last one) in multipart upload
 OPTION(rgw_multipart_part_upload_limit, OPT_INT, 10000) // parts limit in multipart upload
+
+OPTION(rgw_max_slo_entries, OPT_INT, 1000) // default number of max entries in slo
 
 OPTION(rgw_olh_pending_timeout_sec, OPT_INT, 3600) // time until we retire a pending olh change
 OPTION(rgw_user_max_buckets, OPT_U32, 1000) // global option to set max buckets count for all user

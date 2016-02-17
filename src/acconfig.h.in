@@ -59,6 +59,12 @@
 /* Define to 1 if you have the <dlfcn.h> header file. */
 #undef HAVE_DLFCN_H
 
+/* Have eventfd extension. */
+#undef HAVE_EVENTFD
+
+/* Define to 1 if you have the <execinfo.h> header file. */
+#undef HAVE_EXECINFO_H
+
 /* Define to 1 if you have fdatasync. */
 #undef HAVE_FDATASYNC
 
@@ -125,6 +131,9 @@
 /* Define to 1 if you have the `boost_regex' library (-lboost_regex). */
 #undef HAVE_LIBBOOST_REGEX
 
+/* Define to 1 if you have the `boost_regex-mt' library (-lboost_regex-mt). */
+#undef HAVE_LIBBOOST_REGEX_MT
+
 /* Define to 1 if you have the `boost_system' library (-lboost_system). */
 #undef HAVE_LIBBOOST_SYSTEM
 
@@ -181,6 +190,9 @@
 /* Define to 1 if you have the <linux/version.h> header file. */
 #undef HAVE_LINUX_VERSION_H
 
+/* Define if you have mallinfo */
+#undef HAVE_MALLINFO
+
 /* Define to 1 if you have the <memory.h> header file. */
 #undef HAVE_MEMORY_H
 
@@ -225,6 +237,9 @@
 
 /* Define if you have pthread_spin_init */
 #undef HAVE_PTHREAD_SPINLOCK
+
+/* Define if you have res_nquery */
+#undef HAVE_RES_NQUERY
 
 /* Define to 1 if you have sched.h. */
 #undef HAVE_SCHED
@@ -280,9 +295,15 @@
 /* Define to 1 if you have the <syslog.h> header file. */
 #undef HAVE_SYSLOG_H
 
+/* Define to 1 if you have the <sys/cdefs.h> header file. */
+#undef HAVE_SYS_CDEFS_H
+
 /* Define to 1 if you have the <sys/dir.h> header file, and it defines `DIR'.
    */
 #undef HAVE_SYS_DIR_H
+
+/* Define to 1 if you have the <sys/eventfd.h> header file. */
+#undef HAVE_SYS_EVENTFD_H
 
 /* Define to 1 if you have the <sys/file.h> header file. */
 #undef HAVE_SYS_FILE_H

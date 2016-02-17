@@ -3,12 +3,15 @@
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
 
+#ifndef ROCKSDB_LITE
+
 #include <mutex>
 #include <string>
 #include <vector>
 
 #include "rocksdb/db.h"
 #include "rocksdb/env.h"
+#include "util/string_util.h"
 #include "util/testharness.h"
 
 namespace rocksdb {
@@ -31,12 +34,9 @@ class FlushedFileCollector : public EventListener {
   ~FlushedFileCollector() {}
 
   virtual void OnFlushCompleted(
-      DB* db, const std::string& column_family_name,
-      const std::string& file_path,
-      bool triggered_writes_slowdown,
-      bool triggered_writes_stop) {
+      DB* db, const FlushJobInfo& info) override {
     std::lock_guard<std::mutex> lock(mutex_);
-    flushed_files_.push_back(file_path);
+    flushed_files_.push_back(info.file_path);
   }
 
   std::vector<std::string> GetFlushedFiles() {
@@ -79,9 +79,8 @@ TEST_F(CompactFilesTest, ObsoleteFiles) {
 
   // create couple files
   for (int i = 1000; i < 2000; ++i) {
-    db->Put(WriteOptions(),
-        std::to_string(i),
-        std::string(kWriteBufferSize / 10, 'a' + (i % 26)));
+    db->Put(WriteOptions(), ToString(i),
+            std::string(kWriteBufferSize / 10, 'a' + (i % 26)));
   }
 
   auto l0_files = collector->GetFlushedFiles();
@@ -92,7 +91,7 @@ TEST_F(CompactFilesTest, ObsoleteFiles) {
 
   // verify all compaction input files are deleted
   for (auto fname : l0_files) {
-    ASSERT_TRUE(!env_->FileExists(fname));
+    ASSERT_EQ(Status::NotFound(), env_->FileExists(fname));
   }
   delete db;
 }
@@ -103,3 +102,14 @@ int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
+
+#else
+#include <stdio.h>
+
+int main(int argc, char** argv) {
+  fprintf(stderr,
+          "SKIPPED as DBImpl::CompactFiles is not supported in ROCKSDB_LITE\n");
+  return 0;
+}
+
+#endif  // !ROCKSDB_LITE

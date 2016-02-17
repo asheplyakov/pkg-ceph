@@ -21,8 +21,13 @@ make_config.mk
 *.o-*
 *.swp
 *~
-*.lo
-*~
+*.vcxproj
+*.vcxproj.filters
+*.sln
+*.cmake
+CMakeCache.txt
+CMakeFiles/
+build/
 
 ldb
 manifest_dump
@@ -33,8 +38,10 @@ coverage/COVERAGE_REPORT
 .gdbhistory
 package/
 .phutil_module_cache
-unity
+unity.a
 tags
+rocksdb_dump
+rocksdb_undump
 
 java/out
 java/target
@@ -45,6 +52,8 @@ java/include/org_rocksdb_*.h
 .idea/
 *.iml
 
+rocksdb.cc
+rocksdb.h
 unity.cc
 java/crossbuild/.vagrant
 .vagrant/
@@ -52,29 +61,5 @@ java/**.asc
 java/javadoc
 
 scan_build_report/
-.dirstamp
-.deps/
-.libs/
-Makefile.in
-aclocal.m4
-ar-lib
-autom4te.cache/
-config.guess
-config.h
-config.h.in
-config.log
-config.status
-config.sub
-configure
-depcomp
-install-sh
-librocksdb.la
-libtool
-ltmain.sh
-missing
-stamp-h1
-Makefile
 t
 LOG
-
-/m4/

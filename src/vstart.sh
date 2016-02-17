@@ -3,6 +3,18 @@
 # abort on failure
 set -e
 
+if [ -n "$VSTART_DEST" ]; then
+  SRC_PATH=`dirname $0`
+  SRC_PATH=`(cd $SRC_PATH; pwd)`
+
+  CEPH_DIR=$SRC_PATH
+  CEPH_BIN=$SRC_PATH
+  CEPH_LIB=$SRC_PATH/.libs
+  CEPH_CONF_PATH=$VSTART_DEST
+  CEPH_DEV_DIR=$VSTART_DEST/dev
+  CEPH_OUT_DIR=$VSTART_DEST/out
+fi
+
 if [ -e CMakeCache.txt ]; then
   # Out of tree build, learn source location from CMakeCache.txt
   SRC_ROOT=`grep Ceph_SOURCE_DIR CMakeCache.txt | cut -d "=" -f 2`
@@ -59,6 +71,7 @@ export DYLD_LIBRARY_PATH=$CEPH_LIB:$DYLD_LIBRARY_PATH
 [ -z "$CEPH_DEV_DIR" ] && CEPH_DEV_DIR="$CEPH_DIR/dev"
 [ -z "$CEPH_OUT_DIR" ] && CEPH_OUT_DIR="$CEPH_DIR/out"
 [ -z "$CEPH_RGW_PORT" ] && CEPH_RGW_PORT=8000
+[ -z "$CEPH_CONF_PATH" ] && CEPH_CONF_PATH=$CEPH_DIR
 
 extra_conf=""
 new=0
@@ -83,8 +96,8 @@ journal=1
 
 MON_ADDR=""
 
-conf_fn="$CEPH_DIR/ceph.conf"
-keyring_fn="$CEPH_DIR/keyring"
+conf_fn="$CEPH_CONF_PATH/ceph.conf"
+keyring_fn="$CEPH_CONF_PATH/keyring"
 osdmap_fn="/tmp/ceph_osdmap.$$"
 monmap_fn="/tmp/ceph_monmap.$$"
 
@@ -409,6 +422,7 @@ if [ "$start_mon" -eq 1 ]; then
         osd crush chooseleaf type = 0
         osd pool default min size = 1
         osd failsafe full ratio = .99
+        mon osd reporter subtree level = osd
         mon osd full ratio = .99
         mon data avail warn = 10
         mon data avail crit = 1
@@ -450,6 +464,8 @@ $CMDSDEBUG
         mds debug auth pins = true
         mds debug subtrees = true
         mds data = $CEPH_DEV_DIR/mds.\$id
+        mds root ino uid = `id -u`
+        mds root ino gid = `id -g`
 $extra_conf
 [osd]
 $DAEMONOPTS
@@ -458,7 +474,7 @@ $DAEMONOPTS
         osd journal size = 100
         osd class tmp = out
         osd class dir = $OBJCLASS_PATH
-        osd scrub load threshold = 5.0
+        osd scrub load threshold = 2000.0
         osd debug op order = true
         filestore wbthrottle xfs ios start flusher = 10
         filestore wbthrottle xfs ios hard limit = 20
@@ -724,7 +740,7 @@ do_rgw()
 
     # Create Swift user
     echo "setting up user tester"
-    $CEPH_BIN/radosgw-admin user create -c $conf_fn --subuser=test:tester --display-name=Tester-Subuser --key-type=swift --secret=testing > /dev/null
+    $CEPH_BIN/radosgw-admin user create -c $conf_fn --subuser=test:tester --display-name=Tester-Subuser --key-type=swift --secret=testing --access=full > /dev/null
 
     echo ""
     echo "S3 User Info:"

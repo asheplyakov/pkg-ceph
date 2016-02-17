@@ -73,7 +73,8 @@ uint64_t DBImpl::TEST_Current_Manifest_FileNo() {
 
 Status DBImpl::TEST_CompactRange(int level, const Slice* begin,
                                  const Slice* end,
-                                 ColumnFamilyHandle* column_family) {
+                                 ColumnFamilyHandle* column_family,
+                                 bool disallow_trivial_move) {
   ColumnFamilyData* cfd;
   if (column_family == nullptr) {
     cfd = default_cf_handle_->cfd();
@@ -86,7 +87,8 @@ Status DBImpl::TEST_CompactRange(int level, const Slice* begin,
        cfd->ioptions()->compaction_style == kCompactionStyleFIFO)
           ? level
           : level + 1;
-  return RunManualCompaction(cfd, level, output_level, 0, begin, end);
+  return RunManualCompaction(cfd, level, output_level, 0, begin, end,
+                             disallow_trivial_move);
 }
 
 Status DBImpl::TEST_FlushMemTable(bool wait) {
@@ -129,21 +131,25 @@ void DBImpl::TEST_UnlockMutex() {
 }
 
 void* DBImpl::TEST_BeginWrite() {
-  auto w = new WriteThread::Writer(&mutex_);
-  Status s = write_thread_.EnterWriteThread(w, 0);
-  assert(s.ok() && !w->done);  // No timeout and nobody should do our job
+  auto w = new WriteThread::Writer();
+  write_thread_.EnterUnbatched(w, &mutex_);
   return reinterpret_cast<void*>(w);
 }
 
 void DBImpl::TEST_EndWrite(void* w) {
   auto writer = reinterpret_cast<WriteThread::Writer*>(w);
-  write_thread_.ExitWriteThread(writer, writer, Status::OK());
+  write_thread_.ExitUnbatched(writer);
   delete writer;
 }
 
 size_t DBImpl::TEST_LogsToFreeSize() {
   InstrumentedMutexLock l(&mutex_);
   return logs_to_free_.size();
+}
+
+uint64_t DBImpl::TEST_LogfileNumber() {
+  InstrumentedMutexLock l(&mutex_);
+  return logfile_number_;
 }
 
 }  // namespace rocksdb

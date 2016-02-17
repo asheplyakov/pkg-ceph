@@ -23,6 +23,7 @@
 #include <memory>
 #include <boost/scoped_ptr.hpp>
 #include <boost/optional/optional_io.hpp>
+#include <boost/variant.hpp>
 
 #include "include/rados/rados_types.hpp"
 
@@ -62,6 +63,14 @@
 /// max recovery priority for MBackfillReserve
 #define OSD_RECOVERY_PRIORITY_MAX 255u
 
+/// base recovery priority for MBackfillReserve
+#define OSD_RECOVERY_PRIORITY_BASE 230u
+
+/// base backfill priority for MBackfillReserve (degraded PG)
+#define OSD_BACKFILL_DEGRADED_PRIORITY_BASE 200u
+
+/// base backfill priority for MBackfillReserve
+#define OSD_BACKFILL_PRIORITY_BASE 1u
 
 typedef hobject_t collection_list_handle_t;
 
@@ -890,6 +899,82 @@ inline ostream& operator<<(ostream& out, const pool_snap_info_t& si) {
 
 
 /*
+ * pool_opts_t
+ *
+ * pool options.
+ */
+
+class pool_opts_t {
+public:
+  enum key_t {
+    SCRUB_MIN_INTERVAL,
+    SCRUB_MAX_INTERVAL,
+    DEEP_SCRUB_INTERVAL,
+    RECOVERY_PRIORITY,
+    RECOVERY_OP_PRIORITY
+  };
+
+  enum type_t {
+    STR,
+    INT,
+    DOUBLE,
+  };
+
+  struct opt_desc_t {
+    key_t key;
+    type_t type;
+
+    opt_desc_t(key_t k, type_t t) : key(k), type(t) {}
+
+    bool operator==(const opt_desc_t& rhs) const {
+      return key == rhs.key && type == rhs.type;
+    }
+  };
+
+  typedef boost::variant<std::string,int,double> value_t;
+
+  static bool is_opt_name(const std::string& name);
+  static opt_desc_t get_opt_desc(const std::string& name);
+
+  pool_opts_t() : opts() {}
+
+  bool is_set(key_t key) const;
+
+  template<typename T>
+  void set(key_t key, const T &val) {
+    value_t value = val;
+    opts[key] = value;
+  }
+
+  template<typename T>
+  bool get(key_t key, T *val) const {
+    opts_t::const_iterator i = opts.find(key);
+    if (i == opts.end()) {
+      return false;
+    }
+    *val = boost::get<T>(i->second);
+    return true;
+  }
+
+  const value_t& get(key_t key) const;
+
+  bool unset(key_t key);
+
+  void dump(const std::string& name, Formatter *f) const;
+
+  void dump(Formatter *f) const;
+  void encode(bufferlist &bl) const;
+  void decode(bufferlist::iterator &bl);
+
+private:
+  typedef std::map<key_t, value_t> opts_t;
+  opts_t opts;
+
+  friend ostream& operator<<(ostream& out, const pool_opts_t& opts);
+};
+WRITE_CLASS_ENCODER(pool_opts_t)
+
+/*
  * pg_pool
  */
 struct pg_pool_t {
@@ -1104,6 +1189,9 @@ public:
     hit_set_params = HitSet::Params();
     hit_set_period = 0;
     hit_set_count = 0;
+    hit_set_grade_decay_rate = 0;
+    hit_set_search_last_n = 0;
+    grade_table.resize(0);
   }
 
   uint64_t target_max_bytes;   ///< tiering: target max pool size
@@ -1122,12 +1210,36 @@ public:
   bool use_gmt_hitset;	        ///< use gmt to name the hitset archive object
   uint32_t min_read_recency_for_promote;   ///< minimum number of HitSet to check before promote on read
   uint32_t min_write_recency_for_promote;  ///< minimum number of HitSet to check before promote on write
+  uint32_t hit_set_grade_decay_rate;   ///< current hit_set has highest priority on objects
+                                       ///temperature count,the follow hit_set's priority decay 
+                                       ///by this params than pre hit_set
+  uint32_t hit_set_search_last_n;   ///<accumulate atmost N hit_sets for temperature
 
   uint32_t stripe_width;        ///< erasure coded stripe size in bytes
 
   uint64_t expected_num_objects; ///< expected number of objects on this pool, a value of 0 indicates
                                  ///< user does not specify any expected value
   bool fast_read;            ///< whether turn on fast read on the pool or not
+
+  pool_opts_t opts; ///< options
+
+private:
+  vector<uint32_t> grade_table;
+
+public:
+  uint32_t get_grade(unsigned i) const {
+    if (grade_table.size() <= i)
+      return 0;
+    return grade_table[i];
+  }
+  void calc_grade_table() {
+    unsigned v = 1000000;
+    grade_table.resize(hit_set_count);
+    for (unsigned i = 0; i < hit_set_count; i++) {
+      v = v * (1 - (hit_set_grade_decay_rate / 100.0));
+      grade_table[i] = v;
+    }
+  }
 
   pg_pool_t()
     : flags(0), type(0), size(0), min_size(0),
@@ -1154,9 +1266,12 @@ public:
       use_gmt_hitset(true),
       min_read_recency_for_promote(0),
       min_write_recency_for_promote(0),
+      hit_set_grade_decay_rate(0),
+      hit_set_search_last_n(0),
       stripe_width(0),
       expected_num_objects(0),
-      fast_read(false)
+      fast_read(false),
+      opts()
   { }
 
   void dump(Formatter *f) const;
@@ -1331,6 +1446,7 @@ struct object_stat_sum_t {
   int64_t num_object_clones;
   int64_t num_object_copies;  // num_objects * num_replicas
   int64_t num_objects_missing_on_primary;
+  int64_t num_objects_missing;
   int64_t num_objects_degraded;
   int64_t num_objects_misplaced;
   int64_t num_objects_unfound;
@@ -1358,11 +1474,13 @@ struct object_stat_sum_t {
   int32_t num_flush_mode_low;   // 1 when in low flush mode, otherwise 0
   int32_t num_evict_mode_some;  // 1 when in evict some mode, otherwise 0
   int32_t num_evict_mode_full;  // 1 when in evict full mode, otherwise 0
+  int64_t num_objects_pinned;
 
   object_stat_sum_t()
     : num_bytes(0),
       num_objects(0), num_object_clones(0), num_object_copies(0),
-      num_objects_missing_on_primary(0), num_objects_degraded(0),
+      num_objects_missing_on_primary(0), num_objects_missing(0),
+      num_objects_degraded(0),
       num_objects_misplaced(0),
       num_objects_unfound(0),
       num_rd(0), num_rd_kb(0), num_wr(0), num_wr_kb(0),
@@ -1382,7 +1500,8 @@ struct object_stat_sum_t {
       num_evict_kb(0),
       num_promote(0),
       num_flush_mode_high(0), num_flush_mode_low(0),
-      num_evict_mode_some(0), num_evict_mode_full(0)
+      num_evict_mode_some(0), num_evict_mode_full(0),
+      num_objects_pinned(0)
   {}
 
   void floor(int64_t f) {
@@ -1392,6 +1511,7 @@ struct object_stat_sum_t {
     FLOOR(num_object_clones);
     FLOOR(num_object_copies);
     FLOOR(num_objects_missing_on_primary);
+    FLOOR(num_objects_missing);
     FLOOR(num_objects_degraded);
     FLOOR(num_objects_misplaced);
     FLOOR(num_objects_unfound);
@@ -1419,6 +1539,7 @@ struct object_stat_sum_t {
     FLOOR(num_flush_mode_low);
     FLOOR(num_evict_mode_some);
     FLOOR(num_evict_mode_full);
+    FLOOR(num_objects_pinned);
 #undef FLOOR
   }
 
@@ -1436,6 +1557,7 @@ struct object_stat_sum_t {
     SPLIT(num_object_clones);
     SPLIT(num_object_copies);
     SPLIT(num_objects_missing_on_primary);
+    SPLIT(num_objects_missing);
     SPLIT(num_objects_degraded);
     SPLIT(num_objects_misplaced);
     SPLIT(num_objects_unfound);
@@ -1463,6 +1585,7 @@ struct object_stat_sum_t {
     SPLIT(num_flush_mode_low);
     SPLIT(num_evict_mode_some);
     SPLIT(num_evict_mode_full);
+    SPLIT(num_objects_pinned);
 #undef SPLIT
   }
 
@@ -1577,7 +1700,6 @@ struct pg_stat_t {
   utime_t last_clean_scrub_stamp;
 
   object_stat_collection_t stats;
-  bool stats_invalid;
 
   int64_t log_size;
   int64_t ondisk_log_size;    // >= active_log_size
@@ -1590,16 +1712,18 @@ struct pg_stat_t {
   utime_t last_became_active;
   utime_t last_became_peered;
 
-  /// true if num_objects_dirty is not accurate (because it was not
-  /// maintained starting from pool creation)
-  bool dirty_stats_invalid;
-  bool omap_stats_invalid;
-  bool hitset_stats_invalid;
-  bool hitset_bytes_stats_invalid;
-
   /// up, acting primaries
   int32_t up_primary;
   int32_t acting_primary;
+
+  bool stats_invalid:1;
+  /// true if num_objects_dirty is not accurate (because it was not
+  /// maintained starting from pool creation)
+  bool dirty_stats_invalid:1;
+  bool omap_stats_invalid:1;
+  bool hitset_stats_invalid:1;
+  bool hitset_bytes_stats_invalid:1;
+  bool pin_stats_invalid:1;
 
   pg_stat_t()
     : reported_seq(0),
@@ -1607,15 +1731,16 @@ struct pg_stat_t {
       state(0),
       created(0), last_epoch_clean(0),
       parent_split_bits(0),
-      stats_invalid(false),
       log_size(0), ondisk_log_size(0),
       mapping_epoch(0),
+      up_primary(-1),
+      acting_primary(-1),
+      stats_invalid(false),
       dirty_stats_invalid(false),
       omap_stats_invalid(false),
       hitset_stats_invalid(false),
       hitset_bytes_stats_invalid(false),
-      up_primary(-1),
-      acting_primary(-1)
+      pin_stats_invalid(false)
   { }
 
   epoch_t get_effective_last_epoch_clean() const {
@@ -2308,34 +2433,30 @@ struct pg_log_entry_t {
     return get_op_name(op);
   }
 
-  __s32      op;
+  // describes state for a locally-rollbackable entry
+  ObjectModDesc mod_desc;
+  bufferlist snaps;   // only for clone entries
   hobject_t  soid;
+  osd_reqid_t reqid;  // caller+tid to uniquely identify request
+  vector<pair<osd_reqid_t, version_t> > extra_reqids;
   eversion_t version, prior_version, reverting_to;
   version_t user_version; // the user version for this entry
-  osd_reqid_t reqid;  // caller+tid to uniquely identify request
   utime_t     mtime;  // this is the _user_ mtime, mind you
-  bufferlist snaps;   // only for clone entries
+
+  __s32      op;
   bool invalid_hash; // only when decoding sobject_t based entries
   bool invalid_pool; // only when decoding pool-less hobject based entries
 
-  uint64_t offset;   // [soft state] my offset on disk
-
-  /// describes state for a locally-rollbackable entry
-  ObjectModDesc mod_desc;
-
-  vector<pair<osd_reqid_t, version_t> > extra_reqids;
-
   pg_log_entry_t()
-    : op(0), user_version(0),
-      invalid_hash(false), invalid_pool(false), offset(0) {}
-  pg_log_entry_t(int _op, const hobject_t& _soid, 
-		 const eversion_t& v, const eversion_t& pv,
-		 version_t uv,
-		 const osd_reqid_t& rid, const utime_t& mt)
-    : op(_op), soid(_soid), version(v),
-      prior_version(pv), user_version(uv),
-      reqid(rid), mtime(mt), invalid_hash(false), invalid_pool(false),
-      offset(0) {}
+   : user_version(0), op(0),
+     invalid_hash(false), invalid_pool(false) {}
+  pg_log_entry_t(int _op, const hobject_t& _soid,
+                const eversion_t& v, const eversion_t& pv,
+                version_t uv,
+                const osd_reqid_t& rid, const utime_t& mt)
+   : soid(_soid), reqid(rid), version(v), prior_version(pv), user_version(uv),
+     mtime(mt), op(_op), invalid_hash(false), invalid_pool(false)
+     {}
       
   bool is_clone() const { return op == CLONE; }
   bool is_modify() const { return op == MODIFY; }
@@ -2688,15 +2809,15 @@ WRITE_CLASS_ENCODER(pg_ls_response_t)
  * object_copy_cursor_t
  */
 struct object_copy_cursor_t {
-  bool attr_complete;
   uint64_t data_offset;
-  bool data_complete;
   string omap_offset;
+  bool attr_complete;
+  bool data_complete;
   bool omap_complete;
 
   object_copy_cursor_t()
-    : attr_complete(false),
-      data_offset(0),
+    : data_offset(0),
+      attr_complete(false),
       data_complete(false),
       omap_complete(false)
   {}
@@ -3012,6 +3133,7 @@ struct object_info_t {
     FLAG_OMAP     = 1 << 3,  // has (or may have) some/any omap data
     FLAG_DATA_DIGEST = 1 << 4,  // has data crc
     FLAG_OMAP_DIGEST = 1 << 5,  // has omap crc
+    FLAG_CACHE_PIN = 1 << 6,    // pin the object in cache tier
     // ...
     FLAG_USES_TMAP = 1<<8,  // deprecated; no longer used.
   } flag_t;
@@ -3034,6 +3156,8 @@ struct object_info_t {
       s += "|data_digest";
     if (flags & FLAG_OMAP_DIGEST)
       s += "|omap_digest";
+    if (flags & FLAG_CACHE_PIN)
+      s += "|cache_pin";
     if (s.length())
       return s.substr(1);
     return s;
@@ -3084,6 +3208,9 @@ struct object_info_t {
   bool is_omap_digest() const {
     return test_flag(FLAG_OMAP_DIGEST);
   }
+  bool is_cache_pinned() const {
+    return test_flag(FLAG_CACHE_PIN);
+  }
 
   void set_data_digest(__u32 d) {
     set_flag(FLAG_DATA_DIGEST);
@@ -3131,6 +3258,10 @@ struct object_info_t {
   object_info_t(bufferlist& bl) {
     decode(bl);
   }
+  object_info_t operator=(bufferlist& bl) {
+    decode(bl);
+    return *this;
+  }
 };
 WRITE_CLASS_ENCODER(object_info_t)
 
@@ -3144,18 +3275,16 @@ struct ObjectState {
     : oi(oi_), exists(exists_) {}
 };
 
-
 struct SnapSetContext {
   hobject_t oid;
-  int ref;
-  bool registered;
   SnapSet snapset;
-  bool exists;
+  int ref;
+  bool registered : 1;
+  bool exists : 1;
 
   SnapSetContext(const hobject_t& o) :
     oid(o), ref(0), registered(false), exists(true) { }
 };
-
 
 /*
   * keep tabs on object modifications that are in flight.
@@ -3181,17 +3310,32 @@ public:
   Cond cond;
   int unstable_writes, readers, writers_waiting, readers_waiting;
 
-  /// in-progress copyfrom ops for this object
-  bool blocked;
 
   // set if writes for this object are blocked on another objects recovery
   ObjectContextRef blocked_by;      // object blocking our writes
   set<ObjectContextRef> blocking;   // objects whose writes we block
-  bool requeue_scrub_on_unblock;    // true if we need to requeue scrub on unblock
 
   // any entity in obs.oi.watchers MUST be in either watchers or unconnected_watchers.
   map<pair<uint64_t, entity_name_t>, WatchRef> watchers;
 
+  // attr cache
+  map<string, bufferlist> attr_cache;
+
+  void fill_in_setattrs(const set<string> &changing, ObjectModDesc *mod) {
+    map<string, boost::optional<bufferlist> > to_set;
+    for (set<string>::const_iterator i = changing.begin();
+	 i != changing.end();
+	 ++i) {
+      map<string, bufferlist>::iterator iter = attr_cache.find(*i);
+      if (iter != attr_cache.end()) {
+	to_set[*i] = iter->second;
+      } else {
+	to_set[*i];
+      }
+    }
+    mod->setattrs(to_set);
+  }
+  
   struct RWState {
     enum State {
       RWNONE,
@@ -3212,19 +3356,18 @@ public:
       return get_state_name(state);
     }
 
-    State state;                 ///< rw state
-    uint64_t count;              ///< number of readers or writers
     list<OpRequestRef> waiters;  ///< ops waiting on state change
+    int count;              ///< number of readers or writers
 
+    State state:4;               ///< rw state
     /// if set, restart backfill when we can get a read lock
-    bool recovery_read_marker;
-
+    bool recovery_read_marker:1;
     /// if set, requeue snaptrim on lock release
-    bool snaptrimmer_write_marker;
+    bool snaptrimmer_write_marker:1;
 
     RWState()
-      : state(RWNONE),
-	count(0),
+      : count(0),
+	state(RWNONE),
 	recovery_read_marker(false),
 	snaptrimmer_write_marker(false)
     {}
@@ -3489,23 +3632,10 @@ public:
     lock.Unlock();
   }
 
-  // attr cache
-  map<string, bufferlist> attr_cache;
+  /// in-progress copyfrom ops for this object
+  bool blocked:1;
+  bool requeue_scrub_on_unblock:1;    // true if we need to requeue scrub on unblock
 
-  void fill_in_setattrs(const set<string> &changing, ObjectModDesc *mod) {
-    map<string, boost::optional<bufferlist> > to_set;
-    for (set<string>::const_iterator i = changing.begin();
-	 i != changing.end();
-	 ++i) {
-      map<string, bufferlist>::iterator iter = attr_cache.find(*i);
-      if (iter != attr_cache.end()) {
-	to_set[*i] = iter->second;
-      } else {
-	to_set[*i];
-      }
-    }
-    mod->setattrs(to_set);
-  }
 };
 
 inline ostream& operator<<(ostream& out, const ObjectState& obs)
@@ -3556,15 +3686,15 @@ WRITE_CLASS_ENCODER(ObjectRecoveryInfo)
 ostream& operator<<(ostream& out, const ObjectRecoveryInfo &inf);
 
 struct ObjectRecoveryProgress {
-  bool first;
   uint64_t data_recovered_to;
-  bool data_complete;
   string omap_recovered_to;
+  bool first;
+  bool data_complete;
   bool omap_complete;
 
   ObjectRecoveryProgress()
-    : first(true),
-      data_recovered_to(0),
+    : data_recovered_to(0),
+      first(true),
       data_complete(false), omap_complete(false) { }
 
   bool is_complete(const ObjectRecoveryInfo& info) const {
@@ -3644,21 +3774,21 @@ ostream& operator<<(ostream& out, const PushOp &op);
  */
 struct ScrubMap {
   struct object {
-    uint64_t size;
-    bool negative;
     map<string,bufferptr> attrs;
-    __u32 digest;              ///< data crc32c
-    bool digest_present;
-    uint32_t nlinks;
     set<snapid_t> snapcolls;
+    uint64_t size;
     __u32 omap_digest;         ///< omap crc32c
-    bool omap_digest_present;
-    bool read_error;
+    __u32 digest;              ///< data crc32c
+    uint32_t nlinks;
+    bool negative:1;
+    bool digest_present:1;
+    bool omap_digest_present:1;
+    bool read_error:1;
 
     object() :
       // Init invalid size so it won't match if we get a stat EIO error
-      size(-1), negative(false), digest(0), digest_present(false),
-      nlinks(0), omap_digest(0), omap_digest_present(false),
+      size(-1), omap_digest(0), digest(0), nlinks(0), 
+      negative(false), digest_present(false), omap_digest_present(false), 
       read_error(false) {}
 
     void encode(bufferlist& bl) const;

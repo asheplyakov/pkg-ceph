@@ -8,7 +8,7 @@ Forwarded: no
 
 --- a/src/ceph-disk
 +++ b/src/ceph-disk
-@@ -3236,6 +3236,7 @@ def parse_args(argv):
+@@ -3627,6 +3627,7 @@ def parse_args(argv):
      parser.set_defaults(
          # we want to hold on to this, for later
          prog=parser.prog,

@@ -3,6 +3,10 @@
 //  LICENSE file in the root directory of this source tree. An additional grant
 //  of patent rights can be found in the PATENTS file in the same directory.
 
+#ifndef ROCKSDB_LITE
+
+#include "utilities/write_batch_with_index/write_batch_with_index_internal.h"
+
 #include "db/column_family.h"
 #include "db/merge_context.h"
 #include "db/merge_helper.h"
@@ -10,7 +14,7 @@
 #include "rocksdb/db.h"
 #include "rocksdb/utilities/write_batch_with_index.h"
 #include "util/coding.h"
-#include "utilities/write_batch_with_index/write_batch_with_index_internal.h"
+#include "util/string_util.h"
 
 namespace rocksdb {
 
@@ -27,7 +31,12 @@ Status ReadableWriteBatch::GetEntryFromDataOffset(size_t data_offset,
     return Status::InvalidArgument("Output parameters cannot be null");
   }
 
-  if (data_offset >= GetDataSize()) {
+  if (data_offset == GetDataSize()) {
+    // reached end of batch.
+    return Status::NotFound();
+  }
+
+  if (data_offset > GetDataSize()) {
     return Status::InvalidArgument("data offset exceed write batch size");
   }
   Slice input = Slice(rep_.data() + data_offset, rep_.size() - data_offset);
@@ -44,6 +53,10 @@ Status ReadableWriteBatch::GetEntryFromDataOffset(size_t data_offset,
     case kTypeColumnFamilyDeletion:
     case kTypeDeletion:
       *type = kDeleteRecord;
+      break;
+    case kTypeColumnFamilySingleDeletion:
+    case kTypeSingleDeletion:
+      *type = kSingleDeleteRecord;
       break;
     case kTypeColumnFamilyMerge:
     case kTypeMerge:
@@ -124,7 +137,7 @@ WriteBatchWithIndexInternal::Result WriteBatchWithIndexInternal::GetFromBatch(
     const DBOptions& options, WriteBatchWithIndex* batch,
     ColumnFamilyHandle* column_family, const Slice& key,
     MergeContext* merge_context, WriteBatchEntryComparator* cmp,
-    std::string* value, Status* s) {
+    std::string* value, bool overwrite_key, Status* s) {
   uint32_t cf_id = GetColumnFamilyID(column_family);
   *s = Status::OK();
   WriteBatchWithIndexInternal::Result result =
@@ -176,7 +189,8 @@ WriteBatchWithIndexInternal::Result WriteBatchWithIndexInternal::GetFromBatch(
         merge_context->PushOperand(entry.value);
         break;
       }
-      case kDeleteRecord: {
+      case kDeleteRecord:
+      case kSingleDeleteRecord: {
         result = WriteBatchWithIndexInternal::Result::kDeleted;
         break;
       }
@@ -187,7 +201,7 @@ WriteBatchWithIndexInternal::Result WriteBatchWithIndexInternal::GetFromBatch(
       default: {
         result = WriteBatchWithIndexInternal::Result::kError;
         (*s) = Status::Corruption("Unexpected entry in WriteBatchWithIndex:",
-                                  std::to_string(entry.type));
+                                  ToString(entry.type));
         break;
       }
     }
@@ -195,6 +209,13 @@ WriteBatchWithIndexInternal::Result WriteBatchWithIndexInternal::GetFromBatch(
         result == WriteBatchWithIndexInternal::Result::kDeleted ||
         result == WriteBatchWithIndexInternal::Result::kError) {
       // We can stop iterating once we find a PUT or DELETE
+      break;
+    }
+    if (result == WriteBatchWithIndexInternal::Result::kMergeInProgress &&
+        overwrite_key == true) {
+      // Since we've overwritten keys, we do not know what other operations are
+      // in this batch for this key, so we cannot do a Merge to compute the
+      // result.  Instead, we will simply return MergeInProgress.
       break;
     }
 
@@ -240,3 +261,5 @@ WriteBatchWithIndexInternal::Result WriteBatchWithIndexInternal::GetFromBatch(
 }
 
 }  // namespace rocksdb
+
+#endif  // !ROCKSDB_LITE

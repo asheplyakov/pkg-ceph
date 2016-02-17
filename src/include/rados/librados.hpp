@@ -442,6 +442,14 @@ namespace librados
     void set_alloc_hint(uint64_t expected_object_size,
                         uint64_t expected_write_size);
 
+    /**
+     * Pin/unpin an object in cache tier
+     *
+     * @returns 0 on success, negative error code on failure
+     */
+    void cache_pin();
+    void cache_unpin();
+
     friend class IoCtx;
   };
 
@@ -639,7 +647,9 @@ namespace librados
     std::string get_pool_name();
 
     bool pool_requires_alignment();
+    int pool_requires_alignment2(bool * requires);
     uint64_t pool_required_alignment();
+    int pool_required_alignment2(uint64_t * alignment);
 
     // create an object
     int create(const std::string& oid, bool exclusive);
@@ -980,6 +990,12 @@ namespace librados
 		bufferlist& bl,         ///< optional broadcast payload
 		uint64_t timeout_ms,    ///< timeout (in ms)
 		bufferlist *pbl);       ///< reply buffer
+    int aio_notify(const std::string& o,   ///< object
+                   AioCompletion *c,       ///< completion when notify completes
+                   bufferlist& bl,         ///< optional broadcast payload
+                   uint64_t timeout_ms,    ///< timeout (in ms)
+                   bufferlist *pbl);       ///< reply buffer
+
     int list_watchers(const std::string& o, std::list<obj_watch_t> *out_watchers);
     int list_snaps(const std::string& o, snap_set_t *out_snaps);
     void set_notify_timeout(uint32_t timeout);
@@ -1033,6 +1049,15 @@ namespace librados
     // assert version for next sync operations
     void set_assert_version(uint64_t ver);
     void set_assert_src_version(const std::string& o, uint64_t ver);
+
+    /**
+     * Pin/unpin an object in cache tier
+     *
+     * @param o the name of the object
+     * @returns 0 on success, negative error code on failure
+     */
+    int cache_pin(const std::string& o);
+    int cache_unpin(const std::string& o);
 
     const std::string& get_pool_name() const;
 

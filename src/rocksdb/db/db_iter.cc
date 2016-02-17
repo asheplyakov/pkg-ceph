@@ -115,6 +115,7 @@ class DBIter: public Iterator {
   virtual void SeekToLast() override;
 
  private:
+  void ReverseToBackward();
   void PrevInternal();
   void FindParseableKey(ParsedInternalKey* ikey, Direction direction);
   bool FindValueForCurrentKey();
@@ -188,6 +189,13 @@ void DBIter::Next() {
     return;
   }
   FindNextUserEntry(true /* skipping the current user key */);
+  if (statistics_ != nullptr) {
+    RecordTick(statistics_, NUMBER_DB_NEXT);
+    if (valid_) {
+      RecordTick(statistics_, NUMBER_DB_NEXT_FOUND);
+      RecordTick(statistics_, ITER_BYTES_READ, key().size() + value().size());
+    }
+  }
 }
 
 // PRE: saved_key_ has the current user key if skipping
@@ -227,6 +235,7 @@ void DBIter::FindNextUserEntryInternal(bool skipping) {
         } else {
           switch (ikey.type) {
             case kTypeDeletion:
+            case kTypeSingleDeletion:
               // Arrange to skip all upcoming entries for this key since
               // they are hidden by this deletion.
               saved_key_.SetKey(ikey.user_key);
@@ -255,12 +264,13 @@ void DBIter::FindNextUserEntryInternal(bool skipping) {
     // If we have sequentially iterated via numerous keys and still not
     // found the next user-key, then it is better to seek so that we can
     // avoid too many key comparisons. We seek to the last occurrence of
-    // our current key by looking for sequence number 0.
+    // our current key by looking for sequence number 0 and type deletion
+    // (the smallest type).
     if (skipping && num_skipped > max_skip_) {
       num_skipped = 0;
       std::string last_key;
       AppendInternalKey(&last_key, ParsedInternalKey(saved_key_.GetKey(), 0,
-                                                     kValueTypeForSeek));
+                                                     kTypeDeletion));
       iter_->Seek(last_key);
       RecordTick(statistics_, NUMBER_OF_RESEEKS_IN_ITERATION);
     } else {
@@ -296,19 +306,15 @@ void DBIter::MergeValuesNewToOld() {
       continue;
     }
 
-    if (user_comparator_->Compare(ikey.user_key, saved_key_.GetKey()) != 0) {
+    if (!user_comparator_->Equal(ikey.user_key, saved_key_.GetKey())) {
       // hit the next user key, stop right here
       break;
-    }
-
-    if (kTypeDeletion == ikey.type) {
+    } else if (kTypeDeletion == ikey.type || kTypeSingleDeletion == ikey.type) {
       // hit a delete with the same user key, stop right here
       // iter_ is positioned after delete
       iter_->Next();
       break;
-    }
-
-    if (kTypeValue == ikey.type) {
+    } else if (kTypeValue == ikey.type) {
       // hit a put, merge the put value with operands and store the
       // final result in saved_value_. We are done!
       // ignore corruption if there is any.
@@ -324,13 +330,13 @@ void DBIter::MergeValuesNewToOld() {
       // iter_ is positioned after put
       iter_->Next();
       return;
-    }
-
-    if (kTypeMerge == ikey.type) {
+    } else if (kTypeMerge == ikey.type) {
       // hit a merge, add the value as an operand and run associative merge.
       // when complete, add result to operands and continue.
       const Slice& val = iter_->value();
       operands.push_front(val.ToString());
+    } else {
+      assert(false);
     }
   }
 
@@ -350,10 +356,43 @@ void DBIter::MergeValuesNewToOld() {
 void DBIter::Prev() {
   assert(valid_);
   if (direction_ == kForward) {
-    FindPrevUserKey();
-    direction_ = kReverse;
+    ReverseToBackward();
   }
   PrevInternal();
+  if (statistics_ != nullptr) {
+    RecordTick(statistics_, NUMBER_DB_PREV);
+    if (valid_) {
+      RecordTick(statistics_, NUMBER_DB_PREV_FOUND);
+      RecordTick(statistics_, ITER_BYTES_READ, key().size() + value().size());
+    }
+  }
+}
+
+void DBIter::ReverseToBackward() {
+  if (current_entry_is_merged_) {
+    // Not placed in the same key. Need to call Prev() until finding the
+    // previous key.
+    if (!iter_->Valid()) {
+      iter_->SeekToLast();
+    }
+    ParsedInternalKey ikey;
+    FindParseableKey(&ikey, kReverse);
+    while (iter_->Valid() &&
+           user_comparator_->Compare(ikey.user_key, saved_key_.GetKey()) > 0) {
+      iter_->Prev();
+      FindParseableKey(&ikey, kReverse);
+    }
+  }
+#ifndef NDEBUG
+  if (iter_->Valid()) {
+    ParsedInternalKey ikey;
+    assert(ParseKey(&ikey));
+    assert(user_comparator_->Compare(ikey.user_key, saved_key_.GetKey()) <= 0);
+  }
+#endif
+
+  FindPrevUserKey();
+  direction_ = kReverse;
 }
 
 void DBIter::PrevInternal() {
@@ -372,7 +411,7 @@ void DBIter::PrevInternal() {
         return;
       }
       FindParseableKey(&ikey, kReverse);
-      if (user_comparator_->Compare(ikey.user_key, saved_key_.GetKey()) == 0) {
+      if (user_comparator_->Equal(ikey.user_key, saved_key_.GetKey())) {
         FindPrevUserKey();
       }
       return;
@@ -381,8 +420,7 @@ void DBIter::PrevInternal() {
       break;
     }
     FindParseableKey(&ikey, kReverse);
-    if (user_comparator_->Compare(ikey.user_key, saved_key_.GetKey()) == 0) {
-
+    if (user_comparator_->Equal(ikey.user_key, saved_key_.GetKey())) {
       FindPrevUserKey();
     }
   }
@@ -392,12 +430,14 @@ void DBIter::PrevInternal() {
 }
 
 // This function checks, if the entry with biggest sequence_number <= sequence_
-// is non kTypeDeletion. If it's not, we save value in saved_value_
+// is non kTypeDeletion or kTypeSingleDeletion. If it's not, we save value in
+// saved_value_
 bool DBIter::FindValueForCurrentKey() {
   assert(iter_->Valid());
   // Contains operands for merge operator.
   std::deque<std::string> operands;
-  // last entry before merge (could be kTypeDeletion or kTypeValue)
+  // last entry before merge (could be kTypeDeletion, kTypeSingleDeletion or
+  // kTypeValue)
   ValueType last_not_merge_type = kTypeDeletion;
   ValueType last_key_entry_type = kTypeDeletion;
 
@@ -406,7 +446,7 @@ bool DBIter::FindValueForCurrentKey() {
 
   size_t num_skipped = 0;
   while (iter_->Valid() && ikey.sequence <= sequence_ &&
-         (user_comparator_->Compare(ikey.user_key, saved_key_.GetKey()) == 0)) {
+         user_comparator_->Equal(ikey.user_key, saved_key_.GetKey())) {
     // We iterate too much: let's use Seek() to avoid too much key comparisons
     if (num_skipped >= max_skip_) {
       return FindValueForCurrentKeyUsingSeek();
@@ -420,8 +460,9 @@ bool DBIter::FindValueForCurrentKey() {
         last_not_merge_type = kTypeValue;
         break;
       case kTypeDeletion:
+      case kTypeSingleDeletion:
         operands.clear();
-        last_not_merge_type = kTypeDeletion;
+        last_not_merge_type = last_key_entry_type;
         PERF_COUNTER_ADD(internal_delete_skipped_count, 1);
         break;
       case kTypeMerge:
@@ -433,7 +474,7 @@ bool DBIter::FindValueForCurrentKey() {
     }
 
     PERF_COUNTER_ADD(internal_key_skipped_count, 1);
-    assert(user_comparator_->Compare(ikey.user_key, saved_key_.GetKey()) == 0);
+    assert(user_comparator_->Equal(ikey.user_key, saved_key_.GetKey()));
     iter_->Prev();
     ++num_skipped;
     FindParseableKey(&ikey, kReverse);
@@ -441,6 +482,7 @@ bool DBIter::FindValueForCurrentKey() {
 
   switch (last_key_entry_type) {
     case kTypeDeletion:
+    case kTypeSingleDeletion:
       valid_ = false;
       return false;
     case kTypeMerge:
@@ -489,7 +531,8 @@ bool DBIter::FindValueForCurrentKeyUsingSeek() {
   ParsedInternalKey ikey;
   FindParseableKey(&ikey, kForward);
 
-  if (ikey.type == kTypeValue || ikey.type == kTypeDeletion) {
+  if (ikey.type == kTypeValue || ikey.type == kTypeDeletion ||
+      ikey.type == kTypeSingleDeletion) {
     if (ikey.type == kTypeValue) {
       saved_value_ = iter_->value().ToString();
       valid_ = true;
@@ -503,7 +546,7 @@ bool DBIter::FindValueForCurrentKeyUsingSeek() {
   // in operands
   std::deque<std::string> operands;
   while (iter_->Valid() &&
-         (user_comparator_->Compare(ikey.user_key, saved_key_.GetKey()) == 0) &&
+         user_comparator_->Equal(ikey.user_key, saved_key_.GetKey()) &&
          ikey.type == kTypeMerge) {
     operands.push_front(iter_->value().ToString());
     iter_->Next();
@@ -511,8 +554,8 @@ bool DBIter::FindValueForCurrentKeyUsingSeek() {
   }
 
   if (!iter_->Valid() ||
-      (user_comparator_->Compare(ikey.user_key, saved_key_.GetKey()) != 0) ||
-      ikey.type == kTypeDeletion) {
+      !user_comparator_->Equal(ikey.user_key, saved_key_.GetKey()) ||
+      ikey.type == kTypeDeletion || ikey.type == kTypeSingleDeletion) {
     {
       StopWatchNano timer(env_, statistics_ != nullptr);
       PERF_TIMER_GUARD(merge_operator_time_nanos);
@@ -522,7 +565,7 @@ bool DBIter::FindValueForCurrentKeyUsingSeek() {
     }
     // Make iter_ valid and point to saved_key_
     if (!iter_->Valid() ||
-        (user_comparator_->Compare(ikey.user_key, saved_key_.GetKey()) != 0)) {
+        !user_comparator_->Equal(ikey.user_key, saved_key_.GetKey())) {
       iter_->Seek(last_key);
       RecordTick(statistics_, NUMBER_OF_RESEEKS_IN_ITERATION);
     }
@@ -553,7 +596,7 @@ void DBIter::FindNextUserKey() {
   ParsedInternalKey ikey;
   FindParseableKey(&ikey, kForward);
   while (iter_->Valid() &&
-         user_comparator_->Compare(ikey.user_key, saved_key_.GetKey()) != 0) {
+         !user_comparator_->Equal(ikey.user_key, saved_key_.GetKey())) {
     iter_->Next();
     FindParseableKey(&ikey, kForward);
   }
@@ -567,19 +610,23 @@ void DBIter::FindPrevUserKey() {
   size_t num_skipped = 0;
   ParsedInternalKey ikey;
   FindParseableKey(&ikey, kReverse);
-  while (iter_->Valid() &&
-         user_comparator_->Compare(ikey.user_key, saved_key_.GetKey()) == 0) {
-    if (num_skipped >= max_skip_) {
-      num_skipped = 0;
-      IterKey last_key;
-      last_key.SetInternalKey(ParsedInternalKey(
-          saved_key_.GetKey(), kMaxSequenceNumber, kValueTypeForSeek));
-      iter_->Seek(last_key.GetKey());
-      RecordTick(statistics_, NUMBER_OF_RESEEKS_IN_ITERATION);
+  int cmp;
+  while (iter_->Valid() && ((cmp = user_comparator_->Compare(
+                                 ikey.user_key, saved_key_.GetKey())) == 0 ||
+                            (cmp > 0 && ikey.sequence > sequence_))) {
+    if (cmp == 0) {
+      if (num_skipped >= max_skip_) {
+        num_skipped = 0;
+        IterKey last_key;
+        last_key.SetInternalKey(ParsedInternalKey(
+            saved_key_.GetKey(), kMaxSequenceNumber, kValueTypeForSeek));
+        iter_->Seek(last_key.GetKey());
+        RecordTick(statistics_, NUMBER_OF_RESEEKS_IN_ITERATION);
+      } else {
+        ++num_skipped;
+      }
     }
-
     iter_->Prev();
-    ++num_skipped;
     FindParseableKey(&ikey, kReverse);
   }
 }
@@ -597,21 +644,6 @@ void DBIter::FindParseableKey(ParsedInternalKey* ikey, Direction direction) {
 
 void DBIter::Seek(const Slice& target) {
   StopWatch sw(env_, statistics_, DB_SEEK);
-
-  // total ordering is not guaranteed if prefix_extractor is set
-  // hence prefix based seeks will not give correct results
-  if (iterate_upper_bound_ != nullptr && prefix_extractor_ != nullptr) {
-    if (!prefix_extractor_->InDomain(*iterate_upper_bound_) ||
-        !prefix_extractor_->InDomain(target) ||
-        prefix_extractor_->Transform(*iterate_upper_bound_).compare(
-          prefix_extractor_->Transform(target)) != 0) {
-      status_ = Status::InvalidArgument("read_options.iterate_*_bound "
-                  " and seek target need to have the same prefix.");
-      valid_ = false;
-      return;
-    }
-  }
-
   saved_key_.Clear();
   // now savved_key is used to store internal key.
   saved_key_.SetInternalKey(target, sequence_);
@@ -621,10 +653,17 @@ void DBIter::Seek(const Slice& target) {
     iter_->Seek(saved_key_.GetKey());
   }
 
+  RecordTick(statistics_, NUMBER_DB_SEEK);
   if (iter_->Valid()) {
     direction_ = kForward;
     ClearSavedValue();
-    FindNextUserEntry(false /*not skipping */);
+    FindNextUserEntry(false /* not skipping */);
+    if (statistics_ != nullptr) {
+      if (valid_) {
+        RecordTick(statistics_, NUMBER_DB_SEEK_FOUND);
+        RecordTick(statistics_, ITER_BYTES_READ, key().size() + value().size());
+      }
+    }
   } else {
     valid_ = false;
   }
@@ -632,7 +671,7 @@ void DBIter::Seek(const Slice& target) {
 
 void DBIter::SeekToFirst() {
   // Don't use iter_::Seek() if we set a prefix extractor
-  // because prefix seek wiil be used.
+  // because prefix seek will be used.
   if (prefix_extractor_ != nullptr) {
     max_skip_ = std::numeric_limits<uint64_t>::max();
   }
@@ -644,8 +683,15 @@ void DBIter::SeekToFirst() {
     iter_->SeekToFirst();
   }
 
+  RecordTick(statistics_, NUMBER_DB_SEEK);
   if (iter_->Valid()) {
     FindNextUserEntry(false /* not skipping */);
+    if (statistics_ != nullptr) {
+      if (valid_) {
+        RecordTick(statistics_, NUMBER_DB_SEEK_FOUND);
+        RecordTick(statistics_, ITER_BYTES_READ, key().size() + value().size());
+      }
+    }
   } else {
     valid_ = false;
   }
@@ -653,7 +699,7 @@ void DBIter::SeekToFirst() {
 
 void DBIter::SeekToLast() {
   // Don't use iter_::Seek() if we set a prefix extractor
-  // because prefix seek wiil be used.
+  // because prefix seek will be used.
   if (prefix_extractor_ != nullptr) {
     max_skip_ = std::numeric_limits<uint64_t>::max();
   }
@@ -664,8 +710,36 @@ void DBIter::SeekToLast() {
     PERF_TIMER_GUARD(seek_internal_seek_time);
     iter_->SeekToLast();
   }
+  // When the iterate_upper_bound is set to a value,
+  // it will seek to the last key before the
+  // ReadOptions.iterate_upper_bound
+  if (iter_->Valid() && iterate_upper_bound_ != nullptr) {
+    saved_key_.SetKey(*iterate_upper_bound_);
+    std::string last_key;
+    AppendInternalKey(&last_key,
+                      ParsedInternalKey(saved_key_.GetKey(), kMaxSequenceNumber,
+                                        kValueTypeForSeek));
 
+    iter_->Seek(last_key);
+
+    if (!iter_->Valid()) {
+      iter_->SeekToLast();
+    } else {
+      iter_->Prev();
+      if (!iter_->Valid()) {
+        valid_ = false;
+        return;
+      }
+    }
+  }
   PrevInternal();
+  if (statistics_ != nullptr) {
+    RecordTick(statistics_, NUMBER_DB_SEEK);
+    if (valid_) {
+      RecordTick(statistics_, NUMBER_DB_SEEK_FOUND);
+      RecordTick(statistics_, ITER_BYTES_READ, key().size() + value().size());
+    }
+  }
 }
 
 Iterator* NewDBIterator(Env* env, const ImmutableCFOptions& ioptions,

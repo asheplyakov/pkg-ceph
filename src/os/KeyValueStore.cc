@@ -718,6 +718,10 @@ int KeyValueStore::mkfs()
     delete store;
   }
 
+  ret = write_meta("type", "keyvaluestore");
+  if (ret < 0)
+    goto close_fsid_fd;
+
   dout(1) << "mkfs done in " << basedir << dendl;
   ret = 0;
 
@@ -1040,6 +1044,7 @@ int KeyValueStore::queue_transactions(Sequencer *posr, list<Transaction*> &tls,
                                       TrackedOpRef osd_op,
                                       ThreadPool::TPHandle *handle)
 {
+  utime_t start = ceph_clock_now(g_ceph_context);
   Context *onreadable;
   Context *ondisk;
   Context *onreadable_sync;
@@ -1067,6 +1072,8 @@ int KeyValueStore::queue_transactions(Sequencer *posr, list<Transaction*> &tls,
   dout(5) << "queue_transactions (trailing journal) " << " " << tls <<dendl;
   queue_op(osr, o);
 
+  utime_t end = ceph_clock_now(g_ceph_context);
+  perf_logger->tinc(l_os_queue_lat, end - start);
   return 0;
 }
 
@@ -1122,7 +1129,6 @@ void KeyValueStore::op_queue_reserve_throttle(Op *o, ThreadPool::TPHandle *handl
   perf_logger->set(l_os_oq_max_ops, max_ops);
   perf_logger->set(l_os_oq_max_bytes, max_bytes);
 
-  utime_t start = ceph_clock_now(g_ceph_context);
   if (handle)
     handle->suspend_tp_timeout();
   if (throttle_ops.should_wait(1) ||
@@ -1135,9 +1141,6 @@ void KeyValueStore::op_queue_reserve_throttle(Op *o, ThreadPool::TPHandle *handl
   throttle_bytes.get(o->bytes);
   if (handle)
     handle->reset_tp_timeout();
-
-  utime_t end = ceph_clock_now(g_ceph_context);
-  perf_logger->tinc(l_os_queue_lat, end - start);
 
   perf_logger->set(l_os_oq_ops, throttle_ops.get_current());
   perf_logger->set(l_os_oq_bytes, throttle_bytes.get_current());
@@ -1190,8 +1193,10 @@ void KeyValueStore::_finish_op(OpSequencer *osr)
   if (o->onreadable_sync) {
     o->onreadable_sync->complete(0);
   }
-  op_finisher.queue(o->onreadable);
-  op_finisher.queue(to_queue);
+  if (o->onreadable)
+    op_finisher.queue(o->onreadable);
+  if (!to_queue.empty())
+    op_finisher.queue(to_queue);
   delete o;
 }
 
@@ -2729,7 +2734,7 @@ int KeyValueStore::_omap_rmkeyrange(coll_t cid, const ghobject_t &hoid,
       return -ENOENT;
 
     for (iter->lower_bound(first); iter->valid() && iter->key() < last;
-         iter->next()) {
+         iter->next(false)) {
       keys.insert(iter->key());
     }
   }
@@ -2888,7 +2893,7 @@ const char** KeyValueStore::get_tracked_conf_keys() const
   static const char* KEYS[] = {
     "keyvaluestore_queue_max_ops",
     "keyvaluestore_queue_max_bytes",
-    "keyvaluestore_strip_size",
+    "keyvaluestore_default_strip_size",
     "keyvaluestore_dump_file",
     NULL
   };
