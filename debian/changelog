@@ -10,10 +10,6 @@ ceph (10.0.2-1) UNRELEASED; urgency=medium
                and installed.
     - [3ead6e] Correct install location for ceph-monstore-update tool.
     - [269754] [177b7a] Update symbols for new release.
-  * [4c45629] Update NEWS file for infernalis changes.
-  * [940491e] Limit number of parallel builds to 2 to reduce memory footprint
-              on builders.
-  * [398a4cb] Imported Upstream version 10.0.1
   * [6f322e5] Imported Upstream version 10.0.2
     - [ba06deb] Add python-dev to BD's.
     - [62c26dc] d/p/fix-systemd-escaping.patch: Ensure that leading '/' is
@@ -22,6 +18,9 @@ ceph (10.0.2-1) UNRELEASED; urgency=medium
     - [e02b2a1] d/p/pybind-flags.patch: Ensure that python flags are correct
                 set for cython rbd build.
     - [d9dad09] Switch rbd python binding to cython
+  * [4c45629] Update NEWS file for infernalis changes.
+  * [940491e] Limit number of parallel builds to 2 to reduce memory footprint
+              on builders.
   * [23e78f3] d/ceph-mds.postinst: Fix syntax error.
   * [26182b5] d/ceph-mds.dirs: Actually create /var/lib/ceph/mds prior
               to changing permissions (LP: #1544647).
