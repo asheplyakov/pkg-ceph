@@ -1,6 +1,6 @@
 ceph (10.0.2-0ubuntu1) UNRELEASED; urgency=medium
 
-  * New update release, in preparation for Ceph Jewel Stable:
+  * New upstream release, in preparation for Ceph Jewel Stable:
     - d/control: Add python-dev to BD's.
     - d/p/pybind-flags.patch: Ensure that python flags are correct
       set for cython rbd build.
