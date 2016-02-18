@@ -1,6 +1,6 @@
-ceph (10.0.2-0ubuntu1) UNRELEASED; urgency=medium
+ceph (10.0.2-0ubuntu1) xenial; urgency=medium
 
-  * New upstream release, in preparation for Ceph Jewel Stable:
+  * New upstream release, in preparation for Ceph Jewel stable release:
     - d/control: Add python-dev to BD's.
     - d/p/pybind-flags.patch: Ensure that python flags are correct
       set for cython rbd build.
@@ -9,7 +9,7 @@ ceph (10.0.2-0ubuntu1) UNRELEASED; urgency=medium
     - d/control,rbd-nbd.*,rules: Add rbd-nbd package.
     - d/p/*: Tidy old redundant patches.
 
- -- James Page <james.page@ubuntu.com>  Wed, 17 Feb 2016 10:43:00 +0000
+ -- James Page <james.page@ubuntu.com>  Thu, 18 Feb 2016 08:07:30 +0000
 
 ceph (9.2.0-0ubuntu6) xenial; urgency=medium
 
