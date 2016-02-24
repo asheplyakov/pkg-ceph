@@ -1,6 +1,6 @@
 .\" Man page generated from reStructuredText.
 .
-.TH "RADOSGW-ADMIN" "8" "January 13, 2016" "dev" "Ceph"
+.TH "RADOSGW-ADMIN" "8" "February 24, 2016" "dev" "Ceph"
 .SH NAME
 radosgw-admin \- rados REST gateway user administration utility
 .
@@ -168,6 +168,7 @@ List log objects.
 .TP
 .B \fBlog show\fP
 Dump a log from specific object or (bucket + date + bucket\-id).
+(NOTE: required to specify formatting of date to "YYYY\-MM\-DD\-hh")
 .TP
 .B \fBlog rm\fP
 Remove log object.
@@ -522,7 +523,7 @@ Show the logs of a bucket from April 1st, 2012:
 .sp
 .nf
 .ft C
-$ radosgw\-admin log show \-\-bucket=foo \-\-date=2012\-04\-01
+$ radosgw\-admin log show \-\-bucket=foo \-\-date=2012\-04\-01\-01 \-\-bucket\-id=default.14193.1
 .ft P
 .fi
 .UNINDENT

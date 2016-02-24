@@ -39,6 +39,7 @@ OPTION(restapi_log_level, OPT_STR, "") 	// default set by Python code
 OPTION(restapi_base_url, OPT_STR, "")	// "
 OPTION(fatal_signal_handlers, OPT_BOOL, true)
 OPTION(erasure_code_dir, OPT_STR, CEPH_PKGLIBDIR"/erasure-code") // default location for erasure-code plugins
+OPTION(compression_dir, OPT_STR, CEPH_PKGLIBDIR"/compressor") // default location for compression plugins
 
 OPTION(log_file, OPT_STR, "/var/log/ceph/$cluster-$name.log") // default changed by common_preinit()
 OPTION(log_max_new, OPT_INT, 1000) // default changed by common_preinit()
@@ -137,6 +138,12 @@ SUBSYS(refs, 0, 0)
 SUBSYS(xio, 1, 5)
 SUBSYS(compressor, 1, 5)
 SUBSYS(newstore, 1, 5)
+SUBSYS(bluestore, 1, 5)
+SUBSYS(bluefs, 1, 5)
+SUBSYS(bdev, 1, 3)
+SUBSYS(kstore, 1, 5)
+SUBSYS(rocksdb, 4, 5)
+SUBSYS(leveldb, 4, 5)
 
 OPTION(key, OPT_STR, "")
 OPTION(keyfile, OPT_STR, "")
@@ -201,6 +208,7 @@ OPTION(mon_subscribe_interval, OPT_DOUBLE, 24*3600)  // for legacy clients only
 OPTION(mon_delta_reset_interval, OPT_DOUBLE, 10)   // seconds of inactivity before we reset the pg delta to 0
 OPTION(mon_osd_laggy_halflife, OPT_INT, 60*60)        // (seconds) how quickly our laggy estimations decay
 OPTION(mon_osd_laggy_weight, OPT_DOUBLE, .3)          // weight for new 'samples's in laggy estimations
+OPTION(mon_osd_laggy_max_interval, OPT_INT, 300)      // maximum value of laggy_interval in laggy estimations
 OPTION(mon_osd_adjust_heartbeat_grace, OPT_BOOL, true)    // true if we should scale based on laggy estimations
 OPTION(mon_osd_adjust_down_out_interval, OPT_BOOL, true)  // true if we should scale based on laggy estimations
 OPTION(mon_osd_auto_mark_in, OPT_BOOL, false)         // mark any booting osds 'in'
@@ -360,6 +368,9 @@ OPTION(client_debug_inject_tick_delay, OPT_INT, 0) // delay the client tick for 
 OPTION(client_max_inline_size, OPT_U64, 4096)
 OPTION(client_inject_release_failure, OPT_BOOL, false)  // synthetic client bug for testing
 OPTION(client_inject_fixed_oldest_tid, OPT_BOOL, false)  // synthetic client bug for testing
+OPTION(client_metadata, OPT_STR, "")
+OPTION(client_acl_type, OPT_STR, "")
+OPTION(client_permissions, OPT_BOOL, true)
 
 // note: the max amount of "in flight" dirty data is roughly (max - target)
 OPTION(fuse_use_invalidate_cb, OPT_BOOL, false) // use fuse 2.8+ invalidate callback to keep page cache consistent
@@ -421,6 +432,7 @@ OPTION(mds_client_prealloc_inos, OPT_INT, 1000)
 OPTION(mds_early_reply, OPT_BOOL, true)
 OPTION(mds_default_dir_hash, OPT_INT, CEPH_STR_HASH_RJENKINS)
 OPTION(mds_log, OPT_BOOL, true)
+OPTION(mds_log_pause, OPT_BOOL, false)
 OPTION(mds_log_skip_corrupt_events, OPT_BOOL, false)
 OPTION(mds_log_max_events, OPT_INT, -1)
 OPTION(mds_log_events_per_segment, OPT_INT, 1024)
@@ -553,6 +565,7 @@ OPTION(osd_max_write_size, OPT_INT, 90)
 OPTION(osd_max_pgls, OPT_U64, 1024) // max number of pgls entries to return
 OPTION(osd_client_message_size_cap, OPT_U64, 500*1024L*1024L) // client data allowed in-memory (in bytes)
 OPTION(osd_client_message_cap, OPT_U64, 100)              // num client messages allowed in-memory
+OPTION(osd_pg_op_threshold_ratio, OPT_U64, 2)             // the expected maximum op over the average number of ops per pg
 OPTION(osd_pg_bits, OPT_INT, 6)  // bits per osd
 OPTION(osd_pgp_bits, OPT_INT, 6)  // bits per osd
 OPTION(osd_crush_chooseleaf_type, OPT_INT, 1) // 1 = host
@@ -564,6 +577,9 @@ OPTION(osd_pool_default_size, OPT_INT, 3)
 OPTION(osd_pool_default_min_size, OPT_INT, 0)  // 0 means no specific default; ceph will use size-size/2
 OPTION(osd_pool_default_pg_num, OPT_INT, 8) // number of PGs for new pools. Configure in global or mon section of ceph.conf
 OPTION(osd_pool_default_pgp_num, OPT_INT, 8) // number of PGs for placement purposes. Should be equal to pg_num
+OPTION(osd_compression_plugins, OPT_STR,
+       "snappy"
+       ) // list of compression plugins
 OPTION(osd_pool_default_erasure_code_profile,
        OPT_STR,
        "plugin=jerasure "
@@ -593,6 +609,7 @@ OPTION(osd_pool_default_cache_target_dirty_high_ratio, OPT_FLOAT, .6)
 OPTION(osd_pool_default_cache_target_full_ratio, OPT_FLOAT, .8)
 OPTION(osd_pool_default_cache_min_flush_age, OPT_INT, 0)  // seconds
 OPTION(osd_pool_default_cache_min_evict_age, OPT_INT, 0)  // seconds
+OPTION(osd_pool_default_cache_max_evict_check_size, OPT_INT, 10)  // max size to check for eviction
 OPTION(osd_hit_set_min_size, OPT_INT, 1000)  // min target size for a HitSet
 OPTION(osd_hit_set_max_size, OPT_INT, 100000)  // max target size for a HitSet
 OPTION(osd_hit_set_namespace, OPT_STR, ".ceph-internal") // rados namespace for hit_set tracking
@@ -613,6 +630,10 @@ OPTION(osd_map_message_max, OPT_INT, 100)  // max maps per MOSDMap message
 OPTION(osd_map_share_max_epochs, OPT_INT, 100)  // cap on # of inc maps we send to peers, clients
 OPTION(osd_inject_bad_map_crc_probability, OPT_FLOAT, 0)
 OPTION(osd_inject_failure_on_pg_removal, OPT_BOOL, false)
+// shutdown the OSD if stuatus flipping more than max_markdown_count times in recent max_markdown_period seconds
+OPTION(osd_max_markdown_period , OPT_INT, 600)
+OPTION(osd_max_markdown_count, OPT_INT, 5)
+
 OPTION(osd_op_threads, OPT_INT, 2)    // 0 == no threading
 OPTION(osd_peering_wq_batch_size, OPT_U64, 20)
 OPTION(osd_op_pq_max_tokens_per_priority, OPT_U64, 4194304)
@@ -746,6 +767,7 @@ OPTION(threadpool_default_timeout, OPT_INT, 60)
 // default wait time for an empty queue before pinging the hb timeout
 OPTION(threadpool_empty_queue_max_wait, OPT_INT, 2)
 
+OPTION(leveldb_log_to_ceph_log, OPT_BOOL, true)
 OPTION(leveldb_write_buffer_size, OPT_U64, 8 *1024*1024) // leveldb write buffer size
 OPTION(leveldb_cache_size, OPT_U64, 128 *1024*1024) // leveldb cache size
 OPTION(leveldb_block_size, OPT_U64, 0) // leveldb block size
@@ -763,6 +785,9 @@ OPTION(kinetic_hmac_key, OPT_STR, "asdfasdf") // kinetic key to authenticate wit
 OPTION(kinetic_use_ssl, OPT_BOOL, false) // whether to secure kinetic traffic with TLS
 
 
+OPTION(rocksdb_separate_wal_dir, OPT_BOOL, false) // use $path.wal for wal
+OPTION(rocksdb_db_paths, OPT_STR, "")   // path,size( path,size)*
+OPTION(rocksdb_log_to_ceph_log, OPT_BOOL, true)  // log to ceph log
 // rocksdb options that will be used for keyvaluestore(if backend is rocksdb)
 OPTION(keyvaluestore_rocksdb_options, OPT_STR, "")
 // rocksdb options that will be used for omap(if omap_backend is rocksdb)
@@ -817,34 +842,79 @@ OPTION(memstore_device_bytes, OPT_U64, 1024*1024*1024)
 OPTION(memstore_page_set, OPT_BOOL, true)
 OPTION(memstore_page_size, OPT_U64, 64 << 10)
 
-OPTION(newstore_max_dir_size, OPT_U32, 1000000)
-OPTION(newstore_onode_map_size, OPT_U32, 1024)   // onodes per collection
-OPTION(newstore_backend, OPT_STR, "rocksdb")
-OPTION(newstore_rocksdb_options, OPT_STR, "compression=kNoCompression,max_write_buffer_number=16,min_write_buffer_number_to_merge=6")
-OPTION(newstore_fail_eio, OPT_BOOL, true)
-OPTION(newstore_sync_io, OPT_BOOL, false)  // perform initial io synchronously
-OPTION(newstore_sync_transaction, OPT_BOOL, false)  // perform kv txn synchronously
-OPTION(newstore_sync_submit_transaction, OPT_BOOL, false)
-OPTION(newstore_sync_wal_apply, OPT_BOOL, true)     // perform initial wal work synchronously (possibly in combination with aio so we only *queue* ios)
-OPTION(newstore_fsync_threads, OPT_INT, 16)  // num threads calling fsync
-OPTION(newstore_fsync_thread_timeout, OPT_INT, 30) // thread timeout value
-OPTION(newstore_fsync_thread_suicide_timeout, OPT_INT, 120) // suicide timeout value
-OPTION(newstore_wal_threads, OPT_INT, 4)
-OPTION(newstore_wal_thread_timeout, OPT_INT, 30)
-OPTION(newstore_wal_thread_suicide_timeout, OPT_INT, 120)
-OPTION(newstore_max_ops, OPT_U64, 512)
-OPTION(newstore_max_bytes, OPT_U64, 64*1024*1024)
-OPTION(newstore_wal_max_ops, OPT_U64, 512)
-OPTION(newstore_wal_max_bytes, OPT_U64, 128*1024*1024)
-OPTION(newstore_fid_prealloc, OPT_INT, 1024)
-OPTION(newstore_nid_prealloc, OPT_INT, 1024)
-OPTION(newstore_overlay_max_length, OPT_INT, 65536)
-OPTION(newstore_overlay_max, OPT_INT, 32)
-OPTION(newstore_open_by_handle, OPT_BOOL, true)
-OPTION(newstore_o_direct, OPT_BOOL, true)
-OPTION(newstore_aio, OPT_BOOL, true)
-OPTION(newstore_aio_poll_ms, OPT_INT, 250)  // milliseconds
-OPTION(newstore_aio_max_queue_depth, OPT_INT, 4096)
+OPTION(bdev_debug_inflight_ios, OPT_BOOL, false)
+OPTION(bdev_inject_crash, OPT_INT, 0)  // if N>0, then ~ 1/N IOs will complete before we crash on flush.
+OPTION(bdev_aio, OPT_BOOL, true)
+OPTION(bdev_aio_poll_ms, OPT_INT, 250)  // milliseconds
+OPTION(bdev_aio_max_queue_depth, OPT_INT, 32)
+
+OPTION(bluefs_alloc_size, OPT_U64, 1048576)
+OPTION(bluefs_max_prefetch, OPT_U64, 1048576)
+OPTION(bluefs_min_log_runway, OPT_U64, 1048576)  // alloc when we get this low
+OPTION(bluefs_max_log_runway, OPT_U64, 4194304)  // alloc this much at a time
+OPTION(bluefs_log_compact_min_ratio, OPT_FLOAT, 5.0)      // before we consider
+OPTION(bluefs_log_compact_min_size, OPT_U64, 16*1048576)  // before we consider
+OPTION(bluefs_min_flush_size, OPT_U64, 65536)  // ignore flush until its this big
+
+OPTION(bluestore_bluefs, OPT_BOOL, true)
+OPTION(bluestore_bluefs_env_mirror, OPT_BOOL, false) // mirror to normal Env for debug
+OPTION(bluestore_bluefs_min, OPT_U64, 1*1024*1024*1024) // 1gb
+OPTION(bluestore_bluefs_min_ratio, OPT_FLOAT, .02)  // min fs free / total free
+OPTION(bluestore_bluefs_max_ratio, OPT_FLOAT, .90)  // max fs free / total free
+OPTION(bluestore_bluefs_gift_ratio, OPT_FLOAT, .02) // how much to add at a time
+OPTION(bluestore_bluefs_reclaim_ratio, OPT_FLOAT, .20) // how much to reclaim at a time
+OPTION(bluestore_block_path, OPT_STR, "")
+OPTION(bluestore_block_size, OPT_U64, 10 * 1024*1024*1024)  // 10gb for testing
+OPTION(bluestore_block_db_path, OPT_STR, "")
+OPTION(bluestore_block_db_size, OPT_U64, 0)      // rocksdb primary storage
+OPTION(bluestore_block_wal_path, OPT_STR, "")
+OPTION(bluestore_block_wal_size, OPT_U64, 0)     // rocksdb wal
+OPTION(bluestore_max_dir_size, OPT_U32, 1000000)
+OPTION(bluestore_min_alloc_size, OPT_U32, 64*1024)
+OPTION(bluestore_onode_map_size, OPT_U32, 1024)   // onodes per collection
+OPTION(bluestore_cache_tails, OPT_BOOL, true)   // cache tail blocks in Onode
+OPTION(bluestore_backend, OPT_STR, "rocksdb")
+OPTION(bluestore_rocksdb_options, OPT_STR, "compression=kNoCompression,max_write_buffer_number=16,min_write_buffer_number_to_merge=3,recycle_log_file_num=16")
+OPTION(bluestore_fsck_on_mount, OPT_BOOL, false)
+OPTION(bluestore_fsck_on_umount, OPT_BOOL, false)
+OPTION(bluestore_fail_eio, OPT_BOOL, true)
+OPTION(bluestore_sync_io, OPT_BOOL, false)  // perform initial io synchronously
+OPTION(bluestore_sync_transaction, OPT_BOOL, false)  // perform kv txn synchronously
+OPTION(bluestore_sync_submit_transaction, OPT_BOOL, false)
+OPTION(bluestore_sync_wal_apply, OPT_BOOL, true)     // perform initial wal work synchronously (possibly in combination with aio so we only *queue* ios)
+OPTION(bluestore_wal_threads, OPT_INT, 4)
+OPTION(bluestore_wal_thread_timeout, OPT_INT, 30)
+OPTION(bluestore_wal_thread_suicide_timeout, OPT_INT, 120)
+OPTION(bluestore_max_ops, OPT_U64, 512)
+OPTION(bluestore_max_bytes, OPT_U64, 64*1024*1024)
+OPTION(bluestore_wal_max_ops, OPT_U64, 512)
+OPTION(bluestore_wal_max_bytes, OPT_U64, 128*1024*1024)
+OPTION(bluestore_fid_prealloc, OPT_INT, 1024)
+OPTION(bluestore_nid_prealloc, OPT_INT, 1024)
+OPTION(bluestore_overlay_max_length, OPT_INT, 65536)
+OPTION(bluestore_overlay_max, OPT_INT, 0)
+OPTION(bluestore_open_by_handle, OPT_BOOL, true)
+OPTION(bluestore_o_direct, OPT_BOOL, true)
+OPTION(bluestore_clone_cow, OPT_BOOL, true)  // do copy-on-write for clones
+OPTION(bluestore_default_buffered_read, OPT_BOOL, false)
+OPTION(bluestore_debug_misc, OPT_BOOL, false)
+OPTION(bluestore_debug_no_reuse_blocks, OPT_BOOL, false)
+OPTION(bluestore_debug_small_allocations, OPT_INT, 0)
+OPTION(bluestore_debug_freelist, OPT_BOOL, false)
+OPTION(bluestore_debug_prefill, OPT_FLOAT, 0)
+OPTION(bluestore_debug_prefragment_max, OPT_INT, 1048576)
+
+OPTION(kstore_max_ops, OPT_U64, 512)
+OPTION(kstore_max_bytes, OPT_U64, 64*1024*1024)
+OPTION(kstore_backend, OPT_STR, "rocksdb")
+OPTION(kstore_rocksdb_options, OPT_STR, "compression=kNoCompression")
+OPTION(kstore_fsck_on_mount, OPT_BOOL, false)
+OPTION(kstore_nid_prealloc, OPT_U64, 1024)
+OPTION(kstore_sync_transaction, OPT_BOOL, false)
+OPTION(kstore_sync_submit_transaction, OPT_BOOL, false)
+OPTION(kstore_onode_map_size, OPT_U64, 1024)
+OPTION(kstore_cache_tails, OPT_BOOL, true)
+OPTION(kstore_default_stripe_size, OPT_INT, 65536)
 
 OPTION(filestore_omap_backend, OPT_STR, "leveldb")
 
@@ -903,12 +973,17 @@ OPTION(filestore_fsync_flushes_journal_data, OPT_BOOL, false)
 OPTION(filestore_fiemap, OPT_BOOL, false)     // (try to) use fiemap
 OPTION(filestore_seek_data_hole, OPT_BOOL, false)     // (try to) use seek_data/hole
 OPTION(filestore_fadvise, OPT_BOOL, true)
+//collect device partition information for management application to use
+OPTION(filestore_collect_device_partition_information, OPT_BOOL, true)
 
 // (try to) use extsize for alloc hint NOTE: extsize seems to trigger
 // data corruption in xfs prior to kernel 3.5.  filestore will
 // implicity disable this if it cannot confirm the kernel is newer
 // than that.
-OPTION(filestore_xfs_extsize, OPT_BOOL, true)
+// NOTE: This option involves a tradeoff: When disabled, fragmentation is
+// worse, but large sequential writes are faster. When enabled, large
+// sequential writes are slower, but fragmentation is reduced.
+OPTION(filestore_xfs_extsize, OPT_BOOL, false)
 
 OPTION(filestore_journal_parallel, OPT_BOOL, false)
 OPTION(filestore_journal_writeahead, OPT_BOOL, false)

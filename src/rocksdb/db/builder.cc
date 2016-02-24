@@ -26,6 +26,7 @@
 #include "rocksdb/options.h"
 #include "rocksdb/table.h"
 #include "table/block_based_table_builder.h"
+#include "table/internal_iterator.h"
 #include "util/file_reader_writer.h"
 #include "util/iostats_context_imp.h"
 #include "util/stop_watch.h"
@@ -40,22 +41,25 @@ TableBuilder* NewTableBuilder(
     const InternalKeyComparator& internal_comparator,
     const std::vector<std::unique_ptr<IntTblPropCollectorFactory>>*
         int_tbl_prop_collector_factories,
-    WritableFileWriter* file, const CompressionType compression_type,
+    uint32_t column_family_id, WritableFileWriter* file,
+    const CompressionType compression_type,
     const CompressionOptions& compression_opts, const bool skip_filters) {
   return ioptions.table_factory->NewTableBuilder(
       TableBuilderOptions(ioptions, internal_comparator,
                           int_tbl_prop_collector_factories, compression_type,
                           compression_opts, skip_filters),
-      file);
+      column_family_id, file);
 }
 
 Status BuildTable(
     const std::string& dbname, Env* env, const ImmutableCFOptions& ioptions,
-    const EnvOptions& env_options, TableCache* table_cache, Iterator* iter,
-    FileMetaData* meta, const InternalKeyComparator& internal_comparator,
+    const EnvOptions& env_options, TableCache* table_cache,
+    InternalIterator* iter, FileMetaData* meta,
+    const InternalKeyComparator& internal_comparator,
     const std::vector<std::unique_ptr<IntTblPropCollectorFactory>>*
         int_tbl_prop_collector_factories,
-    std::vector<SequenceNumber> snapshots, const CompressionType compression,
+    uint32_t column_family_id, std::vector<SequenceNumber> snapshots,
+    const CompressionType compression,
     const CompressionOptions& compression_opts, bool paranoid_file_checks,
     InternalStats* internal_stats, const Env::IOPriority io_priority,
     TableProperties* table_properties) {
@@ -72,7 +76,7 @@ Status BuildTable(
     unique_ptr<WritableFileWriter> file_writer;
     {
       unique_ptr<WritableFile> file;
-      s = env->NewWritableFile(fname, &file, env_options);
+      s = NewWritableFile(env, fname, &file, env_options);
       if (!s.ok()) {
         return s;
       }
@@ -82,7 +86,7 @@ Status BuildTable(
 
       builder = NewTableBuilder(
           ioptions, internal_comparator, int_tbl_prop_collector_factories,
-          file_writer.get(), compression, compression_opts);
+          column_family_id, file_writer.get(), compression, compression_opts);
     }
 
     MergeHelper merge(env, internal_comparator.user_comparator(),
@@ -92,7 +96,8 @@ Status BuildTable(
                       snapshots.empty() ? 0 : snapshots.back());
 
     CompactionIterator c_iter(iter, internal_comparator.user_comparator(),
-                              &merge, kMaxSequenceNumber, &snapshots, env,
+                              &merge, kMaxSequenceNumber, &snapshots,
+                              kMaxSequenceNumber, env,
                               true /* internal key corruption is not ok */);
     c_iter.SeekToFirst();
     for (; c_iter.Valid(); c_iter.Next()) {
@@ -139,7 +144,7 @@ Status BuildTable(
 
     if (s.ok() && !empty) {
       // Verify that the table is usable
-      std::unique_ptr<Iterator> it(table_cache->NewIterator(
+      std::unique_ptr<InternalIterator> it(table_cache->NewIterator(
           ReadOptions(), env_options, internal_comparator, meta->fd, nullptr,
           (internal_stats == nullptr) ? nullptr
                                       : internal_stats->GetFileReadHist(0),

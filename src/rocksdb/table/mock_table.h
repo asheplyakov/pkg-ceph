@@ -14,13 +14,14 @@
 #include <string>
 #include <utility>
 
+#include "util/kv_map.h"
 #include "port/port.h"
 #include "rocksdb/comparator.h"
 #include "rocksdb/table.h"
+#include "table/internal_iterator.h"
 #include "table/table_builder.h"
 #include "table/table_reader.h"
 #include "util/mutexlock.h"
-#include "util/stl_wrappers.h"
 #include "util/testharness.h"
 #include "util/testutil.h"
 
@@ -39,7 +40,7 @@ class MockTableReader : public TableReader {
  public:
   explicit MockTableReader(const stl_wrappers::KVMap& table) : table_(table) {}
 
-  Iterator* NewIterator(const ReadOptions&, Arena* arena) override;
+  InternalIterator* NewIterator(const ReadOptions&, Arena* arena) override;
 
   Status Get(const ReadOptions&, const Slice& key,
              GetContext* get_context) override;
@@ -58,7 +59,7 @@ class MockTableReader : public TableReader {
   const stl_wrappers::KVMap& table_;
 };
 
-class MockTableIterator : public Iterator {
+class MockTableIterator : public InternalIterator {
  public:
   explicit MockTableIterator(const stl_wrappers::KVMap& table) : table_(table) {
     itr_ = table_.end();
@@ -151,7 +152,7 @@ class MockTableFactory : public TableFactory {
                         unique_ptr<TableReader>* table_reader) const override;
   TableBuilder* NewTableBuilder(
       const TableBuilderOptions& table_builder_options,
-      WritableFileWriter* file) const override;
+      uint32_t column_familly_id, WritableFileWriter* file) const override;
 
   // This function will directly create mock table instead of going through
   // MockTableBuilder. file_contents has to have a format of <internal_key,
@@ -175,7 +176,7 @@ class MockTableFactory : public TableFactory {
   void AssertLatestFile(const stl_wrappers::KVMap& file_contents);
 
  private:
-  uint32_t GetAndWriteNextID(WritableFile* file) const;
+  uint32_t GetAndWriteNextID(WritableFileWriter* file) const;
   uint32_t GetIDFromFile(RandomAccessFileReader* file) const;
 
   mutable MockTableFileSystem file_system_;

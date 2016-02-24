@@ -758,14 +758,18 @@ void ReplicatedBackend::be_deep_scrub(
 
   uint32_t fadvise_flags = CEPH_OSD_OP_FLAG_FADVISE_SEQUENTIAL | CEPH_OSD_OP_FLAG_FADVISE_DONTNEED;
 
-  while ( (r = store->read(
-             coll,
-             ghobject_t(
-               poid, ghobject_t::NO_GEN, get_parent()->whoami_shard().shard),
-             pos,
-             cct->_conf->osd_deep_scrub_stride, bl,
-             fadvise_flags, true)) > 0) {
+  while (true) {
     handle.reset_tp_timeout();
+    r = store->read(
+	  coll,
+	  ghobject_t(
+	    poid, ghobject_t::NO_GEN, get_parent()->whoami_shard().shard),
+	  pos,
+	  cct->_conf->osd_deep_scrub_stride, bl,
+	  fadvise_flags, true);
+    if (r <= 0)
+      break;
+
     h << bl;
     pos += bl.length();
     bl.clear();
@@ -836,6 +840,8 @@ void ReplicatedBackend::be_deep_scrub(
   //Store final calculated CRC32 of omap header & key/values
   o.omap_digest = oh.digest();
   o.omap_digest_present = true;
+  dout(20) << __func__ << "  " << poid << " omap_digest "
+	   << std::hex << o.omap_digest << std::dec << dendl;
 }
 
 void ReplicatedBackend::_do_push(OpRequestRef op)
@@ -1571,14 +1577,14 @@ void ReplicatedBackend::prep_push_to_replica(
     // we need the head (and current SnapSet) locally to do that.
     if (get_parent()->get_local_missing().is_missing(head)) {
       dout(15) << "push_to_replica missing head " << head << ", pushing raw clone" << dendl;
-      return prep_push(obc, soid, peer, pop);
+      return prep_push(obc, soid, peer, pop, cache_dont_need);
     }
     hobject_t snapdir = head;
     snapdir.snap = CEPH_SNAPDIR;
     if (get_parent()->get_local_missing().is_missing(snapdir)) {
       dout(15) << "push_to_replica missing snapdir " << snapdir
 	       << ", pushing raw clone" << dendl;
-      return prep_push(obc, soid, peer, pop);
+      return prep_push(obc, soid, peer, pop, cache_dont_need);
     }
 
     SnapSetContext *ssc = obc->ssc;
@@ -1612,7 +1618,7 @@ void ReplicatedBackend::prep_push_to_replica(
 
 void ReplicatedBackend::prep_push(ObjectContextRef obc,
 			     const hobject_t& soid, pg_shard_t peer,
-			     PushOp *pop)
+			     PushOp *pop, bool cache_dont_need)
 {
   interval_set<uint64_t> data_subset;
   if (obc->obs.oi.size)
@@ -1621,7 +1627,7 @@ void ReplicatedBackend::prep_push(ObjectContextRef obc,
 
   prep_push(obc, soid, peer,
 	    obc->obs.oi.version, data_subset, clone_subsets,
-	    pop);
+	    pop, cache_dont_need);
 }
 
 void ReplicatedBackend::prep_push(

@@ -19,6 +19,7 @@ int main() {
 #include "db/db_impl.h"
 #include "db/dbformat.h"
 #include "table/block_based_table_factory.h"
+#include "table/internal_iterator.h"
 #include "table/plain_table_factory.h"
 #include "table/table_builder.h"
 #include "table/get_context.h"
@@ -98,7 +99,7 @@ void TableReaderBenchmark(Options& opts, EnvOptions& env_options,
         TableBuilderOptions(ioptions, ikc, &int_tbl_prop_collector_factories,
                             CompressionType::kNoCompression,
                             CompressionOptions(), false),
-        file_writer.get());
+        0, file_writer.get());
   } else {
     s = DB::Open(opts, dbname, &db);
     ASSERT_OK(s);
@@ -187,14 +188,17 @@ void TableReaderBenchmark(Options& opts, EnvOptions& env_options,
           std::string end_key = MakeKey(r1, r2 + r2_len, through_db);
           uint64_t total_time = 0;
           uint64_t start_time = Now(env, measured_by_nanosecond);
-          Iterator* iter;
+          Iterator* iter = nullptr;
+          InternalIterator* iiter = nullptr;
           if (!through_db) {
-            iter = table_reader->NewIterator(read_options);
+            iiter = table_reader->NewIterator(read_options);
           } else {
             iter = db->NewIterator(read_options);
           }
           int count = 0;
-          for(iter->Seek(start_key); iter->Valid(); iter->Next()) {
+          for (through_db ? iter->Seek(start_key) : iiter->Seek(start_key);
+               through_db ? iter->Valid() : iiter->Valid();
+               through_db ? iter->Next() : iiter->Next()) {
             if (if_query_empty_keys) {
               break;
             }
@@ -254,6 +258,7 @@ DEFINE_bool(iterator, false, "For test iterator");
 DEFINE_bool(through_db, false, "If enable, a DB instance will be created and "
             "the query will be against DB. Otherwise, will be directly against "
             "a table reader.");
+DEFINE_bool(mmap_read, true, "Whether use mmap read");
 DEFINE_string(table_factory, "block_based",
               "Table factory to use: `block_based` (default), `plain_table` or "
               "`cuckoo_hash`.");
@@ -279,8 +284,8 @@ int main(int argc, char** argv) {
 
   if (FLAGS_table_factory == "cuckoo_hash") {
 #ifndef ROCKSDB_LITE
-    options.allow_mmap_reads = true;
-    env_options.use_mmap_reads = true;
+    options.allow_mmap_reads = FLAGS_mmap_read;
+    env_options.use_mmap_reads = FLAGS_mmap_read;
     rocksdb::CuckooTableOptions table_options;
     table_options.hash_table_ratio = 0.75;
     tf.reset(rocksdb::NewCuckooTableFactory(table_options));
@@ -290,8 +295,8 @@ int main(int argc, char** argv) {
 #endif  // ROCKSDB_LITE
   } else if (FLAGS_table_factory == "plain_table") {
 #ifndef ROCKSDB_LITE
-    options.allow_mmap_reads = true;
-    env_options.use_mmap_reads = true;
+    options.allow_mmap_reads = FLAGS_mmap_read;
+    env_options.use_mmap_reads = FLAGS_mmap_read;
 
     rocksdb::PlainTableOptions plain_table_options;
     plain_table_options.user_key_len = 16;

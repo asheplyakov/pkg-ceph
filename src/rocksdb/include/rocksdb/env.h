@@ -88,6 +88,15 @@ struct EnvOptions {
   // WAL writes
   bool fallocate_with_keep_size = true;
 
+  // See DBOPtions doc
+  size_t compaction_readahead_size;
+
+  // See DBOPtions doc
+  size_t random_access_max_buffer_size;
+
+  // See DBOptions doc
+  size_t writable_file_max_buffer_size = 1024 * 1024;
+
   // If not nullptr, write rate limiting is enabled for flush and compaction
   RateLimiter* rate_limiter = nullptr;
 };
@@ -138,6 +147,12 @@ class Env {
   virtual Status NewWritableFile(const std::string& fname,
                                  unique_ptr<WritableFile>* result,
                                  const EnvOptions& options) = 0;
+
+  // Reuse an existing file by renaming it and opening it as writable.
+  virtual Status ReuseWritableFile(const std::string& fname,
+                                   const std::string& old_fname,
+                                   unique_ptr<WritableFile>* result,
+                                   const EnvOptions& options);
 
   // Create an object that represents a directory. Will fail if directory
   // doesn't exist. If the directory exists, it will open the directory
@@ -402,6 +417,10 @@ class RandomAccessFile {
     return false;
   }
 
+  // For cases when read-ahead is implemented in the platform dependent
+  // layer
+  virtual void EnableReadAhead() {}
+
   // Tries to get an unique ID for this file that will be the same each time
   // the file is opened (and will stay the same while the file is open).
   // Furthermore, it tries to make this ID at most "max_size" bytes. If such an
@@ -551,7 +570,7 @@ class WritableFile {
   // This asks the OS to initiate flushing the cached data to disk,
   // without waiting for completion.
   // Default implementation does nothing.
-  virtual Status RangeSync(off_t offset, off_t nbytes) { return Status::OK(); }
+  virtual Status RangeSync(uint64_t offset, uint64_t nbytes) { return Status::OK(); }
 
   // PrepareWrite performs any necessary preparation for a write
   // before the write actually occurs.  This allows for pre-allocation
@@ -571,8 +590,8 @@ class WritableFile {
     if (new_last_preallocated_block > last_preallocated_block_) {
       size_t num_spanned_blocks =
         new_last_preallocated_block - last_preallocated_block_;
-      Allocate(static_cast<off_t>(block_size * last_preallocated_block_),
-               static_cast<off_t>(block_size * num_spanned_blocks));
+      Allocate(block_size * last_preallocated_block_,
+               block_size * num_spanned_blocks);
       last_preallocated_block_ = new_last_preallocated_block;
     }
   }
@@ -581,7 +600,7 @@ class WritableFile {
   /*
    * Pre-allocate space for a file.
    */
-  virtual Status Allocate(off_t offset, off_t len) {
+  virtual Status Allocate(uint64_t offset, uint64_t len) {
     return Status::OK();
   }
 
@@ -596,6 +615,7 @@ class WritableFile {
 
  protected:
   friend class WritableFileWrapper;
+  friend class WritableFileMirror;
 
   Env::IOPriority io_priority_;
 };
@@ -749,6 +769,12 @@ class EnvWrapper : public Env {
                          const EnvOptions& options) override {
     return target_->NewWritableFile(f, r, options);
   }
+  Status ReuseWritableFile(const std::string& fname,
+                           const std::string& old_fname,
+                           unique_ptr<WritableFile>* r,
+                           const EnvOptions& options) override {
+    return target_->ReuseWritableFile(fname, old_fname, r, options);
+  }
   virtual Status NewDirectory(const std::string& name,
                               unique_ptr<Directory>* result) override {
     return target_->NewDirectory(name, result);
@@ -901,10 +927,10 @@ class WritableFileWrapper : public WritableFile {
   }
 
  protected:
-  Status Allocate(off_t offset, off_t len) override {
+  Status Allocate(uint64_t offset, uint64_t len) override {
     return target_->Allocate(offset, len);
   }
-  Status RangeSync(off_t offset, off_t nbytes) override {
+  Status RangeSync(uint64_t offset, uint64_t nbytes) override {
     return target_->RangeSync(offset, nbytes);
   }
 

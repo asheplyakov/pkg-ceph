@@ -326,7 +326,8 @@ COMMAND("mds set " \
 	"name=confirm,type=CephString,req=false",			\
 	"set mds parameter <var> to <val>", "mds", "rw", "cli,rest")
 COMMAND("mds setmap " \
-	"name=epoch,type=CephInt,range=0", \
+	"name=epoch,type=CephInt,range=0 " \
+	"name=confirm,type=CephString,req=false",
 	"set mds map; must supply correct epoch number", "mds", "rw", "cli,rest")
 // arbitrary limit 0-20 below; worth standing on head to make it
 // relate to actual state definitions?
@@ -342,8 +343,8 @@ COMMAND("mds repaired name=rank,type=CephInt", \
 COMMAND("mds rm " \
 	"name=gid,type=CephInt,range=0", \
 	"remove nonactive mds", "mds", "rw", "cli,rest")
-COMMAND("mds rmfailed name=who,type=CephInt,range=0", "remove failed mds", \
-	"mds", "rw", "cli,rest")
+COMMAND("mds rmfailed name=who,type=CephInt,range=0 name=confirm,type=CephString,req=false", \
+	"remove failed mds", "mds", "rw", "cli,rest")
 COMMAND("mds cluster_down", "take MDS cluster down", "mds", "rw", "cli,rest")
 COMMAND("mds cluster_up", "bring MDS cluster up", "mds", "rw", "cli,rest")
 COMMAND("mds compat rm_compat " \
@@ -456,6 +457,8 @@ COMMAND("osd lspools " \
 	"name=auid,type=CephInt,req=false", \
 	"list pools", "osd", "r", "cli,rest")
 COMMAND("osd blacklist ls", "show blacklisted clients", "osd", "r", "cli,rest")
+COMMAND("osd blacklist clear", "clear all blacklisted clients", "osd", "rw",
+        "cli,rest")
 COMMAND("osd crush rule list", "list crush rules", "osd", "r", "cli,rest")
 COMMAND("osd crush rule ls", "list crush rules", "osd", "r", "cli,rest")
 COMMAND("osd crush rule dump " \
@@ -536,7 +539,7 @@ COMMAND("osd crush reweight-subtree " \
 	"change all leaf items beneath <name> to <weight> in crush map", \
 	"osd", "rw", "cli,rest")
 COMMAND("osd crush tunables " \
-	"name=profile,type=CephChoices,strings=legacy|argonaut|bobtail|firefly|hammer|optimal|default", \
+	"name=profile,type=CephChoices,strings=legacy|argonaut|bobtail|firefly|hammer|jewel|optimal|default", \
 	"set crush tunables values to <profile>", "osd", "rw", "cli,rest")
 COMMAND("osd crush set-tunable "				    \
 	"name=tunable,type=CephChoices,strings=straw_calc_version " \

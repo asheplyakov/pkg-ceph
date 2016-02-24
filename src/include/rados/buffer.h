@@ -154,7 +154,7 @@ namespace buffer CEPH_BUFFER_API {
   raw* create_unshareable(unsigned len);
 
 #if defined(HAVE_XIO)
-  static raw* create_msg(unsigned len, char *buf, XioDispatchHook *m_hook);
+  raw* create_msg(unsigned len, char *buf, XioDispatchHook *m_hook);
 #endif
 
   /*
@@ -197,6 +197,7 @@ namespace buffer CEPH_BUFFER_API {
       return (length() % align) == 0;
     }
     bool is_n_page_sized() const { return is_n_align_sized(CEPH_PAGE_SIZE); }
+    bool is_partial() const { return start() > 0 || end() < raw_length(); }
 
     // accessors
     raw *get_raw() const { return _raw; }

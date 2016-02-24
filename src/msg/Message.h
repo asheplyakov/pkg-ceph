@@ -300,7 +300,7 @@ protected:
       completion_hook->complete(0);
   }
 public:
-  inline const ConnectionRef& get_connection() const { return connection; }
+  const ConnectionRef& get_connection() const { return connection; }
   void set_connection(const ConnectionRef& c) {
     connection = c;
   }

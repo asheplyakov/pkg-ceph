@@ -37,9 +37,10 @@ struct CompactionIteratorStats {
 
 class CompactionIterator {
  public:
-  CompactionIterator(Iterator* input, const Comparator* cmp,
+  CompactionIterator(InternalIterator* input, const Comparator* cmp,
                      MergeHelper* merge_helper, SequenceNumber last_sequence,
-                     std::vector<SequenceNumber>* snapshots, Env* env,
+                     std::vector<SequenceNumber>* snapshots,
+                     SequenceNumber earliest_write_conflict_snapshot, Env* env,
                      bool expect_valid_internal_key,
                      Compaction* compaction = nullptr,
                      const CompactionFilter* compaction_filter = nullptr,
@@ -84,10 +85,11 @@ class CompactionIterator {
   inline SequenceNumber findEarliestVisibleSnapshot(
       SequenceNumber in, SequenceNumber* prev_snapshot);
 
-  Iterator* input_;
+  InternalIterator* input_;
   const Comparator* cmp_;
   MergeHelper* merge_helper_;
   const std::vector<SequenceNumber>* snapshots_;
+  const SequenceNumber earliest_write_conflict_snapshot_;
   Env* env_;
   bool expect_valid_internal_key_;
   Compaction* compaction_;
@@ -98,6 +100,7 @@ class CompactionIterator {
   SequenceNumber visible_at_tip_;
   SequenceNumber earliest_snapshot_;
   SequenceNumber latest_snapshot_;
+  bool ignore_snapshots_;
 
   // State
   //
@@ -124,6 +127,14 @@ class CompactionIterator {
   Slice current_user_key_;
   SequenceNumber current_user_key_sequence_;
   SequenceNumber current_user_key_snapshot_;
+
+  // True if the iterator has already returned a record for the current key.
+  bool has_outputted_key_ = false;
+
+  // truncated the value of the next key and output it without applying any
+  // compaction rules.  This is used for outputting a put after a single delete.
+  bool clear_and_output_next_key_ = false;
+
   MergeOutputIterator merge_out_iter_;
   std::string compaction_filter_value_;
   // "level_ptrs" holds indices that remember which file of an associated

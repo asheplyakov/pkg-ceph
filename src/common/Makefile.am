@@ -14,6 +14,7 @@ libcommon_internal_la_SOURCES = \
 	common/cmdparse.cc \
 	common/escape.c \
 	common/io_priority.cc \
+	common/ceph_time.cc \
 	common/Clock.cc \
 	common/Throttle.cc \
 	common/Timer.cc \
@@ -156,6 +157,7 @@ noinst_HEADERS += \
 # important; libmsg before libauth!
 LIBCOMMON_DEPS += \
 	$(LIBERASURE_CODE) \
+	$(LIBCOMPRESSOR) \
 	$(LIBMSG) $(LIBAUTH) \
 	$(LIBCRUSH) $(LIBJSON_SPIRIT) $(LIBLOG) $(LIBARCH) \
 	$(BOOST_RANDOM_LIBS)
@@ -263,7 +265,9 @@ noinst_HEADERS += \
 	common/valgrind.h \
 	common/TracepointProvider.h \
 	common/event_socket.h \
-	common/PluginRegistry.h
+	common/PluginRegistry.h \
+	common/ceph_time.h \
+	common/ceph_timer.h
 
 if ENABLE_XIO
 noinst_HEADERS += \

@@ -8,7 +8,7 @@ AC_PREREQ(2.59)
 # VERSION define is not used by the code.  It gets a version string
 # from 'git describe'; see src/ceph_ver.[ch]
 
-AC_INIT([ceph], [10.0.2], [ceph-devel@vger.kernel.org])
+AC_INIT([ceph], [10.0.3], [ceph-devel@vger.kernel.org])
 
 AX_CXX_COMPILE_STDCXX_11(, mandatory)
 
@@ -818,6 +818,13 @@ AS_IF([test "x$with_librocksdb_static" = "xyes"],
             [AC_DEFINE([HAVE_LIBROCKSDB], [1], [Defined if you have librocksdb enabled])])
 AM_CONDITIONAL(WITH_SLIBROCKSDB, [ test "x$with_librocksdb_static" = "xyes" ])
 AM_CONDITIONAL(WITH_LIBROCKSDB, [ test "x$with_librocksdb_static" = "xyes" -o "x$with_librocksdb" = "xyes" ])
+
+# rocksdb detects bzlib and lz4 in its Makefile, which forces us to do the same.
+AS_IF([test "x$with_librocksdb_static" = "xyes"], [
+  AC_CHECK_HEADER([bzlib.h], [have_bzlib=yes])
+  AC_CHECK_HEADER([lz4.h], [have_lz4=yes])])
+AM_CONDITIONAL(HAVE_BZLIB, [test "x$have_bzlib" = "xyes"])
+AM_CONDITIONAL(HAVE_LZ4, [test "x$have_lz4" = "xyes"])
 
 # error out if --with-jemalloc and --with-librocksdb_static as rocksdb uses tcmalloc
 if test "x$with_jemalloc" = "xyes"; then

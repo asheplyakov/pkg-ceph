@@ -33,6 +33,7 @@
 #include "common/Mutex.h"
 #include "common/Cond.h"
 #include "common/PluginRegistry.h"
+#include "common/valgrind.h"
 
 #include <iostream>
 #include <pthread.h>
@@ -533,6 +534,16 @@ CephContext::~CephContext()
     ceph::crypto::shutdown();
 }
 
+void CephContext::put() {
+  if (nref.dec() == 0) {
+    ANNOTATE_HAPPENS_AFTER(&nref);
+    ANNOTATE_HAPPENS_BEFORE_FORGET_ALL(&nref);
+    delete this;
+  } else {
+    ANNOTATE_HAPPENS_BEFORE(&nref);
+  }
+}
+
 void CephContext::init_crypto()
 {
   ceph::crypto::init(this);
@@ -547,7 +558,7 @@ void CephContext::start_service_thread()
     return;
   }
   _service_thread = new CephContextServiceThread(this);
-  _service_thread->create();
+  _service_thread->create("service");
   ceph_spin_unlock(&_service_thread_lock);
 
   // make logs flush on_exit()

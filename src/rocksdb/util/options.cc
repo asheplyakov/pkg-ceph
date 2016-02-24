@@ -29,6 +29,7 @@
 #include "rocksdb/slice_transform.h"
 #include "rocksdb/table.h"
 #include "rocksdb/table_properties.h"
+#include "rocksdb/wal_filter.h"
 #include "table/block_based_table_factory.h"
 #include "util/compression.h"
 #include "util/statistics.h"
@@ -103,13 +104,14 @@ ColumnFamilyOptions::ColumnFamilyOptions()
       max_grandparent_overlap_factor(10),
       soft_rate_limit(0.0),
       hard_rate_limit(0.0),
+      soft_pending_compaction_bytes_limit(0),
       hard_pending_compaction_bytes_limit(0),
       rate_limit_delay_max_milliseconds(1000),
       arena_block_size(0),
       disable_auto_compactions(false),
       purge_redundant_kvs_while_flush(true),
       compaction_style(kCompactionStyleLevel),
-      compaction_pri(kCompactionPriByCompensatedSize),
+      compaction_pri(kByCompensatedSize),
       verify_checksums_in_compaction(true),
       filter_deletes(false),
       max_sequential_skip_in_iterations(8),
@@ -163,6 +165,8 @@ ColumnFamilyOptions::ColumnFamilyOptions(const Options& options)
       source_compaction_factor(options.source_compaction_factor),
       max_grandparent_overlap_factor(options.max_grandparent_overlap_factor),
       soft_rate_limit(options.soft_rate_limit),
+      soft_pending_compaction_bytes_limit(
+          options.soft_pending_compaction_bytes_limit),
       hard_pending_compaction_bytes_limit(
           options.hard_pending_compaction_bytes_limit),
       rate_limit_delay_max_milliseconds(
@@ -224,13 +228,14 @@ DBOptions::DBOptions()
       use_fsync(false),
       db_log_dir(""),
       wal_dir(""),
-      delete_obsolete_files_period_micros(6 * 60 * 60 * 1000000UL),
+      delete_obsolete_files_period_micros(6ULL * 60 * 60 * 1000000),
       max_background_compactions(1),
       max_subcompactions(1),
       max_background_flushes(1),
       max_log_file_size(0),
       log_file_time_to_roll(0),
       keep_log_file_num(1000),
+      recycle_log_file_num(0),
       max_manifest_file_size(std::numeric_limits<uint64_t>::max()),
       table_cache_numshardbits(4),
       WAL_ttl_seconds(0),
@@ -248,6 +253,8 @@ DBOptions::DBOptions()
       access_hint_on_compaction_start(NORMAL),
       new_table_reader_for_compaction_inputs(false),
       compaction_readahead_size(0),
+      random_access_max_buffer_size(1024 * 1024),
+      writable_file_max_buffer_size(1024 * 1024),
       use_adaptive_mutex(false),
       bytes_per_sync(0),
       wal_bytes_per_sync(0),
@@ -255,7 +262,12 @@ DBOptions::DBOptions()
       enable_thread_tracking(false),
       delayed_write_rate(1024U * 1024U),
       skip_stats_update_on_db_open(false),
-      wal_recovery_mode(WALRecoveryMode::kTolerateCorruptedTailRecords) {
+      wal_recovery_mode(WALRecoveryMode::kTolerateCorruptedTailRecords),
+      row_cache(nullptr),
+#ifndef ROCKSDB_LITE
+      wal_filter(nullptr),
+#endif  // ROCKSDB_LITE
+      fail_if_options_file_error(false) {
 }
 
 DBOptions::DBOptions(const Options& options)
@@ -285,6 +297,7 @@ DBOptions::DBOptions(const Options& options)
       max_log_file_size(options.max_log_file_size),
       log_file_time_to_roll(options.log_file_time_to_roll),
       keep_log_file_num(options.keep_log_file_num),
+      recycle_log_file_num(options.recycle_log_file_num),
       max_manifest_file_size(options.max_manifest_file_size),
       table_cache_numshardbits(options.table_cache_numshardbits),
       WAL_ttl_seconds(options.WAL_ttl_seconds),
@@ -303,6 +316,8 @@ DBOptions::DBOptions(const Options& options)
       new_table_reader_for_compaction_inputs(
           options.new_table_reader_for_compaction_inputs),
       compaction_readahead_size(options.compaction_readahead_size),
+      random_access_max_buffer_size(options.random_access_max_buffer_size),
+      writable_file_max_buffer_size(options.writable_file_max_buffer_size),
       use_adaptive_mutex(options.use_adaptive_mutex),
       bytes_per_sync(options.bytes_per_sync),
       wal_bytes_per_sync(options.wal_bytes_per_sync),
@@ -311,7 +326,12 @@ DBOptions::DBOptions(const Options& options)
       delayed_write_rate(options.delayed_write_rate),
       skip_stats_update_on_db_open(options.skip_stats_update_on_db_open),
       wal_recovery_mode(options.wal_recovery_mode),
-      row_cache(options.row_cache) {}
+      row_cache(options.row_cache),
+#ifndef ROCKSDB_LITE
+      wal_filter(options.wal_filter),
+#endif  // ROCKSDB_LITE
+      fail_if_options_file_error(options.fail_if_options_file_error) {
+}
 
 static const char* const access_hints[] = {
   "NONE", "NORMAL", "SEQUENTIAL", "WILLNEED"
@@ -338,6 +358,8 @@ void DBOptions::Dump(Logger* log) const {
          log_file_time_to_roll);
     Header(log, "     Options.keep_log_file_num: %" ROCKSDB_PRIszt,
          keep_log_file_num);
+    Header(log, "  Options.recycle_log_file_num: %" ROCKSDB_PRIszt,
+           recycle_log_file_num);
     Header(log, "       Options.allow_os_buffer: %d", allow_os_buffer);
     Header(log, "      Options.allow_mmap_reads: %d", allow_mmap_reads);
     Header(log, "      Options.allow_fallocate: %d", allow_fallocate);
@@ -389,6 +411,15 @@ void DBOptions::Dump(Logger* log) const {
          "               Options.compaction_readahead_size: %" ROCKSDB_PRIszt
          "d",
          compaction_readahead_size);
+    Header(
+        log,
+        "               Options.random_access_max_buffer_size: %" ROCKSDB_PRIszt
+        "d",
+        random_access_max_buffer_size);
+    Header(log,
+         "              Options.writable_file_max_buffer_size: %" ROCKSDB_PRIszt
+         "d",
+         writable_file_max_buffer_size);
     Header(log, "                      Options.use_adaptive_mutex: %d",
         use_adaptive_mutex);
     Header(log, "                            Options.rate_limiter: %p",
@@ -409,6 +440,10 @@ void DBOptions::Dump(Logger* log) const {
     } else {
       Header(log, "                               Options.row_cache: None");
     }
+#ifndef ROCKSDB_LITE
+    Header(log, "       Options.wal_filter: %s",
+           wal_filter ? wal_filter->Name() : "None");
+#endif  // ROCKDB_LITE
 }  // DBOptions::Dump
 
 void ColumnFamilyOptions::Dump(Logger* log) const {
@@ -483,8 +518,8 @@ void ColumnFamilyOptions::Dump(Logger* log) const {
     Header(log,
          "                       Options.arena_block_size: %" ROCKSDB_PRIszt,
          arena_block_size);
-    Header(log, "                      Options.soft_rate_limit: %.2f",
-        soft_rate_limit);
+    Header(log, "  Options.soft_pending_compaction_bytes_limit: %" PRIu64,
+           soft_pending_compaction_bytes_limit);
     Header(log, "  Options.hard_pending_compaction_bytes_limit: %" PRIu64,
          hard_pending_compaction_bytes_limit);
     Header(log, "      Options.rate_limit_delay_max_milliseconds: %u",
@@ -684,7 +719,8 @@ ReadOptions::ReadOptions()
       read_tier(kReadAllTier),
       tailing(false),
       managed(false),
-      total_order_seek(false) {
+      total_order_seek(false),
+      prefix_same_as_start(false) {
   XFUNC_TEST("", "managed_options", managed_options, xf_manage_options,
              reinterpret_cast<ReadOptions*>(this));
 }
@@ -697,7 +733,8 @@ ReadOptions::ReadOptions(bool cksum, bool cache)
       read_tier(kReadAllTier),
       tailing(false),
       managed(false),
-      total_order_seek(false) {
+      total_order_seek(false),
+      prefix_same_as_start(false) {
   XFUNC_TEST("", "managed_options", managed_options, xf_manage_options,
              reinterpret_cast<ReadOptions*>(this));
 }

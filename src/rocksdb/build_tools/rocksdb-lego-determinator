@@ -68,6 +68,14 @@ CLANG="USE_CLANG=1"
 LITE="OPT=-DROCKSDB_LITE"
 TSAN="COMPILE_WITH_TSAN=1"
 DISABLE_JEMALLOC="DISABLE_JEMALLOC=1"
+PARSER="'parser':'egrep \'Failure|^#|Abort\''"
+
+ARTIFACTS=" 'artifacts': [
+    {
+        'name':'database',
+        'paths':[ '/dev/shm/rocksdb' ],
+    }
+]"
 
 #
 # A mechanism to disable tests temporarily
@@ -100,13 +108,15 @@ PARALLEL_UNIT_TEST_COMMANDS="[
             {
                 'name':'Build and test RocksDB debug version',
                 'shell':'$DEBUG make -j$(nproc) all && $SHM make check > /dev/null 2>&1 || cat t/log-*',
-                'user':'root'
+                'user':'root',
+                $PARSER
             },
             $CLEANUP_ENV,
             {
                 'name':'Build and test RocksDB debug version under gcc-4.8.1',
                 'shell':'$GCC_481 $DEBUG make -j$(nproc) all && $SHM make check > /dev/null 2>&1 || cat t/log-*',
-                'user':'root'
+                'user':'root',
+                $PARSER
             },
         ],
         $REPORT
@@ -125,7 +135,8 @@ UNIT_TEST_COMMANDS="[
             {
                 'name':'Build and test RocksDB debug version',
                 'shell':'$SHM $DEBUG make J=1 check',
-                'user':'root'
+                'user':'root',
+                $PARSER
             },
         ],
         $REPORT
@@ -144,7 +155,8 @@ UNIT_TEST_COMMANDS_481="[
             {
                 'name':'Build and test RocksDB debug version',
                 'shell':'$SHM $GCC_481 $DEBUG make J=1 check',
-                'user':'root'
+                'user':'root',
+                $PARSER
             },
         ],
         $REPORT
@@ -163,7 +175,8 @@ CLANG_UNIT_TEST_COMMANDS="[
             {
                 'name':'Build and test RocksDB debug',
                 'shell':'$CLANG $SHM $DEBUG make J=1 check',
-                'user':'root'
+                'user':'root',
+                $PARSER
             },
         ],
         $REPORT
@@ -182,7 +195,8 @@ CLANG_ANALYZE_COMMANDS="[
             {
                 'name':'RocksDB build and analyze',
                 'shell':'$CLANG $SHM $DEBUG make J=1 analyze',
-                'user':'root'
+                'user':'root',
+                $PARSER
             },
         ],
         $REPORT
@@ -201,7 +215,8 @@ CODE_COV_COMMANDS="[
             {
                 'name':'Build, test and collect code coverage info',
                 'shell':'$SHM $DEBUG make J=1 coverage',
-                'user':'root'
+                'user':'root',
+                $PARSER
             },
         ],
         $REPORT
@@ -220,7 +235,8 @@ UNITY_COMMANDS="[
             {
                 'name':'Build, test unity test',
                 'shell':'$SHM $DEBUG V=1 make J=1 unity_test',
-                'user':'root'
+                'user':'root',
+                $PARSER
             },
         ],
         $REPORT
@@ -239,7 +255,28 @@ LITE_BUILD_COMMANDS="[
             {
                 'name':'Build RocksDB debug version',
                 'shell':'$LITE $DEBUG make J=1 static_lib',
-                'user':'root'
+                'user':'root',
+                $PARSER
+            },
+        ],
+        $REPORT
+    }
+]"
+
+#
+# RocksDB lite tests
+#
+LITE_UNIT_TEST_COMMANDS="[
+    {
+        'name':'Rocksdb Lite Unit Test',
+        'oncall':'$ONCALL',
+        'steps': [
+            $CLEANUP_ENV,
+            {
+                'name':'Build RocksDB debug version',
+                'shell':'$SHM $LITE $DEBUG make J=1 check',
+                'user':'root',
+                $PARSER
             },
         ],
         $REPORT
@@ -259,18 +296,43 @@ STRESS_CRASH_TEST_COMMANDS="[
             {
                 'name':'Build and run RocksDB debug stress tests',
                 'shell':'$SHM $DEBUG make J=1 db_stress',
-                'user':'root'
+                'user':'root',
+                $PARSER
             },
             {
                 'name':'Build and run RocksDB debug crash tests',
                 'timeout': 86400,
                 'shell':'$SHM $DEBUG make J=1 crash_test',
-                'user':'root'
+                'user':'root',
+                $PARSER
             }
         ],
+        $ARTIFACTS,
         $REPORT
     }
 ]"
+
+# RocksDB write stress test.
+# We run on disk device on purpose (i.e. no $SHM)
+# because we want to add some randomness to fsync commands
+WRITE_STRESS_COMMANDS="[
+    {
+        'name':'Rocksdb Write Stress Test',
+        'oncall':'$ONCALL',
+        'steps': [
+            $CLEANUP_ENV,
+            {
+                'name':'Build and run RocksDB write stress tests',
+                'shell':'make write_stress && python tools/write_stress_runner.py --runtime_sec=3600 --db=/tmp/rocksdb_write_stress',
+                'user':'root',
+                $PARSER
+            }
+        ],
+        'artifacts': [{'name': 'database', 'paths': ['/tmp/rocksdb_write_stress']}],
+        $REPORT
+    }
+]"
+
 
 #
 # RocksDB test under address sanitizer
@@ -284,7 +346,8 @@ ASAN_TEST_COMMANDS="[
             {
                 'name':'Test RocksDB debug under ASAN',
                 'shell':'set -o pipefail && $SHM $ASAN $DEBUG make J=1 asan_check |& /usr/facebook/ops/scripts/asan_symbolize.py -d',
-                'user':'root'
+                'user':'root',
+                $PARSER
             }
         ],
         $REPORT
@@ -305,7 +368,8 @@ ASAN_CRASH_TEST_COMMANDS="[
                 'name':'Build and run RocksDB debug asan_crash_test',
                 'timeout': 86400,
                 'shell':'$SHM $DEBUG make J=1 asan_crash_test',
-                'user':'root'
+                'user':'root',
+                $PARSER
             },
         ],
         $REPORT
@@ -324,7 +388,8 @@ VALGRIND_TEST_COMMANDS="[
             {
                 'name':'Run RocksDB debug unit tests',
                 'shell':'$DISABLE_JEMALLOC $SHM $DEBUG make valgrind_check',
-                'user':'root'
+                'user':'root',
+                $PARSER
             },
         ],
         $REPORT
@@ -343,7 +408,8 @@ TSAN_UNIT_TEST_COMMANDS="[
             {
                 'name':'Run RocksDB debug unit test',
                 'shell':'set -o pipefail && $SHM $DEBUG $TSAN make J=1 check',
-                'user':'root'
+                'user':'root',
+                $PARSER
             },
         ],
         $REPORT
@@ -364,12 +430,15 @@ TSAN_CRASH_TEST_COMMANDS="[
                 'name':'Compile and run',
                 'timeout': 86400,
                 'shell':'set -o pipefail && $SHM $DEBUG $TSAN make J=1 crash_test',
-                'user':'root'
+                'user':'root',
+                $PARSER
             },
         ],
         $REPORT
     }
 ]"
+
+TSAN_CRASH_TEST_COMMANDS=$DISABLE_COMMANDS
 
 #
 # RocksDB format compatible
@@ -425,7 +494,8 @@ FORMAT_COMPATIBLE_COMMANDS="[
             {
                 'name':'Run RocksDB debug unit test',
                 'shell':'build_tools/rocksdb-lego-determinator run_format_compatible',
-                'user':'root'
+                'user':'root',
+                $PARSER
             },
         ],
         $REPORT
@@ -457,7 +527,8 @@ NO_COMPRESSION_COMMANDS="[
             {
                 'name':'Run RocksDB debug unit test',
                 'shell':'build_tools/rocksdb-lego-determinator run_no_compression',
-                'user':'root'
+                'user':'root',
+                $PARSER
             },
         ],
         $REPORT
@@ -513,7 +584,8 @@ REGRESSION_COMMANDS="[
             {
                 'name':'Make and run script',
                 'shell':'build_tools/rocksdb-lego-determinator run_regression',
-                'user':'root'
+                'user':'root',
+                $PARSER
             },
         ],
         $REPORT
@@ -545,8 +617,14 @@ case $1 in
   lite)
     echo $LITE_BUILD_COMMANDS
     ;;
+  lite_test)
+    echo $LITE_UNIT_TEST_COMMANDS
+    ;;
   stress_crash)
     echo $STRESS_CRASH_TEST_COMMANDS
+    ;;
+  write_stress)
+    echo $WRITE_STRESS_COMMANDS
     ;;
   asan)
     echo $ASAN_TEST_COMMANDS

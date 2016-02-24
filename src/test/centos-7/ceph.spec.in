@@ -1,4 +1,19 @@
 # vim: set noexpandtab ts=8 sw=8 :
+#
+# spec file for package ceph
+#
+# Copyright (C) 2004-2016 The Ceph Project Developers. See COPYING file
+# at the top-level directory of this distribution and at
+# https://github.com/ceph/ceph/blob/master/COPYING
+#
+# All modifications and additions to the file contributed by third parties
+# remain the property of their copyright owners, unless otherwise agreed
+# upon.
+#
+# This file is under the GNU Lesser General Public License, version 2.1
+#
+# Please submit bugfixes or comments via http://tracker.ceph.com/
+# 
 %bcond_with ocf
 %bcond_without cephfs_java
 %bcond_with tests
@@ -133,6 +148,7 @@ BuildRequires:	python-requests
 BuildRequires:	python-virtualenv
 BuildRequires:	snappy-devel
 BuildRequires:	util-linux
+BuildRequires:	valgrind-devel
 BuildRequires:	xfsprogs
 BuildRequires:	xfsprogs-devel
 BuildRequires:	xmlstarlet
@@ -168,7 +184,6 @@ BuildRequires:	libatomic-ops-devel
 %if 0%{?_with_systemd}
 Requires:	systemd
 %endif
-BuildRequires:  bzip2-devel
 BuildRequires:	nss-devel
 BuildRequires:	keyutils-libs-devel
 BuildRequires:	libatomic_ops-devel
@@ -790,6 +805,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_bindir}/ceph-mon
 %{_bindir}/ceph-mds
 %{_bindir}/ceph-objectstore-tool
+%{_bindir}/ceph-bluefs-tool
 %{_bindir}/ceph-osd
 %{_bindir}/ceph-detect-init
 %{_bindir}/librados-config
@@ -844,6 +860,8 @@ rm -rf $RPM_BUILD_ROOT
 %{_libdir}/rados-classes/libcls_journal.so*
 %dir %{_libdir}/ceph/erasure-code
 %{_libdir}/ceph/erasure-code/libec_*.so*
+%dir %{_libdir}/ceph/compressor
+%{_libdir}/ceph/compressor/libceph_*.so*
 %if 0%{?_with_lttng}
 %{_libdir}/libos_tp.so*
 %{_libdir}/libosd_tp.so*
@@ -1179,6 +1197,7 @@ ln -sf %{_libdir}/librbd.so.1 /usr/lib64/qemu/librbd.so.1
 %files -n python-cephfs
 %defattr(-,root,root,-)
 %{python_sitelib}/cephfs.py*
+%{python_sitelib}/ceph_volume_client.py*
 
 #################################################################################
 %files -n ceph-test
@@ -1204,7 +1223,6 @@ ln -sf %{_libdir}/librbd.so.1 /usr/lib64/qemu/librbd.so.1
 %{_bindir}/ceph_smalliobenchdumb
 %{_bindir}/ceph_smalliobenchfs
 %{_bindir}/ceph_smalliobenchrbd
-%{_bindir}/ceph_streamtest
 %{_bindir}/ceph_test_*
 %{_bindir}/ceph_tpbench
 %{_bindir}/ceph_xattr_bench
