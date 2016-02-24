@@ -1561,6 +1561,7 @@ public:
     // we trigger these from an async finisher
     Context *on_notify_finish;
     bufferlist *notify_result_bl;
+    uint64_t notify_id;
 
     WatchContext *watch_context;
 
@@ -1595,6 +1596,7 @@ public:
 		 on_reg_commit(NULL),
 		 on_notify_finish(NULL),
 		 notify_result_bl(NULL),
+		 notify_id(0),
 		 watch_context(NULL),
 		 session(NULL),
 		 register_tid(0),
@@ -1619,6 +1621,7 @@ public:
   struct C_Linger_Commit : public Context {
     Objecter *objecter;
     LingerOp *info;
+    bufferlist outbl;  // used for notify only
     C_Linger_Commit(Objecter *o, LingerOp *l) : objecter(o), info(l) {
       info->get();
     }
@@ -1626,7 +1629,7 @@ public:
       info->put();
     }
     void finish(int r) {
-      objecter->_linger_commit(info, r);
+      objecter->_linger_commit(info, r, outbl);
     }
   };
 
@@ -1738,7 +1741,7 @@ public:
   void _send_op_account(Op *op);
   void _cancel_linger_op(Op *op);
   void finish_op(OSDSession *session, ceph_tid_t tid);
-  void _finish_op(Op *op);
+  void _finish_op(Op *op, int r);
   static bool is_pg_changed(
     int oldprimary,
     const vector<int>& oldacting,
@@ -1771,7 +1774,7 @@ public:
 
   void _linger_submit(LingerOp *info);
   void _send_linger(LingerOp *info);
-  void _linger_commit(LingerOp *info, int r);
+  void _linger_commit(LingerOp *info, int r, bufferlist& outbl);
   void _linger_reconnect(LingerOp *info, int r);
   void _send_linger_ping(LingerOp *info);
   void _linger_ping(LingerOp *info, int r, utime_t sent, uint32_t register_gen);
@@ -1962,6 +1965,7 @@ private:
 public:
   ceph_tid_t op_submit(Op *op, int *ctx_budget = NULL);
   bool is_active() {
+    RWLock::RLocker l(rwlock);
     return !((!inflight_ops.read()) && linger_ops.empty() && poolstat_ops.empty() && statfs_ops.empty());
   }
 
@@ -2465,7 +2469,7 @@ public:
 private:
   void pool_op_submit(PoolOp *op);
   void _pool_op_submit(PoolOp *op);
-  void _finish_pool_op(PoolOp *op);
+  void _finish_pool_op(PoolOp *op, int r);
   void _do_delete_pool(int64_t pool, Context *onfinish);
 public:
   int create_pool_snap(int64_t pool, string& snapName, Context *onfinish);
@@ -2491,7 +2495,7 @@ public:
   void get_pool_stats(list<string>& pools, map<string,pool_stat_t> *result,
 		      Context *onfinish);
   int pool_stat_op_cancel(ceph_tid_t tid, int r);
-  void _finish_pool_stat_op(PoolStatOp *op);
+  void _finish_pool_stat_op(PoolStatOp *op, int r);
 
   // ---------------------------
   // df stats
@@ -2501,7 +2505,7 @@ public:
   void handle_fs_stats_reply(MStatfsReply *m);
   void get_fs_stats(struct ceph_statfs& result, Context *onfinish);
   int statfs_op_cancel(ceph_tid_t tid, int r);
-  void _finish_statfs_op(StatfsOp *op);
+  void _finish_statfs_op(StatfsOp *op, int r);
 
   // ---------------------------
   // some scatter/gather hackery
