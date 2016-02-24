@@ -7,15 +7,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include "db/db_test_util.h"
 #include "port/stack_trace.h"
 #include "rocksdb/experimental.h"
-#include "util/db_test_util.h"
 #include "util/sync_point.h"
 namespace rocksdb {
 
 // SYNC_POINT is not supported in released Windows mode.
-#if !(defined NDEBUG) || !defined(OS_WIN)
-
+#if !defined(ROCKSDB_LITE)
 
 class DBCompactionTest : public DBTestBase {
  public:
@@ -161,7 +160,7 @@ const SstFileMetaData* PickFileRandomly(
       auto result = rand->Uniform(file_id);
       return &(level_meta.files[result]);
     }
-    file_id -= level_meta.files.size();
+    file_id -= static_cast<uint32_t>(level_meta.files.size());
   }
   assert(false);
   return nullptr;
@@ -240,9 +239,12 @@ TEST_F(DBCompactionTest, SkipStatsUpdateTest) {
   env_->random_file_open_counter_.store(0);
   Reopen(options);
 
-  // As stats-update is disabled, we expect a very low
-  // number of random file open.
-  ASSERT_LT(env_->random_file_open_counter_.load(), 5);
+  // As stats-update is disabled, we expect a very low number of
+  // random file open.
+  // Note that this number must be changed accordingly if we change
+  // the number of files needed to be opened in the DB::Open process.
+  const int kMaxFileOpenCount = 10;
+  ASSERT_LT(env_->random_file_open_counter_.load(), kMaxFileOpenCount);
 
   // Repeat the reopen process, but this time we enable
   // stats-update.
@@ -252,7 +254,7 @@ TEST_F(DBCompactionTest, SkipStatsUpdateTest) {
 
   // Since we do a normal stats update on db-open, there
   // will be more random open files.
-  ASSERT_GT(env_->random_file_open_counter_.load(), 5);
+  ASSERT_GT(env_->random_file_open_counter_.load(), kMaxFileOpenCount);
 }
 
 TEST_F(DBCompactionTest, TestTableReaderForCompaction) {
@@ -459,12 +461,15 @@ TEST_F(DBCompactionTest, DisableStatsUpdateReopen) {
 
 
 TEST_P(DBCompactionTestWithParam, CompactionTrigger) {
+  const int kNumKeysPerFile = 100;
+
   Options options;
   options.write_buffer_size = 110 << 10;  // 110KB
   options.arena_block_size = 4 << 10;
   options.num_levels = 3;
   options.level0_file_num_compaction_trigger = 3;
   options.max_subcompactions = max_subcompactions_;
+  options.memtable_factory.reset(new SpecialSkipListFactory(kNumKeysPerFile));
   options = CurrentOptions(options);
   CreateAndReopenWithCF({"pikachu"}, options);
 
@@ -474,20 +479,24 @@ TEST_P(DBCompactionTestWithParam, CompactionTrigger) {
        num++) {
     std::vector<std::string> values;
     // Write 100KB (100 values, each 1K)
-    for (int i = 0; i < 100; i++) {
+    for (int i = 0; i < kNumKeysPerFile; i++) {
       values.push_back(RandomString(&rnd, 990));
       ASSERT_OK(Put(1, Key(i), values[i]));
     }
+    // put extra key to trigger flush
+    ASSERT_OK(Put(1, "", ""));
     dbfull()->TEST_WaitForFlushMemTable(handles_[1]);
     ASSERT_EQ(NumTableFilesAtLevel(0, 1), num + 1);
   }
 
   // generate one more file in level-0, and should trigger level-0 compaction
   std::vector<std::string> values;
-  for (int i = 0; i < 100; i++) {
+  for (int i = 0; i < kNumKeysPerFile; i++) {
     values.push_back(RandomString(&rnd, 990));
     ASSERT_OK(Put(1, Key(i), values[i]));
   }
+  // put extra key to trigger flush
+  ASSERT_OK(Put(1, "", ""));
   dbfull()->TEST_WaitForCompact();
 
   ASSERT_EQ(NumTableFilesAtLevel(0, 1), 0);
@@ -847,6 +856,8 @@ TEST_P(DBCompactionTestWithParam, LevelCompactionThirdPath) {
   options.db_paths.emplace_back(dbname_, 500 * 1024);
   options.db_paths.emplace_back(dbname_ + "_2", 4 * 1024 * 1024);
   options.db_paths.emplace_back(dbname_ + "_3", 1024 * 1024 * 1024);
+  options.memtable_factory.reset(
+      new SpecialSkipListFactory(KNumKeysByGenerateNewFile - 1));
   options.compaction_style = kCompactionStyleLevel;
   options.write_buffer_size = 110 << 10;  // 110KB
   options.arena_block_size = 4 << 10;
@@ -962,6 +973,8 @@ TEST_P(DBCompactionTestWithParam, LevelCompactionPathUse) {
   options.db_paths.emplace_back(dbname_, 500 * 1024);
   options.db_paths.emplace_back(dbname_ + "_2", 4 * 1024 * 1024);
   options.db_paths.emplace_back(dbname_ + "_3", 1024 * 1024 * 1024);
+  options.memtable_factory.reset(
+      new SpecialSkipListFactory(KNumKeysByGenerateNewFile - 1));
   options.compaction_style = kCompactionStyleLevel;
   options.write_buffer_size = 110 << 10;  // 110KB
   options.arena_block_size = 4 << 10;
@@ -1228,6 +1241,7 @@ TEST_F(DBCompactionTest, L0_CompactionBug_Issue44_b) {
 TEST_P(DBCompactionTestWithParam, ManualCompaction) {
   Options options = CurrentOptions();
   options.max_subcompactions = max_subcompactions_;
+  options.statistics = rocksdb::CreateDBStatistics();
   CreateAndReopenWithCF({"pikachu"}, options);
 
   // iter - 0 with 7 levels
@@ -1259,7 +1273,14 @@ TEST_P(DBCompactionTestWithParam, ManualCompaction) {
     // Compact all
     MakeTables(1, "a", "z", 1);
     ASSERT_EQ("1,0,2", FilesPerLevel(1));
+
+    uint64_t prev_block_cache_add =
+        options.statistics->getTickerCount(BLOCK_CACHE_ADD);
     db_->CompactRange(CompactRangeOptions(), handles_[1], nullptr, nullptr);
+    // Verify manual compaction doesn't fill block cache
+    ASSERT_EQ(prev_block_cache_add,
+              options.statistics->getTickerCount(BLOCK_CACHE_ADD));
+
     ASSERT_EQ("0,0,1", FilesPerLevel(1));
 
     if (iter == 0) {
@@ -1267,6 +1288,7 @@ TEST_P(DBCompactionTestWithParam, ManualCompaction) {
       options.max_background_flushes = 0;
       options.num_levels = 3;
       options.create_if_missing = true;
+      options.statistics = rocksdb::CreateDBStatistics();
       DestroyAndReopen(options);
       CreateAndReopenWithCF({"pikachu"}, options);
     }
@@ -1593,6 +1615,8 @@ TEST_P(DBCompactionTestWithParam, CompressLevelCompaction) {
     return;
   }
   Options options = CurrentOptions();
+  options.memtable_factory.reset(
+      new SpecialSkipListFactory(KNumKeysByGenerateNewFile - 1));
   options.compaction_style = kCompactionStyleLevel;
   options.write_buffer_size = 110 << 10;  // 110KB
   options.arena_block_size = 4 << 10;
@@ -1844,11 +1868,58 @@ TEST_P(DBCompactionTestWithParam, ForceBottommostLevelCompaction) {
 
 INSTANTIATE_TEST_CASE_P(DBCompactionTestWithParam, DBCompactionTestWithParam,
                         ::testing::Values(1, 4));
-#endif  // !(defined NDEBUG) || !defined(OS_WIN)
+
+class CompactionPriTest : public DBTestBase,
+                          public testing::WithParamInterface<uint32_t> {
+ public:
+  CompactionPriTest() : DBTestBase("/compaction_pri_test") {
+    compaction_pri_ = GetParam();
+  }
+
+  // Required if inheriting from testing::WithParamInterface<>
+  static void SetUpTestCase() {}
+  static void TearDownTestCase() {}
+
+  uint32_t compaction_pri_;
+};
+
+TEST_P(CompactionPriTest, Test) {
+  Options options;
+  options.write_buffer_size = 16 * 1024;
+  options.compaction_pri = static_cast<CompactionPri>(compaction_pri_);
+  options.hard_pending_compaction_bytes_limit = 256 * 1024;
+  options.max_bytes_for_level_base = 64 * 1024;
+  options.max_bytes_for_level_multiplier = 4;
+  options.compression = kNoCompression;
+  options = CurrentOptions(options);
+  DestroyAndReopen(options);
+
+  Random rnd(301);
+  const int kNKeys = 5000;
+  int keys[kNKeys];
+  for (int i = 0; i < kNKeys; i++) {
+    keys[i] = i;
+  }
+  std::random_shuffle(std::begin(keys), std::end(keys));
+
+  for (int i = 0; i < kNKeys; i++) {
+    ASSERT_OK(Put(Key(keys[i]), RandomString(&rnd, 102)));
+  }
+
+  dbfull()->TEST_WaitForCompact();
+  for (int i = 0; i < kNKeys; i++) {
+    ASSERT_NE("NOT_FOUND", Get(Key(i)));
+  }
+}
+
+INSTANTIATE_TEST_CASE_P(CompactionPriTest, CompactionPriTest,
+                        ::testing::Values(0, 1, 2));
+
+#endif // !defined(ROCKSDB_LITE)
 }  // namespace rocksdb
 
 int main(int argc, char** argv) {
-#if !(defined NDEBUG) || !defined(OS_WIN)
+#if !defined(ROCKSDB_LITE)
   rocksdb::port::InstallStackTraceHandler();
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

@@ -48,7 +48,6 @@ static void fuse_usage()
   if (fuse_parse_cmdline(&args, NULL, NULL, NULL) == -1) {
     derr << "fuse_parse_cmdline failed." << dendl;
     fuse_opt_free_args(&args);
-    free(argv);
   }
 
   assert(args.allocated);  // Checking fuse has realloc'd args so we can free newargv
@@ -70,6 +69,10 @@ int main(int argc, const char **argv, const char *envp[]) {
   //cerr << "ceph-fuse starting " << myrank << "/" << world << std::endl;
   vector<const char*> args;
   argv_to_vec(argc, argv, args);
+  if (args.empty()) {
+    usage();
+    return 0;
+  }
   env_to_vec(args);
 
   global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT, CODE_ENVIRONMENT_DAEMON,
@@ -245,7 +248,7 @@ int main(int argc, const char **argv, const char *envp[]) {
 
     cerr << "ceph-fuse[" << getpid() << "]: starting fuse" << std::endl;
     tester.init(cfuse, client);
-    tester.create();
+    tester.create("tester");
     r = cfuse->loop();
     tester.join(&tester_rp);
     tester_r = static_cast<int>(reinterpret_cast<uint64_t>(tester_rp));

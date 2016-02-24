@@ -21,6 +21,7 @@
 #include <boost/tuple/tuple.hpp>
 
 #include "include/assert.h" 
+#include "include/unordered_map.h"
 #include "common/cmdparse.h"
 
 #include "HitSet.h"
@@ -74,7 +75,7 @@ public:
    * CopyResults stores the object metadata of interest to a copy initiator.
    */
   struct CopyResults {
-    utime_t mtime; ///< the copy source's mtime
+    ceph::real_time mtime; ///< the copy source's mtime
     uint64_t object_size; ///< the copied object's size
     bool started_temp_obj; ///< true if the callback needs to delete temp object
     hobject_t temp_oid;    ///< temp object (if any)
@@ -515,7 +516,7 @@ public:
       }
     };
     list<NotifyAck> notify_acks;
-    
+
     uint64_t bytes_written, bytes_read;
 
     utime_t mtime;
@@ -886,7 +887,6 @@ protected:
   // replica ops
   // [primary|tail]
   xlist<RepGather*> repop_queue;
-  map<ceph_tid_t, RepGather*> repop_map;
 
   friend class C_OSD_RepopApplied;
   friend class C_OSD_RepopCommit;
@@ -934,7 +934,7 @@ protected:
   }
   bool agent_work(int max, int agent_flush_quota);
   bool agent_maybe_flush(ObjectContextRef& obc);  ///< maybe flush
-  bool agent_maybe_evict(ObjectContextRef& obc);  ///< maybe evict
+  bool agent_maybe_evict(ObjectContextRef& obc, bool after_flush);  ///< maybe evict
 
   void agent_load_hit_sets();  ///< load HitSets, if needed
 
@@ -1242,7 +1242,6 @@ protected:
 
   void _clear_recovery_state();
 
-  void queue_for_recovery();
   bool start_recovery_ops(
     int max, ThreadPool::TPHandle &handle, int *started);
 

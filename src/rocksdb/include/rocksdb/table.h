@@ -128,6 +128,20 @@ struct BlockBasedTableOptions {
   // This must generally be true for gets to be efficient.
   bool whole_key_filtering = true;
 
+  // If true, block will not be explicitly flushed to disk during building
+  // a SstTable. Instead, buffer in WritableFileWriter will take
+  // care of the flushing when it is full.
+  //
+  // On Windows, this option helps a lot when unbuffered I/O
+  // (allow_os_buffer = false) is used, since it avoids small
+  // unbuffered disk write.
+  //
+  // User may also adjust writable_file_max_buffer_size to optimize disk I/O
+  // size.
+  //
+  // Default: false
+  bool skip_table_builder_flush = false;
+
   // We currently have three versions:
   // 0 -- This version is currently written out by all RocksDB's versions by
   // default.  Can be read by really old RocksDB's. Doesn't support changing
@@ -375,7 +389,7 @@ class TableFactory {
   // to use in this table.
   virtual TableBuilder* NewTableBuilder(
       const TableBuilderOptions& table_builder_options,
-      WritableFileWriter* file) const = 0;
+      uint32_t column_family_id, WritableFileWriter* file) const = 0;
 
   // Sanitizes the specified DB Options and ColumnFamilyOptions.
   //
@@ -388,6 +402,22 @@ class TableFactory {
   // Return a string that contains printable format of table configurations.
   // RocksDB prints configurations at DB Open().
   virtual std::string GetPrintableTableOptions() const = 0;
+
+  // Returns the raw pointer of the table options that is used by this
+  // TableFactory, or nullptr if this function is not supported.
+  // Since the return value is a raw pointer, the TableFactory owns the
+  // pointer and the caller should not delete the pointer.
+  //
+  // In certan case, it is desirable to alter the underlying options when the
+  // TableFactory is not used by any open DB by casting the returned pointer
+  // to the right class.   For instance, if BlockBasedTableFactory is used,
+  // then the pointer can be casted to BlockBasedTableOptions.
+  //
+  // Note that changing the underlying TableFactory options while the
+  // TableFactory is currently used by any open DB is undefined behavior.
+  // Developers should use DB::SetOption() instead to dynamically change
+  // options while the DB is open.
+  virtual void* GetOptions() { return nullptr; }
 };
 
 #ifndef ROCKSDB_LITE

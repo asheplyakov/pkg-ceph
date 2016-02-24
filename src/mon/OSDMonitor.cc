@@ -1564,7 +1564,7 @@ bool OSDMonitor::can_mark_down(int i)
   int up = osdmap.get_num_up_osds() - pending_inc.get_net_marked_down(&osdmap);
   float up_ratio = (float)up / (float)num_osds;
   if (up_ratio < g_conf->mon_osd_min_up_ratio) {
-    dout(5) << "can_mark_down current up_ratio " << up_ratio << " < min "
+    dout(2) << "can_mark_down current up_ratio " << up_ratio << " < min "
 	    << g_conf->mon_osd_min_up_ratio
 	    << ", will not mark osd." << i << " down" << dendl;
     return false;
@@ -2067,8 +2067,11 @@ bool OSDMonitor::prepare_boot(MonOpRequestRef op)
       dout(10) << " not laggy, new xi " << xi << dendl;
     } else {
       if (xi.down_stamp.sec()) {
-	int interval = ceph_clock_now(g_ceph_context).sec() - xi.down_stamp.sec();
-	xi.laggy_interval =
+        int interval = ceph_clock_now(g_ceph_context).sec() - xi.down_stamp.sec();
+        if (g_conf->mon_osd_laggy_max_interval && (interval > g_conf->mon_osd_laggy_max_interval)) {
+          interval =  g_conf->mon_osd_laggy_max_interval;
+        }
+        xi.laggy_interval =
 	  interval * g_conf->mon_osd_laggy_weight +
 	  xi.laggy_interval * (1.0 - g_conf->mon_osd_laggy_weight);
       }
@@ -5737,6 +5740,8 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
       newcrush.set_tunables_firefly();
     } else if (profile == "hammer") {
       newcrush.set_tunables_hammer();
+    } else if (profile == "jewel") {
+      newcrush.set_tunables_jewel();
     } else if (profile == "optimal") {
       newcrush.set_tunables_optimal();
     } else if (profile == "default") {
@@ -6551,6 +6556,18 @@ done:
 					      get_last_committed() + 1));
     return true;
 
+  } else if (prefix == "osd blacklist clear") {
+    pending_inc.new_blacklist.clear();
+    std::list<std::pair<entity_addr_t,utime_t > > blacklist;
+    osdmap.get_blacklist(&blacklist);
+    for (const auto &entry : blacklist) {
+      pending_inc.old_blacklist.push_back(entry.first);
+    }
+    ss << " removed all blacklist entries";
+    getline(ss, rs);
+    wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, rs,
+                                              get_last_committed() + 1));
+    return true;
   } else if (prefix == "osd blacklist") {
     string addrstr;
     cmd_getval(g_ceph_context, cmdmap, "addr", addrstr);

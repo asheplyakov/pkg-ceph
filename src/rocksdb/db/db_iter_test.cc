@@ -29,7 +29,7 @@ static uint64_t TestGetTickerCount(const Options& options,
   return options.statistics->getTickerCount(ticker_type);
 }
 
-class TestIterator : public Iterator {
+class TestIterator : public InternalIterator {
  public:
   explicit TestIterator(const Comparator* comparator)
       : initialized_(false),
@@ -1864,11 +1864,12 @@ class DBIterWithMergeIterTest : public testing::Test {
     internal_iter2_->Add("d", kTypeValue, "7", 3u);
     internal_iter2_->Finish();
 
-    std::vector<Iterator*> child_iters;
+    std::vector<InternalIterator*> child_iters;
     child_iters.push_back(internal_iter1_);
     child_iters.push_back(internal_iter2_);
     InternalKeyComparator icomp(BytewiseComparator());
-    Iterator* merge_iter = NewMergingIterator(&icomp_, &child_iters[0], 2u);
+    InternalIterator* merge_iter =
+        NewMergingIterator(&icomp_, &child_iters[0], 2u);
 
     db_iter_.reset(NewDBIterator(env_, ImmutableCFOptions(options_),
                                  BytewiseComparator(), merge_iter,
@@ -1941,8 +1942,6 @@ TEST_F(DBIterWithMergeIterTest, InnerMergeIterator2) {
   ASSERT_EQ(db_iter_->key().ToString(), "a");
   ASSERT_EQ(db_iter_->value().ToString(), "4");
 }
-
-#if !(defined NDEBUG) || !defined(OS_WIN)
 
 TEST_F(DBIterWithMergeIterTest, InnerMergeIteratorDataRace1) {
   // Test Prev() when one child iterator is at its end but more rows
@@ -2294,7 +2293,6 @@ TEST_F(DBIterWithMergeIterTest, InnerMergeIteratorDataRace8) {
 
   rocksdb::SyncPoint::GetInstance()->DisableProcessing();
 }
-#endif // #if !(defined NDEBUG) || !defined(OS_WIN)
 }  // namespace rocksdb
 
 int main(int argc, char** argv) {

@@ -21,6 +21,7 @@
 #include "librbd/Journal.h"
 #include "librbd/LibrbdAdminSocketHook.h"
 #include "librbd/ObjectMap.h"
+#include "librbd/Operations.h"
 #include "librbd/operation/ResizeRequest.h"
 #include "librbd/Utils.h"
 
@@ -47,7 +48,7 @@ namespace {
 class ThreadPoolSingleton : public ThreadPool {
 public:
   ThreadPoolSingleton(CephContext *cct)
-    : ThreadPool(cct, "librbd::thread_pool", cct->_conf->rbd_op_threads,
+    : ThreadPool(cct, "librbd::thread_pool", "tp_librbd", cct->_conf->rbd_op_threads,
                  "rbd_op_threads") {
     start();
   }
@@ -162,14 +163,18 @@ struct C_InvalidateCache : public Context {
       object_cacher(NULL), writeback_handler(NULL), object_set(NULL),
       readahead(),
       total_bytes_read(0),
-      state(new ImageState<>(this)), exclusive_lock(nullptr),
-      object_map(nullptr), aio_work_queue(NULL), op_work_queue(NULL),
-      asok_hook(new LibrbdAdminSocketHook(this))
+      state(new ImageState<>(this)),
+      operations(new Operations<>(*this)),
+      exclusive_lock(nullptr), object_map(nullptr),
+      aio_work_queue(nullptr), op_work_queue(nullptr),
+      asok_hook(nullptr)
   {
     md_ctx.dup(p);
     data_ctx.dup(p);
     if (snap)
       snap_name = snap;
+
+    asok_hook = new LibrbdAdminSocketHook(this);
 
     memset(&header, 0, sizeof(header));
     memset(&layout, 0, sizeof(layout));
@@ -216,6 +221,7 @@ struct C_InvalidateCache : public Context {
     delete op_work_queue;
     delete aio_work_queue;
     delete asok_hook;
+    delete operations;
     delete state;
   }
 
@@ -671,10 +677,8 @@ struct C_InvalidateCache : public Context {
 				uint64_t off, Context *onfinish,
 				int fadvise_flags, uint64_t journal_tid) {
     snap_lock.get_read();
-    ObjectCacher::OSDWrite *wr = object_cacher->prepare_write(snapc, bl,
-							      utime_t(),
-                                                              fadvise_flags,
-                                                              journal_tid);
+    ObjectCacher::OSDWrite *wr = object_cacher->prepare_write(
+      snapc, bl, ceph::real_time::min(), fadvise_flags, journal_tid);
     snap_lock.put_read();
     ObjectExtent extent(o, 0, off, len, 0);
     extent.oloc.pool = data_ctx.get_id();
@@ -1005,7 +1009,7 @@ struct C_InvalidateCache : public Context {
     return new ObjectMap(*this, snap_id);
   }
 
-  Journal *ImageCtx::create_journal() {
-    return new Journal(*this);
+  Journal<ImageCtx> *ImageCtx::create_journal() {
+    return new Journal<ImageCtx>(*this);
   }
 }

@@ -30,7 +30,7 @@
 #include "librbd/ImageCtx.h"
 #include "librbd/ImageState.h"
 #include "librbd/internal.h"
-#include "librbd/LibrbdWriteback.h"
+#include "librbd/Operations.h"
 
 #include <algorithm>
 #include <string>
@@ -439,7 +439,7 @@ namespace librbd {
     ImageCtx *ictx = (ImageCtx *)ctx;
     tracepoint(librbd, resize_enter, ictx, ictx->name.c_str(), ictx->snap_name.c_str(), ictx->read_only, size);
     librbd::NoOpProgressContext prog_ctx;
-    int r = librbd::resize(ictx, size, prog_ctx);
+    int r = ictx->operations->resize(size, prog_ctx);
     tracepoint(librbd, resize_exit, r);
     return r;
   }
@@ -448,7 +448,7 @@ namespace librbd {
   {
     ImageCtx *ictx = (ImageCtx *)ctx;
     tracepoint(librbd, resize_enter, ictx, ictx->name.c_str(), ictx->snap_name.c_str(), ictx->read_only, size);
-    int r = librbd::resize(ictx, size, pctx);
+    int r = ictx->operations->resize(size, pctx);
     tracepoint(librbd, resize_exit, r);
     return r;
   }
@@ -566,7 +566,7 @@ namespace librbd {
   int Image::rebuild_object_map(ProgressContext &prog_ctx)
   {
     ImageCtx *ictx = reinterpret_cast<ImageCtx*>(ctx);
-    return librbd::rebuild_object_map(ictx, prog_ctx);
+    return ictx->operations->rebuild_object_map(prog_ctx);
   }
 
   int Image::copy(IoCtx& dest_io_ctx, const char *destname)
@@ -638,7 +638,7 @@ namespace librbd {
     ImageCtx *ictx = (ImageCtx *)ctx;
     tracepoint(librbd, flatten_enter, ictx, ictx->name.c_str(), ictx->id.c_str());
     librbd::NoOpProgressContext prog_ctx;
-    int r = librbd::flatten(ictx, prog_ctx);
+    int r = ictx->operations->flatten(prog_ctx);
     tracepoint(librbd, flatten_exit, r);
     return r;
   }
@@ -647,7 +647,7 @@ namespace librbd {
   {
     ImageCtx *ictx = (ImageCtx *)ctx;
     tracepoint(librbd, flatten_enter, ictx, ictx->name.c_str(), ictx->id.c_str());
-    int r = librbd::flatten(ictx, prog_ctx);
+    int r = ictx->operations->flatten(prog_ctx);
     tracepoint(librbd, flatten_exit, r);
     return r;
   }
@@ -723,7 +723,7 @@ namespace librbd {
   {
     ImageCtx *ictx = (ImageCtx *)ctx;
     tracepoint(librbd, snap_create_enter, ictx, ictx->name.c_str(), ictx->snap_name.c_str(), ictx->read_only, snap_name);
-    int r = librbd::snap_create(ictx, snap_name);
+    int r = ictx->operations->snap_create(snap_name);
     tracepoint(librbd, snap_create_exit, r);
     return r;
   }
@@ -732,7 +732,7 @@ namespace librbd {
   {
     ImageCtx *ictx = (ImageCtx *)ctx;
     tracepoint(librbd, snap_remove_enter, ictx, ictx->name.c_str(), ictx->snap_name.c_str(), ictx->read_only, snap_name);
-    int r = librbd::snap_remove(ictx, snap_name);
+    int r = ictx->operations->snap_remove(snap_name);
     tracepoint(librbd, snap_remove_exit, r);
     return r;
   }
@@ -742,7 +742,7 @@ namespace librbd {
     ImageCtx *ictx = (ImageCtx *)ctx;
     tracepoint(librbd, snap_rollback_enter, ictx, ictx->name.c_str(), ictx->snap_name.c_str(), ictx->read_only, snap_name);
     librbd::NoOpProgressContext prog_ctx;
-    int r = librbd::snap_rollback(ictx, snap_name, prog_ctx);
+    int r = ictx->operations->snap_rollback(snap_name, prog_ctx);
     tracepoint(librbd, snap_rollback_exit, r);
     return r;
   }
@@ -751,7 +751,7 @@ namespace librbd {
   {
     ImageCtx *ictx = (ImageCtx *)ctx;
     tracepoint(librbd, snap_rename_enter, ictx, ictx->name.c_str(), ictx->snap_name.c_str(), ictx->read_only, srcname, dstname);
-    int r = librbd::snap_rename(ictx, srcname, dstname);
+    int r = ictx->operations->snap_rename(srcname, dstname);
     tracepoint(librbd, snap_rename_exit, r);
     return r;
   }
@@ -761,7 +761,7 @@ namespace librbd {
   {
     ImageCtx *ictx = (ImageCtx *)ctx;
     tracepoint(librbd, snap_rollback_enter, ictx, ictx->name.c_str(), ictx->snap_name.c_str(), ictx->read_only, snap_name);
-    int r = librbd::snap_rollback(ictx, snap_name, prog_ctx);
+    int r = ictx->operations->snap_rollback(snap_name, prog_ctx);
     tracepoint(librbd, snap_rollback_exit, r);
     return r;
   }
@@ -770,7 +770,7 @@ namespace librbd {
   {
     ImageCtx *ictx = (ImageCtx *)ctx;
     tracepoint(librbd, snap_protect_enter, ictx, ictx->name.c_str(), ictx->snap_name.c_str(), ictx->read_only, snap_name);
-    int r = librbd::snap_protect(ictx, snap_name);
+    int r = ictx->operations->snap_protect(snap_name);
     tracepoint(librbd, snap_protect_exit, r);
     return r;
   }
@@ -779,7 +779,7 @@ namespace librbd {
   {
     ImageCtx *ictx = (ImageCtx *)ctx;
     tracepoint(librbd, snap_unprotect_enter, ictx, ictx->name.c_str(), ictx->snap_name.c_str(), ictx->read_only, snap_name);
-    int r = librbd::snap_unprotect(ictx, snap_name);
+    int r = ictx->operations->snap_unprotect(snap_name);
     tracepoint(librbd, snap_unprotect_exit, r);
     return r;
   }
@@ -816,7 +816,27 @@ namespace librbd {
   bool Image::snap_exists(const char *snap_name)
   {
     ImageCtx *ictx = (ImageCtx *)ctx;
-    return librbd::snap_exists(ictx, snap_name);
+    tracepoint(librbd, snap_exists_enter, ictx, ictx->name.c_str(), 
+      ictx->snap_name.c_str(), ictx->read_only, snap_name);
+    bool exists; 
+    int r = librbd::snap_exists(ictx, snap_name, &exists);
+    tracepoint(librbd, snap_exists_exit, r, exists);
+    if (r < 0) {
+      // lie to caller since we don't know the real answer yet.
+      return false;
+    }
+    return exists;
+  }
+
+  // A safer verion of snap_exists.
+  int Image::snap_exists2(const char *snap_name, bool *exists)
+  {
+    ImageCtx *ictx = (ImageCtx *)ctx;
+    tracepoint(librbd, snap_exists_enter, ictx, ictx->name.c_str(), 
+      ictx->snap_name.c_str(), ictx->read_only, snap_name);
+    int r = librbd::snap_exists(ictx, snap_name, exists);
+    tracepoint(librbd, snap_exists_exit, r, *exists);
+    return r;
   }
 
   int Image::snap_set(const char *snap_name)
@@ -1507,7 +1527,7 @@ extern "C" int rbd_flatten(rbd_image_t image)
   librbd::ImageCtx *ictx = (librbd::ImageCtx *)image;
   tracepoint(librbd, flatten_enter, ictx, ictx->name.c_str(), ictx->id.c_str());
   librbd::NoOpProgressContext prog_ctx;
-  int r = librbd::flatten(ictx, prog_ctx);
+  int r = ictx->operations->flatten(prog_ctx);
   tracepoint(librbd, flatten_exit, r);
   return r;
 }
@@ -1518,7 +1538,7 @@ extern "C" int rbd_flatten_with_progress(rbd_image_t image,
   librbd::ImageCtx *ictx = (librbd::ImageCtx *)image;
   tracepoint(librbd, flatten_enter, ictx, ictx->name.c_str(), ictx->id.c_str());
   librbd::CProgressContext prog_ctx(cb, cbdata);
-  int r = librbd::flatten(ictx, prog_ctx);
+  int r = ictx->operations->flatten(prog_ctx);
   tracepoint(librbd, flatten_exit, r);
   return r;
 }
@@ -1591,7 +1611,7 @@ extern "C" int rbd_resize(rbd_image_t image, uint64_t size)
   librbd::ImageCtx *ictx = (librbd::ImageCtx *)image;
   tracepoint(librbd, resize_enter, ictx, ictx->name.c_str(), ictx->snap_name.c_str(), ictx->read_only, size);
   librbd::NoOpProgressContext prog_ctx;
-  int r = librbd::resize(ictx, size, prog_ctx);
+  int r = ictx->operations->resize(size, prog_ctx);
   tracepoint(librbd, resize_exit, r);
   return r;
 }
@@ -1602,7 +1622,7 @@ extern "C" int rbd_resize_with_progress(rbd_image_t image, uint64_t size,
   librbd::ImageCtx *ictx = (librbd::ImageCtx *)image;
   tracepoint(librbd, resize_enter, ictx, ictx->name.c_str(), ictx->snap_name.c_str(), ictx->read_only, size);
   librbd::CProgressContext prog_ctx(cb, cbdata);
-  int r = librbd::resize(ictx, size, prog_ctx);
+  int r = ictx->operations->resize(size, prog_ctx);
   tracepoint(librbd, resize_exit, r);
   return r;
 }
@@ -1759,7 +1779,7 @@ extern "C" int rbd_rebuild_object_map(rbd_image_t image,
 {
   librbd::ImageCtx *ictx = reinterpret_cast<librbd::ImageCtx*>(image);
   librbd::CProgressContext prog_ctx(cb, cbdata);
-  return librbd::rebuild_object_map(ictx, prog_ctx);
+  return ictx->operations->rebuild_object_map(prog_ctx);
 }
 
 /* snapshots */
@@ -1767,7 +1787,7 @@ extern "C" int rbd_snap_create(rbd_image_t image, const char *snap_name)
 {
   librbd::ImageCtx *ictx = (librbd::ImageCtx *)image;
   tracepoint(librbd, snap_create_enter, ictx, ictx->name.c_str(), ictx->snap_name.c_str(), ictx->read_only, snap_name);
-  int r = librbd::snap_create(ictx, snap_name);
+  int r = ictx->operations->snap_create(snap_name);
   tracepoint(librbd, snap_create_exit, r);
   return r;
 }
@@ -1776,7 +1796,7 @@ extern "C" int rbd_snap_rename(rbd_image_t image, const char *srcname, const cha
 {
   librbd::ImageCtx *ictx = (librbd::ImageCtx *)image;
   tracepoint(librbd, snap_rename_enter, ictx, ictx->name.c_str(), ictx->snap_name.c_str(), ictx->read_only, srcname, dstname);
-  int r = librbd::snap_rename(ictx, srcname, dstname);
+  int r = ictx->operations->snap_rename(srcname, dstname);
   tracepoint(librbd, snap_rename_exit, r);
   return r;
 }
@@ -1785,7 +1805,7 @@ extern "C" int rbd_snap_remove(rbd_image_t image, const char *snap_name)
 {
   librbd::ImageCtx *ictx = (librbd::ImageCtx *)image;
   tracepoint(librbd, snap_remove_enter, ictx, ictx->name.c_str(), ictx->snap_name.c_str(), ictx->read_only, snap_name);
-  int r = librbd::snap_remove(ictx, snap_name);
+  int r = ictx->operations->snap_remove(snap_name);
   tracepoint(librbd, snap_remove_exit, r);
   return r;
 }
@@ -1795,7 +1815,7 @@ extern "C" int rbd_snap_rollback(rbd_image_t image, const char *snap_name)
   librbd::ImageCtx *ictx = (librbd::ImageCtx *)image;
   tracepoint(librbd, snap_rollback_enter, ictx, ictx->name.c_str(), ictx->snap_name.c_str(), ictx->read_only, snap_name);
   librbd::NoOpProgressContext prog_ctx;
-  int r = librbd::snap_rollback(ictx, snap_name, prog_ctx);
+  int r = ictx->operations->snap_rollback(snap_name, prog_ctx);
   tracepoint(librbd, snap_rollback_exit, r);
   return r;
 }
@@ -1808,7 +1828,7 @@ extern "C" int rbd_snap_rollback_with_progress(rbd_image_t image,
   librbd::ImageCtx *ictx = (librbd::ImageCtx *)image;
   tracepoint(librbd, snap_rollback_enter, ictx, ictx->name.c_str(), ictx->snap_name.c_str(), ictx->read_only, snap_name);
   librbd::CProgressContext prog_ctx(cb, cbdata);
-  int r = librbd::snap_rollback(ictx, snap_name, prog_ctx);
+  int r = ictx->operations->snap_rollback(snap_name, prog_ctx);
   tracepoint(librbd, snap_rollback_exit, r);
   return r;
 }
@@ -1877,7 +1897,7 @@ extern "C" int rbd_snap_protect(rbd_image_t image, const char *snap_name)
 {
   librbd::ImageCtx *ictx = (librbd::ImageCtx *)image;
   tracepoint(librbd, snap_protect_enter, ictx, ictx->name.c_str(), ictx->snap_name.c_str(), ictx->read_only, snap_name);
-  int r = librbd::snap_protect(ictx, snap_name);
+  int r = ictx->operations->snap_protect(snap_name);
   tracepoint(librbd, snap_protect_exit, r);
   return r;
 }
@@ -1886,7 +1906,7 @@ extern "C" int rbd_snap_unprotect(rbd_image_t image, const char *snap_name)
 {
   librbd::ImageCtx *ictx = (librbd::ImageCtx *)image;
   tracepoint(librbd, snap_unprotect_enter, ictx, ictx->name.c_str(), ictx->snap_name.c_str(), ictx->read_only, snap_name);
-  int r = librbd::snap_unprotect(ictx, snap_name);
+  int r = ictx->operations->snap_unprotect(snap_name);
   tracepoint(librbd, snap_unprotect_exit, r);
   return r;
 }

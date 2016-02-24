@@ -77,6 +77,7 @@ struct CompactionJob::SubcompactionState {
   struct Output {
     FileMetaData meta;
     bool finished;
+    std::shared_ptr<const TableProperties> table_properties;
   };
 
   // State kept for output being generated
@@ -211,6 +212,7 @@ CompactionJob::CompactionJob(
     std::atomic<bool>* shutting_down, LogBuffer* log_buffer,
     Directory* db_directory, Directory* output_directory, Statistics* stats,
     std::vector<SequenceNumber> existing_snapshots,
+    SequenceNumber earliest_write_conflict_snapshot,
     std::shared_ptr<Cache> table_cache, EventLogger* event_logger,
     bool paranoid_file_checks, bool measure_io_stats, const std::string& dbname,
     CompactionJobStats* compaction_job_stats)
@@ -229,6 +231,7 @@ CompactionJob::CompactionJob(
       output_directory_(output_directory),
       stats_(stats),
       existing_snapshots_(std::move(existing_snapshots)),
+      earliest_write_conflict_snapshot_(earliest_write_conflict_snapshot),
       table_cache_(std::move(table_cache)),
       event_logger_(event_logger),
       paranoid_file_checks_(paranoid_file_checks),
@@ -487,6 +490,16 @@ Status CompactionJob::Run() {
     }
   }
 
+  TablePropertiesCollection tp;
+  for (const auto& state : compact_->sub_compact_states) {
+    for (const auto& output : state.outputs) {
+      auto fn = TableFileName(db_options_.db_paths, output.meta.fd.GetNumber(),
+                              output.meta.fd.GetPathId());
+      tp[fn] = output.table_properties;
+    }
+  }
+  compact_->compaction->SetOutputTableProperties(std::move(tp));
+
   // Finish up all book-keeping to unify the subcompaction results
   AggregateStatistics();
   UpdateCompactionStats();
@@ -574,7 +587,7 @@ Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options,
 
 void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   assert(sub_compact != nullptr);
-  std::unique_ptr<Iterator> input(
+  std::unique_ptr<InternalIterator> input(
       versions_->MakeInputIterator(sub_compact->compaction));
 
   AutoThreadOperationStageUpdater stage_updater(
@@ -590,10 +603,10 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   if (measure_io_stats_) {
     prev_perf_level = GetPerfLevel();
     SetPerfLevel(PerfLevel::kEnableTime);
-    prev_write_nanos = iostats_context.write_nanos;
-    prev_fsync_nanos = iostats_context.fsync_nanos;
-    prev_range_sync_nanos = iostats_context.range_sync_nanos;
-    prev_prepare_write_nanos = iostats_context.prepare_write_nanos;
+    prev_write_nanos = IOSTATS(write_nanos);
+    prev_fsync_nanos = IOSTATS(fsync_nanos);
+    prev_range_sync_nanos = IOSTATS(range_sync_nanos);
+    prev_prepare_write_nanos = IOSTATS(prepare_write_nanos);
   }
 
   ColumnFamilyData* cfd = sub_compact->compaction->column_family_data();
@@ -627,8 +640,8 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
   Status status;
   sub_compact->c_iter.reset(new CompactionIterator(
       input.get(), cfd->user_comparator(), &merge, versions_->LastSequence(),
-      &existing_snapshots_, env_, false, sub_compact->compaction,
-      compaction_filter));
+      &existing_snapshots_, earliest_write_conflict_snapshot_, env_, false,
+      sub_compact->compaction, compaction_filter));
   auto c_iter = sub_compact->c_iter.get();
   c_iter->SeekToFirst();
   const auto& c_iter_stats = c_iter->iter_stats();
@@ -717,13 +730,13 @@ void CompactionJob::ProcessKeyValueCompaction(SubcompactionState* sub_compact) {
 
   if (measure_io_stats_) {
     sub_compact->compaction_job_stats.file_write_nanos +=
-        iostats_context.write_nanos - prev_write_nanos;
+        IOSTATS(write_nanos) - prev_write_nanos;
     sub_compact->compaction_job_stats.file_fsync_nanos +=
-        iostats_context.fsync_nanos - prev_fsync_nanos;
+        IOSTATS(fsync_nanos) - prev_fsync_nanos;
     sub_compact->compaction_job_stats.file_range_sync_nanos +=
-        iostats_context.range_sync_nanos - prev_range_sync_nanos;
+        IOSTATS(range_sync_nanos) - prev_range_sync_nanos;
     sub_compact->compaction_job_stats.file_prepare_write_nanos +=
-        iostats_context.prepare_write_nanos - prev_prepare_write_nanos;
+        IOSTATS(prepare_write_nanos) - prev_prepare_write_nanos;
     if (prev_perf_level != PerfLevel::kEnableTime) {
       SetPerfLevel(prev_perf_level);
     }
@@ -800,7 +813,7 @@ Status CompactionJob::FinishCompactionOutputFile(
   if (s.ok() && current_entries > 0) {
     // Verify that the table is usable
     ColumnFamilyData* cfd = sub_compact->compaction->column_family_data();
-    Iterator* iter = cfd->table_cache()->NewIterator(
+    InternalIterator* iter = cfd->table_cache()->NewIterator(
         ReadOptions(), env_options_, cfd->internal_comparator(), meta->fd,
         nullptr, cfd->internal_stats()->GetFileReadHist(
                      compact_->compaction->output_level()),
@@ -814,7 +827,10 @@ Status CompactionJob::FinishCompactionOutputFile(
 
     delete iter;
     if (s.ok()) {
-      TableFileCreationInfo info(sub_compact->builder->GetTableProperties());
+      auto tp = sub_compact->builder->GetTableProperties();
+      sub_compact->current_output()->table_properties =
+          std::make_shared<TableProperties>(tp);
+      TableFileCreationInfo info(std::move(tp));
       info.db_name = dbname_;
       info.cf_name = cfd->GetName();
       info.file_path =
@@ -897,7 +913,7 @@ Status CompactionJob::OpenCompactionOutputFile(
   unique_ptr<WritableFile> writable_file;
   std::string fname = TableFileName(db_options_.db_paths, file_number,
                                     sub_compact->compaction->output_path_id());
-  Status s = env_->NewWritableFile(fname, &writable_file, env_options_);
+  Status s = NewWritableFile(env_, fname, &writable_file, env_options_);
   if (!s.ok()) {
     Log(InfoLogLevel::ERROR_LEVEL, db_options_.info_log,
         "[%s] [JOB %d] OpenCompactionOutputFiles for table #%" PRIu64
@@ -927,8 +943,8 @@ Status CompactionJob::OpenCompactionOutputFile(
       cfd->ioptions()->optimize_filters_for_hits && bottommost_level_;
   sub_compact->builder.reset(NewTableBuilder(
       *cfd->ioptions(), cfd->internal_comparator(),
-      cfd->int_tbl_prop_collector_factories(), sub_compact->outfile.get(),
-      sub_compact->compaction->output_compression(),
+      cfd->int_tbl_prop_collector_factories(), cfd->GetID(),
+      sub_compact->outfile.get(), sub_compact->compaction->output_compression(),
       cfd->ioptions()->compression_opts, skip_filters));
   LogFlush(db_options_.info_log);
   return s;

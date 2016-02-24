@@ -369,9 +369,6 @@ public:
     assert(o < max_osd);
     osd_state[o] = s;
   }
-  void set_weightf(int o, float w) {
-    set_weight(o, (int)((float)CEPH_OSD_IN * w));
-  }
   void set_weight(int o, unsigned w) {
     assert(o < max_osd);
     osd_weight[o] = w;
@@ -751,14 +748,16 @@ public:
     return p->second.get_size();
   }
   int get_pg_type(pg_t pg) const {
-    assert(pools.count(pg.pool()));
-    return pools.find(pg.pool())->second.get_type();
+    map<int64_t,pg_pool_t>::const_iterator p = pools.find(pg.pool());
+    assert(p != pools.end());
+    return p->second.get_type();
   }
 
 
   pg_t raw_pg_to_pg(pg_t pg) const {
-    assert(pools.count(pg.pool()));
-    return pools.find(pg.pool())->second.raw_pg_to_pg(pg);
+    map<int64_t,pg_pool_t>::const_iterator p = pools.find(pg.pool());
+    assert(p != pools.end());
+    return p->second.raw_pg_to_pg(pg);
   }
 
   // pg -> acting primary osd

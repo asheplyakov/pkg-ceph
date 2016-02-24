@@ -32,14 +32,11 @@
   #else
     #define PLATFORM_IS_LITTLE_ENDIAN false
   #endif
-#elif defined(OS_FREEBSD)
+#elif defined(OS_FREEBSD) || defined(OS_OPENBSD) || defined(OS_NETBSD) || \
+    defined(OS_DRAGONFLYBSD) || defined(OS_ANDROID)
   #include <sys/endian.h>
   #include <sys/types.h>
   #define PLATFORM_IS_LITTLE_ENDIAN (_BYTE_ORDER == _LITTLE_ENDIAN)
-#elif defined(OS_OPENBSD) || defined(OS_NETBSD) ||\
-      defined(OS_DRAGONFLYBSD) || defined(OS_ANDROID)
-  #include <sys/types.h>
-  #include <sys/endian.h>
 #else
   #include <endian.h>
 #endif
@@ -70,7 +67,7 @@
 
 #if defined(OS_ANDROID) && __ANDROID_API__ < 9
 // fdatasync() was only introduced in API level 9 on Android. Use fsync()
-// when targetting older platforms.
+// when targeting older platforms.
 #define fdatasync fsync
 #endif
 
@@ -159,4 +156,3 @@ extern int GetMaxOpenFiles();
 
 } // namespace port
 } // namespace rocksdb
-

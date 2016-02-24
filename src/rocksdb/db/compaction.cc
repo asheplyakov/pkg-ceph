@@ -128,8 +128,8 @@ bool Compaction::TEST_IsBottommostLevel(
 bool Compaction::IsFullCompaction(
     VersionStorageInfo* vstorage,
     const std::vector<CompactionInputFiles>& inputs) {
-  int num_files_in_compaction = 0;
-  int total_num_files = 0;
+  size_t num_files_in_compaction = 0;
+  size_t total_num_files = 0;
   for (int l = 0; l < vstorage->num_levels(); l++) {
     total_num_files += vstorage->NumLevelFiles(l);
   }
@@ -439,6 +439,7 @@ std::unique_ptr<CompactionFilter> Compaction::CreateCompactionFilter() const {
   CompactionFilter::Context context;
   context.is_full_compaction = is_full_compaction_;
   context.is_manual_compaction = is_manual_compaction_;
+  context.column_family_id = cfd_->GetID();
   return cfd_->ioptions()->compaction_filter_factory->CreateCompactionFilter(
       context);
 }
