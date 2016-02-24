@@ -29,11 +29,11 @@ Signed-off-by: Dmitry Smirnov <onlyjob@member.fsf.org>
 
 --- a/src/init-rbdmap
 +++ b/src/init-rbdmap
-@@ -104,7 +104,18 @@ do_unmap() {
+@@ -105,7 +105,18 @@ do_unmap() {
  			MNT=$(findmnt --mtab --source ${DEV} --noheadings | awk '{print $1'})
  			if [ -n "${MNT}" ]; then
- 			    log_action_cont_msg "un-mounting '${MNT}'"
--			    UMNT_RV=$(umount "${MNT}" 2>&1)
+ 			    logger -p "daemon.debug" -t init-rbdmap "Unmounting '${MNT}'"
+-			    umount "${MNT}" >>/dev/null 2>&1
 +			    local ULAZY=""
 +			    local RUNLEVEL=$(runlevel | awk '{print $2}')
 +			    if [ $? -eq 0 ]; then
@@ -45,7 +45,7 @@ Signed-off-by: Dmitry Smirnov <onlyjob@member.fsf.org>
 +			            fi
 +			        fi
 +			    fi
-+			    UMNT_RV=$(umount ${ULAZY} "${MNT}" 2>&1)
++			    umount ${ULAZY} "${MNT}" >>/dev/null 2>&1
  			fi
  			if mountpoint -q "${MNT}"; then
  			    ## Un-mounting failed.
