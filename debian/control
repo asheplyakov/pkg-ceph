@@ -111,6 +111,29 @@ Description: debugging symbols for ceph
  .
  This package contains the debugging symbols for ceph.
 
+Package: rbd-mirror
+Architecture: linux-any
+Depends: ceph-common (= ${binary:Version}),
+         librados2 (= ${binary:Version}),
+         ${misc:Depends}, ${shlibs:Depends}
+Description: Ceph daemon for mirroring RBD images
+ Ceph is a distributed storage system designed to provide excellent
+ performance, reliability, and scalability.
+ .
+ This package provides a daemon for mirroring RBD images between
+ Ceph clusters, streaming changes asynchronously.
+
+Package: rbd-mirror-dbg
+Architecture: linux-any
+Section: debug
+Priority: extra
+Depends: rbd-mirror (= ${binary:Version}), ${misc:Depends}
+Description: debugging symbols for rbd-mirror
+ Ceph is a distributed storage system designed to provide excellent
+ performance, reliability, and scalability.
+ .
+ This package contains the debugging symbols for rbd-mirror.
+
 Package: rbd-nbd
 Architecture: linux-any
 Depends: ${misc:Depends}, ${shlibs:Depends}
