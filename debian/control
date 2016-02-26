@@ -115,7 +115,8 @@ Package: rbd-mirror
 Architecture: linux-any
 Depends: ceph-common (= ${binary:Version}),
          librados2 (= ${binary:Version}),
-         ${misc:Depends}, ${shlibs:Depends}
+         ${misc:Depends},
+         ${shlibs:Depends}
 Description: Ceph daemon for mirroring RBD images
  Ceph is a distributed storage system designed to provide excellent
  performance, reliability, and scalability.
