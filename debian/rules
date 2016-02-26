@@ -34,7 +34,7 @@ ifeq ($(DEB_HOST_ARCH), armel)
 endif
 
 # Only selected architectures support gperftools
-gperftools_archs = i386 amd64 powerpc armhf ppc64el
+gperftools_archs = i386 amd64 powerpc armhf ppc64el arm64
 ifneq (,$(filter $(DEB_HOST_ARCH), $(gperftools_archs)))
   extraopts += --with-tcmalloc
 else
