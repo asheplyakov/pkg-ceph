@@ -1,6 +1,14 @@
 ceph (10.0.3-0ubuntu1) UNRELEASED; urgency=medium
 
   * New upstream point release, in preparation for Ceph Jewel.
+    - d/p/*: Refresh patches
+    - d/rules,d/p/rocksdb-ftbfs.patch: Enable rocksdb build for
+      experimental bluestore support, add patch to set g++ flags
+      correctly across all Ubuntu archs.
+    - d/control,rbd-mirror.*:  Add rbd-mirror package.
+    - d/rules: Enable gperftools use on arm64 architecture.
+    - d/ceph.install: Add ceph-bluefs-tool to install.
+  * d/*: wrap-and-sort.
 
  -- James Page <james.page@ubuntu.com>  Wed, 24 Feb 2016 12:46:48 +0000
 
