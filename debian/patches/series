@@ -13,4 +13,4 @@ tests-disable.patch
 
 ## From Ubuntu
 fix-cycles-arch.patch
-rocksdb-ftbfs.patch
+rocksdb-flags.patch
