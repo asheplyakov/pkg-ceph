@@ -1,4 +1,4 @@
-ceph (10.0.3-0ubuntu1) UNRELEASED; urgency=medium
+ceph (10.0.3-0ubuntu1) xenial; urgency=medium
 
   * New upstream point release, in preparation for Ceph Jewel.
     - d/p/*: Refresh patches
@@ -9,7 +9,7 @@ ceph (10.0.3-0ubuntu1) UNRELEASED; urgency=medium
     - d/ceph.install: Add ceph-bluefs-tool to install.
   * d/*: wrap-and-sort.
 
- -- James Page <james.page@ubuntu.com>  Wed, 24 Feb 2016 12:46:48 +0000
+ -- James Page <james.page@ubuntu.com>  Fri, 18 Mar 2016 10:41:37 +0000
 
 ceph (10.0.2-0ubuntu1) xenial; urgency=medium
 
