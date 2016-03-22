@@ -235,12 +235,14 @@ JDK_CPPFLAGS = @JDK_CPPFLAGS@
 KEYUTILS_LIB = @KEYUTILS_LIB@
 LD = @LD@
 LDFLAGS = @LDFLAGS@
-LIBEDIT_CFLAGS = @LIBEDIT_CFLAGS@
-LIBEDIT_LIBS = @LIBEDIT_LIBS@
+LIBDPDK_CFLAGS = @LIBDPDK_CFLAGS@
+LIBDPDK_LIBS = @LIBDPDK_LIBS@
 LIBFUSE_CFLAGS = @LIBFUSE_CFLAGS@
 LIBFUSE_LIBS = @LIBFUSE_LIBS@
 LIBJEMALLOC = @LIBJEMALLOC@
 LIBOBJS = @LIBOBJS@
+LIBPCIACCESS_CFLAGS = @LIBPCIACCESS_CFLAGS@
+LIBPCIACCESS_LIBS = @LIBPCIACCESS_LIBS@
 LIBROCKSDB_CFLAGS = @LIBROCKSDB_CFLAGS@
 LIBROCKSDB_LIBS = @LIBROCKSDB_LIBS@
 LIBS = @LIBS@
@@ -325,7 +327,6 @@ datarootdir = @datarootdir@
 docdir = @docdir@
 dvidir = @dvidir@
 exec_prefix = @exec_prefix@
-group_rgw = @group_rgw@
 host = @host@
 host_alias = @host_alias@
 host_cpu = @host_cpu@
@@ -356,7 +357,6 @@ sharedstatedir = @sharedstatedir@
 srcdir = @srcdir@
 subdirs = @subdirs@
 sysconfdir = @sysconfdir@
-systemd_libexec_dir = @systemd_libexec_dir@
 systemd_unit_dir = @systemd_unit_dir@
 target = @target@
 target_alias = @target_alias@
@@ -366,7 +366,6 @@ target_vendor = @target_vendor@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
-user_rgw = @user_rgw@
 unitfiles = \
 	ceph.target \
         ceph-osd.target \
@@ -386,8 +385,7 @@ unit_DATA = $(unitfiles)
 EXTRA_DIST = \
 	$(unitfiles) \
 	ceph \
-	ceph.tmpfiles.d \
-	ceph-radosgw-prestart.sh
+	ceph.tmpfiles.d
 
 all: all-am
 

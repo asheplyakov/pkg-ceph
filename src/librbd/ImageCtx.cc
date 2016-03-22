@@ -14,6 +14,7 @@
 #include "librbd/AioCompletion.h"
 #include "librbd/AsyncOperation.h"
 #include "librbd/AsyncRequest.h"
+#include "librbd/ExclusiveLock.h"
 #include "librbd/internal.h"
 #include "librbd/ImageCtx.h"
 #include "librbd/ImageState.h"
@@ -47,7 +48,7 @@ namespace {
 
 class ThreadPoolSingleton : public ThreadPool {
 public:
-  ThreadPoolSingleton(CephContext *cct)
+  explicit ThreadPoolSingleton(CephContext *cct)
     : ThreadPool(cct, "librbd::thread_pool", "tp_librbd", cct->_conf->rbd_op_threads,
                  "rbd_op_threads") {
     start();
@@ -1003,6 +1004,10 @@ struct C_InvalidateCache : public Context {
     ASSIGN_OPTION(journal_object_flush_bytes);
     ASSIGN_OPTION(journal_object_flush_age);
     ASSIGN_OPTION(journal_pool);
+  }
+
+  ExclusiveLock<ImageCtx> *ImageCtx::create_exclusive_lock() {
+    return new ExclusiveLock<ImageCtx>(*this);
   }
 
   ObjectMap *ImageCtx::create_object_map(uint64_t snap_id) {

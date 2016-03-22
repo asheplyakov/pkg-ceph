@@ -1,6 +1,6 @@
 .\" Man page generated from reStructuredText.
 .
-.TH "RADOS" "8" "February 24, 2016" "dev" "Ceph"
+.TH "RADOS" "8" "March 22, 2016" "dev" "Ceph"
 .SH NAME
 rados \- rados object storage utility
 .
@@ -142,7 +142,9 @@ run a write benchmark with the \fI\-\-no\-cleanup\fP option. The default
 object size is 4 MB, and the default number of simulated threads
 (parallel writes) is 16. The \fI\-\-run\-name <label>\fP option is useful
 for benchmarking a workload test from multiple clients. The \fI<label>\fP
-is an arbitrary object name.
+is an arbitrary object name. It is "benchmark_last_metadata" by
+default, and is used as the underlying object name for "read" and
+"write" ops.
 Note: \-b \fIobjsize\fP option is valid only in \fIwrite\fP mode.
 .UNINDENT
 .sp
