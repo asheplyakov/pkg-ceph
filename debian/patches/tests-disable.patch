@@ -13,17 +13,17 @@ Description: disable tests that depend on network...
  check_SCRIPTS += \
  	test/ceph_objectstore_tool.py \
  	test/test-ceph-helpers.sh \
-@@ -90,6 +91,7 @@ check_SCRIPTS += \
- 	test/mon/mon-handle-forward.sh \
+@@ -92,6 +93,7 @@ check_SCRIPTS += \
  	test/libradosstriper/rados-striper.sh \
- 	test/test_objectstore_memstore.sh
+ 	test/test_objectstore_memstore.sh \
+         test/test_pidfile.sh
 +endif
  
  EXTRA_DIST += \
- 	$(srcdir)/test/python/ceph-disk/setup.py \
+ 	$(srcdir)/test/python/brag-client/setup.py \
 --- a/configure.ac
 +++ b/configure.ac
-@@ -1389,6 +1389,13 @@ AC_LANG_POP([C++])
+@@ -1316,6 +1316,13 @@ AC_LANG_POP([C++])
  
  AM_CONDITIONAL(WITH_BUILD_TESTS, test "$WITH_BUILD_TESTS" = "1")
  
