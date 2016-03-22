@@ -464,7 +464,7 @@ public:
     obj_iterator() : manifest(NULL) {
       init();
     }
-    obj_iterator(RGWObjManifest *_m) : manifest(_m) {
+    explicit obj_iterator(RGWObjManifest *_m) : manifest(_m) {
       init();
       if (!manifest->empty()) {
         seek(0);
@@ -629,8 +629,7 @@ struct RGWObjState {
   RGWObjState() : is_atomic(false), has_attrs(0), exists(false),
                   size(0), mtime(0), epoch(0), fake_tag(false), has_manifest(false),
                   has_data(false), prefetch_data(false), keep_tail(false), is_olh(false) {}
-  RGWObjState(const RGWObjState& rhs) {
-    obj = rhs.obj;
+  RGWObjState(const RGWObjState& rhs) : obj (rhs.obj) {
     is_atomic = rhs.is_atomic;
     has_attrs = rhs.has_attrs;
     exists = rhs.exists;
@@ -917,6 +916,23 @@ struct RGWRegion {
   string default_placement;
 
   list<string> hostnames;
+  list<string> hostnames_s3website;
+  // TODO: Maybe convert hostnames to a map<string,list<string>> for
+  // endpoint_type->hostnames
+/*
+20:05 < _robbat21irssi> maybe I do someting like: if (hostname_map.empty()) { populate all map keys from hostnames; };
+20:05 < _robbat21irssi> but that's a later compatability migration planning bit
+20:06 < yehudasa> more like if (!hostnames.empty()) {
+20:06 < yehudasa> for (list<string>::iterator iter = hostnames.begin(); iter != hostnames.end(); ++iter) {
+20:06 < yehudasa> hostname_map["s3"].append(iter->second);
+20:07 < yehudasa> hostname_map["s3website"].append(iter->second);
+20:07 < yehudasa> s/append/push_back/g
+20:08 < _robbat21irssi> inner loop over APIs
+20:08 < yehudasa> yeah, probably
+20:08 < _robbat21irssi> s3, s3website, swift, swith_auth, swift_website
+*/
+  map<string, list<string> > api_hostname_map;
+  map<string, list<string> > api_endpoints_map;
 
   CephContext *cct;
   RGWRados *store;
@@ -924,7 +940,7 @@ struct RGWRegion {
   RGWRegion() : is_master(false), cct(NULL), store(NULL) {}
 
   void encode(bufferlist& bl) const {
-    ENCODE_START(2, 1, bl);
+    ENCODE_START(3, 1, bl);
     ::encode(name, bl);
     ::encode(api_name, bl);
     ::encode(is_master, bl);
@@ -934,11 +950,12 @@ struct RGWRegion {
     ::encode(placement_targets, bl);
     ::encode(default_placement, bl);
     ::encode(hostnames, bl);
+    ::encode(hostnames_s3website, bl);
     ENCODE_FINISH(bl);
   }
 
   void decode(bufferlist::iterator& bl) {
-    DECODE_START(2, bl);
+    DECODE_START(3, bl);
     ::decode(name, bl);
     ::decode(api_name, bl);
     ::decode(is_master, bl);
@@ -949,6 +966,9 @@ struct RGWRegion {
     ::decode(default_placement, bl);
     if (struct_v >= 2) {
       ::decode(hostnames, bl);
+    }
+    if (struct_v >= 3) {
+      ::decode(hostnames_s3website, bl);
     }
     DECODE_FINISH(bl);
   }
@@ -1110,7 +1130,7 @@ public:
     OPSTATE_CANCELLED   = 5,
   };
 
-  RGWOpState(RGWRados *_store);
+  explicit RGWOpState(RGWRados *_store);
 
   int state_from_str(const string& s, OpState *state);
   int set_state(const string& client_id, const string& op_id, const string& object, OpState state);
@@ -1141,7 +1161,7 @@ protected:
   rgw_bucket bucket;
   map<RGWObjCategory, RGWStorageStats> *stats;
 public:
-  RGWGetBucketStats_CB(rgw_bucket& _bucket) : bucket(_bucket), stats(NULL) {}
+  explicit RGWGetBucketStats_CB(rgw_bucket& _bucket) : bucket(_bucket), stats(NULL) {}
   virtual ~RGWGetBucketStats_CB() {}
   virtual void handle_response(int r) = 0;
   virtual void set_response(map<RGWObjCategory, RGWStorageStats> *_stats) {
@@ -1154,7 +1174,7 @@ protected:
   rgw_user user;
   RGWStorageStats stats;
 public:
-  RGWGetUserStats_CB(const rgw_user& _user) : user(_user) {}
+  explicit RGWGetUserStats_CB(const rgw_user& _user) : user(_user) {}
   virtual ~RGWGetUserStats_CB() {}
   virtual void handle_response(int r) = 0;
   virtual void set_response(RGWStorageStats& _stats) {
@@ -1193,7 +1213,7 @@ struct RGWObjectCtx {
   map<rgw_obj, RGWObjState> objs_state;
   void *user_ctx;
 
-  RGWObjectCtx(RGWRados *_store) : store(_store), user_ctx(NULL) { }
+  explicit RGWObjectCtx(RGWRados *_store) : store(_store), user_ctx(NULL) { }
   RGWObjectCtx(RGWRados *_store, void *_user_ctx) : store(_store), user_ctx(_user_ctx) { }
 
   RGWObjState *get_state(rgw_obj& obj);
@@ -1244,7 +1264,7 @@ class RGWRados
   class C_Tick : public Context {
     RGWRados *rados;
   public:
-    C_Tick(RGWRados *_r) : rados(_r) {}
+    explicit C_Tick(RGWRados *_r) : rados(_r) {}
     void finish(int r) {
       rados->tick();
     }
@@ -1489,7 +1509,7 @@ public:
         rgw_cache_entry_info *cache_info;
       } read_params;
 
-      Read(RGWRados::SystemObject *_source) : source(_source) {}
+      explicit Read(RGWRados::SystemObject *_source) : source(_source) {}
 
       int stat(RGWObjVersionTracker *objv_tracker);
       int read(int64_t ofs, int64_t end, bufferlist& bl, RGWObjVersionTracker *objv_tracker);
@@ -1504,7 +1524,7 @@ public:
     librados::IoCtx index_ctx;
     string bucket_obj;
 
-    BucketShard(RGWRados *_store) : store(_store), shard_id(-1) {}
+    explicit BucketShard(RGWRados *_store) : store(_store), shard_id(-1) {}
     int init(rgw_bucket& _bucket, rgw_obj& obj);
   };
 
@@ -1589,7 +1609,7 @@ public:
         Params() : lastmod(NULL), read_size(NULL), obj_size(NULL), attrs(NULL), perr(NULL) {}
       } params;
 
-      Read(RGWRados::Object *_source) : source(_source) {}
+      explicit Read(RGWRados::Object *_source) : source(_source) {}
 
       int prepare(int64_t *pofs, int64_t *pend);
       int read(int64_t ofs, int64_t end, bufferlist& bl);
@@ -1621,7 +1641,7 @@ public:
                  if_match(NULL), if_nomatch(NULL), olh_epoch(0), delete_at(0) {}
       } meta;
 
-      Write(RGWRados::Object *_target) : target(_target) {}
+      explicit Write(RGWRados::Object *_target) : target(_target) {}
 
       int write_meta(uint64_t size,  map<std::string, bufferlist>& attrs);
       int write_data(const char *data, uint64_t ofs, uint64_t len, bool exclusive);
@@ -1650,7 +1670,7 @@ public:
         DeleteResult() : delete_marker(false) {}
       } result;
       
-      Delete(RGWRados::Object *_target) : target(_target) {}
+      explicit Delete(RGWRados::Object *_target) : target(_target) {}
 
       int delete_obj();
     };
@@ -1678,7 +1698,7 @@ public:
       } state;
 
 
-      Stat(RGWRados::Object *_source) : source(_source) {}
+      explicit Stat(RGWRados::Object *_source) : source(_source) {}
 
       int stat_async();
       int wait();
@@ -1755,7 +1775,7 @@ public:
       } params;
 
     public:
-      List(RGWRados::Bucket *_target) : target(_target) {}
+      explicit List(RGWRados::Bucket *_target) : target(_target) {}
 
       int list_objects(int max, vector<RGWObjEnt> *result, map<string, bool> *common_prefixes, bool *is_truncated);
       rgw_obj_key& get_next_marker() {

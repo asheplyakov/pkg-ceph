@@ -20,7 +20,6 @@
 
 #include "filestore/FileStore.h"
 #include "memstore/MemStore.h"
-#include "keyvaluestore/KeyValueStore.h"
 #if defined(HAVE_LIBAIO)
 #include "bluestore/BlueStore.h"
 #endif
@@ -72,10 +71,6 @@ ObjectStore *ObjectStore::create(CephContext *cct,
   }
   if (type == "memstore") {
     return new MemStore(cct, data);
-  }
-  if (type == "keyvaluestore" &&
-      cct->check_experimental_feature_enabled("keyvaluestore")) {
-    return new KeyValueStore(data);
   }
 #if defined(HAVE_LIBAIO)
   if (type == "bluestore" &&
@@ -148,8 +143,13 @@ ostream& operator<<(ostream& out, const ObjectStore::Sequencer& s)
   return out << "osr(" << s.get_name() << " " << &s << ")";
 }
 
+ostream& operator<<(ostream& out, const ObjectStore::Transaction& tx) {
+
+  return out << "Transaction(" << &tx << ")"; 
+}
+
 unsigned ObjectStore::apply_transactions(Sequencer *osr,
-					 list<Transaction*> &tls,
+					 vector<Transaction>& tls,
 					 Context *ondisk)
 {
   // use op pool
@@ -170,7 +170,7 @@ unsigned ObjectStore::apply_transactions(Sequencer *osr,
 
 int ObjectStore::queue_transactions(
   Sequencer *osr,
-  list<Transaction*>& tls,
+  vector<Transaction>& tls,
   Context *onreadable,
   Context *oncommit,
   Context *onreadable_sync,

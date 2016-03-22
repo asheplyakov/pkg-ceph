@@ -103,6 +103,7 @@ target_triplet = @target@
 
 @ENABLE_CLIENT_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_RBD_TRUE@am__append_3 = \
 @ENABLE_CLIENT_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_RBD_TRUE@	ceph-rbdnamer.8 \
+@ENABLE_CLIENT_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_RBD_TRUE@	rbd-mirror.8 \
 @ENABLE_CLIENT_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_RBD_TRUE@	rbd-nbd.8 \
 @ENABLE_CLIENT_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_RBD_TRUE@	rbd-replay.8 \
 @ENABLE_CLIENT_TRUE@@WITH_MAN_PAGES_TRUE@@WITH_RBD_TRUE@	rbd-replay-many.8 \
@@ -294,12 +295,14 @@ JDK_CPPFLAGS = @JDK_CPPFLAGS@
 KEYUTILS_LIB = @KEYUTILS_LIB@
 LD = @LD@
 LDFLAGS = @LDFLAGS@
-LIBEDIT_CFLAGS = @LIBEDIT_CFLAGS@
-LIBEDIT_LIBS = @LIBEDIT_LIBS@
+LIBDPDK_CFLAGS = @LIBDPDK_CFLAGS@
+LIBDPDK_LIBS = @LIBDPDK_LIBS@
 LIBFUSE_CFLAGS = @LIBFUSE_CFLAGS@
 LIBFUSE_LIBS = @LIBFUSE_LIBS@
 LIBJEMALLOC = @LIBJEMALLOC@
 LIBOBJS = @LIBOBJS@
+LIBPCIACCESS_CFLAGS = @LIBPCIACCESS_CFLAGS@
+LIBPCIACCESS_LIBS = @LIBPCIACCESS_LIBS@
 LIBROCKSDB_CFLAGS = @LIBROCKSDB_CFLAGS@
 LIBROCKSDB_LIBS = @LIBROCKSDB_LIBS@
 LIBS = @LIBS@
@@ -384,7 +387,6 @@ datarootdir = @datarootdir@
 docdir = @docdir@
 dvidir = @dvidir@
 exec_prefix = @exec_prefix@
-group_rgw = @group_rgw@
 host = @host@
 host_alias = @host_alias@
 host_cpu = @host_cpu@
@@ -415,7 +417,6 @@ sharedstatedir = @sharedstatedir@
 srcdir = @srcdir@
 subdirs = @subdirs@
 sysconfdir = @sysconfdir@
-systemd_libexec_dir = @systemd_libexec_dir@
 systemd_unit_dir = @systemd_unit_dir@
 target = @target@
 target_alias = @target_alias@
@@ -425,7 +426,6 @@ target_vendor = @target_vendor@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
-user_rgw = @user_rgw@
 AUTOMAKE_OPTIONS = gnu
 EXTRA_DIST = conf.py ceph_selinux.8
 dist_man_MANS = $(am__append_1) $(am__append_2) $(am__append_3) \

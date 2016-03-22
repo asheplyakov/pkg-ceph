@@ -1,6 +1,6 @@
 .\" Man page generated from reStructuredText.
 .
-.TH "RADOSGW-ADMIN" "8" "February 24, 2016" "dev" "Ceph"
+.TH "RADOSGW-ADMIN" "8" "March 22, 2016" "dev" "Ceph"
 .SH NAME
 radosgw-admin \- rados REST gateway user administration utility
 .
@@ -237,6 +237,12 @@ Get replica metadata log entry.
 .TP
 .B \fBreplicalog delete\fP
 Delete replica metadata log entry.
+.TP
+.B \fBorphans find\fP
+Init and run search for leaked rados objects
+.TP
+.B \fBorphans finish\fP
+Clean up search for leaked rados objects
 .UNINDENT
 .SH OPTIONS
 .INDENT 0.0
@@ -455,6 +461,17 @@ Specify max size (in bytes, negative value to disable).
 .TP
 .B \-\-quota\-scope
 Scope of quota (bucket, user).
+.UNINDENT
+.SH ORPHANS SEARCH OPTIONS
+.INDENT 0.0
+.TP
+.B \-\-pool
+Data pool to scan for leaked rados objects
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-num\-shards
+Number of shards to use for keeping the temporary scan info
 .UNINDENT
 .SH EXAMPLES
 .sp

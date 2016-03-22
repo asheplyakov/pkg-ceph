@@ -1604,8 +1604,7 @@ bool PGMonitor::preprocess_command(MonOpRequestRef op)
     prefix = "pg ls";
     string poolstr;
     cmd_getval(g_ceph_context, cmdmap, "poolstr", poolstr);
-    int64_t pool = -2;
-    pool = mon->osdmon()->osdmap.lookup_pg_pool_name(poolstr.c_str());
+    int64_t pool = mon->osdmon()->osdmap.lookup_pg_pool_name(poolstr.c_str());
     if (pool < 0) {
       r = -ENOENT;
       ss << "pool " << poolstr << " does not exist";
@@ -1697,7 +1696,6 @@ bool PGMonitor::preprocess_command(MonOpRequestRef op)
 	}
 	if (what.count("pools")) {
 	  pg_map.dump_pool_stats(ds, header);
-	  header = false;
 	}
 	if (what.count("osds")) {
 	  pg_map.dump_osd_stats(ds);
@@ -1750,7 +1748,10 @@ bool PGMonitor::preprocess_command(MonOpRequestRef op)
                int64_t(g_conf->mon_pg_stuck_threshold));
 
     r = dump_stuck_pg_stats(ds, f.get(), (int)threshold, stuckop_vec);
-    ss << "ok";
+    if (r < 0)
+      ss << "failed";  
+    else 
+      ss << "ok";
     r = 0;
   } else if (prefix == "pg map") {
     pg_t pgid;
@@ -2031,8 +2032,82 @@ int PGMonitor::_warn_slow_request_histogram(const pow2_hist_t& h, string suffix,
   return sum;
 }
 
+namespace {
+  enum class scrubbed_or_deepscrubbed_t { SCRUBBED, DEEPSCRUBBED };
+
+  void print_unscrubbed_detailed(const std::pair<const pg_t,pg_stat_t> &pg_entry,
+				 list<pair<health_status_t,string> > *detail,
+				 scrubbed_or_deepscrubbed_t how_scrubbed) {
+
+    std::stringstream ss;
+    const auto& pg_stat(pg_entry.second);
+
+    ss << "pg " << pg_entry.first << " is not ";
+    if (how_scrubbed == scrubbed_or_deepscrubbed_t::SCRUBBED) {
+      ss << "scrubbed, last_scrub_stamp "
+	 << pg_stat.last_scrub_stamp;
+    } else if (how_scrubbed == scrubbed_or_deepscrubbed_t::DEEPSCRUBBED) {
+      ss << "deep-scrubbed, last_deep_scrub_stamp "
+	 << pg_stat.last_deep_scrub_stamp;
+    }
+
+    detail->push_back(make_pair(HEALTH_WARN, ss.str()));
+  }
+
+
+  using pg_stat_map_t = const ceph::unordered_map<pg_t,pg_stat_t>;
+
+  void print_unscrubbed_pgs(pg_stat_map_t& pg_stats,
+			    list<pair<health_status_t,string> > &summary,
+			    list<pair<health_status_t,string> > *detail,
+			    const CephContext* cct) {
+    int pgs_count = 0;
+    const utime_t now = ceph_clock_now(nullptr);
+    for (const auto& pg_entry : pg_stats) {
+      const auto& pg_stat(pg_entry.second);
+      const utime_t time_since_ls = now - pg_stat.last_scrub_stamp;
+      const utime_t time_since_lds = now - pg_stat.last_deep_scrub_stamp;
+
+      const int mon_warn_not_scrubbed =
+	cct->_conf->mon_warn_not_scrubbed + cct->_conf->mon_scrub_interval;
+
+      const int mon_warn_not_deep_scrubbed =
+	cct->_conf->mon_warn_not_deep_scrubbed + cct->_conf->mon_scrub_interval;
+
+      bool not_scrubbed = (time_since_ls >= mon_warn_not_scrubbed &&
+			   cct->_conf->mon_warn_not_scrubbed != 0);
+
+      bool not_deep_scrubbed = (time_since_lds >= mon_warn_not_deep_scrubbed &&
+				cct->_conf->mon_warn_not_deep_scrubbed != 0);
+
+      if (detail != nullptr) {
+	if (not_scrubbed) {
+	  print_unscrubbed_detailed(pg_entry,
+				    detail,
+				    scrubbed_or_deepscrubbed_t::SCRUBBED);
+	} else if (not_deep_scrubbed) {
+	  print_unscrubbed_detailed(pg_entry,
+				    detail,
+				    scrubbed_or_deepscrubbed_t::DEEPSCRUBBED);
+	}
+      }
+      if (not_scrubbed || not_deep_scrubbed) {
+	++pgs_count;
+      }
+    }
+
+    if (pgs_count > 0) {
+      std::stringstream ss;
+      ss << pgs_count << " unscrubbed pgs";
+      summary.push_back(make_pair(HEALTH_WARN, ss.str()));
+    }
+
+  }
+}
+
 void PGMonitor::get_health(list<pair<health_status_t,string> >& summary,
-                           list<pair<health_status_t,string> > *detail) const
+			   list<pair<health_status_t,string> > *detail,
+			   CephContext *cct) const
 {
   map<string,int> note;
   ceph::unordered_map<int,int>::const_iterator p = pg_map.num_pg_by_state.begin();
@@ -2061,7 +2136,7 @@ void PGMonitor::get_health(list<pair<health_status_t,string> >& summary,
     if (p->first & PG_STATE_INCOMPLETE)
       note["incomplete"] += p->second;
     if (p->first & PG_STATE_BACKFILL_WAIT)
-      note["backfill"] += p->second;
+      note["backfill_wait"] += p->second;
     if (p->first & PG_STATE_BACKFILL)
       note["backfilling"] += p->second;
     if (p->first & PG_STATE_BACKFILL_TOOFULL)
@@ -2071,44 +2146,67 @@ void PGMonitor::get_health(list<pair<health_status_t,string> >& summary,
   ceph::unordered_map<pg_t, pg_stat_t> stuck_pgs;
   utime_t now(ceph_clock_now(g_ceph_context));
   utime_t cutoff = now - utime_t(g_conf->mon_pg_stuck_threshold, 0);
+  uint64_t num_inactive_pgs = 0;
+  
+  if (detail) {
+    
+    // we need to collect details of stuck pgs, first do a quick check
+    // whether this will yield any results
+    if (pg_map.get_stuck_counts(cutoff, note)) {
+      
+      // there are stuck pgs. gather details for specified statuses
+      // only if we know that there are pgs stuck in that status
+      
+      if (note.find("stuck inactive") != note.end()) {
+        pg_map.get_stuck_stats(PGMap::STUCK_INACTIVE, cutoff, stuck_pgs);
+        note["stuck inactive"] = stuck_pgs.size();
+        num_inactive_pgs += stuck_pgs.size();
+        note_stuck_detail(PGMap::STUCK_INACTIVE, stuck_pgs, detail);
+        stuck_pgs.clear();
+      }
 
-  pg_map.get_stuck_stats(PGMap::STUCK_INACTIVE, cutoff, stuck_pgs);
-  if (!stuck_pgs.empty()) {
-    note["stuck inactive"] = stuck_pgs.size();
-    if (detail)
-      note_stuck_detail(PGMap::STUCK_INACTIVE, stuck_pgs, detail);
+      if (note.find("stuck unclean") != note.end()) {
+        pg_map.get_stuck_stats(PGMap::STUCK_UNCLEAN, cutoff, stuck_pgs);
+        note["stuck unclean"] = stuck_pgs.size();
+        note_stuck_detail(PGMap::STUCK_UNCLEAN, stuck_pgs, detail);
+        stuck_pgs.clear();
+      }
+
+      if (note.find("stuck undersized") != note.end()) {
+        pg_map.get_stuck_stats(PGMap::STUCK_UNDERSIZED, cutoff, stuck_pgs);
+        note["stuck undersized"] = stuck_pgs.size();
+        note_stuck_detail(PGMap::STUCK_UNDERSIZED, stuck_pgs, detail);
+        stuck_pgs.clear();
+      }
+
+      if (note.find("stuck degraded") != note.end()) {
+        pg_map.get_stuck_stats(PGMap::STUCK_DEGRADED, cutoff, stuck_pgs);
+        note["stuck degraded"] = stuck_pgs.size();
+        note_stuck_detail(PGMap::STUCK_DEGRADED, stuck_pgs, detail);
+        stuck_pgs.clear();
+      }
+
+      if (note.find("stuck stale") != note.end()) {
+        pg_map.get_stuck_stats(PGMap::STUCK_STALE, cutoff, stuck_pgs);
+        note["stuck stale"] = stuck_pgs.size();
+        num_inactive_pgs += stuck_pgs.size();
+        note_stuck_detail(PGMap::STUCK_STALE, stuck_pgs, detail);
+      }
+    }
+  } else {
+    pg_map.get_stuck_counts(cutoff, note);
+    map<string,int>::const_iterator p = note.find("stuck inactive");
+    if (p != note.end()) 
+      num_inactive_pgs += p->second;
+    p = note.find("stuck stale");
+    if (p != note.end()) 
+      num_inactive_pgs += p->second;
   }
-  stuck_pgs.clear();
 
-  pg_map.get_stuck_stats(PGMap::STUCK_UNCLEAN, cutoff, stuck_pgs);
-  if (!stuck_pgs.empty()) {
-    note["stuck unclean"] = stuck_pgs.size();
-    if (detail)
-      note_stuck_detail(PGMap::STUCK_UNCLEAN, stuck_pgs, detail);
-  }
-  stuck_pgs.clear();
-
-  pg_map.get_stuck_stats(PGMap::STUCK_UNDERSIZED, cutoff, stuck_pgs);
-  if (!stuck_pgs.empty()) {
-    note["stuck undersized"] = stuck_pgs.size();
-    if (detail)
-      note_stuck_detail(PGMap::STUCK_UNDERSIZED, stuck_pgs, detail);
-  }
-  stuck_pgs.clear();
-
-  pg_map.get_stuck_stats(PGMap::STUCK_DEGRADED, cutoff, stuck_pgs);
-  if (!stuck_pgs.empty()) {
-    note["stuck degraded"] = stuck_pgs.size();
-    if (detail)
-      note_stuck_detail(PGMap::STUCK_DEGRADED, stuck_pgs, detail);
-  }
-  stuck_pgs.clear();
-
-  pg_map.get_stuck_stats(PGMap::STUCK_STALE, cutoff, stuck_pgs);
-  if (!stuck_pgs.empty()) {
-    note["stuck stale"] = stuck_pgs.size();
-    if (detail)
-      note_stuck_detail(PGMap::STUCK_STALE, stuck_pgs, detail);
+  if (g_conf->mon_pg_min_inactive > 0 && num_inactive_pgs >= g_conf->mon_pg_min_inactive) {
+    ostringstream ss;
+    ss << num_inactive_pgs << " pgs are stuck inactive for more than " << g_conf->mon_pg_stuck_threshold << " seconds";
+    summary.push_back(make_pair(HEALTH_ERR, ss.str()));
   }
 
   if (!note.empty()) {
@@ -2310,6 +2408,9 @@ void PGMonitor::get_health(list<pair<health_status_t,string> >& summary,
       }
     }
   }
+
+  print_unscrubbed_pgs(pg_map.pg_stat, summary, detail, cct);
+
 }
 
 void PGMonitor::check_full_osd_health(list<pair<health_status_t,string> >& summary,
@@ -2353,7 +2454,7 @@ int PGMonitor::dump_stuck_pg_stats(stringstream &ds,
       stuck_types |= PGMap::STUCK_STALE;
     else {
       ds << "Unknown type: " << *i << std::endl;
-      return 0;
+      return -EINVAL;
     }
   }
 

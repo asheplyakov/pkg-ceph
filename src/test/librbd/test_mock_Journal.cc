@@ -6,10 +6,11 @@
 #include "test/librbd/mock/MockImageCtx.h"
 #include "common/Cond.h"
 #include "common/Mutex.h"
+#include "cls/journal/cls_journal_types.h"
 #include "librbd/Journal.h"
 #include "librbd/Utils.h"
-#include "librbd/journal/Entries.h"
 #include "librbd/journal/Replay.h"
+#include "librbd/journal/Types.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include <functional>
@@ -91,7 +92,7 @@ struct MockJournaler {
 
   MOCK_METHOD3(start_append, void(int flush_interval, uint64_t flush_bytes,
                                   double flush_age));
-  MOCK_METHOD2(append, MockFutureProxy(const std::string &tag,
+  MOCK_METHOD2(append, MockFutureProxy(uint64_t tag_id,
                                        const bufferlist &bl));
   MOCK_METHOD1(flush, void(Context *on_safe));
   MOCK_METHOD1(stop_append, void(Context *on_safe));
@@ -116,8 +117,12 @@ struct MockJournalerProxy {
   int remove(bool force) {
     return -EINVAL;
   }
-  int register_client(const std::string &description) {
+  int register_client(const bufferlist &data) {
     return -EINVAL;
+  }
+  void allocate_tag(uint64_t, const bufferlist &,
+                    cls::journal::Tag*, Context *on_finish) {
+    on_finish->complete(-EINVAL);
   }
 
   void get_metadata(uint8_t *order, uint8_t *splay_width, int64_t *pool_id) {
@@ -145,8 +150,8 @@ struct MockJournalerProxy {
                                                flush_age);
   }
 
-  MockFutureProxy append(const std::string &tag, const bufferlist &bl) {
-    return MockJournaler::get_instance().append(tag, bl);
+  MockFutureProxy append(uint64_t tag_id, const bufferlist &bl) {
+    return MockJournaler::get_instance().append(tag_id, bl);
   }
 
   void flush(Context *on_safe) {
@@ -328,8 +333,8 @@ public:
 
   void expect_replay_process(MockJournalReplay &mock_journal_replay) {
     EXPECT_CALL(mock_journal_replay, process(_, _, _))
-                  .WillOnce(DoAll(WithArg<2>(Invoke(this, &TestMockJournal::save_commit_context)),
-                                  WithArg<1>(CompleteContext(0, NULL))));
+                  .WillOnce(DoAll(WithArg<1>(CompleteContext(0, NULL)),
+                                  WithArg<2>(Invoke(this, &TestMockJournal::save_commit_context))));
   }
 
   void expect_start_append(::journal::MockJournaler &mock_journaler) {
@@ -389,6 +394,11 @@ public:
   void save_commit_context(Context *ctx) {
     Mutex::Locker locker(m_lock);
     m_commit_contexts.push_back(ctx);
+    m_cond.Signal();
+  }
+
+  void wake_up() {
+    Mutex::Locker locker(m_lock);
     m_cond.Signal();
   }
 
@@ -718,8 +728,10 @@ TEST_F(TestMockJournal, ReplayOnDiskPostFlushError) {
   expect_try_pop_front(mock_journaler, false, mock_replay_entry);
   expect_stop_replay(mock_journaler);
 
-  Context *on_flush;
-  EXPECT_CALL(mock_journal_replay, flush(_)).WillOnce(SaveArg<0>(&on_flush));
+  Context *on_flush = nullptr;
+  EXPECT_CALL(mock_journal_replay, flush(_))
+    .WillOnce(DoAll(SaveArg<0>(&on_flush),
+                    InvokeWithoutArgs(this, &TestMockJournal::wake_up)));
 
   // replay write-to-disk failure should result in replay-restart
   expect_construct_journaler(mock_journaler);
@@ -747,6 +759,13 @@ TEST_F(TestMockJournal, ReplayOnDiskPostFlushError) {
   m_commit_contexts.clear();
 
   // proceed with the flush
+  {
+    // wait for on_flush callback
+    Mutex::Locker locker(m_lock);
+    while (on_flush == nullptr) {
+      m_cond.Wait(m_lock);
+    }
+  }
   on_flush->complete(0);
 
   ASSERT_EQ(0, ctx.wait());

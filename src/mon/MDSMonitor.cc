@@ -367,6 +367,7 @@ bool MDSMonitor::preprocess_beacon(MonOpRequestRef op)
   // do not match, to update our stored
   if (!(pending_daemon_health[gid] == m->get_health())) {
     dout(20) << __func__ << " health metrics for gid " << gid << " were updated" << dendl;
+    _note_beacon(m);
     return false;
   }
 
@@ -682,7 +683,8 @@ void MDSMonitor::on_active()
 }
 
 void MDSMonitor::get_health(list<pair<health_status_t, string> >& summary,
-			    list<pair<health_status_t, string> > *detail) const
+			    list<pair<health_status_t, string> > *detail,
+			    CephContext* cct) const
 {
   mdsmap.get_health(summary, detail);
 
@@ -1729,7 +1731,6 @@ int MDSMonitor::filesystem_command(
       string err;
       poolid = strict_strtol(poolname.c_str(), 10, &err);
       if (err.length()) {
-	poolid = -1;
 	ss << "pool '" << poolname << "' does not exist";
 	return -ENOENT;
       }

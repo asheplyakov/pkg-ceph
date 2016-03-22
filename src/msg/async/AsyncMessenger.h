@@ -45,6 +45,7 @@ enum {
   l_msgr_first = 94000,
   l_msgr_recv_messages,
   l_msgr_send_messages,
+  l_msgr_send_messages_inline,
   l_msgr_recv_bytes,
   l_msgr_send_bytes,
   l_msgr_created_connections,
@@ -74,6 +75,7 @@ class Worker : public Thread {
 
     plb.add_u64_counter(l_msgr_recv_messages, "msgr_recv_messages", "Network received messages");
     plb.add_u64_counter(l_msgr_send_messages, "msgr_send_messages", "Network sent messages");
+    plb.add_u64_counter(l_msgr_send_messages_inline, "msgr_send_messages_inline", "Network sent inline messages");
     plb.add_u64_counter(l_msgr_recv_bytes, "msgr_recv_bytes", "Network received bytes");
     plb.add_u64_counter(l_msgr_send_bytes, "msgr_send_bytes", "Network received bytes");
     plb.add_u64_counter(l_msgr_created_connections, "msgr_active_connections", "Active connection number");
@@ -109,7 +111,7 @@ class Processor {
     Processor *pro;
 
    public:
-    C_processor_accept(Processor *p): pro(p) {}
+    explicit C_processor_accept(Processor *p): pro(p) {}
     void do_request(int id) {
       pro->accept();
     }
@@ -143,7 +145,7 @@ class WorkerPool {
   class C_barrier : public EventCallback {
     WorkerPool *pool;
    public:
-    C_barrier(WorkerPool *p): pool(p) {}
+    explicit C_barrier(WorkerPool *p): pool(p) {}
     void do_request(int id) {
       Mutex::Locker l(pool->barrier_lock);
       pool->barrier_count.dec();
@@ -153,7 +155,7 @@ class WorkerPool {
   };
   friend class C_barrier;
  public:
-  WorkerPool(CephContext *c);
+  explicit WorkerPool(CephContext *c);
   virtual ~WorkerPool();
   void start();
   Worker *get_worker() {
@@ -332,7 +334,7 @@ private:
     AsyncMessenger *msgr;
 
    public:
-    C_handle_reap(AsyncMessenger *m): msgr(m) {}
+    explicit C_handle_reap(AsyncMessenger *m): msgr(m) {}
     void do_request(int id) {
       // judge whether is a time event
       msgr->reap_dead();
