@@ -1,0 +1,20 @@
+Description: Skip Makefile base install of python modules
+ ceph-disk and ceph-detect-init are python modules; the Makefile
+ based build uses tox and virtualenv, which we really don't want
+ to use in the package build process.
+ .
+ Skip this part of the build, and use d/rules to install.
+Author: James Page <james.page@ubuntu.com>
+Forwarded: not-needed
+
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -32,8 +32,6 @@ endif
+ include arch/Makefile.am
+ include auth/Makefile.am
+ include brag/Makefile.am
+-include ceph-detect-init/Makefile.am
+-include ceph-disk/Makefile.am
+ include crush/Makefile.am
+ include kv/Makefile.am
+ include mon/Makefile.am

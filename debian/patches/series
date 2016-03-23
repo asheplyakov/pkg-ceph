@@ -17,3 +17,4 @@ fix-cycles-arch.patch
 pybind-flags.patch
 fix-systemd-escaping.patch
 rocksdb-flags.patch
+skip-setup.py-makefiles.patch
