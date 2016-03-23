@@ -6,7 +6,6 @@ udev/95-ceph-osd.rules lib/udev/rules.d
 usr/bin/ceph-bluefs-tool
 usr/bin/ceph-clsinfo
 usr/bin/ceph-debugpack
-usr/bin/ceph-detect-init
 usr/bin/ceph-mon
 usr/bin/ceph-objectstore-tool
 usr/bin/ceph-osd
@@ -20,8 +19,10 @@ usr/lib/*/ceph/ceph_common.sh
 usr/lib/*/ceph/erasure-code/libec_*.so
 usr/lib/*/rados-classes/*.so
 usr/lib/python*/dist-packages/ceph_detect_init*
+usr/lib/python*/dist-packages/ceph_disk*
 usr/lib/python*/dist-packages/ceph_rest_api.py
 usr/sbin/ceph-create-keys
+usr/sbin/ceph-detect-init
 usr/sbin/ceph-disk
 usr/share/doc/ceph/sample.ceph.conf
 usr/share/doc/ceph/sample.fetch_config

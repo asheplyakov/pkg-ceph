@@ -72,6 +72,12 @@ override_dh_install:
 	# remove .la files, we don't want to install these in Debian,
 	# see Policy 10.2
 	find debian/tmp -name '*.la' -delete
+	# NOTE: manually install python modules to avoid virtualenvs
+	#       during the package build process.
+	set -e; for comp in ceph-detect-init ceph-disk; do \
+		(set -e; cd src/$$comp; python setup.py install --root=$(CURDIR)/debian/tmp \
+			--install-script=/usr/sbin --install-layout=deb); \
+	done
 	# NOTE: ensure that any versioned erasure coding test code is dropped
 	#       from the package install - package ships unversioned modules.
 	rm -f $(CURDIR)/debian/tmp/usr/lib/*/ceph/erasure-code/libec_*.so.*
