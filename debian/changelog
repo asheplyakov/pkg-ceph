@@ -1,4 +1,4 @@
-ceph (10.0.5-0ubuntu1) UNRELEASED; urgency=medium
+ceph (10.0.5-0ubuntu1) xenial; urgency=medium
 
   * New upstream point release, in preparation for Ceph Jewel.
     - d/p/*: Refresh patches
@@ -7,7 +7,7 @@ ceph (10.0.5-0ubuntu1) UNRELEASED; urgency=medium
     - d/p/skip-setup.py-makefiles.patch,rules: Avoid use of virtualenv
       to install ceph-disk and ceph-detect-init python modules.
 
- -- James Page <james.page@ubuntu.com>  Tue, 22 Mar 2016 11:04:02 +0000
+ -- James Page <james.page@ubuntu.com>  Wed, 23 Mar 2016 14:07:58 +0000
 
 ceph (10.0.3-0ubuntu1) xenial; urgency=medium
 
