@@ -3,6 +3,7 @@ ceph (10.0.5-0ubuntu1) UNRELEASED; urgency=medium
   * New upstream point release, in preparation for Ceph Jewel.
     - d/p/*: Refresh patches
     - d/control: Enable rbd-mirror(-dbg) packages.
+    - d/control: Add BD on libboost-iostreams-dev.
     - d/p/skip-setup.py-makefiles.patch,rules: Avoid use of virtualenv
       to install ceph-disk and ceph-detect-init python modules.
 
