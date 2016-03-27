@@ -10,6 +10,12 @@ if [ -n "$VSTART_DEST" ]; then
   CEPH_DIR=$SRC_PATH
   CEPH_BIN=$SRC_PATH
   CEPH_LIB=$SRC_PATH/.libs
+
+  if [ -e CMakeCache.txt ]; then
+      CEPH_BIN=$VSTART_DEST/../../src
+      CEPH_LIB=$CEPH_BIN
+  fi
+
   CEPH_CONF_PATH=$VSTART_DEST
   CEPH_DEV_DIR=$VSTART_DEST/dev
   CEPH_OUT_DIR=$VSTART_DEST/out
@@ -114,13 +120,13 @@ keyring_fn="$CEPH_CONF_PATH/keyring"
 osdmap_fn="/tmp/ceph_osdmap.$$"
 monmap_fn="/tmp/ceph_monmap.$$"
 
-usage="usage: $0 [option]... [mon] [mds] [osd]\n"
+usage="usage: $0 [option]... [\"mon\"] [\"mds\"] [\"osd\"]\n"
 usage=$usage"options:\n"
 usage=$usage"\t-d, --debug\n"
 usage=$usage"\t-s, --standby_mds: Generate standby-replay MDS for each active\n"
 usage=$usage"\t-l, --localhost: use localhost instead of hostname\n"
 usage=$usage"\t-i <ip>: bind to specific ip\n"
-usage=$usage"\t-r start radosgw (needs ceph compiled with --radosgw and apache2 with mod_fastcgi)\n"
+usage=$usage"\t-r start radosgw (needs ceph compiled with --radosgw)\n"
 usage=$usage"\t-n, --new\n"
 usage=$usage"\t--valgrind[_{osd,mds,mon}] 'toolname args...'\n"
 usage=$usage"\t--nodaemon: use ceph-run as wrapper for mon/osd/mds\n"
@@ -593,7 +599,7 @@ EOF
 	    fi
 
 	    rm -rf $CEPH_DEV_DIR/osd$osd || true
-	    for f in $CEPH_DEV_DIR/osd$osd/* ; do btrfs sub delete $f || true ; done || true
+	    for f in $CEPH_DEV_DIR/osd$osd/*; do btrfs sub delete $f &> /dev/null || true; done
 	    mkdir -p $CEPH_DEV_DIR/osd$osd
 
 	    uuid=`uuidgen`
@@ -621,6 +627,18 @@ EOF
 fi
 
 if [ "$start_mds" -eq 1 -a "$CEPH_NUM_MDS" -gt 0 ]; then
+    cmd="$CEPH_ADM osd pool create cephfs_data 8"
+    echo $cmd
+    $cmd
+
+    cmd="$CEPH_ADM osd pool create cephfs_metadata 8"
+    echo $cmd
+    $cmd
+
+    cmd="$CEPH_ADM fs new cephfs cephfs_metadata cephfs_data"
+    echo $cmd
+    $cmd
+
     mds=0
     for name in a b c d e f g h i j k l m n o p
     do
@@ -651,17 +669,6 @@ EOF
 			mon 'allow *' osd 'allow *' mds 'allow'
 	    fi
 
-        cmd="$CEPH_ADM osd pool create cephfs_data 8"
-        echo $cmd
-        $cmd
-
-        cmd="$CEPH_ADM osd pool create cephfs_metadata 8"
-        echo $cmd
-        $cmd
-
-        cmd="$CEPH_ADM fs new cephfs cephfs_metadata cephfs_data"
-        echo $cmd
-        $cmd
 	fi
 	
 	run 'mds' $CEPH_BIN/ceph-mds -i $name $ARGS $CMDS_ARGS
@@ -676,9 +683,6 @@ EOF
 #$CEPH_BIN/ceph-mds -d $ARGS --mds_thrash_fragments 0 --mds_thrash_exports 0 #--debug_ms 20
 #$CEPH_ADM mds set max_mds 2
     done
-    cmd="$CEPH_ADM mds set max_mds $CEPH_NUM_MDS"
-    echo $cmd
-    $cmd
 fi
 
 if [ "$ec" -eq 1 ]; then
@@ -721,17 +725,6 @@ do_hitsets $hitset
 
 do_rgw()
 {
-    # Start server
-    echo start rgw on http://localhost:$CEPH_RGW_PORT
-    RGWDEBUG=""
-    if [ "$debug" -ne 0 ]; then
-        RGWDEBUG="--debug-rgw=20"
-    fi
-
-    RGWSUDO=
-    [ $CEPH_RGW_PORT -lt 1024 ] && RGWSUDO=sudo
-    $RGWSUDO $CEPH_BIN/radosgw -c $conf_fn --log-file=${CEPH_OUT_DIR}/rgw.log ${RGWDEBUG} --debug-ms=1
-
     # Create S3 user
     local akey='0555b35654ad1656d804'
     local skey='h7GhxuBLTrlhVUyxSPUKUV8r/2EI4ngqJxD7iBdBYLhwluN30JaT3Q=='
@@ -768,6 +761,17 @@ do_rgw()
     echo "  user      : tester"
     echo "  password  : testing"
     echo ""
+
+    # Start server
+    echo start rgw on http://localhost:$CEPH_RGW_PORT
+    RGWDEBUG=""
+    if [ "$debug" -ne 0 ]; then
+        RGWDEBUG="--debug-rgw=20"
+    fi
+
+    RGWSUDO=
+    [ $CEPH_RGW_PORT -lt 1024 ] && RGWSUDO=sudo
+    $RGWSUDO $CEPH_BIN/radosgw -c $conf_fn --log-file=${CEPH_OUT_DIR}/rgw.log ${RGWDEBUG} --debug-ms=1
 }
 if [ "$start_rgw" -eq 1 ]; then
     do_rgw

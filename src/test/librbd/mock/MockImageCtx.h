@@ -7,6 +7,7 @@
 #include "test/librbd/mock/MockAioImageRequestWQ.h"
 #include "test/librbd/mock/MockContextWQ.h"
 #include "test/librbd/mock/MockExclusiveLock.h"
+#include "test/librbd/mock/MockImageState.h"
 #include "test/librbd/mock/MockImageWatcher.h"
 #include "test/librbd/mock/MockJournal.h"
 #include "test/librbd/mock/MockObjectMap.h"
@@ -59,6 +60,7 @@ struct MockImageCtx {
       aio_work_queue(new MockAioImageRequestWQ()),
       op_work_queue(new MockContextWQ()),
       parent(NULL), operations(new MockOperations()),
+      state(new MockImageState()),
       image_watcher(NULL), object_map(NULL),
       exclusive_lock(NULL), journal(NULL),
       concurrent_management_ops(image_ctx.concurrent_management_ops),
@@ -85,6 +87,7 @@ struct MockImageCtx {
     image_ctx->md_ctx.aio_flush();
     image_ctx->data_ctx.aio_flush();
     image_ctx->op_work_queue->drain();
+    delete state;
     delete operations;
     delete image_watcher;
     delete op_work_queue;
@@ -110,6 +113,7 @@ struct MockImageCtx {
   MOCK_CONST_METHOD1(get_object_name, std::string(uint64_t));
   MOCK_CONST_METHOD0(get_current_size, uint64_t());
   MOCK_CONST_METHOD1(get_image_size, uint64_t(librados::snap_t));
+  MOCK_CONST_METHOD1(get_object_count, uint64_t(librados::snap_t));
   MOCK_CONST_METHOD1(get_snap_id, librados::snap_t(std::string in_snap_name));
   MOCK_CONST_METHOD1(get_snap_info, const SnapInfo*(librados::snap_t));
   MOCK_CONST_METHOD2(get_parent_spec, int(librados::snap_t in_snap_id,
@@ -140,6 +144,9 @@ struct MockImageCtx {
   MOCK_METHOD0(create_exclusive_lock, MockExclusiveLock*());
   MOCK_METHOD1(create_object_map, MockObjectMap*(uint64_t));
   MOCK_METHOD0(create_journal, MockJournal*());
+
+  MOCK_METHOD0(notify_update, void());
+  MOCK_METHOD1(notify_update, void(Context *));
 
   ImageCtx *image_ctx;
   CephContext *cct;
@@ -183,7 +190,7 @@ struct MockImageCtx {
   std::string id;
   parent_info parent_md;
 
-  ceph_file_layout layout;
+  file_layout_t layout;
 
   xlist<operation::ResizeRequest<MockImageCtx>*> resize_reqs;
   xlist<AsyncRequest<MockImageCtx>*> async_requests;
@@ -197,6 +204,7 @@ struct MockImageCtx {
 
   MockImageCtx *parent;
   MockOperations *operations;
+  MockImageState *state;
 
   MockImageWatcher *image_watcher;
   MockObjectMap *object_map;

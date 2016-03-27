@@ -53,7 +53,7 @@ TestPoolWatcher() : m_lock("TestPoolWatcherLock"),
   }
 
   void create_pool(bool enable_mirroring, const peer_t &peer, string *name=nullptr) {
-    string pool_name = get_temp_pool_name();
+    string pool_name = get_temp_pool_name("test-rbd-mirror-");
     ASSERT_EQ("", create_one_pool_pp(pool_name, *m_cluster));
     int64_t pool_id = m_cluster->pool_lookup(pool_name.c_str());
     ASSERT_GE(pool_id, 0);
@@ -61,8 +61,9 @@ TestPoolWatcher() : m_lock("TestPoolWatcherLock"),
     if (enable_mirroring) {
       librados::IoCtx ioctx;
       ASSERT_EQ(0, m_cluster->ioctx_create2(pool_id, ioctx));
-      ASSERT_EQ(0, librbd::mirror_set_enabled(ioctx, true));
-      ASSERT_EQ(0, librbd::mirror_peer_add(ioctx, peer.cluster_uuid,
+      ASSERT_EQ(0, librbd::mirror_mode_set(ioctx, RBD_MIRROR_MODE_POOL));
+      std::string uuid;
+      ASSERT_EQ(0, librbd::mirror_peer_add(ioctx, &uuid,
 					   peer.cluster_name,
 					   peer.client_name));
     }
@@ -81,7 +82,7 @@ TestPoolWatcher() : m_lock("TestPoolWatcherLock"),
 
   void create_cache_pool(const string &base_pool, string *cache_pool_name) {
     bufferlist inbl;
-    *cache_pool_name = get_temp_pool_name();
+    *cache_pool_name = get_temp_pool_name("test-rbd-mirror-");
     ASSERT_EQ("", create_one_pool_pp(*cache_pool_name, *m_cluster));
     ASSERT_EQ(0, m_cluster->mon_command(
       "{\"prefix\": \"osd tier add\", \"pool\": \"" + base_pool +
@@ -134,8 +135,14 @@ TestPoolWatcher() : m_lock("TestPoolWatcherLock"),
     int order = 0;
     ASSERT_EQ(0, librbd::create(ioctx, name.c_str(), 1 << 22, false,
 				features, &order, 0, 0));
-    if (mirrored)
+    if (mirrored) {
+      librbd::Image image;
+      librbd::RBD rbd;
+      rbd.open(ioctx, image, name.c_str());
+      image.mirror_image_enable();
+      image.close();
       m_mirrored_images[ioctx.get_id()].insert(get_image_id(&ioctx, name));
+    }
     if (image_name != nullptr)
       *image_name = name;
   }
@@ -167,8 +174,14 @@ TestPoolWatcher() : m_lock("TestPoolWatcherLock"),
     int order = 0;
     librbd::clone(pioctx, parent_image_name.c_str(), snap_name.c_str(),
 		  cioctx, name.c_str(), features, &order, 0, 0);
-    if (mirrored)
+    if (mirrored) {
+      librbd::Image image;
+      librbd::RBD rbd;
+      rbd.open(cioctx, image, name.c_str());
+      image.mirror_image_enable();
+      image.close();
       m_mirrored_images[cioctx.get_id()].insert(get_image_id(&cioctx, name));
+    }
     if (image_name != nullptr)
       *image_name = name;
   }
@@ -213,6 +226,8 @@ TEST_F(TestPoolWatcher, ReplicatedPools) {
   check_images();
   clone_image(first_pool, parent_image, first_pool, true, &parent_image2);
   check_images();
+  create_image(first_pool, false);
+  check_images();
 
   create_pool(false, peer_t(), &local_pool);
   check_images();
@@ -247,6 +262,8 @@ TEST_F(TestPoolWatcher, CachePools) {
   } BOOST_SCOPE_EXIT_END;
   check_images();
   create_image(base1);
+  check_images();
+  create_image(base1, false);
   check_images();
 
   create_pool(false, peer_t(), &base2);

@@ -1,6 +1,6 @@
 .\" Man page generated from reStructuredText.
 .
-.TH "CEPH" "8" "March 22, 2016" "dev" "Ceph"
+.TH "CEPH" "8" "March 24, 2016" "dev" "Ceph"
 .SH NAME
 ceph \- ceph administration tool
 .
@@ -80,7 +80,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .fi
 .sp
 .nf
-\fBceph\fP \fBmds\fP [ \fIadd_data_pool\fP | \fIcluster_down\fP | \fIcluster_up\fP | \fIcompat\fP | \fIdeactivate\fP | \fIdump\fP | \fIfail\fP | \fIgetmap\fP | \fInewfs\fP | \fIremove_data_pool\fP | \fIrm\fP | \fIrmfailed\fP | \fIset\fP | \fIset_max_mds\fP | \fIset_state\fP | \fIsetmap\fP | \fIstat\fP | \fIstop\fP | \fItell\fP ] ...
+\fBceph\fP \fBmds\fP [ \fIadd_data_pool\fP | \fIcluster_down\fP | \fIcluster_up\fP | \fIcompat\fP | \fIdeactivate\fP | \fIdump\fP | \fIfail\fP | \fIgetmap\fP | \fInewfs\fP | \fIremove_data_pool\fP | \fIrm\fP | \fIrmfailed\fP | \fIset\fP | \fIset_max_mds\fP | \fIset_state\fP | \fIstat\fP | \fIstop\fP | \fItell\fP ] ...
 .fi
 .sp
 .nf
@@ -849,20 +849,6 @@ Usage:
 .nf
 .ft C
 ceph mds set_state <int[0\-]> <int[0\-20]>
-.ft P
-.fi
-.UNINDENT
-.UNINDENT
-.sp
-Subcommand \fBsetmap\fP sets mds map; must supply correct epoch number.
-.sp
-Usage:
-.INDENT 0.0
-.INDENT 3.5
-.sp
-.nf
-.ft C
-ceph mds setmap <int[0\-]>
 .ft P
 .fi
 .UNINDENT
@@ -2049,6 +2035,7 @@ Usage:
 .nf
 .ft C
 ceph osd reweight\-by\-pg {<int[100\-]>} {<poolname> [<poolname...]}
+{\-\-no\-increasing}
 .ft P
 .fi
 .UNINDENT
@@ -2064,6 +2051,7 @@ Usage:
 .nf
 .ft C
 ceph osd reweight\-by\-utilization {<int[100\-]>}
+{\-\-no\-increasing}
 .ft P
 .fi
 .UNINDENT

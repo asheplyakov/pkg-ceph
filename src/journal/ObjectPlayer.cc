@@ -161,7 +161,7 @@ int ObjectPlayer::handle_fetch_complete(int r, const bufferlist &bl) {
   }
 
   if (!m_invalid_ranges.empty()) {
-    r = -EINVAL;
+    r = -EBADMSG;
   }
   return r;
 }
@@ -207,11 +207,10 @@ void ObjectPlayer::handle_watch_fetched(int r) {
     Mutex::Locker timer_locker(m_timer_lock);
     assert(m_watch_in_progress);
     if (r == -ENOENT) {
-      schedule_watch();
-    } else {
-      on_finish = m_watch_ctx;
-      m_watch_ctx = NULL;
+      r = 0;
     }
+    on_finish = m_watch_ctx;
+    m_watch_ctx = NULL;
   }
 
   if (on_finish != NULL) {

@@ -40,6 +40,7 @@
 #include "messages/MOSDRepScrub.h"
 #include "OpRequest.h"
 
+#include <atomic>
 #include <map>
 #include <memory>
 #include "include/memory.h"
@@ -317,7 +318,7 @@ public:
      * CLEARING_WAITING and QUEUED indicate that the remover will check
      * stop_deleting before queueing any further operations.  CANCELED
      * indicates that the remover has already halted.  DELETED_DIR
-     * indicates that the deletion has been fully queueud.
+     * indicates that the deletion has been fully queued.
      */
     while (status == DELETING_DIR || status == CLEARING_DIR)
       cond.Wait(lock);
@@ -475,6 +476,7 @@ public:
 
   int get_nodeid() const { return whoami; }
 
+  std::atomic<epoch_t> max_oldest_map;
   OSDMapRef osdmap;
   OSDMapRef get_osdmap() {
     Mutex::Locker l(publish_lock);
@@ -781,6 +783,29 @@ public:
     flush_mode_high_count --;
   }
 
+  /// throttle promotion attempts
+  atomic_t promote_probability_millis; ///< probability thousands. one word.
+  PromoteCounter promote_counter;
+  utime_t last_recalibrate;
+  unsigned long promote_max_objects, promote_max_bytes;
+
+  bool promote_throttle() {
+    // NOTE: lockless!  we rely on the probability being a single word.
+    promote_counter.attempt();
+    if ((unsigned)rand() % 1000 > promote_probability_millis.read())
+      return true;  // yes throttle (no promote)
+    if (promote_max_objects &&
+	promote_counter.objects.read() > promote_max_objects)
+      return true;  // yes throttle
+    if (promote_max_bytes &&
+	promote_counter.bytes.read() > promote_max_bytes)
+      return true;  // yes throttle
+    return false;   //  no throttle (promote)
+  }
+  void promote_finish(uint64_t bytes) {
+    promote_counter.finish(bytes);
+  }
+  void promote_throttle_recalibrate();
 
   // -- Objecter, for teiring reads/writes from/to other OSDs --
   Objecter *objecter;
@@ -1541,6 +1566,10 @@ private:
     Mutex::Locker l(heartbeat_update_lock);
     heartbeat_need_update = true;
   }
+  void heartbeat_clear_peers_need_update() {
+    Mutex::Locker l(heartbeat_update_lock);
+    heartbeat_need_update = false;
+  }
   void heartbeat();
   void heartbeat_check();
   void heartbeat_entry();
@@ -1565,7 +1594,7 @@ public:
 
   struct HeartbeatDispatcher : public Dispatcher {
     OSD *osd;
-    explicit HeartbeatDispatcher(OSD *o) : Dispatcher(cct), osd(o) {}
+    explicit HeartbeatDispatcher(OSD *o) : Dispatcher(o->cct), osd(o) {}
     bool ms_dispatch(Message *m) {
       return osd->heartbeat_dispatch(m);
     }
@@ -1851,8 +1880,10 @@ private:
 
   void wait_for_new_map(OpRequestRef op);
   void handle_osd_map(class MOSDMap *m);
+  void _committed_osd_maps(epoch_t first, epoch_t last, class MOSDMap *m);
   void note_down_osd(int osd);
   void note_up_osd(int osd);
+  friend class C_OnMapCommit;
 
   bool advance_pg(
     epoch_t advance_to, PG *pg,
@@ -1860,7 +1891,6 @@ private:
     PG::RecoveryCtx *rctx,
     set<boost::intrusive_ptr<PG> > *split_pgs
   );
-  void advance_map();
   void consume_map();
   void activate_map();
 
@@ -1935,11 +1965,10 @@ protected:
 
   void handle_pg_peering_evt(
     spg_t pgid,
-    const pg_info_t& info,
+    const pg_history_t& orig_history,
     pg_interval_map_t& pi,
     epoch_t epoch,
-    pg_shard_t from,
-    bool primary,
+    bool same_primary,
     PG::CephPeeringEvtRef evt);
   
   void load_pgs();
@@ -2015,7 +2044,6 @@ protected:
 
   // -- alive --
   epoch_t up_thru_wanted;
-  epoch_t up_thru_pending;
 
   void queue_want_up_thru(epoch_t want);
   void send_alive();
@@ -2300,6 +2328,8 @@ protected:
     case MSG_OSD_EC_READ:
     case MSG_OSD_EC_READ_REPLY:
     case MSG_OSD_REP_SCRUB:
+    case MSG_OSD_PG_UPDATE_LOG_MISSING:
+    case MSG_OSD_PG_UPDATE_LOG_MISSING_REPLY:
       return true;
     default:
       return false;

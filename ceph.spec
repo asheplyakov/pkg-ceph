@@ -46,7 +46,8 @@ restorecon -R /etc/rc\.d/init\.d/ceph > /dev/null 2>&1; \
 restorecon -R /etc/rc\.d/init\.d/radosgw > /dev/null 2>&1; \
 restorecon -R /var/run/ceph > /dev/null 2>&1; \
 restorecon -R /var/lib/ceph > /dev/null 2>&1; \
-restorecon -R /var/log/ceph > /dev/null 2>&1;
+restorecon -R /var/log/ceph > /dev/null 2>&1; \
+restorecon -R /var/log/radosgw > /dev/null 2>&1;
 %endif
 
 %{!?_udevrulesdir: %global _udevrulesdir /lib/udev/rules.d}
@@ -74,7 +75,7 @@ restorecon -R /var/log/ceph > /dev/null 2>&1;
 # common
 #################################################################################
 Name:		ceph
-Version:	10.0.5
+Version:	10.1.0
 Release:	0%{?dist}
 Epoch:		1
 Summary:	User space components of the Ceph file system
@@ -108,11 +109,6 @@ BuildRequires:	boost-devel
 BuildRequires:  cmake
 BuildRequires:	cryptsetup
 BuildRequires:	fuse-devel
-%if 0%{?suse_version}
-BuildRequires:	python-Cython
-%else
-BuildRequires:	Cython
-%endif
 BuildRequires:	gdbm
 BuildRequires:	hdparm
 BuildRequires:	leveldb-devel > 1.2
@@ -155,15 +151,20 @@ BuildRequires:	libbz2-devel
 %if 0%{with tcmalloc}
 BuildRequires:	gperftools-devel
 %endif
+BuildRequires:  btrfsprogs
 BuildRequires:	mozilla-nss-devel
 BuildRequires:	keyutils-devel
 BuildRequires:	libatomic-ops-devel
+BuildRequires:  libopenssl-devel
 BuildRequires:  lsb-release
+BuildRequires:  openldap2-devel
+BuildRequires:	python-Cython
 %endif
 %if 0%{?fedora} || 0%{?rhel} 
 %if 0%{?_with_systemd}
 Requires:	systemd
 %endif
+BuildRequires:	btrfs-progs
 BuildRequires:	nss-devel
 BuildRequires:	keyutils-libs-devel
 BuildRequires:	libatomic_ops-devel
@@ -171,7 +172,10 @@ Requires(post):	chkconfig
 Requires(preun):	chkconfig
 Requires(preun):	initscripts
 BuildRequires:	gperftools-devel
+BuildRequires:  openldap-devel
+BuildRequires:  openssl-devel
 BuildRequires:  redhat-lsb-core
+BuildRequires:	Cython
 %endif
 # boost
 %if 0%{?fedora} || 0%{?rhel} 
@@ -208,6 +212,10 @@ BuildRequires:	python-sphinx10
 %if 0%{?fedora} || 0%{?suse_version} || 0%{?rhel} >= 7
 BuildRequires:	python-sphinx
 %endif
+#hardened-cc1
+%if 0%{?fedora} || 0%{?rhel}
+BuildRequires:  redhat-rpm-config
+%endif
 
 %description
 Ceph is a massively scalable, open-source, distributed storage system that runs
@@ -224,6 +232,7 @@ Requires:      ceph-common = %{epoch}:%{version}-%{release}
 Requires:      librbd1 = %{epoch}:%{version}-%{release}
 Requires:      librados2 = %{epoch}:%{version}-%{release}
 Requires:      libcephfs1 = %{epoch}:%{version}-%{release}
+Requires:      librgw2 = %{epoch}:%{version}-%{release}
 %if 0%{with selinux}
 Requires:      ceph-selinux = %{epoch}:%{version}-%{release}
 %endif
@@ -253,6 +262,7 @@ Summary:	Ceph Common
 Group:		System Environment/Base
 Requires:	librbd1 = %{epoch}:%{version}-%{release}
 Requires:	librados2 = %{epoch}:%{version}-%{release}
+Requires:	libcephfs1 = %{epoch}:%{version}-%{release}
 Requires:	python-rados = %{epoch}:%{version}-%{release}
 Requires:	python-rbd = %{epoch}:%{version}-%{release}
 Requires:	python-cephfs = %{epoch}:%{version}-%{release}
@@ -300,14 +310,12 @@ of cluster membership, configuration, and state.
 %package fuse
 Summary:	Ceph fuse-based client
 Group:		System Environment/Base
-Requires:	%{name}
 %description fuse
 FUSE based client for Ceph distributed network file system
 
 %package -n rbd-fuse
 Summary:	Ceph fuse-based client
 Group:		System Environment/Base
-Requires:	%{name}
 Requires:	librados2 = %{epoch}:%{version}-%{release}
 Requires:	librbd1 = %{epoch}:%{version}-%{release}
 %description -n rbd-fuse
@@ -316,7 +324,6 @@ FUSE based client to map Ceph rbd images to files
 %package -n rbd-mirror
 Summary:	Ceph daemon for mirroring RBD images
 Group:		System Environment/Base
-Requires:	%{name}
 Requires:	ceph-common = %{epoch}:%{version}-%{release}
 Requires:	librados2 = %{epoch}:%{version}-%{release}
 %description -n rbd-mirror
@@ -326,7 +333,6 @@ changes asynchronously.
 %package -n rbd-nbd
 Summary:	Ceph RBD client base on NBD
 Group:		System Environment/Base
-Requires:	%{name}
 Requires:	librados2 = %{epoch}:%{version}-%{release}
 Requires:	librbd1 = %{epoch}:%{version}-%{release}
 %description -n rbd-nbd
@@ -340,6 +346,7 @@ Requires:	ceph-common = %{epoch}:%{version}-%{release}
 Requires:	ceph-selinux = %{epoch}:%{version}-%{release}
 %endif
 Requires:	librados2 = %{epoch}:%{version}-%{release}
+Requires:	librgw2 = %{epoch}:%{version}-%{release}
 %if 0%{?rhel} || 0%{?fedora}
 Requires:	mailcap
 # python-flask for powerdns
@@ -350,16 +357,17 @@ Requires:	python-flask
 Requires:      python-Flask
 %endif
 %description radosgw
-This package is an S3 HTTP REST gateway for the RADOS object store. It
-is implemented as a FastCGI module using libfcgi, and can be used in
-conjunction with any FastCGI capable web server.
+RADOS is a distributed object store used by the Ceph distributed
+storage system.  This package provides a REST gateway to the
+object store that aims to implement a superset of Amazon's S3
+service as well as the OpenStack Object Storage ("Swift") API.
 
 %if %{with ocf}
 %package resource-agents
 Summary:	OCF-compliant resource agents for Ceph daemons
 Group:		System Environment/Base
 License:	LGPL-2.0
-Requires:	%{name} = %{epoch}:%{version}
+Requires:	ceph-base = %{epoch}:%{version}
 Requires:	resource-agents
 %description resource-agents
 Resource agents for monitoring and managing Ceph daemons
@@ -405,6 +413,24 @@ Obsoletes:	ceph-devel < %{epoch}:%{version}-%{release}
 %description -n librados2-devel
 This package contains libraries and headers needed to develop programs
 that use RADOS object store.
+
+%package -n librgw2
+Summary:	RADOS gateway client library
+Group:		System Environment/Libraries
+License:	LGPL-2.0
+Requires:	librados2 = %{epoch}:%{version}-%{release}
+%description -n librgw2
+This package provides a library implementation of the RADOS gateway
+(distributed object store with S3 and Swift personalities).
+
+%package -n librgw2-devel
+Summary:	RADOS gateway client library
+Group:		Development/Libraries
+License:	LGPL-2.0
+Requires:	librados2 = %{epoch}:%{version}-%{release}
+%description -n librgw2-devel
+This package contains libraries and headers needed to develop programs
+that use RADOS gateway client library.
 
 %package -n python-rados
 Summary:	Python libraries for the RADOS object store
@@ -564,7 +590,7 @@ This package contains the Java libraries for the Ceph File System.
 %package selinux
 Summary:	SELinux support for Ceph MON, OSD and MDS
 Group:		System Environment/Base
-Requires:	%{name}
+Requires:	ceph-base = %{epoch}:%{version}-%{release}
 Requires:	policycoreutils, libselinux-utils
 Requires(post): selinux-policy-base >= %{_selinux_policy_version}, policycoreutils, gawk
 Requires(postun): policycoreutils
@@ -601,7 +627,6 @@ Summary:	Compatibility package for Ceph headers
 Group:		Development/Libraries
 License:	LGPL-2.0
 Obsoletes:	ceph-devel
-Requires:	%{name} = %{epoch}:%{version}-%{release}
 Requires:	librados2-devel = %{epoch}:%{version}-%{release}
 Requires:	libradosstriper1-devel = %{epoch}:%{version}-%{release}
 Requires:	librbd1-devel = %{epoch}:%{version}-%{release}
@@ -733,11 +758,13 @@ install -m 0644 -D etc/sysconfig/ceph $RPM_BUILD_ROOT%{_localstatedir}/adm/fillu
   install -m 0644 -D systemd/ceph-create-keys@.service $RPM_BUILD_ROOT%{_unitdir}/ceph-create-keys@.service
   install -m 0644 -D systemd/ceph-mds@.service $RPM_BUILD_ROOT%{_unitdir}/ceph-mds@.service
   install -m 0644 -D systemd/ceph-radosgw@.service $RPM_BUILD_ROOT%{_unitdir}/ceph-radosgw@.service
+  install -m 0644 -D systemd/ceph-rbd-mirror@.service $RPM_BUILD_ROOT%{_unitdir}/ceph-rbd-mirror@.service
   install -m 0644 -D systemd/ceph.target $RPM_BUILD_ROOT%{_unitdir}/ceph.target
   install -m 0644 -D systemd/ceph-osd.target $RPM_BUILD_ROOT%{_unitdir}/ceph-osd.target
   install -m 0644 -D systemd/ceph-mon.target $RPM_BUILD_ROOT%{_unitdir}/ceph-mon.target
   install -m 0644 -D systemd/ceph-mds.target $RPM_BUILD_ROOT%{_unitdir}/ceph-mds.target
   install -m 0644 -D systemd/ceph-radosgw.target $RPM_BUILD_ROOT%{_unitdir}/ceph-radosgw.target
+  install -m 0644 -D systemd/ceph-rbd-mirror.target $RPM_BUILD_ROOT%{_unitdir}/ceph-rbd-mirror.target
   install -m 0644 -D systemd/ceph-disk@.service $RPM_BUILD_ROOT%{_unitdir}/ceph-disk@.service
   install -m 0755 -D systemd/ceph $RPM_BUILD_ROOT%{_sbindir}/rcceph
 %else
@@ -942,6 +969,9 @@ rm -rf $RPM_BUILD_ROOT
 %{_bindir}/ceph-rbdnamer
 %{_bindir}/ceph-syn
 %{_bindir}/ceph-crush-location
+%{_bindir}/cephfs-data-scan
+%{_bindir}/cephfs-journal-tool
+%{_bindir}/cephfs-table-tool
 %{_bindir}/rados
 %{_bindir}/rbd
 %{_bindir}/rbd-replay
@@ -1018,9 +1048,6 @@ fi
 #################################################################################
 %files mds
 %{_bindir}/ceph-mds
-%{_bindir}/cephfs-journal-tool
-%{_bindir}/cephfs-table-tool
-%{_bindir}/cephfs-data-scan
 %{_mandir}/man8/ceph-mds.8*
 %if 0%{?_with_systemd}
 %{_unitdir}/ceph-mds@.service
@@ -1067,6 +1094,10 @@ fi
 %defattr(-,root,root,-)
 %{_bindir}/rbd-mirror
 %{_mandir}/man8/rbd-mirror.8*
+%if 0%{?_with_systemd}
+%{_unitdir}/ceph-rbd-mirror@.service
+%{_unitdir}/ceph-rbd-mirror.target
+%endif
 
 #################################################################################
 %files -n rbd-nbd
@@ -1079,6 +1110,7 @@ fi
 %defattr(-,root,root,-)
 %{_bindir}/radosgw
 %{_bindir}/radosgw-admin
+%{_bindir}/radosgw-token
 %{_bindir}/radosgw-object-expirer
 %{_mandir}/man8/radosgw.8*
 %{_mandir}/man8/radosgw-admin.8*
@@ -1161,12 +1193,27 @@ fi
 
 #################################################################################
 %if %{with ocf}
+
 %files resource-agents
 %defattr(0755,root,root,-)
-%dir /usr/lib/ocf
-%dir /usr/lib/ocf/resource.d
-%dir /usr/lib/ocf/resource.d/ceph
-/usr/lib/ocf/resource.d/%{name}/*
+# N.B. src/ocf/Makefile.am uses $(prefix)/lib
+%dir %{_prefix}/lib/ocf
+%dir %{_prefix}/lib/ocf/resource.d
+%dir %{_prefix}/lib/ocf/resource.d/ceph
+%if 0%{_with_systemd}
+%exclude %{_prefix}/lib/ocf/resource.d/ceph/ceph
+%exclude %{_prefix}/lib/ocf/resource.d/ceph/mds
+%exclude %{_prefix}/lib/ocf/resource.d/ceph/mon
+%exclude %{_prefix}/lib/ocf/resource.d/ceph/osd
+%endif
+%if ! 0%{_with_systemd}
+%{_prefix}/lib/ocf/resource.d/ceph/ceph
+%{_prefix}/lib/ocf/resource.d/ceph/mds
+%{_prefix}/lib/ocf/resource.d/ceph/mon
+%{_prefix}/lib/ocf/resource.d/ceph/osd
+%endif
+%{_prefix}/lib/ocf/resource.d/ceph/rbd
+
 %endif
 
 #################################################################################
@@ -1206,7 +1253,8 @@ fi
 #################################################################################
 %files -n python-rados
 %defattr(-,root,root,-)
-%{python_sitelib}/rados.py*
+%{python_sitearch}/rados.so
+%{python_sitearch}/rados-*.egg-info
 
 #################################################################################
 %files -n libradosstriper1
@@ -1256,6 +1304,25 @@ ln -sf %{_libdir}/librbd.so.1 /usr/lib64/qemu/librbd.so.1
 %endif
 
 #################################################################################
+%files -n librgw2
+%defattr(-,root,root,-)
+%{_libdir}/librgw.so.*
+
+%post -n librgw2
+/sbin/ldconfig
+
+%postun -n librgw2
+/sbin/ldconfig
+
+#################################################################################
+%files -n librgw2-devel
+%defattr(-,root,root,-)
+%dir %{_includedir}/rados
+%{_includedir}/rados/librgw.h
+%{_includedir}/rados/rgw_file.h
+%{_libdir}/librgw.so
+
+#################################################################################
 %files -n python-rbd
 %defattr(-,root,root,-)
 %{python_sitearch}/rbd.so
@@ -1282,7 +1349,8 @@ ln -sf %{_libdir}/librbd.so.1 /usr/lib64/qemu/librbd.so.1
 #################################################################################
 %files -n python-cephfs
 %defattr(-,root,root,-)
-%{python_sitelib}/cephfs.py*
+%{python_sitearch}/cephfs.so
+%{python_sitearch}/cephfs-*.egg-info
 %{python_sitelib}/ceph_volume_client.py*
 
 #################################################################################
@@ -1310,6 +1378,7 @@ ln -sf %{_libdir}/librbd.so.1 /usr/lib64/qemu/librbd.so.1
 %{_bindir}/ceph_smalliobenchfs
 %{_bindir}/ceph_smalliobenchrbd
 %{_bindir}/ceph_test_*
+%{_bindir}/librgw_file*
 %{_bindir}/ceph_tpbench
 %{_bindir}/ceph_xattr_bench
 %{_bindir}/ceph-coverage

@@ -390,6 +390,9 @@ int get_image_options(const boost::program_options::variables_map &vm,
     } else {
       format = g_conf->rbd_default_format;
     }
+    if (format == 1) {
+      std::cerr << "rbd: image format 1 is deprecated" << std::endl;
+    }
 
     if (features_specified && features != 0) {
       if (format_specified && format == 1) {
@@ -614,6 +617,19 @@ std::string image_id(librbd::Image& image) {
   prefix[RBD_MAX_BLOCK_NAME_SIZE] = '\0';
 
   return string(prefix + strlen(RBD_DATA_PREFIX));
+}
+
+std::string mirror_image_state(rbd_mirror_image_state_t mirror_image_state) {
+  switch (mirror_image_state) {
+    case RBD_MIRROR_IMAGE_DISABLING:
+      return "disabling";
+    case RBD_MIRROR_IMAGE_ENABLED:
+      return "enabled";
+    case RBD_MIRROR_IMAGE_DISABLED:
+      return "disabled";
+    default:
+      return "unknown";
+  }
 }
 
 } // namespace utils

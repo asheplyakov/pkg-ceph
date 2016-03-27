@@ -1,6 +1,6 @@
 .\" Man page generated from reStructuredText.
 .
-.TH "RBD" "8" "March 22, 2016" "dev" "Ceph"
+.TH "RBD" "8" "March 24, 2016" "dev" "Ceph"
 .SH NAME
 rbd \- manage rados block device (RBD) images
 .
@@ -78,9 +78,9 @@ default for some commands).
 Specifies which object layout to use. The default is 1.
 .INDENT 7.0
 .IP \(bu 2
-format 1 \- Use the original format for a new rbd image. This format is
-understood by all versions of librbd and the kernel rbd module, but
-does not support newer features like cloning.
+format 1 \- (deprecated) Use the original format for a new rbd image. This
+format is understood by all versions of librbd and the kernel rbd module,
+but does not support newer features like cloning.
 .IP \(bu 2
 format 2 \- Use the second rbd format, which is supported by
 librbd and kernel since version 3.11 (except for striping). This adds
