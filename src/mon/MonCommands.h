@@ -141,21 +141,21 @@ COMMAND("pg dump_stuck " \
 	"pg", "r", "cli,rest")
 COMMAND("pg ls-by-pool " \
         "name=poolstr,type=CephString " \
-	"name=states,type=CephChoices,strings=active|clean|down|replay|splitting|scrubbing|scrubq|degraded|inconsistent|peering|repair|recovering|backfill_wait|incomplete|stale|remapped|deep_scrub|backfill|backfill_toofull|recovery_wait|undersized,n=N,req=false ", \
+	"name=states,type=CephChoices,strings=active|clean|down|replay|splitting|scrubbing|scrubq|degraded|inconsistent|peering|repair|recovering|backfill_wait|incomplete|stale|remapped|deep_scrub|backfill|backfill_toofull|recovery_wait|undersized|activating|peered,n=N,req=false ", \
 	"list pg with pool = [poolname | poolid]", "pg", "r", "cli,rest")
 COMMAND("pg ls-by-primary " \
         "name=osd,type=CephOsdName " \
         "name=pool,type=CephInt,req=false " \
-	"name=states,type=CephChoices,strings=active|clean|down|replay|splitting|scrubbing|scrubq|degraded|inconsistent|peering|repair|recovering|backfill_wait|incomplete|stale|remapped|deep_scrub|backfill|backfill_toofull|recovery_wait|undersized,n=N,req=false ", \
+	"name=states,type=CephChoices,strings=active|clean|down|replay|splitting|scrubbing|scrubq|degraded|inconsistent|peering|repair|recovering|backfill_wait|incomplete|stale|remapped|deep_scrub|backfill|backfill_toofull|recovery_wait|undersized|activating|peered,n=N,req=false ", \
 	"list pg with primary = [osd]", "pg", "r", "cli,rest")
 COMMAND("pg ls-by-osd " \
         "name=osd,type=CephOsdName " \
         "name=pool,type=CephInt,req=false " \
-	"name=states,type=CephChoices,strings=active|clean|down|replay|splitting|scrubbing|scrubq|degraded|inconsistent|peering|repair|recovering|backfill_wait|incomplete|stale|remapped|deep_scrub|backfill|backfill_toofull|recovery_wait|undersized,n=N,req=false ", \
+	"name=states,type=CephChoices,strings=active|clean|down|replay|splitting|scrubbing|scrubq|degraded|inconsistent|peering|repair|recovering|backfill_wait|incomplete|stale|remapped|deep_scrub|backfill|backfill_toofull|recovery_wait|undersized|activating|peered,n=N,req=false ", \
 	"list pg on osd [osd]", "pg", "r", "cli,rest")
 COMMAND("pg ls " \
         "name=pool,type=CephInt,req=false " \
-	"name=states,type=CephChoices,strings=active|clean|down|replay|splitting|scrubbing|scrubq|degraded|inconsistent|peering|repair|recovering|backfill_wait|incomplete|stale|remapped|deep_scrub|backfill|backfill_toofull|recovery_wait|undersized,n=N,req=false ", \
+	"name=states,type=CephChoices,strings=active|clean|down|replay|splitting|scrubbing|scrubq|degraded|inconsistent|peering|repair|recovering|backfill_wait|incomplete|stale|remapped|deep_scrub|backfill|backfill_toofull|recovery_wait|undersized|activating|peered,n=N,req=false ", \
 	"list pg with specific pool, osd, state", "pg", "r", "cli,rest")
 COMMAND("pg map name=pgid,type=CephPgid", "show mapping of pg to osds", \
 	"pg", "r", "cli,rest")
@@ -218,6 +218,10 @@ COMMAND("auth caps " \
 COMMAND("auth del " \
 	"name=entity,type=CephString", \
 	"delete all caps for <name>", \
+	"auth", "rwx", "cli,rest")
+COMMAND("auth rm " \
+	"name=entity,type=CephString", \
+	"remove all caps for <name>", \
 	"auth", "rwx", "cli,rest")
 
 /*
@@ -300,7 +304,11 @@ COMMAND("mon metadata name=id,type=CephString",
 COMMAND("mds stat", "show MDS status", "mds", "r", "cli,rest")
 COMMAND("mds dump " 
 	"name=epoch,type=CephInt,req=false,range=0", \
-	"dump info, optionally from epoch", "mds", "r", "cli,rest")
+	"dump legacy MDS cluster info, optionally from epoch",
+        "mds", "r", "cli,rest")
+COMMAND("fs dump "
+	"name=epoch,type=CephInt,req=false,range=0", \
+	"dump all CephFS status, optionally from epoch", "mds", "r", "cli,rest")
 COMMAND("mds getmap " \
 	"name=epoch,type=CephInt,req=false,range=0", \
 	"get MDS map, optionally from epoch", "mds", "r", "cli,rest")
@@ -325,10 +333,6 @@ COMMAND("mds set " \
 	"name=val,type=CephString "					\
 	"name=confirm,type=CephString,req=false",			\
 	"set mds parameter <var> to <val>", "mds", "rw", "cli,rest")
-COMMAND("mds setmap " \
-	"name=epoch,type=CephInt,range=0 " \
-	"name=confirm,type=CephString,req=false",
-	"set mds map; must supply correct epoch number", "mds", "rw", "cli,rest")
 // arbitrary limit 0-20 below; worth standing on head to make it
 // relate to actual state definitions?
 // #include "include/ceph_fs.h"
@@ -338,12 +342,12 @@ COMMAND("mds set_state " \
 	"set mds state of <gid> to <numeric-state>", "mds", "rw", "cli,rest")
 COMMAND("mds fail name=who,type=CephString", \
 	"force mds to status failed", "mds", "rw", "cli,rest")
-COMMAND("mds repaired name=rank,type=CephInt", \
+COMMAND("mds repaired name=rank,type=CephString", \
 	"mark a damaged MDS rank as no longer damaged", "mds", "rw", "cli,rest")
 COMMAND("mds rm " \
 	"name=gid,type=CephInt,range=0", \
 	"remove nonactive mds", "mds", "rw", "cli,rest")
-COMMAND("mds rmfailed name=who,type=CephInt,range=0 name=confirm,type=CephString,req=false", \
+COMMAND("mds rmfailed name=who,type=CephString name=confirm,type=CephString,req=false", \
 	"remove failed mds", "mds", "rw", "cli,rest")
 COMMAND("mds cluster_down", "take MDS cluster down", "mds", "rw", "cli,rest")
 COMMAND("mds cluster_up", "bring MDS cluster up", "mds", "rw", "cli,rest")
@@ -357,6 +361,9 @@ COMMAND("mds add_data_pool " \
 	"name=pool,type=CephString", \
 	"add data pool <pool>", "mds", "rw", "cli,rest")
 COMMAND("mds remove_data_pool " \
+	"name=pool,type=CephString", \
+	"remove data pool <pool>", "mds", "rw", "cli,rest")
+COMMAND("mds rm_data_pool " \
 	"name=pool,type=CephString", \
 	"remove data pool <pool>", "mds", "rw", "cli,rest")
 COMMAND("mds newfs " \
@@ -384,6 +391,27 @@ COMMAND("fs reset " \
 COMMAND("fs ls ", \
 	"list filesystems", \
 	"fs", "r", "cli,rest")
+COMMAND("fs get name=fs_name,type=CephString", \
+	"get info about one filesystem", \
+	"fs", "r", "cli,rest")
+COMMAND("fs set " \
+	"name=fs_name,type=CephString " \
+	"name=var,type=CephChoices,strings=max_mds|max_file_size"
+        "|allow_new_snaps|inline_data|cluster_down " \
+	"name=val,type=CephString "					\
+	"name=confirm,type=CephString,req=false",			\
+	"set mds parameter <var> to <val>", "mds", "rw", "cli,rest")
+COMMAND("fs flag set name=flag_name,type=CephChoices,strings=enable_multiple "
+        "name=val,type=CephString", \
+	"Set a global CephFS flag", \
+	"fs", "rw", "cli,rest")
+COMMAND("fs add_data_pool name=fs_name,type=CephString " \
+	"name=pool,type=CephString", \
+	"add data pool <pool>", "mds", "rw", "cli,rest")
+COMMAND("fs rm_data_pool name=fs_name,type=CephString " \
+	"name=pool,type=CephString", \
+	"remove data pool <pool>", "mds", "rw", "cli,rest")
+
 /*
  * Monmap commands
  */
@@ -400,6 +428,9 @@ COMMAND("mon add " \
 	"name=addr,type=CephIPAddr", \
 	"add new monitor named <name> at <addr>", "mon", "rw", "cli,rest")
 COMMAND("mon remove " \
+	"name=name,type=CephString", \
+	"remove monitor named <name>", "mon", "rw", "cli,rest")
+COMMAND("mon rm " \
 	"name=name,type=CephString", \
 	"remove monitor named <name>", "mon", "rw", "cli,rest")
 
@@ -671,6 +702,12 @@ COMMAND("osd pool delete " \
 	"name=sure,type=CephChoices,strings=--yes-i-really-really-mean-it,req=false", \
 	"delete pool", \
 	"osd", "rw", "cli,rest")
+COMMAND("osd pool rm " \
+	"name=pool,type=CephPoolname " \
+	"name=pool2,type=CephPoolname,req=false " \
+	"name=sure,type=CephChoices,strings=--yes-i-really-really-mean-it,req=false", \
+	"remove pool", \
+	"osd", "rw", "cli,rest")
 COMMAND("osd pool rename " \
 	"name=srcpool,type=CephPoolname " \
 	"name=destpool,type=CephPoolname", \
@@ -701,14 +738,36 @@ COMMAND("osd pool stats " \
         "name=name,type=CephString,req=false",
         "obtain stats from all pools, or from specified pool",
         "osd", "r", "cli,rest")
+COMMAND("osd utilization",
+	"get basic pg distribution stats",
+	"osd", "r", "cli,rest")
 COMMAND("osd reweight-by-utilization " \
-	"name=oload,type=CephInt,range=100,req=false", \
+	"name=oload,type=CephInt,req=false " \
+	"name=max_change,type=CephFloat,req=false "			\
+	"name=max_osds,type=CephInt,req=false "			\
+	"name=no_increasing,type=CephChoices,strings=--no-increasing,req=false",\
 	"reweight OSDs by utilization [overload-percentage-for-consideration, default 120]", \
 	"osd", "rw", "cli,rest")
+COMMAND("osd test-reweight-by-utilization " \
+	"name=oload,type=CephInt,req=false " \
+	"name=max_change,type=CephFloat,req=false "			\
+	"name=max_osds,type=CephInt,req=false "			\
+	"name=no_increasing,type=CephChoices,strings=--no-increasing,req=false",\
+	"dry run of reweight OSDs by utilization [overload-percentage-for-consideration, default 120]", \
+	"osd", "rw", "cli,rest")
 COMMAND("osd reweight-by-pg " \
-	"name=oload,type=CephInt,range=100 " \
-	"name=pools,type=CephPoolname,n=N,req=false", \
+	"name=oload,type=CephInt,req=false " \
+	"name=max_change,type=CephFloat,req=false "			\
+	"name=max_osds,type=CephInt,req=false "			\
+	"name=pools,type=CephPoolname,n=N,req=false",			\
 	"reweight OSDs by PG distribution [overload-percentage-for-consideration, default 120]", \
+	"osd", "rw", "cli,rest")
+COMMAND("osd test-reweight-by-pg " \
+	"name=oload,type=CephInt,req=false " \
+	"name=max_change,type=CephFloat,req=false "			\
+	"name=max_osds,type=CephInt,req=false "			\
+	"name=pools,type=CephPoolname,n=N,req=false",			\
+	"dry run of reweight OSDs by PG distribution [overload-percentage-for-consideration, default 120]", \
 	"osd", "rw", "cli,rest")
 COMMAND("osd thrash " \
 	"name=num_epochs,type=CephInt,range=0", \
@@ -729,6 +788,11 @@ COMMAND("osd tier remove " \
 	"name=tierpool,type=CephPoolname",
 	"remove the tier <tierpool> (the second one) from base pool <pool> (the first one)", \
 	"osd", "rw", "cli,rest")
+COMMAND("osd tier rm " \
+	"name=pool,type=CephPoolname " \
+	"name=tierpool,type=CephPoolname",
+	"remove the tier <tierpool> (the second one) from base pool <pool> (the first one)", \
+	"osd", "rw", "cli,rest")
 COMMAND("osd tier cache-mode " \
 	"name=pool,type=CephPoolname " \
 	"name=mode,type=CephChoices,strings=none|writeback|forward|readonly|readforward|readproxy", \
@@ -738,6 +802,9 @@ COMMAND("osd tier set-overlay " \
 	"name=overlaypool,type=CephPoolname", \
 	"set the overlay pool for base pool <pool> to be <overlaypool>", "osd", "rw", "cli,rest")
 COMMAND("osd tier remove-overlay " \
+	"name=pool,type=CephPoolname ", \
+	"remove the overlay pool for base pool <pool>", "osd", "rw", "cli,rest")
+COMMAND("osd tier rm-overlay " \
 	"name=pool,type=CephPoolname ", \
 	"remove the overlay pool for base pool <pool>", "osd", "rw", "cli,rest")
 
@@ -762,6 +829,9 @@ COMMAND("config-key put " \
 COMMAND("config-key del " \
 	"name=key,type=CephString", \
 	"delete <key>", "config-key", "rw", "cli,rest")
+COMMAND("config-key rm " \
+	"name=key,type=CephString", \
+	"rm <key>", "config-key", "rw", "cli,rest")
 COMMAND("config-key exists " \
 	"name=key,type=CephString", \
 	"check for <key>'s existence", "config-key", "r", "cli,rest")

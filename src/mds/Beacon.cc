@@ -202,7 +202,8 @@ void Beacon::_send()
       name,
       epoch,
       want_state,
-      last_seq);
+      last_seq,
+      CEPH_FEATURES_SUPPORTED_DEFAULT);
 
   beacon->set_standby_for_rank(standby_for_rank);
   beacon->set_standby_for_name(standby_for_name);
@@ -311,6 +312,13 @@ void Beacon::notify_health(MDSRank const *mds)
   assert(mds->mds_lock.is_locked_by_me());
 
   health.metrics.clear();
+
+  // Detect presence of entries in DamageTable
+  if (!mds->damage_table.empty()) {
+    MDSHealthMetric m(MDS_HEALTH_DAMAGE, HEALTH_ERR, std::string(
+          "Metadata damage detected"));
+    health.metrics.push_back(m);
+  }
 
   // Detect MDS_HEALTH_TRIM condition
   // Arbitrary factor of 2, indicates MDS is not trimming promptly

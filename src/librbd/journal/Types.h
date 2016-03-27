@@ -9,6 +9,9 @@
 #include "include/encoding.h"
 #include "include/types.h"
 #include <iosfwd>
+#include <list>
+#include <boost/none.hpp>
+#include <boost/optional.hpp>
 #include <boost/variant.hpp>
 
 namespace ceph {
@@ -305,6 +308,7 @@ struct ImageClientMeta {
   static const ClientMetaType TYPE = IMAGE_CLIENT_META_TYPE;
 
   uint64_t tag_class = 0;
+  bool resync_requested = false;
 
   ImageClientMeta() {
   }
@@ -316,18 +320,61 @@ struct ImageClientMeta {
   void dump(Formatter *f) const;
 };
 
+struct MirrorPeerSyncPoint {
+  typedef boost::optional<uint64_t> ObjectNumber;
+
+  std::string snap_name;
+  std::string from_snap_name;
+  ObjectNumber object_number;
+
+  MirrorPeerSyncPoint() : MirrorPeerSyncPoint("", "", boost::none) {
+  }
+  MirrorPeerSyncPoint(const std::string &snap_name,
+                      const ObjectNumber &object_number)
+    : MirrorPeerSyncPoint(snap_name, "", object_number) {
+  }
+  MirrorPeerSyncPoint(const std::string &snap_name,
+                      const std::string &from_snap_name,
+                      const ObjectNumber &object_number)
+    : snap_name(snap_name), from_snap_name(from_snap_name),
+      object_number(object_number) {
+  }
+
+  inline bool operator==(const MirrorPeerSyncPoint &sync) const {
+    return (snap_name == sync.snap_name &&
+            from_snap_name == sync.from_snap_name &&
+            object_number == sync.object_number);
+  }
+
+  void encode(bufferlist& bl) const;
+  void decode(__u8 version, bufferlist::iterator& it);
+  void dump(Formatter *f) const;
+};
+
 struct MirrorPeerClientMeta {
+  typedef std::list<MirrorPeerSyncPoint> SyncPoints;
+  typedef std::map<uint64_t, uint64_t> SnapSeqs;
+
   static const ClientMetaType TYPE = MIRROR_PEER_CLIENT_META_TYPE;
 
-  std::string cluster_id;
-  int64_t pool_id = 0;
   std::string image_id;
+  uint64_t sync_object_count = 0; ///< maximum number of objects ever sync'ed
+  SyncPoints sync_points;         ///< max two in-use snapshots for sync
+  SnapSeqs snap_seqs;             ///< local to peer snap seq mapping
 
   MirrorPeerClientMeta() {
   }
-  MirrorPeerClientMeta(const std::string &cluster_id, int64_t pool_id,
-                       const std::string &image_id)
-    : cluster_id(cluster_id), pool_id(pool_id), image_id(image_id) {
+  MirrorPeerClientMeta(const std::string &image_id,
+                       const SyncPoints &sync_points = SyncPoints(),
+                       const SnapSeqs &snap_seqs = SnapSeqs())
+    : image_id(image_id), sync_points(sync_points), snap_seqs(snap_seqs) {
+  }
+
+  inline bool operator==(const MirrorPeerClientMeta &meta) const {
+    return (image_id == meta.image_id &&
+            sync_object_count == meta.sync_object_count &&
+            sync_points == meta.sync_points &&
+            snap_seqs == meta.snap_seqs);
   }
 
   void encode(bufferlist& bl) const;
@@ -377,19 +424,27 @@ struct ClientData {
 
 struct TagData {
   // owner of the tag (exclusive lock epoch)
-  std::string cluster_id;
-  int64_t pool_id = 0;
-  std::string image_id;
+  std::string mirror_uuid; // empty if local
 
   // mapping to last committed record of previous tag
+  std::string predecessor_mirror_uuid; // empty if local
+  bool predecessor_commit_valid = false;
   uint64_t predecessor_tag_tid = 0;
   uint64_t predecessor_entry_tid = 0;
 
   TagData() {
   }
-  TagData(const std::string &cluster_id, int64_t pool_id,
-          const std::string &image_id)
-    : cluster_id(cluster_id), pool_id(pool_id), image_id(image_id) {
+  TagData(const std::string &mirror_uuid) : mirror_uuid(mirror_uuid) {
+  }
+  TagData(const std::string &mirror_uuid,
+          const std::string &predecessor_mirror_uuid,
+          bool predecessor_commit_valid,
+          uint64_t predecessor_tag_tid, uint64_t predecessor_entry_tid)
+    : mirror_uuid(mirror_uuid),
+      predecessor_mirror_uuid(predecessor_mirror_uuid),
+      predecessor_commit_valid(predecessor_commit_valid),
+      predecessor_tag_tid(predecessor_tag_tid),
+      predecessor_entry_tid(predecessor_entry_tid) {
   }
 
   void encode(bufferlist& bl) const;
@@ -399,13 +454,15 @@ struct TagData {
   static void generate_test_instances(std::list<TagData *> &o);
 };
 
+std::ostream &operator<<(std::ostream &out, const EventType &type);
+std::ostream &operator<<(std::ostream &out, const ClientMetaType &type);
+std::ostream &operator<<(std::ostream &out, const ImageClientMeta &meta);
+std::ostream &operator<<(std::ostream &out, const MirrorPeerSyncPoint &sync);
+std::ostream &operator<<(std::ostream &out, const MirrorPeerClientMeta &meta);
+std::ostream &operator<<(std::ostream &out, const TagData &tag_data);
+
 } // namespace journal
 } // namespace librbd
-
-std::ostream &operator<<(std::ostream &out,
-                         const librbd::journal::EventType &type);
-std::ostream &operator<<(std::ostream &out,
-                         const librbd::journal::ClientMetaType &type);
 
 WRITE_CLASS_ENCODER(librbd::journal::EventEntry);
 WRITE_CLASS_ENCODER(librbd::journal::ClientData);
