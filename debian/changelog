@@ -5,6 +5,7 @@ ceph (10.1.0-0ubuntu1) UNRELEASED; urgency=medium
     - d/p/fix-systemd-escaping.patch,pybind-flags.patch: Dropped,
       included upstream.
     - d/p/*: Refresh remaining patches.
+    - d/control: Add BD on libldap2-dev for rados gateway.
   * d/rules: Strip rbd-mirror package correctly.
 
  -- James Page <james.page@ubuntu.com>  Wed, 30 Mar 2016 09:12:17 +0100
