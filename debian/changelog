@@ -8,6 +8,8 @@ ceph (10.1.0-0ubuntu1) UNRELEASED; urgency=medium
     - d/control: Add BD on libldap2-dev for rados gateway.
   * d/rules: Strip rbd-mirror package correctly.
   * d/rules: Install upstart and systemd configurations for rbd-mirror.
+  * d/copyright: Ensure that jerasure and gf-complete are not stripped
+    from the upstream release tarball.
 
  -- James Page <james.page@ubuntu.com>  Wed, 30 Mar 2016 09:12:17 +0100
 
