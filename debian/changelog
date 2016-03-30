@@ -1,3 +1,14 @@
+ceph (10.1.0-0ubuntu1) UNRELEASED; urgency=medium
+
+  * New upstream release candidate for Ceph Jewel:
+    - d/control,rules,librgw*: Add new binary packages for librgw2.
+    - d/p/fix-systemd-escaping.patch,pybind-flags.patch: Dropped,
+      included upstream.
+    - d/p/*: Refresh remaining patches.
+  * d/rules: Strip rbd-mirror package correctly.
+
+ -- James Page <james.page@ubuntu.com>  Wed, 30 Mar 2016 09:12:17 +0100
+
 ceph (10.0.5-0ubuntu1) xenial; urgency=medium
 
   * New upstream point release, in preparation for Ceph Jewel.
