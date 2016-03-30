@@ -452,15 +452,58 @@ Description: Ceph distributed file system client library (development files)
  This package contains development files needed for building applications that
  link against libcephfs1.
 
+Package: librgw2
+Architecture: linux-any
+Section: libs
+Depends: librados2 (= ${binary:Version}), ${misc:Depends}, ${shlibs:Depends}
+Description: RADOS Gateway client library
+ RADOS is a distributed object store used by the Ceph distributed
+ storage system.  This package provides a REST gateway to the
+ object store that aims to implement a superset of Amazon's S3
+ service.
+ .
+ This package contains the library interface and headers only.
+
+Package: librgw2-dbg
+Architecture: linux-any
+Section: debug
+Priority: extra
+Depends: librgw2 (= ${binary:Version}), ${misc:Depends}
+Description: debugging symbols for librbd1
+ RADOS is a distributed object store used by the Ceph distributed
+ storage system.  This package provides a REST gateway to the
+ object store that aims to implement a superset of Amazon's S3
+ service.
+ .
+ This package contains debugging symbols for librgw2.
+
+Package: librgw-dev
+Architecture: linux-any
+Section: libdevel
+Depends: librados-dev (= ${binary:Version}),
+         librgw2 (= ${binary:Version}),
+         ${misc:Depends}
+Description: RADOS client library (development files)
+ RADOS is a distributed object store used by the Ceph distributed
+ storage system.  This package provides a REST gateway to the
+ object store that aims to implement a superset of Amazon's S3
+ service.
+ .
+ This package contains development files needed for building applications
+ that link against librgw2.
+
 Package: radosgw
 Architecture: linux-any
-Depends: ceph-common (= ${binary:Version}), ${misc:Depends}, ${shlibs:Depends}
+Depends: ceph-common (= ${binary:Version}),
+         librgw2 (= ${binary:Version}),
+         ${misc:Depends},
+         ${shlibs:Depends}
 Suggests: logrotate
 Description: REST gateway for RADOS distributed object store
  RADOS is a distributed object store used by the Ceph distributed
  storage system.  This package provides a REST gateway to the
  object store that aims to implement a superset of Amazon's S3
- service.
+ service as well as the OpenStack Object Storage ("Swift") API.
  .
  This package contains the proxy daemon and related tools only.
 
@@ -473,7 +516,7 @@ Description: debugging symbols for radosgw
  RADOS is a distributed object store used by the Ceph distributed
  storage system.  This package provides a REST gateway to the
  object store that aims to implement a superset of Amazon's S3
- service.
+ service as well as the OpenStack Object Storage ("Swift") API.
  .
  This package contains debugging symbols for radosgw.
 
