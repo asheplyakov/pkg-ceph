@@ -2,8 +2,26 @@ libradosstriper.so.1 libradosstriper1 #MINVER#
  CEPH_CONF_FILE_DEFAULT@Base 0.93
  MDS_GID_NONE@Base 0.93
  MDS_RANK_NONE@Base 0.93
+ XXH32@Base 10.1.0
+ XXH32_canonicalFromHash@Base 10.1.0
+ XXH32_createState@Base 10.1.0
+ XXH32_digest@Base 10.1.0
+ XXH32_freeState@Base 10.1.0
+ XXH32_hashFromCanonical@Base 10.1.0
+ XXH32_reset@Base 10.1.0
+ XXH32_update@Base 10.1.0
+ XXH64@Base 10.1.0
+ XXH64_canonicalFromHash@Base 10.1.0
+ XXH64_createState@Base 10.1.0
+ XXH64_digest@Base 10.1.0
+ XXH64_freeState@Base 10.1.0
+ XXH64_hashFromCanonical@Base 10.1.0
+ XXH64_reset@Base 10.1.0
+ XXH64_update@Base 10.1.0
+ XXH_versionNumber@Base 10.1.0
  (regex|c++)"^_.*" 0.87
  (regex)"^ceph_ver__[0-9a-f]{40}@Base$" 0.87
+ boost_asio_detail_posix_thread_function@Base 10.1.0
  ceph_arch_aarch64_crc32@Base 9.2.0
  ceph_arch_arm_probe@Base 0.93
  ceph_arch_intel_pclmul@Base 0.93
@@ -100,13 +118,13 @@ libradosstriper.so.1 libradosstriper1 #MINVER#
  crush_reweight_bucket@Base 0.93
  crush_rule_set_step@Base 0.93
  decode_utf8@Base 0.93
+ default_file_layout@Base 10.1.0
  encode_utf8@Base 0.93
  escape_json_attr@Base 0.93
  escape_json_attr_len@Base 0.93
  escape_xml_attr@Base 0.93
  escape_xml_attr_len@Base 0.93
  g_code_env@Base 0.93
- g_default_file_layout@Base 0.93
  g_lockdep@Base 0.93
  get_linux_version@Base 0.93
  get_process_name@Base 0.93

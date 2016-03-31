@@ -13,6 +13,7 @@ libcephfs.so.1 libcephfs1 #MINVER#
  ceph_conf_set@Base 0.72.2
  ceph_create@Base 0.72.2
  ceph_create_with_context@Base 0.72.2
+ ceph_create_from_rados@Base 10.1.0
  ceph_debug_get_fd_caps@Base 0.72.2
  ceph_debug_get_file_caps@Base 0.72.2
  ceph_fallocate@Base 0.72.2

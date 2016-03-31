@@ -1,10 +1,14 @@
 librbd.so.1 librbd1 #MINVER#
  (regex|c++)"^_.*" 0.87
+ rbd_aio_close@Base 10.1.0
  rbd_aio_create_completion@Base 0.72.2
  rbd_aio_discard@Base 0.72.2
  rbd_aio_flush@Base 0.72.2
+ rbd_aio_get_arg@Base 10.1.0
  rbd_aio_get_return_value@Base 0.72.2
  rbd_aio_is_complete@Base 0.72.2
+ rbd_aio_open@Base 10.1.0
+ rbd_aio_open_read_only@Base 10.1.0
  rbd_aio_read2@Base 0.93
  rbd_aio_read@Base 0.72.2
  rbd_aio_release@Base 0.72.2
@@ -13,14 +17,17 @@ librbd.so.1 librbd1 #MINVER#
  rbd_aio_write@Base 0.72.2
  rbd_break_lock@Base 0.72.2
  rbd_clone2@Base 0.72.2
+ rbd_clone3@Base 10.1.0
  rbd_clone@Base 0.72.2
  rbd_close@Base 0.72.2
  rbd_copy2@Base 0.72.2
+ rbd_copy3@Base 10.1.0
  rbd_copy@Base 0.72.2
  rbd_copy_with_progress2@Base 0.72.2
  rbd_copy_with_progress@Base 0.72.2
  rbd_create2@Base 0.72.2
  rbd_create3@Base 0.72.2
+ rbd_create4@Base 10.1.0
  rbd_create@Base 0.72.2
  rbd_diff_iterate2@Base 9.2.0
  rbd_diff_iterate@Base 0.72.2
@@ -35,6 +42,15 @@ librbd.so.1 librbd1 #MINVER#
  rbd_get_size@Base 0.72.2
  rbd_get_stripe_count@Base 0.72.2
  rbd_get_stripe_unit@Base 0.72.2
+ rbd_image_options_clear@Base 10.1.0
+ rbd_image_options_create@Base 10.1.0
+ rbd_image_options_destroy@Base 10.1.0
+ rbd_image_options_get_string@Base 10.1.0
+ rbd_image_options_get_uint64@Base 10.1.0
+ rbd_image_options_is_empty@Base 10.1.0
+ rbd_image_options_set_string@Base 10.1.0
+ rbd_image_options_set_uint64@Base 10.1.0
+ rbd_image_options_unset@Base 10.1.0
  rbd_invalidate_cache@Base 0.80.5-2~
  rbd_is_exclusive_lock_owner@Base 0.93
  rbd_list@Base 0.72.2
@@ -46,8 +62,23 @@ librbd.so.1 librbd1 #MINVER#
  rbd_metadata_list@Base 9.2.0
  rbd_metadata_remove@Base 9.2.0
  rbd_metadata_set@Base 9.2.0
+ rbd_mirror_image_demote@Base 10.1.0
+ rbd_mirror_image_disable@Base 10.1.0
+ rbd_mirror_image_enable@Base 10.1.0
+ rbd_mirror_image_get_info@Base 10.1.0
+ rbd_mirror_image_promote@Base 10.1.0
+ rbd_mirror_image_resync@Base 10.1.0
+ rbd_mirror_mode_get@Base 10.1.0
+ rbd_mirror_mode_set@Base 10.1.0
+ rbd_mirror_peer_add@Base 10.1.0
+ rbd_mirror_peer_list@Base 10.1.0
+ rbd_mirror_peer_list_cleanup@Base 10.1.0
+ rbd_mirror_peer_remove@Base 10.1.0
+ rbd_mirror_peer_set_client@Base 10.1.0
+ rbd_mirror_peer_set_cluster@Base 10.1.0
  rbd_open@Base 0.72.2
  rbd_open_read_only@Base 0.72.2
+ rbd_poll_io_events@Base 10.1.0
  rbd_read2@Base 0.93
  rbd_read@Base 0.72.2
  rbd_read_iterate2@Base 0.72.2
@@ -58,12 +89,14 @@ librbd.so.1 librbd1 #MINVER#
  rbd_rename@Base 0.72.2
  rbd_resize@Base 0.72.2
  rbd_resize_with_progress@Base 0.72.2
+ rbd_set_image_notification@Base 10.1.0
  rbd_snap_create@Base 0.72.2
  rbd_snap_is_protected@Base 0.72.2
  rbd_snap_list@Base 0.72.2
  rbd_snap_list_end@Base 0.72.2
  rbd_snap_protect@Base 0.72.2
  rbd_snap_remove@Base 0.72.2
+ rbd_snap_rename@Base 10.1.0
  rbd_snap_rollback@Base 0.72.2
  rbd_snap_rollback_with_progress@Base 0.72.2
  rbd_snap_set@Base 0.72.2
