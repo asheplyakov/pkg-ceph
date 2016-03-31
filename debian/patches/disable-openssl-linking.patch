@@ -1,0 +1,19 @@
+Description: Disable build time linking with openssl
+ OpenSSL is not DFSG compatible with the rest of the Ceph
+ codebase; disable build time linking and switch back to
+ runtime use if end-users decide they want to use OpenSSL.
+Author: James Page <james.page@ubuntu.com>
+Forwarded: not-needed
+
+--- a/src/rgw/Makefile.am
++++ b/src/rgw/Makefile.am
+@@ -133,8 +133,7 @@ libcivetweb_la_SOURCES =  \
+ 
+ libcivetweb_la_CXXFLAGS = ${CIVETWEB_INCLUDE} -fPIC -Woverloaded-virtual \
+ 	${AM_CXXFLAGS}
+-libcivetweb_la_CFLAGS = -I$(srcdir)/civetweb/include ${CIVETWEB_INCLUDE} -fPIC -DNO_SSL_DL
+-LIBCIVETWEB_DEPS += -lssl -lcrypto
++libcivetweb_la_CFLAGS = -I$(srcdir)/civetweb/include ${CIVETWEB_INCLUDE} -fPIC
+ 
+ noinst_LTLIBRARIES += libcivetweb.la
+ 
