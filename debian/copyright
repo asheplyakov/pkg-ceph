@@ -2,6 +2,7 @@ Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: ceph
 Upstream-Contact: Sage Weil <sage@newdream.net>
 Source: http://ceph.com/
+Files-Excluded: debian
 
 Files: *
 Copyright: 2004-2014 Sage Weil <sage@newdream.net>
