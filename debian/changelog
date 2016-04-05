@@ -24,6 +24,10 @@ ceph (10.1.0-0ubuntu1) UNRELEASED; urgency=medium
     processes and threads to long running ceph processes; the default
     of 512 tasks is way to low for even a modest Ceph cluster
     (LP: #1564917).
+  * d/rules: Ensure that dh_systemd_start does not insert maintainer
+    script snippets for ceph-mon and ceph-create-keys - service restart
+    should be handled outside of the packaging as it is under upstart
+    and for all other systemd unit files installed (LP: #1563330).
 
  -- James Page <james.page@ubuntu.com>  Wed, 30 Mar 2016 09:12:17 +0100
 
