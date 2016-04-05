@@ -10,6 +10,8 @@ ceph (10.1.0-0ubuntu1) UNRELEASED; urgency=medium
       with OpenSSL due to licensing incompatibilities.
     - d/*.symbols: Add new symbols for RC.
     - d/python-*.install: Correct wildcards for python module install.
+    - d/p/32bit-compat.patch: Cherry pick upstream fix for 32 bit
+      compatibility, resolving FTBFS on armhf/i386.
   * d/rules: Strip rbd-mirror package correctly.
   * d/rules: Install upstart and systemd configurations for rbd-mirror.
   * d/copyright: Ensure that jerasure and gf-complete are not stripped
