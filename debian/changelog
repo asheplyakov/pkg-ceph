@@ -1,6 +1,7 @@
 ceph (10.1.0-0ubuntu1) UNRELEASED; urgency=medium
 
-  * New upstream release candidate for Ceph Jewel:
+  * New upstream release candidate for Ceph Jewel
+    (see http://pad.lv/1563714 for FFe):
     - d/control,rules,librgw*: Add new binary packages for librgw2.
     - d/p/fix-systemd-escaping.patch,pybind-flags.patch: Dropped,
       included upstream.
