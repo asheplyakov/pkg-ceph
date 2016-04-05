@@ -16,6 +16,9 @@ ceph (10.1.0-0ubuntu1) UNRELEASED; urgency=medium
   * d/rules: Install upstart and systemd configurations for rbd-mirror.
   * d/copyright: Ensure that jerasure and gf-complete are not stripped
     from the upstream release tarball.
+  * d/p/drop-user-group-osd-prestart.patch: Drop --setuser/--setgroup
+    arguments from call to ceph-osd-prestart.sh; they are not supported
+    and generate spurious non-fatal warning messages (LP: #1557461).
 
  -- James Page <james.page@ubuntu.com>  Wed, 30 Mar 2016 09:12:17 +0100
 
