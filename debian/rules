@@ -153,6 +153,12 @@ override_dh_systemd_enable:
 	## Users are expected to "systemctl enable" services once their
 	## configuration is correct.
 
+override_dh_systemd_start:
+	## Do not start services to match `dh_installinit --no-start`
+	## behaviour.
+	## Users are expected to "systemctl start" services once their
+	## configuration is correct or after package updates.
+
 override_dh_strip:
 	dh_strip -pceph --dbg-package=ceph-dbg
 	dh_strip -pceph-mds --dbg-package=ceph-mds-dbg
