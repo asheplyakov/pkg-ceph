@@ -1,0 +1,81 @@
+From 05cafcf19fb80dd2a76fdbbe5329bae53aa0def4 Mon Sep 17 00:00:00 2001
+From: James Page <james.page@ubuntu.com>
+Date: Tue, 5 Apr 2016 17:32:59 +0100
+Subject: [PATCH] Drop any systemd imposed process/thread limits
+
+If systemd has task accounting enabled, a default of 512 tasks
+will be applied to all systemd units.
+
+For ceph, this is way to low even for a modest cluster, so stop
+this restriction being applied and allow administrators to apply
+limits using sysctl.
+
+Signed-off-by: James Page <james.page@ubuntu.com>
+---
+ systemd/ceph-mds@.service        | 1 +
+ systemd/ceph-mon@.service        | 1 +
+ systemd/ceph-osd@.service        | 1 +
+ systemd/ceph-radosgw@.service    | 1 +
+ systemd/ceph-rbd-mirror@.service | 1 +
+ 5 files changed, 5 insertions(+)
+
+diff --git a/systemd/ceph-mds@.service b/systemd/ceph-mds@.service
+index e122580..f13cef4 100644
+--- a/systemd/ceph-mds@.service
++++ b/systemd/ceph-mds@.service
+@@ -15,6 +15,7 @@ PrivateDevices=yes
+ ProtectHome=true
+ ProtectSystem=full
+ PrivateTmp=true
++TasksMax=infinity
+ 
+ [Install]
+ WantedBy=ceph-mds.target
+diff --git a/systemd/ceph-mon@.service b/systemd/ceph-mon@.service
+index a8d427b..b9501d6 100644
+--- a/systemd/ceph-mon@.service
++++ b/systemd/ceph-mon@.service
+@@ -21,6 +21,7 @@ PrivateDevices=yes
+ ProtectHome=true
+ ProtectSystem=full
+ PrivateTmp=true
++TasksMax=infinity
+ 
+ [Install]
+ WantedBy=ceph-mon.target
+diff --git a/systemd/ceph-osd@.service b/systemd/ceph-osd@.service
+index 0d73afb..1778db7 100644
+--- a/systemd/ceph-osd@.service
++++ b/systemd/ceph-osd@.service
+@@ -15,6 +15,7 @@ ExecReload=/bin/kill -HUP $MAINPID
+ ProtectHome=true
+ ProtectSystem=full
+ PrivateTmp=true
++TasksMax=infinity
+ 
+ [Install]
+ WantedBy=ceph-osd.target
+diff --git a/systemd/ceph-radosgw@.service b/systemd/ceph-radosgw@.service
+index 66d9eb8..cfa5788 100644
+--- a/systemd/ceph-radosgw@.service
++++ b/systemd/ceph-radosgw@.service
+@@ -14,6 +14,7 @@ PrivateDevices=yes
+ ProtectHome=true
+ ProtectSystem=full
+ PrivateTmp=true
++TasksMax=infinity
+ 
+ [Install]
+ WantedBy=ceph-radosgw.target
+diff --git a/systemd/ceph-rbd-mirror@.service b/systemd/ceph-rbd-mirror@.service
+index 4c2e2f0..d38aec5 100644
+--- a/systemd/ceph-rbd-mirror@.service
++++ b/systemd/ceph-rbd-mirror@.service
+@@ -17,6 +17,7 @@ PrivateTmp=true
+ Restart=on-failure
+ StartLimitInterval=30min
+ StartLimitBurst=3
++TasksMax=infinity
+ 
+ [Install]
+ WantedBy=ceph-rbd-mirror.target

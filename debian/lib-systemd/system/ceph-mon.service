@@ -16,6 +16,7 @@ ExecStart=/usr/bin/ceph-mon -f --cluster ${CLUSTER} --id %H --setuser ceph --set
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=30
+TasksMax=infinity
 
 [Install]
 WantedBy=multi-user.target
