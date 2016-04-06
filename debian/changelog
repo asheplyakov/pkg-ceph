@@ -1,4 +1,4 @@
-ceph (10.1.0-0ubuntu1) UNRELEASED; urgency=medium
+ceph (10.1.0-0ubuntu1) xenial; urgency=medium
 
   * New upstream release candidate for Ceph Jewel
     (see http://pad.lv/1563714 for FFe):
@@ -29,7 +29,7 @@ ceph (10.1.0-0ubuntu1) UNRELEASED; urgency=medium
     should be handled outside of the packaging as it is under upstart
     and for all other systemd unit files installed (LP: #1563330).
 
- -- James Page <james.page@ubuntu.com>  Wed, 30 Mar 2016 09:12:17 +0100
+ -- James Page <james.page@ubuntu.com>  Wed, 06 Apr 2016 09:17:59 +0100
 
 ceph (10.0.5-0ubuntu1) xenial; urgency=medium
 
