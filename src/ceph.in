@@ -72,41 +72,45 @@ def get_pythonlib_dir():
     f = "lib.{platform}-{version[0]}.{version[1]}"
     name = f.format(platform=sysconfig.get_platform(),
                     version=sys.version_info)
-    return os.path.join('build', name)
+    return name
 
 if MYDIR.endswith('src') and \
    os.path.exists(os.path.join(MYDIR, '.libs')) and \
    os.path.exists(os.path.join(MYDIR, 'pybind')) and \
    os.path.exists(os.path.join(MYDIR, 'build')):
 
-    pythonlib_path = get_pythonlib_dir()
-    respawn_in_path(os.path.join(MYDIR, '.libs'), "pybind", pythonlib_path)
+    python_libpath = os.path.join(MYDIR, 'build', get_pythonlib_dir())
+    respawn_in_path(os.path.join(MYDIR, '.libs'), 'pybind', python_libpath)
     if os.environ.has_key('PATH') and MYDIR not in os.environ['PATH']:
         os.environ['PATH'] += ':' + MYDIR
 
 elif os.path.exists(os.path.join(os.getcwd(), "CMakeCache.txt")) \
-     and os.path.exists(os.path.join(os.getcwd(), "init-ceph")):
+     and os.path.exists(os.path.join(os.getcwd(), "bin/init-ceph")):
     src_path = None
     for l in open("./CMakeCache.txt").readlines():
         if l.startswith("Ceph_SOURCE_DIR:STATIC="):
             src_path = l.split("=")[1].strip()
+
 
     if src_path is None:
         # Huh, maybe we're not really in a cmake environment?
         pass
     else:
         # Developer mode, but in a cmake build dir instead of the src dir
-        lib_path = os.path.join(os.getcwd(), "src")
+        lib_path = os.path.join(os.getcwd(), "lib")
+        bin_path = os.path.join(os.getcwd(), "bin")
         pybind_path = os.path.join(src_path, "src", "pybind")
-        pythonlib_path = os.path.join(src_path, "src", get_pythonlib_dir())
+
+        import sysconfig
+        f = "lib.{platform}-{version[0]}.{version[1]}"
+        name = f.format(platform=sysconfig.get_platform(),
+                        version=sys.version_info)
+        pythonlib_path = os.path.join(os.getcwd(), "lib/cython_modules", name)
+
         respawn_in_path(lib_path, pybind_path, pythonlib_path)
 
-        sys.path.insert(0, os.path.join(MYDIR, pybind_path))
-        sys.path.insert(0, os.path.join(MYDIR, pythonlib_path))
-
-    # Add src/ to path for e.g. ceph-conf
-    if os.environ.has_key('PATH') and lib_path not in os.environ['PATH']:
-        os.environ['PATH'] += ':' + lib_path
+        if os.environ.has_key('PATH') and bin_path not in os.environ['PATH']:
+            os.environ['PATH'] += ':' + bin_path
 
 import argparse
 import errno
@@ -474,6 +478,7 @@ def new_style_command(parsed_args, cmdargs, target, sigdict, inbuf, verbose):
     return json_command(cluster_handle, target=target, argdict=valid_dict,
                         inbuf=inbuf)
 
+
 def complete(sigdict, args, target):
     """
     Command completion.  Match as much of [args] as possible,
@@ -491,45 +496,37 @@ def complete(sigdict, args, target):
         args = args[2:]
     # look for best match, accumulate possibles in bestcmds
     # (so we can maybe give a more-useful error message)
-    best_match_cnt = 0
-    bestcmds = []
+
+    match_count = 0
+    comps = []
     for cmdtag, cmd in sigdict.iteritems():
         sig = cmd['sig']
-        matched = matchnum(args, sig, partial=True)
-        if (matched > best_match_cnt):
-            if complete_verbose:
-                print("better match: {0} > {1}: {2}:{3} ".format(matched,
-                        best_match_cnt, cmdtag, concise_sig(sig)),  file=sys.stderr)
-            best_match_cnt = matched
-            bestcmds = [{cmdtag:cmd}]
-        elif matched == best_match_cnt:
-            if complete_verbose:
-                print("equal match: {0} > {1}: {2}:{3} ".format(matched,
-                        best_match_cnt, cmdtag, concise_sig(sig)), file=sys.stderr)
-            bestcmds.append({cmdtag:cmd})
+        j = 0
+        # iterate over all arguments, except last one
+        for arg in args[0:-1]:
+            if j > len(sig)-1:
+                # an out of argument definitions
+                break
+            found_match = arg in sig[j].complete(arg)
+            if not found_match and sig[j].req:
+                # no elements that match
+                break
+            if not sig[j].N:
+                j += 1
+        else:
+            # successfully matched all - except last one - arguments
+            if j < len(sig) and len(args) > 0:
+                comps += sig[j].complete(args[-1])
 
-    # look through all matching sigs
-    comps = []
-    for cmddict in bestcmds:
-        for cmd in cmddict.itervalues():
-            sig = cmd['sig']
-            # either:
-            #   we match everything fully, so we want the next desc, or
-            #   we match more partially, so we want the partial match
-            fullindex = matchnum(args, sig, partial=False) - 1
-            partindex = matchnum(args, sig, partial=True) - 1
-            if complete_verbose:
-                print('{}: f {} p {} len {}'.format(sig, fullindex, partindex, len(sig)), file=sys.stderr)
-            if fullindex == partindex and fullindex + 1 < len(sig):
-                d = sig[fullindex + 1]
-            else:
-                d = sig[partindex]
-            comps.append(str(d))
-    if complete_verbose:
-        print('\n'.join(comps), file=sys.stderr)
-    print('\n'.join(comps))
+            match_count += 1
+            match_cmd = cmd
 
+    if match_count == 1 and len(comps) == 0:
+        # only one command matched and no hints yet => add help
+        comps = comps + [' ', '#'+match_cmd['help']]
+    print('\n'.join(sorted(set(comps))))
     return 0
+
 
 ###
 # ping a monitor
@@ -712,9 +709,6 @@ def main():
             file=sys.stderr)
         return 1
 
-    if childargs in [['mon'], ['osd']]:
-        parsed_args.help = True
-
     if parsed_args.help:
         # short default timeout for -h
         if not timeout:
@@ -727,7 +721,9 @@ def main():
         if len(childargs) < 2:
             print('"ping" requires a monitor name as argument: "ping mon.<id>"', file=sys.stderr)
             return 1
-
+    if parsed_args.completion:
+        #for completion let timeout be really small
+        timeout = 3
     try:
         if childargs and childargs[0] == 'ping':
             return ping_monitor(cluster_handle, childargs[1], timeout)

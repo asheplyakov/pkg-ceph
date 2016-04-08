@@ -75,12 +75,29 @@ void FSMap::generate_test_instances(list<FSMap*>& ls)
 
 void FSMap::print(ostream& out) const
 {
-  // TODO add a non-json print?
-  JSONFormatter f(true);
-  f.open_object_section("fsmap");
-  dump(&f);
-  f.close_section();
-  f.flush(out);
+  out << "e" << epoch << std::endl;
+  out << "enable_multiple: " << enable_multiple << std::endl;
+  out << "compat: " << enable_multiple << std::endl;
+  out << " " << std::endl;
+
+  if (filesystems.empty()) {
+    out << "No filesystems configured" << std::endl;
+    return;
+  }
+
+  for (const auto &fs : filesystems) {
+    fs.second->print(out);
+    out << " " << std::endl << " " << std::endl;  // Space out a bit
+  }
+
+  if (!standby_daemons.empty()) {
+    out << "Standby daemons:" << std::endl << " " << std::endl;
+  }
+
+  for (const auto &p : standby_daemons) {
+    p.second.print_summary(out);
+    out << std::endl;
+  }
 }
 
 
@@ -224,7 +241,7 @@ void FSMap::encode(bufferlist& bl, uint64_t features) const
     for (auto i : filesystems) {
       fs_list.push_back(*(i.second));
     }
-    ::encode(fs_list, bl);
+    ::encode(fs_list, bl, features);
     ::encode(mds_roles, bl);
     ::encode(standby_daemons, bl, features);
     ::encode(standby_epochs, bl);
@@ -405,12 +422,12 @@ void FSMap::decode(bufferlist::iterator& p)
 }
 
 
-void Filesystem::encode(bufferlist& bl) const
+void Filesystem::encode(bufferlist& bl, uint64_t features) const
 {
   ENCODE_START(1, 1, bl);
   ::encode(fscid, bl);
   bufferlist mdsmap_bl;
-  mds_map.encode(mdsmap_bl, CEPH_FEATURE_PGID64 | CEPH_FEATURE_MDSENC);
+  mds_map.encode(mdsmap_bl, features);
   ::encode(mdsmap_bl, bl);
   ENCODE_FINISH(bl);
 }
@@ -449,10 +466,9 @@ int FSMap::parse_filesystem(
 
 void Filesystem::print(std::ostream &out) const
 {
-  // TODO add a non-json print?
-  JSONFormatter f;
-  dump(&f);
-  f.flush(out);
+  out << "Filesystem '" << mds_map.fs_name
+      << "' (" << fscid << ")" << std::endl;
+  mds_map.print(out);
 }
 
 mds_gid_t FSMap::find_standby_for(mds_role_t role, const std::string& name) const
@@ -479,14 +495,18 @@ mds_gid_t FSMap::find_standby_for(mds_role_t role, const std::string& name) cons
       continue;
     }
 
-    if ((info.standby_for_rank == role.rank && info.standby_for_ns == role.fscid)
+    if ((info.standby_for_rank == role.rank && info.standby_for_fscid == role.fscid)
         || (name.length() && info.standby_for_name == name)) {
       // It's a named standby for *me*, use it.
       return gid;
-    } else if (info.standby_for_rank < 0 && info.standby_for_name.length() == 0)
-      // It's not a named standby for anyone, use it if we don't find
-      // a named standby for me later.
-      result = gid;
+    } else if (
+        info.standby_for_rank < 0 && info.standby_for_name.length() == 0 &&
+        (info.standby_for_fscid == FS_CLUSTER_ID_NONE ||
+         info.standby_for_fscid == role.fscid)) {
+        // It's not a named standby for anyone, use it if we don't find
+        // a named standby for me later, unless it targets another FSCID.
+        result = gid;
+      }
   }
 
   return result;

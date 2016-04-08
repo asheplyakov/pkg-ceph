@@ -17,8 +17,6 @@
 #define dout_prefix *_dout << "rbd-mirror: PoolWatcher::" << __func__ << ": "
 
 using std::list;
-using std::map;
-using std::set;
 using std::string;
 using std::unique_ptr;
 using std::vector;
@@ -49,7 +47,7 @@ PoolWatcher::~PoolWatcher()
   m_timer.shutdown();
 }
 
-const map<int64_t, set<string> >& PoolWatcher::get_images() const
+const PoolWatcher::PoolImageIds& PoolWatcher::get_images() const
 {
   assert(m_lock.is_locked());
   return m_images;
@@ -58,7 +56,7 @@ const map<int64_t, set<string> >& PoolWatcher::get_images() const
 void PoolWatcher::refresh_images(bool reschedule)
 {
   dout(20) << "enter" << dendl;
-  map<int64_t, set<string> > images;
+  PoolImageIds images;
   list<pair<int64_t, string> > pools;
   int r = m_cluster->pool_list2(pools);
   if (r < 0) {
@@ -105,19 +103,28 @@ void PoolWatcher::refresh_images(bool reschedule)
       continue;
     }
 
-    // only format 2 images can be mirrored, so only check the format
-    // 2 rbd_directory structure
-    std::vector<std::string> image_ids;
-    r = mirror_image_list(&ioctx, &image_ids);
-    if (r < 0) {
-      derr << "error listing mirrored images in pool " << pool_name << ": "
-           << cpp_strerror(r) << dendl;
-      continue;
-    }
+    std::set<ImageIds> image_ids;
+    std::string last_read = "";
+    int max_read = 1024;
+    do {
+      std::map<std::string, std::string> mirror_images;
+      r =  mirror_image_list(&ioctx, last_read, max_read, &mirror_images);
+      if (r < 0) {
+        derr << "error listing mirrored image directory: "
+             << cpp_strerror(r) << dendl;
+        continue;
+      }
+      for (auto it = mirror_images.begin(); it != mirror_images.end(); ++it) {
+        image_ids.insert(ImageIds(it->first, it->second));
+      }
+      if (!mirror_images.empty()) {
+        last_read = mirror_images.rbegin()->first;
+      }
+      r = mirror_images.size();
+    } while (r == max_read);
 
     if (!image_ids.empty()) {
-      std::set<std::string> image_set(image_ids.begin(), image_ids.end());
-      images[pool_id] = std::move(image_set);
+      images[pool_id] = std::move(image_ids);
     }
   }
 

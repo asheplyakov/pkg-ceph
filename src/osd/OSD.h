@@ -123,7 +123,6 @@ enum {
   l_osd_pg_replica,
   l_osd_pg_stray,
   l_osd_hb_to,
-  l_osd_hb_from,
   l_osd_map,
   l_osd_mape,
   l_osd_mape_dup,
@@ -181,7 +180,7 @@ enum {
   rs_repnotrecovering_latency,
   rs_repwaitrecoveryreserved_latency,
   rs_repwaitbackfillreserved_latency,
-  rs_RepRecovering_latency,
+  rs_reprecovering_latency,
   rs_activating_latency,
   rs_waitlocalrecoveryreserved_latency,
   rs_waitremoterecoveryreserved_latency,
@@ -869,7 +868,7 @@ public:
 	PGQueueable(
 	  PGScrub(pg->get_osdmap()->get_epoch()),
 	  cct->_conf->osd_scrub_cost,
-	  cct->_conf->osd_scrub_priority,
+	  pg->get_scrub_priority(),
 	  ceph_clock_now(cct),
 	  entity_inst_t())));
   }
@@ -1968,7 +1967,6 @@ protected:
     const pg_history_t& orig_history,
     pg_interval_map_t& pi,
     epoch_t epoch,
-    bool same_primary,
     PG::CephPeeringEvtRef evt);
   
   void load_pgs();
@@ -2052,6 +2050,7 @@ protected:
   epoch_t requested_full_first, requested_full_last;
 
   void request_full_map(epoch_t first, epoch_t last);
+  void finish_full_map_request();
   void got_full_map(epoch_t e);
 
   // -- failures --

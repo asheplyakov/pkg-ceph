@@ -121,6 +121,7 @@ cls_method_handle_t h_mirror_peer_remove;
 cls_method_handle_t h_mirror_peer_set_client;
 cls_method_handle_t h_mirror_peer_set_cluster;
 cls_method_handle_t h_mirror_image_list;
+cls_method_handle_t h_mirror_image_get_image_id;
 cls_method_handle_t h_mirror_image_get;
 cls_method_handle_t h_mirror_image_set;
 cls_method_handle_t h_mirror_image_remove;
@@ -2331,7 +2332,8 @@ int object_map_update(cls_method_context_t hctx, bufferlist *in, bufferlist *out
 
   BitVector<2> object_map;
   bufferlist header_bl;
-  r = cls_cxx_read(hctx, 0, object_map.get_header_length(), &header_bl);
+  r = cls_cxx_read2(hctx, 0, object_map.get_header_length(), &header_bl,
+                    CEPH_OSD_OP_FLAG_FADVISE_WILLNEED);
   if (r < 0) {
     CLS_ERR("object map header read failed");
     return r;
@@ -2346,8 +2348,9 @@ int object_map_update(cls_method_context_t hctx, bufferlist *in, bufferlist *out
   }
 
   bufferlist footer_bl;
-  r = cls_cxx_read(hctx, object_map.get_footer_offset(),
-		   size - object_map.get_footer_offset(), &footer_bl);
+  r = cls_cxx_read2(hctx, object_map.get_footer_offset(),
+		    size - object_map.get_footer_offset(), &footer_bl,
+                    CEPH_OSD_OP_FLAG_FADVISE_WILLNEED);
   if (r < 0) {
     CLS_ERR("object map footer read failed");
     return r;
@@ -2371,8 +2374,8 @@ int object_map_update(cls_method_context_t hctx, bufferlist *in, bufferlist *out
 			      &byte_offset, &byte_length);
 
   bufferlist data_bl;
-  r = cls_cxx_read(hctx, object_map.get_header_length() + byte_offset,
-		   byte_length, &data_bl); 
+  r = cls_cxx_read2(hctx, object_map.get_header_length() + byte_offset,
+		    byte_length, &data_bl, CEPH_OSD_OP_FLAG_FADVISE_WILLNEED);
   if (r < 0) {
     CLS_ERR("object map data read failed");
     return r;
@@ -2385,7 +2388,7 @@ int object_map_update(cls_method_context_t hctx, bufferlist *in, bufferlist *out
     CLS_ERR("failed to decode data chunk [%" PRIu64 "]: %s",
 	    byte_offset, err.what());
     return -EINVAL;
-  } 
+  }
 
   bool updated = false;
   for (uint64_t object_no = start_object_no; object_no < end_object_no;
@@ -2406,21 +2409,22 @@ int object_map_update(cls_method_context_t hctx, bufferlist *in, bufferlist *out
 
     bufferlist data_bl;
     object_map.encode_data(data_bl, byte_offset, byte_length);
-    r = cls_cxx_write(hctx, object_map.get_header_length() + byte_offset,
-		      data_bl.length(), &data_bl);
+    r = cls_cxx_write2(hctx, object_map.get_header_length() + byte_offset,
+		       data_bl.length(), &data_bl,
+                       CEPH_OSD_OP_FLAG_FADVISE_WILLNEED);
     if (r < 0) {
-      CLS_ERR("failed to write object map header: %s", cpp_strerror(r).c_str());  
-      return r;         
+      CLS_ERR("failed to write object map header: %s", cpp_strerror(r).c_str());
+      return r;
     }
-   
+
     footer_bl.clear();
     object_map.encode_footer(footer_bl);
-    r = cls_cxx_write(hctx, object_map.get_footer_offset(), footer_bl.length(),
-		      &footer_bl);
+    r = cls_cxx_write2(hctx, object_map.get_footer_offset(), footer_bl.length(),
+		       &footer_bl, CEPH_OSD_OP_FLAG_FADVISE_WILLNEED);
     if (r < 0) {
-      CLS_ERR("failed to write object map footer: %s", cpp_strerror(r).c_str());  
+      CLS_ERR("failed to write object map footer: %s", cpp_strerror(r).c_str());
       return r;
-    } 
+    }
   } else {
     CLS_LOG(20, "object_map_update: no update necessary");
   }
@@ -2960,6 +2964,7 @@ static const std::string UUID("mirror_uuid");
 static const std::string MODE("mirror_mode");
 static const std::string PEER_KEY_PREFIX("mirror_peer_");
 static const std::string IMAGE_KEY_PREFIX("image_");
+static const std::string GLOBAL_KEY_PREFIX("global_");
 
 std::string peer_key(const std::string &uuid) {
   return PEER_KEY_PREFIX + uuid;
@@ -2967,6 +2972,10 @@ std::string peer_key(const std::string &uuid) {
 
 std::string image_key(const string &image_id) {
   return IMAGE_KEY_PREFIX + image_id;
+}
+
+std::string global_key(const string &global_id) {
+  return GLOBAL_KEY_PREFIX + global_id;
 }
 
 int uuid_get(cls_method_context_t hctx, std::string *mirror_uuid) {
@@ -3008,6 +3017,10 @@ int read_peers(cls_method_context_t hctx,
 	return -EIO;
       }
     }
+
+    if (!vals.empty()) {
+      last_read = vals.rbegin()->first;
+    }
   }
   return 0;
 }
@@ -3046,28 +3059,6 @@ int write_peer(cls_method_context_t hctx, const std::string &id,
   return 0;
 }
 
-int image_list_ids(cls_method_context_t hctx, vector<string> *image_ids) {
-  string last_read = IMAGE_KEY_PREFIX;
-  int max_read = RBD_MAX_KEYS_READ;
-  int r = max_read;
-  while (r == max_read) {
-    set<string> keys;
-    r = cls_cxx_map_get_keys(hctx, last_read, max_read, &keys);
-    if (r < 0) {
-      CLS_ERR("error reading mirrored images: %s", cpp_strerror(r).c_str());
-      return r;
-    }
-
-    for (auto &image_key : keys) {
-      if (0 != image_key.compare(0, IMAGE_KEY_PREFIX.size(), IMAGE_KEY_PREFIX)) {
-	return 0;
-      }
-      image_ids->push_back(image_key.substr(IMAGE_KEY_PREFIX.size()));
-    }
-  }
-  return 0;
-}
-
 int image_get(cls_method_context_t hctx, const string &image_id,
 	      cls::rbd::MirrorImage *mirror_image) {
   bufferlist bl;
@@ -3096,24 +3087,43 @@ int image_set(cls_method_context_t hctx, const string &image_id,
   bufferlist bl;
   ::encode(mirror_image, bl);
 
-  // don't overwrite the key if it already exists with a different
-  // global_image_id
   cls::rbd::MirrorImage existing_mirror_image;
   int r = image_get(hctx, image_id, &existing_mirror_image);
-  if (r < 0 && r != -ENOENT) {
+  if (r == -ENOENT) {
+    // make sure global id doesn't already exist
+    std::string global_id_key = global_key(mirror_image.global_image_id);
+    std::string image_id;
+    r = read_key(hctx, global_id_key, &image_id);
+    if (r >= 0) {
+      return -EEXIST;
+    } else if (r != -ENOENT) {
+      CLS_ERR("error reading global image id: '%s': '%s'", image_id.c_str(),
+              cpp_strerror(r).c_str());
+      return r;
+    }
+  } else if (r < 0) {
     CLS_ERR("error reading mirrored image '%s': '%s'", image_id.c_str(),
 	    cpp_strerror(r).c_str());
     return r;
-  }
-
-  if (r != -ENOENT &&
-      existing_mirror_image.global_image_id != mirror_image.global_image_id) {
-    return -EEXIST;
+  } else if (existing_mirror_image.global_image_id !=
+                mirror_image.global_image_id) {
+    // cannot change the global id
+    return -EINVAL;
   }
 
   r = cls_cxx_map_set_val(hctx, image_key(image_id), &bl);
   if (r < 0) {
     CLS_ERR("error adding mirrored image '%s': %s", image_id.c_str(),
+            cpp_strerror(r).c_str());
+    return r;
+  }
+
+  bufferlist image_id_bl;
+  ::encode(image_id, image_id_bl);
+  r = cls_cxx_map_set_val(hctx, global_key(mirror_image.global_image_id),
+                          &image_id_bl);
+  if (r < 0) {
+    CLS_ERR("error adding global id for image '%s': %s", image_id.c_str(),
             cpp_strerror(r).c_str());
     return r;
   }
@@ -3140,6 +3150,13 @@ int image_remove(cls_method_context_t hctx, const string &image_id) {
   if (r < 0) {
     CLS_ERR("error removing mirrored image '%s': %s", image_id.c_str(),
             cpp_strerror(r).c_str());
+    return r;
+  }
+
+  r = cls_cxx_map_remove_key(hctx, global_key(mirror_image.global_image_id));
+  if (r < 0 && r != -ENOENT) {
+    CLS_ERR("error removing global id for image '%s': %s", image_id.c_str(),
+           cpp_strerror(r).c_str());
     return r;
   }
   return 0;
@@ -3486,21 +3503,96 @@ int mirror_peer_set_cluster(cls_method_context_t hctx, bufferlist *in,
 
 /**
  * Input:
- * none
+ * @param start_after which name to begin listing after
+ *        (use the empty string to start at the beginning)
+ * @param max_return the maximum number of names to list
  *
  * Output:
- * @param std::vector<std::string>: collection of image_ids
+ * @param std::map<std::string, std::string>: local id to global id map
  * @returns 0 on success, negative error code on failure
  */
 int mirror_image_list(cls_method_context_t hctx, bufferlist *in,
 		     bufferlist *out) {
-  vector<string> image_ids;
-  int r = mirror::image_list_ids(hctx, &image_ids);
+  std::string start_after;
+  uint64_t max_return;
+  try {
+    bufferlist::iterator iter = in->begin();
+    ::decode(start_after, iter);
+    ::decode(max_return, iter);
+  } catch (const buffer::error &err) {
+    return -EINVAL;
+  }
+
+  int max_read = RBD_MAX_KEYS_READ;
+  int r = max_read;
+  std::map<std::string, std::string> mirror_images;
+  std::string last_read = mirror::image_key(start_after);
+
+  while (r == max_read && mirror_images.size() < max_return) {
+    std::map<std::string, bufferlist> vals;
+    CLS_LOG(20, "last_read = '%s'", last_read.c_str());
+    r = cls_cxx_map_get_vals(hctx, last_read, mirror::IMAGE_KEY_PREFIX,
+			     max_read, &vals);
+    if (r < 0) {
+      CLS_ERR("error reading mirror image directory by name: %s",
+              cpp_strerror(r).c_str());
+      return r;
+    }
+
+    for (auto it = vals.begin(); it != vals.end(); ++it) {
+      const std::string &image_id =
+        it->first.substr(mirror::IMAGE_KEY_PREFIX.size());
+      cls::rbd::MirrorImage mirror_image;
+      bufferlist::iterator iter = it->second.begin();
+      try {
+	::decode(mirror_image, iter);
+      } catch (const buffer::error &err) {
+	CLS_ERR("could not decode mirror image payload of image '%s'",
+                image_id.c_str());
+	return -EIO;
+      }
+
+      mirror_images[image_id] = mirror_image.global_image_id;
+      if (mirror_images.size() >= max_return) {
+	break;
+      }
+    }
+    if (!vals.empty()) {
+      last_read = mirror::image_key(mirror_images.rbegin()->first);
+    }
+  }
+
+  ::encode(mirror_images, *out);
+  return 0;
+}
+
+/**
+ * Input:
+ * @param global_id (std::string)
+ *
+ * Output:
+ * @param std::string - image id
+ * @returns 0 on success, negative error code on failure
+ */
+int mirror_image_get_image_id(cls_method_context_t hctx, bufferlist *in,
+                              bufferlist *out) {
+  std::string global_id;
+  try {
+    bufferlist::iterator it = in->begin();
+    ::decode(global_id, it);
+  } catch (const buffer::error &err) {
+    return -EINVAL;
+  }
+
+  std::string image_id;
+  int r = read_key(hctx, mirror::global_key(global_id), &image_id);
   if (r < 0) {
+    CLS_ERR("error retrieving image id for global id '%s': %s",
+            global_id.c_str(), cpp_strerror(r).c_str());
     return r;
   }
 
-  ::encode(image_ids, *out);
+  ::encode(image_id, *out);
   return 0;
 }
 
@@ -3768,6 +3860,9 @@ void __cls_init()
                           mirror_peer_set_cluster, &h_mirror_peer_set_cluster);
   cls_register_cxx_method(h_class, "mirror_image_list", CLS_METHOD_RD,
                           mirror_image_list, &h_mirror_image_list);
+  cls_register_cxx_method(h_class, "mirror_image_get_image_id", CLS_METHOD_RD,
+                          mirror_image_get_image_id,
+                          &h_mirror_image_get_image_id);
   cls_register_cxx_method(h_class, "mirror_image_get", CLS_METHOD_RD,
                           mirror_image_get, &h_mirror_image_get);
   cls_register_cxx_method(h_class, "mirror_image_set",

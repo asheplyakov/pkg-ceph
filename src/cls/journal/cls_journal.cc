@@ -250,9 +250,11 @@ int journal_create(cls_method_context_t hctx, bufferlist *in, bufferlist *out) {
 
   bufferlist stored_orderbl;
   int r = cls_cxx_map_get_val(hctx, HEADER_KEY_ORDER, &stored_orderbl);
-  if (r != -ENOENT) {
+  if (r >= 0) {
     CLS_ERR("journal already exists");
     return -EEXIST;
+  } else if (r != -ENOENT) {
+    return r;
   }
 
   r = write_key(hctx, HEADER_KEY_ORDER, order);
@@ -547,12 +549,20 @@ int journal_client_register(cls_method_context_t hctx, bufferlist *in,
     return -EINVAL;
   }
 
+  uint8_t order;
+  int r = read_key(hctx, HEADER_KEY_ORDER, &order);
+  if (r < 0) {
+    return r;
+  }
+
   std::string key(key_from_client_id(id));
   bufferlist stored_clientbl;
-  int r = cls_cxx_map_get_val(hctx, key, &stored_clientbl);
-  if (r != -ENOENT) {
+  r = cls_cxx_map_get_val(hctx, key, &stored_clientbl);
+  if (r >= 0) {
     CLS_ERR("duplicate client id: %s", id.c_str());
     return -EEXIST;
+  } else if (r != -ENOENT) {
+    return r;
   }
 
   cls::journal::Client client(id, data);
@@ -860,9 +870,11 @@ int journal_tag_create(cls_method_context_t hctx, bufferlist *in,
   std::string key(key_from_tag_tid(tag_tid));
   bufferlist stored_tag_bl;
   int r = cls_cxx_map_get_val(hctx, key, &stored_tag_bl);
-  if (r != -ENOENT) {
+  if (r >= 0) {
     CLS_ERR("duplicate tag id: %" PRIu64, tag_tid);
     return -EEXIST;
+  } else if (r != -ENOENT) {
+    return r;
   }
 
   // verify tag tid ordering

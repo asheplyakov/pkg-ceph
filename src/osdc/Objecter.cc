@@ -2276,11 +2276,6 @@ ceph_tid_t Objecter::_op_submit(Op *op, shunique_lock& sul)
   _send_op_account(op);
 
   // send?
-  ldout(cct, 10) << "_op_submit oid " << op->target.base_oid
-		 << " '" << op->target.base_oloc << "' '"
-		 << op->target.target_oloc << "' " << op->ops << " tid "
-		 << op->tid << " osd." << (!s->is_homeless() ? s->osd : -1)
-		 << dendl;
 
   assert(op->target.flags & (CEPH_OSD_FLAG_READ|CEPH_OSD_FLAG_WRITE));
 
@@ -2321,6 +2316,13 @@ ceph_tid_t Objecter::_op_submit(Op *op, shunique_lock& sul)
   OSDSession::unique_lock sl(s->lock);
   if (op->tid == 0)
     op->tid = last_tid.inc();
+
+  ldout(cct, 10) << "_op_submit oid " << op->target.base_oid
+		 << " '" << op->target.base_oloc << "' '"
+		 << op->target.target_oloc << "' " << op->ops << " tid "
+		 << op->tid << " osd." << (!s->is_homeless() ? s->osd : -1)
+		 << dendl;
+
   _session_op_assign(s, op);
 
   if (need_send) {
@@ -2661,7 +2663,15 @@ int Objecter::_calc_target(op_target_t *t, epoch_t *last_force_resend,
       t->osd = -1;
       return RECALC_OP_TARGET_POOL_DNE;
     }
-    pgid = osdmap->raw_pg_to_pg(t->base_pgid);
+    if (osdmap->test_flag(CEPH_OSDMAP_SORTBITWISE)) {
+      // if the SORTBITWISE flag is set, we know all OSDs are running
+      // jewel+.
+      pgid = t->base_pgid;
+    } else {
+      // legacy behavior.  pre-jewel OSDs will fail if we send a
+      // full-hash pgid value.
+      pgid = osdmap->raw_pg_to_pg(t->base_pgid);
+    }
   } else {
     int ret = osdmap->object_locator_to_pg(t->target_oid, t->target_oloc,
 					   pgid);

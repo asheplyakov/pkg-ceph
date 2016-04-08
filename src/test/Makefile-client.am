@@ -234,7 +234,7 @@ ceph_test_rados_api_aio_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 bin_DEBUGPROGRAMS += ceph_test_rados_api_aio
 
 ceph_test_rados_api_list_SOURCES = test/librados/list.cc
-ceph_test_rados_api_list_LDADD = $(LIBRADOS) $(UNITTEST_LDADD) $(RADOS_TEST_LDADD)
+ceph_test_rados_api_list_LDADD = $(LIBRADOS) $(UNITTEST_LDADD) $(RADOS_TEST_LDADD) $(CEPH_GLOBAL)
 ceph_test_rados_api_list_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 bin_DEBUGPROGRAMS += ceph_test_rados_api_list
 
@@ -362,17 +362,24 @@ librbd_test_la_SOURCES = \
 	test/librbd/test_ImageWatcher.cc \
 	test/librbd/test_internal.cc \
 	test/librbd/test_mirroring.cc \
+	test/librbd/test_MirroringWatcher.cc \
 	test/librbd/test_ObjectMap.cc \
 	test/librbd/journal/test_Entries.cc \
 	test/librbd/journal/test_Replay.cc
 librbd_test_la_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 noinst_LTLIBRARIES += librbd_test.la
 
+librbd_test_mock_la_SOURCES = \
+	test/librbd/mock/MockImageCtx.cc
+librbd_test_mock_la_CXXFLAGS = $(UNITTEST_CXXFLAGS)
+noinst_LTLIBRARIES += librbd_test_mock.la
+
 unittest_librbd_SOURCES = \
         test/librbd/test_main.cc \
 	test/librbd/test_mock_fixture.cc \
 	test/librbd/test_mock_ExclusiveLock.cc \
 	test/librbd/test_mock_Journal.cc \
+	test/librbd/test_mock_ObjectWatcher.cc \
 	test/librbd/exclusive_lock/test_mock_AcquireRequest.cc \
 	test/librbd/exclusive_lock/test_mock_ReleaseRequest.cc \
 	test/librbd/image/test_mock_RefreshRequest.cc \
@@ -394,7 +401,8 @@ unittest_librbd_SOURCES = \
 	test/librbd/operation/test_mock_SnapshotUnprotectRequest.cc
 unittest_librbd_CXXFLAGS = $(UNITTEST_CXXFLAGS) -DTEST_LIBRBD_INTERNALS
 unittest_librbd_LDADD = \
-	librbd_test.la librbd_api.la librbd_internal.la $(LIBRBD_TYPES) \
+	librbd_test.la librbd_test_mock.la \
+	librbd_api.la librbd_internal.la $(LIBRBD_TYPES) \
 	libcls_rbd_client.la libcls_lock_client.la \
 	libjournal.la libcls_journal_client.la \
 	librados_test_stub.la librados_internal.la \
@@ -434,6 +442,7 @@ noinst_HEADERS += \
 	test/librbd/mock/MockImageState.h \
 	test/librbd/mock/MockImageWatcher.h \
 	test/librbd/mock/MockJournal.h \
+	test/librbd/mock/MockJournalPolicy.h \
 	test/librbd/mock/MockObjectMap.h \
 	test/librbd/mock/MockOperations.h \
 	test/librbd/mock/MockReadahead.h \
@@ -457,6 +466,7 @@ noinst_LTLIBRARIES += librbd_mirror_test.la
 unittest_rbd_mirror_SOURCES = \
 	test/rbd_mirror/test_main.cc \
 	test/rbd_mirror/test_mock_fixture.cc \
+	test/rbd_mirror/test_mock_ImageReplayer.cc \
 	test/rbd_mirror/test_mock_ImageSync.cc \
 	test/rbd_mirror/image_sync/test_mock_ImageCopyRequest.cc \
 	test/rbd_mirror/image_sync/test_mock_ObjectCopyRequest.cc \
@@ -467,6 +477,7 @@ unittest_rbd_mirror_SOURCES = \
 unittest_rbd_mirror_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 unittest_rbd_mirror_LDADD = \
 	librbd_mirror_test.la \
+	librbd_test_mock.la \
 	librados_test_stub.la \
 	librbd_mirror_internal.la \
 	librbd_internal.la \

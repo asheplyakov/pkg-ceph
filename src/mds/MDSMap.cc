@@ -81,15 +81,42 @@ void MDSMap::mds_info_t::dump(Formatter *f) const
     f->dump_stream("laggy_since") << laggy_since;
   
   f->dump_int("standby_for_rank", standby_for_rank);
-  f->dump_int("standby_for_ns", standby_for_ns);
+  f->dump_int("standby_for_fscid", standby_for_fscid);
   f->dump_string("standby_for_name", standby_for_name);
   f->open_array_section("export_targets");
   for (set<mds_rank_t>::iterator p = export_targets.begin();
        p != export_targets.end(); ++p) {
     f->dump_int("mds", *p);
   }
-  f->dump_unsigned("features", mds_features);
   f->close_section();
+  f->dump_unsigned("features", mds_features);
+}
+
+void MDSMap::mds_info_t::print_summary(ostream &out) const
+{
+  out << global_id << ":\t"
+      << addr
+      << " '" << name << "'"
+      << " mds." << rank
+      << "." << inc
+      << " " << ceph_mds_state_name(state)
+      << " seq " << state_seq;
+  if (laggy()) {
+    out << " laggy since " << laggy_since;
+  }
+  if (standby_for_rank != -1 ||
+      !standby_for_name.empty()) {
+    out << " (standby for";
+    //if (standby_for_rank >= 0)
+      out << " rank " << standby_for_rank;
+    if (!standby_for_name.empty()) {
+      out << " '" << standby_for_name << "'";
+    }
+    out << ")";
+  }
+  if (!export_targets.empty()) {
+    out << " export_targets=" << export_targets;
+  }
 }
 
 void MDSMap::mds_info_t::generate_test_instances(list<mds_info_t*>& ls)
@@ -210,28 +237,8 @@ void MDSMap::print(ostream& out) const
 
   for (const auto &p : foo) {
     const mds_info_t& info = mds_info.at(p.second);
-    
-    out << p.second << ":\t"
-	<< info.addr
-	<< " '" << info.name << "'"
-	<< " mds." << info.rank
-	<< "." << info.inc
-	<< " " << ceph_mds_state_name(info.state)
-	<< " seq " << info.state_seq;
-    if (info.laggy())
-      out << " laggy since " << info.laggy_since;
-    if (info.standby_for_rank != -1 ||
-	!info.standby_for_name.empty()) {
-      out << " (standby for";
-      //if (info.standby_for_rank >= 0)
-	out << " rank " << info.standby_for_rank;
-      if (!info.standby_for_name.empty())
-	out << " '" << info.standby_for_name << "'";
-      out << ")";
-    }
-    if (!info.export_targets.empty())
-      out << " export_targets=" << info.export_targets;
-    out << "\n";    
+    info.print_summary(out);
+    out << "\n";
   }
 }
 
@@ -412,7 +419,7 @@ void MDSMap::mds_info_t::encode_versioned(bufferlist& bl, uint64_t features) con
   ::encode(standby_for_name, bl);
   ::encode(export_targets, bl);
   ::encode(mds_features, bl);
-  ::encode(standby_for_ns, bl);
+  ::encode(standby_for_fscid, bl);
   ENCODE_FINISH(bl);
 }
 
@@ -451,7 +458,7 @@ void MDSMap::mds_info_t::decode(bufferlist::iterator& bl)
   if (struct_v >= 5)
     ::decode(mds_features, bl);
   if (struct_v >= 6) {
-    ::decode(standby_for_ns, bl);
+    ::decode(standby_for_fscid, bl);
   }
   DECODE_FINISH(bl);
 }
@@ -667,14 +674,14 @@ MDSMap::availability_t MDSMap::is_cluster_available() const
     return STUCK_UNAVAILABLE;
   }
 
-  for (const auto rank : in) {                                                  
-  if (up.count(rank) && mds_info.at(up.at(rank)).laggy()) {
-    // This might only be transient, but because we can't see
-    // standbys, we have no way of knowing whether there is a
-    // standby available to replace the laggy guy.
-    return STUCK_UNAVAILABLE;                                                 
-  }                                                                           
-}   
+  for (const auto rank : in) {
+    if (up.count(rank) && mds_info.at(up.at(rank)).laggy()) {
+      // This might only be transient, but because we can't see
+      // standbys, we have no way of knowing whether there is a
+      // standby available to replace the laggy guy.
+      return STUCK_UNAVAILABLE;
+    }
+  }
 
   if (get_num_mds(CEPH_MDS_STATE_ACTIVE) > 0) {
     // Nobody looks stuck, so indicate to client they should go ahead

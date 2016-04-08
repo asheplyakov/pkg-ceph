@@ -966,7 +966,9 @@ static opt_mapping_t opt_mapping = boost::assign::map_list_of
            ("recovery_priority", pool_opts_t::opt_desc_t(
              pool_opts_t::RECOVERY_PRIORITY, pool_opts_t::INT))
            ("recovery_op_priority", pool_opts_t::opt_desc_t(
-             pool_opts_t::RECOVERY_OP_PRIORITY, pool_opts_t::INT));
+             pool_opts_t::RECOVERY_OP_PRIORITY, pool_opts_t::INT))
+           ("scrub_priority", pool_opts_t::opt_desc_t(
+             pool_opts_t::SCRUB_PRIORITY, pool_opts_t::INT));
 
 bool pool_opts_t::is_opt_name(const std::string& name) {
     return opt_mapping.find(name) != opt_mapping.end();
@@ -2244,9 +2246,14 @@ void pg_stat_t::dump(Formatter *f) const
   f->dump_stream("last_deep_scrub") << last_deep_scrub;
   f->dump_stream("last_deep_scrub_stamp") << last_deep_scrub_stamp;
   f->dump_stream("last_clean_scrub_stamp") << last_clean_scrub_stamp;
-  f->dump_unsigned("log_size", log_size);
-  f->dump_unsigned("ondisk_log_size", ondisk_log_size);
-  f->dump_stream("stats_invalid") << stats_invalid;
+  f->dump_int("log_size", log_size);
+  f->dump_int("ondisk_log_size", ondisk_log_size);
+  f->dump_bool("stats_invalid", stats_invalid);
+  f->dump_bool("dirty_stats_invalid", dirty_stats_invalid);
+  f->dump_bool("omap_stats_invalid", omap_stats_invalid);
+  f->dump_bool("hitset_stats_invalid", hitset_stats_invalid);
+  f->dump_bool("hitset_bytes_stats_invalid", hitset_bytes_stats_invalid);
+  f->dump_bool("pin_stats_invalid", pin_stats_invalid);
   stats.dump(f);
   f->open_array_section("up");
   for (vector<int32_t>::const_iterator p = up.begin(); p != up.end(); ++p)

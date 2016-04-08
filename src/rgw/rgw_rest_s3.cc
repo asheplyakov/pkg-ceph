@@ -257,10 +257,14 @@ done:
 			riter->second.c_str());
   }
 
-  if (!content_type)
-    content_type = "binary/octet-stream";
+  if (op_ret == ERR_NOT_MODIFIED) {
+      end_header(s, this);
+  } else {
+      if (!content_type)
+          content_type = "binary/octet-stream";
 
-  end_header(s, this, content_type);
+      end_header(s, this, content_type);
+  }
 
   if (metadata_bl.length()) {
     STREAM_IO(s)->write(metadata_bl.c_str(), metadata_bl.length());
@@ -479,8 +483,10 @@ void RGWListBucket_ObjStore_S3::send_versioned_response()
 					    : "false"));
 
   bool encode_key = false;
-  if (strcasecmp(encoding_type.c_str(), "url") == 0)
+  if (strcasecmp(encoding_type.c_str(), "url") == 0) {
+    s->formatter->dump_string("EncodingType", "url");
     encode_key = true;
+  }
 
   if (op_ret >= 0) {
     if (objs_container) {
@@ -576,8 +582,10 @@ void RGWListBucket_ObjStore_S3::send_response()
 					    : "false"));
 
   bool encode_key = false;
-  if (strcasecmp(encoding_type.c_str(), "url") == 0)
+  if (strcasecmp(encoding_type.c_str(), "url") == 0) {
+    s->formatter->dump_string("EncodingType", "url");
     encode_key = true;
+  }
 
   if (op_ret >= 0) {
     vector<RGWObjEnt>::iterator iter;
@@ -2420,7 +2428,7 @@ void RGWListMultipart_ObjStore_S3::send_response()
       dump_time(s, "LastModified", &info.modified);
 
       s->formatter->dump_unsigned("PartNumber", info.num);
-      s->formatter->dump_string("ETag", info.etag);
+      s->formatter->dump_format("ETag", "\"%s\"", info.etag.c_str());
       s->formatter->dump_unsigned("Size", info.size);
       s->formatter->close_section();
     }

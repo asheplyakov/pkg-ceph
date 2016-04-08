@@ -108,6 +108,7 @@ void _usage()
   cout << "  zonegroup-map get          show zonegroup-map\n";
   cout << "  zonegroup-map set          set zonegroup-map (requires infile)\n";
   cout << "  zone create                create a new zone\n";
+  cout << "  zone delete                delete a zone\n";
   cout << "  zone get                   show zone cluster params\n";
   cout << "  zone modify                set/clear zone master status\n";
   cout << "  zone set                   set zone cluster params (requires infile)\n";
@@ -150,7 +151,7 @@ void _usage()
   cout << "  replicalog get             get replica metadata log entry\n";
   cout << "  replicalog update          update replica metadata log entry\n";
   cout << "  replicalog delete          delete replica metadata log entry\n";
-  cout << "  orphans find               init and run search for leaked rados objects\n";
+  cout << "  orphans find               init and run search for leaked rados objects (use job-id, pool)\n";
   cout << "  orphans finish             clean up search for leaked rados objects\n";
   cout << "options:\n";
   cout << "   --tenant=<tenant>         tenant name\n";
@@ -183,7 +184,6 @@ void _usage()
   cout << "                               replica datalog get/delete\n";
   cout << "   --metadata-key=<key>      key to retrieve metadata from with metadata get\n";
   cout << "   --remote=<remote>         remote to pull period\n";
-  cout << "   --parent=<id>             parent period id\n";
   cout << "   --period=<id>             period id\n";
   cout << "   --epoch=<number>          period epoch\n";
   cout << "   --commit                  commit the period during 'period update'\n";
@@ -196,8 +196,11 @@ void _usage()
   cout << "   --realm-new-name=<realm new name> realm new name\n";
   cout << "   --rgw-zonegroup=<zonegroup>   zonegroup name\n";
   cout << "   --rgw-zone=<zone>         zone in which radosgw is running\n";
+  cout << "   --zone-id=<zone id>       zone id\n";
   cout << "   --zone-new-name=<zone>    zone new name\n";
+  cout << "   --source-zone             specify the source zone (for data sync)\n";
   cout << "   --default                 set entity (realm, zonegroup, zone) as default\n";
+  cout << "   --read-only               set zone as read-only (when adding to zonegroup)\n";
   cout << "   --endpoints=<list>        zone endpoints\n";
   cout << "   --fix                     besides checking bucket index, will also fix it\n";
   cout << "   --check-objects           bucket check: rebuilds bucket index according to\n";
@@ -234,6 +237,8 @@ void _usage()
   cout << "\nOrphans search options:\n";
   cout << "   --pool                    data pool to scan for leaked rados objects in\n";
   cout << "   --num-shards              num of shards to use for keeping the temporary scan info\n";
+  cout << "   --job-id                  set the job id (for orphans find)\n";
+  cout << "   --max-concurrent-ios      maximum concurrent ios for orphans find (default: 32)\n";
   cout << "\n";
   generic_client_usage();
 }
@@ -331,6 +336,7 @@ enum {
   OPT_SYNC_ERROR_LIST,
   OPT_BILOG_LIST,
   OPT_BILOG_TRIM,
+  OPT_BILOG_STATUS,
   OPT_DATA_SYNC_STATUS,
   OPT_DATA_SYNC_INIT,
   OPT_DATA_SYNC_RUN,
@@ -681,6 +687,8 @@ static int get_cmd(const char *cmd, const char *prev_cmd, const char *prev_prev_
       return OPT_BILOG_LIST;
     if (strcmp(cmd, "trim") == 0)
       return OPT_BILOG_TRIM;
+    if (strcmp(cmd, "status") == 0)
+      return OPT_BILOG_STATUS;
   } else if (strcmp(prev_cmd, "data") == 0) {
     if (strcmp(cmd, "sync") == 0) {
       *need_more = true;
@@ -1316,15 +1324,13 @@ static int send_to_remote_gateway(const string& remote, req_info& info,
   }
   rgw_user user;
   int ret = conn->forward(user, info, NULL, MAX_REST_RESPONSE, &in_data, &response);
-  if (ret < 0) {
-    return ret;
-  }
-  ret = parser.parse(response.c_str(), response.length());
-  if (ret < 0) {
+
+  int parse_ret = parser.parse(response.c_str(), response.length());
+  if (parse_ret < 0) {
     cerr << "failed to parse response" << std::endl;
-    return ret;
+    return parse_ret;
   }
-  return 0;
+  return ret;
 }
 
 static int send_to_url(const string& url, RGWAccessKey& key, req_info& info,
@@ -1335,15 +1341,13 @@ static int send_to_url(const string& url, RGWAccessKey& key, req_info& info,
 
   bufferlist response;
   int ret = req.forward_request(key, info, MAX_REST_RESPONSE, &in_data, &response);
-  if (ret < 0) {
-    return ret;
-  }
-  ret = parser.parse(response.c_str(), response.length());
-  if (ret < 0) {
+
+  int parse_ret = parser.parse(response.c_str(), response.length());
+  if (parse_ret < 0) {
     cout << "failed to parse response" << std::endl;
-    return ret;
+    return parse_ret;
   }
-  return 0;
+  return ret;
 }
 
 static int send_to_remote_or_url(const string& remote, const string& url,
@@ -1385,7 +1389,7 @@ static int commit_period(RGWRealm& realm, RGWPeriod& period,
       return ret;
     }
     // the master zone can commit locally
-    ret = period.commit(realm, current_period);
+    ret = period.commit(realm, current_period, cerr);
     if (ret < 0) {
       cerr << "failed to commit period: " << cpp_strerror(-ret) << std::endl;
     }
@@ -1410,6 +1414,12 @@ static int commit_period(RGWRealm& realm, RGWPeriod& period,
   int ret = send_to_remote_or_url(remote, url, access, secret, info, bl, p);
   if (ret < 0) {
     cerr << "request failed: " << cpp_strerror(-ret) << std::endl;
+
+    // did we parse an error message?
+    auto message = p.find_obj("Message");
+    if (message) {
+      cerr << "Reason: " << message->get_data() << std::endl;
+    }
     return ret;
   }
 
@@ -1928,7 +1938,7 @@ int main(int argc, char **argv)
   std::string date, subuser, access, format;
   std::string start_date, end_date;
   std::string key_type_str;
-  std::string period_id, period_epoch, remote, url, parent_period;
+  std::string period_id, period_epoch, remote, url;
   std::string master_zonegroup, master_zone;
   std::string realm_name, realm_id, realm_new_name;
   std::string zone_name, zone_id, zone_new_name;
@@ -2246,8 +2256,6 @@ int main(int argc, char **argv)
         cerr << "ERROR: invalid bucket index entry type" << std::endl;
         return EINVAL;
       }
-    } else if (ceph_argparse_witharg(args, i, &val, "--parent", (char*)NULL)) {
-      parent_period = val;
     } else if (ceph_argparse_binary_flag(args, i, &is_master_int, NULL, "--master", (char*)NULL)) {
       is_master = (bool)is_master_int;
       is_master_set = true;
@@ -2744,6 +2752,11 @@ int main(int argc, char **argv)
                                         info, bl, p);
         if (ret < 0) {
           cerr << "request failed: " << cpp_strerror(-ret) << std::endl;
+          if (ret == -EACCES) {
+            cerr << "If the realm has been changed on the master zone, the "
+                "master zone's gateway may need to be restarted to recognize "
+                "this user." << std::endl;
+          }
           return ret;
         }
         RGWRealm realm;
@@ -5222,6 +5235,29 @@ next:
       cerr << "ERROR: trim_bi_log_entries(): " << cpp_strerror(-ret) << std::endl;
       return -ret;
     }
+  }
+
+  if (opt_cmd == OPT_BILOG_STATUS) {
+    if (bucket_name.empty()) {
+      cerr << "ERROR: bucket not specified" << std::endl;
+      return -EINVAL;
+    }
+    RGWBucketInfo bucket_info;
+    int ret = init_bucket(tenant, bucket_name, bucket_id, bucket_info, bucket);
+    if (ret < 0) {
+      cerr << "ERROR: could not init bucket: " << cpp_strerror(-ret) << std::endl;
+      return -ret;
+    }
+    map<int, string> markers;
+    ret = store->get_bi_log_status(bucket, shard_id, markers);
+    if (ret < 0) {
+      cerr << "ERROR: trim_bi_log_entries(): " << cpp_strerror(-ret) << std::endl;
+      return -ret;
+    }
+    formatter->open_object_section("entries");
+    encode_json("markers", markers, formatter);
+    formatter->close_section();
+    formatter->flush(cout);
   }
 
   if (opt_cmd == OPT_DATALOG_LIST) {
