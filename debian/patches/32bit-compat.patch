@@ -12,11 +12,9 @@ Signed-off-by: Adam C. Emerson <aemerson@redhat.com>
  src/common/ceph_time.h | 7 +++++--
  1 file changed, 5 insertions(+), 2 deletions(-)
 
-diff --git a/src/common/ceph_time.h b/src/common/ceph_time.h
-index ef187c0..2c7061a 100644
 --- a/src/common/ceph_time.h
 +++ b/src/common/ceph_time.h
-@@ -382,10 +382,13 @@ void encode(const std::chrono::time_point<Clock, Duration>& t,
+@@ -382,10 +382,13 @@ void encode(const std::chrono::time_poin
  template<typename Clock, typename Duration>
  void decode(std::chrono::time_point<Clock, Duration>& t,
  	    bufferlist::iterator& p) {
@@ -32,23 +30,6 @@ index ef187c0..2c7061a 100644
  
    t = Clock::from_timespec(ts);
  }
-
-From 8f9e7b0b1db4eaa45cb603eae5b7f1040135de26 Mon Sep 17 00:00:00 2001
-From: "Adam C. Emerson" <aemerson@redhat.com>
-Date: Thu, 31 Mar 2016 16:08:08 -0400
-Subject: [PATCH 2/2] rgw: Do not try to encode or decode time_t
-
-time_t's width varies between machines. Also it fails to compile on 32
-bit linux.
-
-Fixes: http://tracker.ceph.com/issues/15330
-Signed-off-by: Adam C. Emerson <aemerson@redhat.com>
----
- src/cls/rgw/cls_rgw_ops.h | 6 +++---
- 1 file changed, 3 insertions(+), 3 deletions(-)
-
-diff --git a/src/cls/rgw/cls_rgw_ops.h b/src/cls/rgw/cls_rgw_ops.h
-index e8a7661..7d8ad2d 100644
 --- a/src/cls/rgw/cls_rgw_ops.h
 +++ b/src/cls/rgw/cls_rgw_ops.h
 @@ -180,7 +180,7 @@ struct rgw_cls_link_olh_op {

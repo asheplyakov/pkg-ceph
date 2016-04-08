@@ -1,7 +1,8 @@
 ceph (10.1.1-0ubuntu1) UNRELEASED; urgency=medium
 
   * New upstream release candidate for Ceph Jewel
-    (see http://pad.lv/1563714 for FFe).
+    (see http://pad.lv/1563714 for FFe):
+    - d/p/*: Refresh.
 
  -- James Page <james.page@ubuntu.com>  Fri, 08 Apr 2016 12:09:25 +0100
 

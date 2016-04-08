@@ -13,7 +13,7 @@ Description: disable tests that depend on network...
  check_SCRIPTS += \
  	test/ceph_objectstore_tool.py \
  	test/test-ceph-helpers.sh \
-@@ -93,6 +94,7 @@ check_SCRIPTS += \
+@@ -94,6 +95,7 @@ check_SCRIPTS += \
  	test/libradosstriper/rados-striper.sh \
  	test/test_objectstore_memstore.sh \
          test/test_pidfile.sh
@@ -23,7 +23,7 @@ Description: disable tests that depend on network...
  	$(srcdir)/test/python/brag-client/setup.py \
 --- a/configure.ac
 +++ b/configure.ac
-@@ -1341,6 +1341,13 @@ AC_LANG_POP([C++])
+@@ -1349,6 +1349,13 @@ AC_LANG_POP([C++])
  
  AM_CONDITIONAL(WITH_BUILD_TESTS, test "$WITH_BUILD_TESTS" = "1")
  
