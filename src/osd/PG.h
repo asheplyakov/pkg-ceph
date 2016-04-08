@@ -409,7 +409,8 @@ public:
 
     /// Adds recovery sources in batch
     void add_batch_sources_info(
-      const set<pg_shard_t> &sources  ///< [in] a set of resources which can be used for all objects
+      const set<pg_shard_t> &sources,  ///< [in] a set of resources which can be used for all objects
+      ThreadPool::TPHandle* handle  ///< [in] ThreadPool handle
       );
 
     /// Uses osdmap to update structures for now down sources
@@ -1037,7 +1038,8 @@ public:
   void trim_write_ahead();
 
   map<pg_shard_t, pg_info_t>::const_iterator find_best_info(
-    const map<pg_shard_t, pg_info_t> &infos) const;
+    const map<pg_shard_t, pg_info_t> &infos,
+    bool *history_les_bound) const;
   static void calc_ec_acting(
     map<pg_shard_t, pg_info_t>::const_iterator auth_log_shard,
     unsigned size,
@@ -1066,7 +1068,8 @@ public:
     set<pg_shard_t> *acting_backfill,
     pg_shard_t *want_primary,
     ostream &ss);
-  bool choose_acting(pg_shard_t &auth_log_shard);
+  bool choose_acting(pg_shard_t &auth_log_shard,
+		     bool *history_les_bound);
   void build_might_have_unfound();
   void replay_queued_ops();
   void activate(
@@ -1306,11 +1309,6 @@ public:
     int seed,
     const pg_pool_t *pool,
     ObjectStore::Transaction *t) = 0;
-  virtual bool _report_snap_collection_errors(
-    const hobject_t &hoid,
-    const map<string, bufferptr> &attrs,
-    pg_shard_t osd,
-    ostream &out) { return false; }
   void clear_scrub_reserved();
   void scrub_reserve_replicas();
   void scrub_unreserve_replicas();
@@ -1728,6 +1726,7 @@ public:
 
     struct Peering : boost::statechart::state< Peering, Primary, GetInfo >, NamedState {
       std::unique_ptr< PriorSet > prior_set;
+      bool history_les_bound;  //< need osd_find_best_info_ignore_history_les
 
       explicit Peering(my_context ctx);
       void exit();
@@ -2263,6 +2262,7 @@ public:
   void queue_snap_trim();
   bool requeue_scrub();
   bool queue_scrub();
+  unsigned get_scrub_priority();
 
   /// share pg info after a pg is active
   void share_pg_info();

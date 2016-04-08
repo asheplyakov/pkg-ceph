@@ -585,7 +585,9 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/Journal.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/LibrbdAdminSocketHook.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/LibrbdWriteback.h \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/MirroringWatcher.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/ObjectMap.h \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/ObjectWatcher.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/Operations.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/parent_types.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/SnapInfo.h \
@@ -593,7 +595,9 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/Utils.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/WatchNotifyTypes.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/exclusive_lock/AcquireRequest.h \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/exclusive_lock/Policy.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/exclusive_lock/ReleaseRequest.h \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/exclusive_lock/StandardPolicy.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/image/CloseRequest.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/image/OpenRequest.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/image/RefreshParentRequest.h \
@@ -601,8 +605,12 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/image/SetSnapRequest.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/image_watcher/Notifier.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/image_watcher/NotifyLockOwner.h \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/journal/Policy.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/journal/Replay.h \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/journal/StandardPolicy.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/journal/Types.h \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/journal/TypeTraits.h \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/mirroring_watcher/Types.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/object_map/InvalidateRequest.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/object_map/LockRequest.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/object_map/Request.h \
@@ -1012,6 +1020,7 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	ceph_test_rbd_mirror_image_replay
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_227 = unittest_rbd_replay
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_228 = librbd_test.la \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_test_mock.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_mirror_test.la
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am__append_229 = unittest_librbd \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	unittest_rbd_mirror
@@ -1026,6 +1035,7 @@ check_PROGRAMS = $(am__EXEEXT_63) $(am__EXEEXT_64) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/mock/MockImageState.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/mock/MockImageWatcher.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/mock/MockJournal.h \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/mock/MockJournalPolicy.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/mock/MockObjectMap.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/mock/MockOperations.h \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/mock/MockReadahead.h \
@@ -1433,7 +1443,8 @@ am__installdirs = "$(DESTDIR)$(compressorlibdir)" \
 	"$(DESTDIR)$(docdir)" "$(DESTDIR)$(libcephfs_includedir)" \
 	"$(DESTDIR)$(librbd_includedir)" \
 	"$(DESTDIR)$(rados_includedir)" \
-	"$(DESTDIR)$(radosstriper_includedir)"
+	"$(DESTDIR)$(radosstriper_includedir)" \
+	"$(DESTDIR)$(submandir)"
 LTLIBRARIES = $(compressorlib_LTLIBRARIES) \
 	$(erasure_codelib_LTLIBRARIES) $(lib_LTLIBRARIES) \
 	$(noinst_LTLIBRARIES) $(radoslib_LTLIBRARIES)
@@ -2898,16 +2909,18 @@ am__librbd_internal_la_SOURCES_DIST = librbd/AioCompletion.cc \
 	librbd/ExclusiveLock.cc librbd/ImageCtx.cc \
 	librbd/ImageState.cc librbd/ImageWatcher.cc librbd/internal.cc \
 	librbd/Journal.cc librbd/LibrbdAdminSocketHook.cc \
-	librbd/LibrbdWriteback.cc librbd/ObjectMap.cc \
+	librbd/LibrbdWriteback.cc librbd/MirroringWatcher.cc \
+	librbd/ObjectMap.cc librbd/ObjectWatcher.cc \
 	librbd/Operations.cc librbd/Utils.cc \
 	librbd/exclusive_lock/AcquireRequest.cc \
 	librbd/exclusive_lock/ReleaseRequest.cc \
+	librbd/exclusive_lock/StandardPolicy.cc \
 	librbd/image/CloseRequest.cc librbd/image/OpenRequest.cc \
 	librbd/image/RefreshParentRequest.cc \
 	librbd/image/RefreshRequest.cc librbd/image/SetSnapRequest.cc \
 	librbd/image_watcher/Notifier.cc \
 	librbd/image_watcher/NotifyLockOwner.cc \
-	librbd/journal/Replay.cc \
+	librbd/journal/Replay.cc librbd/journal/StandardPolicy.cc \
 	librbd/object_map/InvalidateRequest.cc \
 	librbd/object_map/LockRequest.cc librbd/object_map/Request.cc \
 	librbd/object_map/RefreshRequest.cc \
@@ -2945,11 +2958,14 @@ am__librbd_internal_la_SOURCES_DIST = librbd/AioCompletion.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/Journal.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/LibrbdAdminSocketHook.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/LibrbdWriteback.lo \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/MirroringWatcher.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/ObjectMap.lo \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/ObjectWatcher.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/Operations.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/Utils.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/exclusive_lock/AcquireRequest.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/exclusive_lock/ReleaseRequest.lo \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/exclusive_lock/StandardPolicy.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/image/CloseRequest.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/image/OpenRequest.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/image/RefreshParentRequest.lo \
@@ -2958,6 +2974,7 @@ am__librbd_internal_la_SOURCES_DIST = librbd/AioCompletion.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/image_watcher/Notifier.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/image_watcher/NotifyLockOwner.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/journal/Replay.lo \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/journal/StandardPolicy.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/object_map/InvalidateRequest.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/object_map/LockRequest.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/object_map/Request.lo \
@@ -3071,7 +3088,9 @@ librbd_test_la_LIBADD =
 am__librbd_test_la_SOURCES_DIST = test/librbd/test_fixture.cc \
 	test/librbd/test_support.cc test/librbd/test_librbd.cc \
 	test/librbd/test_ImageWatcher.cc test/librbd/test_internal.cc \
-	test/librbd/test_mirroring.cc test/librbd/test_ObjectMap.cc \
+	test/librbd/test_mirroring.cc \
+	test/librbd/test_MirroringWatcher.cc \
+	test/librbd/test_ObjectMap.cc \
 	test/librbd/journal/test_Entries.cc \
 	test/librbd/journal/test_Replay.cc
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am_librbd_test_la_OBJECTS = test/librbd/librbd_test_la-test_fixture.lo \
@@ -3080,6 +3099,7 @@ am__librbd_test_la_SOURCES_DIST = test/librbd/test_fixture.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/librbd_test_la-test_ImageWatcher.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/librbd_test_la-test_internal.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/librbd_test_la-test_mirroring.lo \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/librbd_test_la-test_MirroringWatcher.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/librbd_test_la-test_ObjectMap.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/journal/librbd_test_la-test_Entries.lo \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/journal/librbd_test_la-test_Replay.lo
@@ -3089,6 +3109,16 @@ librbd_test_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(librbd_test_la_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
 	$(LDFLAGS) -o $@
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am_librbd_test_la_rpath =
+librbd_test_mock_la_LIBADD =
+am__librbd_test_mock_la_SOURCES_DIST =  \
+	test/librbd/mock/MockImageCtx.cc
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am_librbd_test_mock_la_OBJECTS = test/librbd/mock/librbd_test_mock_la-MockImageCtx.lo
+librbd_test_mock_la_OBJECTS = $(am_librbd_test_mock_la_OBJECTS)
+librbd_test_mock_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
+	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
+	$(librbd_test_mock_la_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
+	$(LDFLAGS) -o $@
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am_librbd_test_mock_la_rpath =
 librbd_tp_la_DEPENDENCIES =
 am__librbd_tp_la_SOURCES_DIST = tracing/librbd.c
 @WITH_LTTNG_TRUE@am_librbd_tp_la_OBJECTS =  \
@@ -3102,7 +3132,7 @@ librbd_tp_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) \
 @WITH_LTTNG_TRUE@am_librbd_tp_la_rpath = -rpath $(libdir)
 librbd_types_la_LIBADD =
 am_librbd_types_la_OBJECTS = librbd/journal/Types.lo \
-	librbd/WatchNotifyTypes.lo
+	librbd/mirroring_watcher/Types.lo librbd/WatchNotifyTypes.lo
 librbd_types_la_OBJECTS = $(am_librbd_types_la_OBJECTS)
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@am__DEPENDENCIES_11 = $(LIBRADOS) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOSGW_TRUE@@WITH_RADOS_TRUE@	libcls_rgw_client.la \
@@ -4500,7 +4530,8 @@ ceph_test_rados_api_list_OBJECTS =  \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@ceph_test_rados_api_list_DEPENDENCIES =  \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	$(LIBRADOS) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	$(am__DEPENDENCIES_24) \
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	$(am__DEPENDENCIES_9)
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	$(am__DEPENDENCIES_9) \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@	$(am__DEPENDENCIES_10)
 ceph_test_rados_api_list_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CXXLD) \
 	$(ceph_test_rados_api_list_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) \
@@ -6330,6 +6361,7 @@ am__unittest_librbd_SOURCES_DIST = test/librbd/test_main.cc \
 	test/librbd/test_mock_fixture.cc \
 	test/librbd/test_mock_ExclusiveLock.cc \
 	test/librbd/test_mock_Journal.cc \
+	test/librbd/test_mock_ObjectWatcher.cc \
 	test/librbd/exclusive_lock/test_mock_AcquireRequest.cc \
 	test/librbd/exclusive_lock/test_mock_ReleaseRequest.cc \
 	test/librbd/image/test_mock_RefreshRequest.cc \
@@ -6353,6 +6385,7 @@ am__unittest_librbd_SOURCES_DIST = test/librbd/test_main.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/unittest_librbd-test_mock_fixture.$(OBJEXT) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/unittest_librbd-test_mock_ExclusiveLock.$(OBJEXT) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/unittest_librbd-test_mock_Journal.$(OBJEXT) \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/unittest_librbd-test_mock_ObjectWatcher.$(OBJEXT) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/exclusive_lock/unittest_librbd-test_mock_AcquireRequest.$(OBJEXT) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/exclusive_lock/unittest_librbd-test_mock_ReleaseRequest.$(OBJEXT) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/image/unittest_librbd-test_mock_RefreshRequest.$(OBJEXT) \
@@ -6374,6 +6407,7 @@ am__unittest_librbd_SOURCES_DIST = test/librbd/test_main.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/operation/unittest_librbd-test_mock_SnapshotUnprotectRequest.$(OBJEXT)
 unittest_librbd_OBJECTS = $(am_unittest_librbd_OBJECTS)
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@unittest_librbd_DEPENDENCIES = librbd_test.la \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_test_mock.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_api.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_internal.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(LIBRBD_TYPES) \
@@ -6559,6 +6593,7 @@ unittest_prioritized_queue_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CXX \
 	$(AM_LDFLAGS) $(LDFLAGS) -o $@
 am__unittest_rbd_mirror_SOURCES_DIST = test/rbd_mirror/test_main.cc \
 	test/rbd_mirror/test_mock_fixture.cc \
+	test/rbd_mirror/test_mock_ImageReplayer.cc \
 	test/rbd_mirror/test_mock_ImageSync.cc \
 	test/rbd_mirror/image_sync/test_mock_ImageCopyRequest.cc \
 	test/rbd_mirror/image_sync/test_mock_ObjectCopyRequest.cc \
@@ -6568,6 +6603,7 @@ am__unittest_rbd_mirror_SOURCES_DIST = test/rbd_mirror/test_main.cc \
 	test/rbd_mirror/mock/MockJournaler.cc
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@am_unittest_rbd_mirror_OBJECTS = test/rbd_mirror/unittest_rbd_mirror-test_main.$(OBJEXT) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/unittest_rbd_mirror-test_mock_fixture.$(OBJEXT) \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/unittest_rbd_mirror-test_mock_ImageReplayer.$(OBJEXT) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/unittest_rbd_mirror-test_mock_ImageSync.$(OBJEXT) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_ImageCopyRequest.$(OBJEXT) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_sync/unittest_rbd_mirror-test_mock_ObjectCopyRequest.$(OBJEXT) \
@@ -6577,6 +6613,7 @@ am__unittest_rbd_mirror_SOURCES_DIST = test/rbd_mirror/test_main.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/mock/unittest_rbd_mirror-MockJournaler.$(OBJEXT)
 unittest_rbd_mirror_OBJECTS = $(am_unittest_rbd_mirror_OBJECTS)
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@unittest_rbd_mirror_DEPENDENCIES = librbd_mirror_test.la \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_test_mock.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librados_test_stub.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_mirror_internal.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_internal.la \
@@ -7024,17 +7061,18 @@ SOURCES = $(libkv_a_SOURCES) $(libmon_a_SOURCES) $(libos_a_SOURCES) \
 	$(librbd_mirror_test_la_SOURCES) $(librbd_replay_la_SOURCES) \
 	$(librbd_replay_ios_la_SOURCES) \
 	$(librbd_replay_types_la_SOURCES) $(librbd_test_la_SOURCES) \
-	$(librbd_tp_la_SOURCES) $(nodist_librbd_tp_la_SOURCES) \
-	$(librbd_types_la_SOURCES) $(librgw_la_SOURCES) \
-	$(libsecret_la_SOURCES) $(libsystest_la_SOURCES) \
-	$(ceph_authtool_SOURCES) $(ceph_bluefs_tool_SOURCES) \
-	$(ceph_client_debug_SOURCES) $(ceph_conf_SOURCES) \
-	$(ceph_dencoder_SOURCES) $(ceph_fuse_SOURCES) \
-	$(ceph_kvstore_tool_SOURCES) $(ceph_mds_SOURCES) \
-	$(ceph_mon_SOURCES) $(ceph_monstore_tool_SOURCES) \
-	$(ceph_objectstore_tool_SOURCES) $(ceph_osd_SOURCES) \
-	$(ceph_osdomap_tool_SOURCES) $(ceph_syn_SOURCES) \
-	$(ceph_bench_log_SOURCES) $(ceph_erasure_code_SOURCES) \
+	$(librbd_test_mock_la_SOURCES) $(librbd_tp_la_SOURCES) \
+	$(nodist_librbd_tp_la_SOURCES) $(librbd_types_la_SOURCES) \
+	$(librgw_la_SOURCES) $(libsecret_la_SOURCES) \
+	$(libsystest_la_SOURCES) $(ceph_authtool_SOURCES) \
+	$(ceph_bluefs_tool_SOURCES) $(ceph_client_debug_SOURCES) \
+	$(ceph_conf_SOURCES) $(ceph_dencoder_SOURCES) \
+	$(ceph_fuse_SOURCES) $(ceph_kvstore_tool_SOURCES) \
+	$(ceph_mds_SOURCES) $(ceph_mon_SOURCES) \
+	$(ceph_monstore_tool_SOURCES) $(ceph_objectstore_tool_SOURCES) \
+	$(ceph_osd_SOURCES) $(ceph_osdomap_tool_SOURCES) \
+	$(ceph_syn_SOURCES) $(ceph_bench_log_SOURCES) \
+	$(ceph_erasure_code_SOURCES) \
 	$(ceph_erasure_code_benchmark_SOURCES) \
 	$(ceph_erasure_code_non_regression_SOURCES) \
 	$(ceph_kvstorebench_SOURCES) \
@@ -7291,6 +7329,7 @@ DIST_SOURCES = $(am__libkv_a_SOURCES_DIST) \
 	$(am__librbd_replay_ios_la_SOURCES_DIST) \
 	$(am__librbd_replay_types_la_SOURCES_DIST) \
 	$(am__librbd_test_la_SOURCES_DIST) \
+	$(am__librbd_test_mock_la_SOURCES_DIST) \
 	$(am__librbd_tp_la_SOURCES_DIST) $(librbd_types_la_SOURCES) \
 	$(am__librgw_la_SOURCES_DIST) $(libsecret_la_SOURCES) \
 	$(am__libsystest_la_SOURCES_DIST) $(ceph_authtool_SOURCES) \
@@ -7534,7 +7573,8 @@ am__pep3147_tweak = \
 py_compile = $(top_srcdir)/py-compile
 DATA = $(bash_completion_DATA) $(dist_noinst_DATA) $(doc_DATA) \
 	$(libcephfs_include_DATA) $(librbd_include_DATA) \
-	$(rados_include_DATA) $(radosstriper_include_DATA)
+	$(rados_include_DATA) $(radosstriper_include_DATA) \
+	$(subman_DATA)
 am__noinst_HEADERS_DIST = arch/intel.h arch/arm.h arch/probe.h \
 	auth/cephx/CephxAuthorizeHandler.h auth/cephx/CephxKeyServer.h \
 	auth/cephx/CephxProtocol.h auth/cephx/CephxClientHandler.h \
@@ -7836,17 +7876,23 @@ am__noinst_HEADERS_DIST = arch/intel.h arch/arm.h arch/probe.h \
 	librbd/DiffIterate.h librbd/ExclusiveLock.h librbd/ImageCtx.h \
 	librbd/ImageState.h librbd/ImageWatcher.h librbd/internal.h \
 	librbd/Journal.h librbd/LibrbdAdminSocketHook.h \
-	librbd/LibrbdWriteback.h librbd/ObjectMap.h \
-	librbd/Operations.h librbd/parent_types.h librbd/SnapInfo.h \
-	librbd/TaskFinisher.h librbd/Utils.h librbd/WatchNotifyTypes.h \
+	librbd/LibrbdWriteback.h librbd/MirroringWatcher.h \
+	librbd/ObjectMap.h librbd/ObjectWatcher.h librbd/Operations.h \
+	librbd/parent_types.h librbd/SnapInfo.h librbd/TaskFinisher.h \
+	librbd/Utils.h librbd/WatchNotifyTypes.h \
 	librbd/exclusive_lock/AcquireRequest.h \
+	librbd/exclusive_lock/Policy.h \
 	librbd/exclusive_lock/ReleaseRequest.h \
+	librbd/exclusive_lock/StandardPolicy.h \
 	librbd/image/CloseRequest.h librbd/image/OpenRequest.h \
 	librbd/image/RefreshParentRequest.h \
 	librbd/image/RefreshRequest.h librbd/image/SetSnapRequest.h \
 	librbd/image_watcher/Notifier.h \
-	librbd/image_watcher/NotifyLockOwner.h librbd/journal/Replay.h \
-	librbd/journal/Types.h librbd/object_map/InvalidateRequest.h \
+	librbd/image_watcher/NotifyLockOwner.h librbd/journal/Policy.h \
+	librbd/journal/Replay.h librbd/journal/StandardPolicy.h \
+	librbd/journal/Types.h librbd/journal/TypeTraits.h \
+	librbd/mirroring_watcher/Types.h \
+	librbd/object_map/InvalidateRequest.h \
 	librbd/object_map/LockRequest.h librbd/object_map/Request.h \
 	librbd/object_map/RefreshRequest.h \
 	librbd/object_map/ResizeRequest.h \
@@ -7953,6 +7999,7 @@ am__noinst_HEADERS_DIST = arch/intel.h arch/arm.h arch/probe.h \
 	test/librbd/mock/MockImageState.h \
 	test/librbd/mock/MockImageWatcher.h \
 	test/librbd/mock/MockJournal.h \
+	test/librbd/mock/MockJournalPolicy.h \
 	test/librbd/mock/MockObjectMap.h \
 	test/librbd/mock/MockOperations.h \
 	test/librbd/mock/MockReadahead.h \
@@ -9166,7 +9213,7 @@ EXTRA_DIST = $(am__append_31) ceph-detect-init/AUTHORS.rst \
 	$(srcdir)/make_version $(srcdir)/.git_version \
 	$(srcdir)/ceph-rbdnamer \
 	$(srcdir)/tools/ceph-monstore-update-crush.sh \
-	$(srcdir)/upstart/ceph-all.conf \
+	$(srcdir)/script/subman $(srcdir)/upstart/ceph-all.conf \
 	$(srcdir)/upstart/ceph-disk.conf \
 	$(srcdir)/upstart/ceph-mon.conf \
 	$(srcdir)/upstart/ceph-mon-all.conf \
@@ -9585,11 +9632,12 @@ check_SCRIPTS = ceph-detect-init/run-tox.sh ceph-disk/run-tox.sh \
 	test/mon/misc.sh test/mon/osd-crush.sh test/mon/mon-ping.sh \
 	test/mon/mon-created-time.sh \
 	test/mon/osd-erasure-code-profile.sh test/mon/mkfs.sh \
-	test/mon/mon-scrub.sh test/osd/osd-scrub-repair.sh \
-	test/osd/osd-scrub-snaps.sh test/osd/osd-config.sh \
-	test/osd/osd-reuse-id.sh test/osd/osd-bench.sh \
-	test/osd/osd-reactivate.sh test/osd/osd-copy-from.sh \
-	test/osd/osd-markdown.sh test/mon/mon-handle-forward.sh \
+	test/mon/mon-scrub.sh test/mon/test_pool_quota.sh \
+	test/osd/osd-scrub-repair.sh test/osd/osd-scrub-snaps.sh \
+	test/osd/osd-config.sh test/osd/osd-reuse-id.sh \
+	test/osd/osd-bench.sh test/osd/osd-reactivate.sh \
+	test/osd/osd-copy-from.sh test/osd/osd-markdown.sh \
+	test/mon/mon-handle-forward.sh \
 	test/libradosstriper/rados-striper.sh \
 	test/test_objectstore_memstore.sh test/test_pidfile.sh \
 	test/pybind/test_ceph_argparse.py \
@@ -9710,9 +9758,6 @@ DENCODER_SOURCES = $(am__append_47) perfglue/disabled_heap_profiler.cc \
 	perfglue/disabled_stubs.cc $(am__append_142)
 DENCODER_DEPS = $(am__append_48) $(am__append_137) $(am__append_143) \
 	$(am__append_159)
-
-# put virtualenvs in this directory for build
-CEPH_BUILD_VIRTUALENV = "/tmp/"
 radoslibdir = $(libdir)/rados-classes
 LOCAL_ALL = ceph-detect-init-all ceph-disk-all $(am__append_282) \
 	$(am__append_286) $(am__append_290)
@@ -10408,6 +10453,7 @@ libmsg_la_SOURCES = msg/Message.cc msg/Messenger.cc msg/msg_types.cc \
 
 librbd_types_la_SOURCES = \
 	librbd/journal/Types.cc \
+	librbd/mirroring_watcher/Types.cc \
 	librbd/WatchNotifyTypes.cc
 
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@librbd_internal_la_SOURCES = \
@@ -10428,11 +10474,14 @@ librbd_types_la_SOURCES = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/Journal.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/LibrbdAdminSocketHook.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/LibrbdWriteback.cc \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/MirroringWatcher.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/ObjectMap.cc \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/ObjectWatcher.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/Operations.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/Utils.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/exclusive_lock/AcquireRequest.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/exclusive_lock/ReleaseRequest.cc \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/exclusive_lock/StandardPolicy.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/image/CloseRequest.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/image/OpenRequest.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/image/RefreshParentRequest.cc \
@@ -10441,6 +10490,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/image_watcher/Notifier.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/image_watcher/NotifyLockOwner.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/journal/Replay.cc \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/journal/StandardPolicy.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/object_map/InvalidateRequest.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/object_map/LockRequest.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd/object_map/Request.cc \
@@ -11357,7 +11407,7 @@ librbd_types_la_SOURCES = \
 
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@ceph_test_rados_api_aio_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@ceph_test_rados_api_list_SOURCES = test/librados/list.cc
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@ceph_test_rados_api_list_LDADD = $(LIBRADOS) $(UNITTEST_LDADD) $(RADOS_TEST_LDADD)
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@ceph_test_rados_api_list_LDADD = $(LIBRADOS) $(UNITTEST_LDADD) $(RADOS_TEST_LDADD) $(CEPH_GLOBAL)
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@ceph_test_rados_api_list_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@ceph_test_rados_api_nlist_SOURCES = test/librados/nlist.cc
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@ceph_test_rados_api_nlist_LDADD = $(LIBRADOS) $(UNITTEST_LDADD) $(RADOS_TEST_LDADD)
@@ -11448,16 +11498,22 @@ librbd_types_la_SOURCES = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/test_ImageWatcher.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/test_internal.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/test_mirroring.cc \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/test_MirroringWatcher.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/test_ObjectMap.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/journal/test_Entries.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/journal/test_Replay.cc
 
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@librbd_test_la_CXXFLAGS = $(UNITTEST_CXXFLAGS)
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@librbd_test_mock_la_SOURCES = \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/mock/MockImageCtx.cc
+
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@librbd_test_mock_la_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@unittest_librbd_SOURCES = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@        test/librbd/test_main.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/test_mock_fixture.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/test_mock_ExclusiveLock.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/test_mock_Journal.cc \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/test_mock_ObjectWatcher.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/exclusive_lock/test_mock_AcquireRequest.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/exclusive_lock/test_mock_ReleaseRequest.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/librbd/image/test_mock_RefreshRequest.cc \
@@ -11480,7 +11536,8 @@ librbd_types_la_SOURCES = \
 
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@unittest_librbd_CXXFLAGS = $(UNITTEST_CXXFLAGS) -DTEST_LIBRBD_INTERNALS
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@unittest_librbd_LDADD = \
-@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_test.la librbd_api.la librbd_internal.la $(LIBRBD_TYPES) \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_test.la librbd_test_mock.la \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_api.la librbd_internal.la $(LIBRBD_TYPES) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	libcls_rbd_client.la libcls_lock_client.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	libjournal.la libcls_journal_client.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librados_test_stub.la librados_internal.la \
@@ -11518,6 +11575,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@unittest_rbd_mirror_SOURCES = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/test_main.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/test_mock_fixture.cc \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/test_mock_ImageReplayer.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/test_mock_ImageSync.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_sync/test_mock_ImageCopyRequest.cc \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	test/rbd_mirror/image_sync/test_mock_ObjectCopyRequest.cc \
@@ -11529,6 +11587,7 @@ librbd_types_la_SOURCES = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@unittest_rbd_mirror_CXXFLAGS = $(UNITTEST_CXXFLAGS)
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@unittest_rbd_mirror_LDADD = \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_mirror_test.la \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_test_mock.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librados_test_stub.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_mirror_internal.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	librbd_internal.la \
@@ -12343,11 +12402,13 @@ librbd_tp_la_LDFLAGS = -version-info 1:0:0
 libos_tp_la_LIBADD = -ldl -llttng-ust
 libos_tp_la_CFLAGS = -I$(top_srcdir)/src/tracing -I$(top_srcdir)/src $(AM_CFLAGS) -fpic
 libos_tp_la_LDFLAGS = -version-info 1:0:0
+@ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@CYTHON_BUILD_DIR = "$(shell readlink -f $(builddir))/build"
 @ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@PY_DISTUTILS = \
+@ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@	mkdir -p $(CYTHON_BUILD_DIR); \
 @ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@	CPPFLAGS="-iquote \${abs_srcdir}/include ${AM_CPPFLAGS} ${CPPFLAGS}" \
 @ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@	CFLAGS="-iquote \${abs_srcdir}/include ${AM_CFLAGS} ${PYTHON_CFLAGS}" \
 @ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@	LDFLAGS="-L\${abs_builddir}/.libs $(subst -pie,,${AM_LDFLAGS}) ${PYTHON_LDFLAGS}" \
-@ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@	CYTHON_BUILD_DIR="$(shell readlink -f $(builddir))/build" \
+@ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@	CYTHON_BUILD_DIR=$(CYTHON_BUILD_DIR) \
 @ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@	${PYTHON} ./setup.py
 
 
@@ -12371,6 +12432,8 @@ doc_DATA = $(srcdir)/sample.ceph.conf sample.fetch_config
 # various scripts in $(libexecdir)
 ceph_libexecdir = $(libexecdir)/ceph
 ceph_libexec_SCRIPTS = ceph_common.sh ceph-osd-prestart.sh
+@ENABLE_SUBMAN_TRUE@submandir = /etc/cron.hourly
+@ENABLE_SUBMAN_TRUE@subman_DATA = script/subman
 
 # TODO: If we're running the parallel test harness (the preferred harness), this should be AM_TESTS_ENVIRONMENT instead.
 # See: https://www.gnu.org/software/automake/manual/html_node/Scripts_002dbased-Testsuites.html
@@ -14863,7 +14926,11 @@ librbd/LibrbdAdminSocketHook.lo: librbd/$(am__dirstamp) \
 	librbd/$(DEPDIR)/$(am__dirstamp)
 librbd/LibrbdWriteback.lo: librbd/$(am__dirstamp) \
 	librbd/$(DEPDIR)/$(am__dirstamp)
+librbd/MirroringWatcher.lo: librbd/$(am__dirstamp) \
+	librbd/$(DEPDIR)/$(am__dirstamp)
 librbd/ObjectMap.lo: librbd/$(am__dirstamp) \
+	librbd/$(DEPDIR)/$(am__dirstamp)
+librbd/ObjectWatcher.lo: librbd/$(am__dirstamp) \
 	librbd/$(DEPDIR)/$(am__dirstamp)
 librbd/Operations.lo: librbd/$(am__dirstamp) \
 	librbd/$(DEPDIR)/$(am__dirstamp)
@@ -14879,6 +14946,9 @@ librbd/exclusive_lock/AcquireRequest.lo:  \
 	librbd/exclusive_lock/$(am__dirstamp) \
 	librbd/exclusive_lock/$(DEPDIR)/$(am__dirstamp)
 librbd/exclusive_lock/ReleaseRequest.lo:  \
+	librbd/exclusive_lock/$(am__dirstamp) \
+	librbd/exclusive_lock/$(DEPDIR)/$(am__dirstamp)
+librbd/exclusive_lock/StandardPolicy.lo:  \
 	librbd/exclusive_lock/$(am__dirstamp) \
 	librbd/exclusive_lock/$(DEPDIR)/$(am__dirstamp)
 librbd/image/$(am__dirstamp):
@@ -14916,6 +14986,8 @@ librbd/journal/$(DEPDIR)/$(am__dirstamp):
 	@$(MKDIR_P) librbd/journal/$(DEPDIR)
 	@: > librbd/journal/$(DEPDIR)/$(am__dirstamp)
 librbd/journal/Replay.lo: librbd/journal/$(am__dirstamp) \
+	librbd/journal/$(DEPDIR)/$(am__dirstamp)
+librbd/journal/StandardPolicy.lo: librbd/journal/$(am__dirstamp) \
 	librbd/journal/$(DEPDIR)/$(am__dirstamp)
 librbd/object_map/$(am__dirstamp):
 	@$(MKDIR_P) librbd/object_map
@@ -15128,6 +15200,9 @@ test/librbd/librbd_test_la-test_internal.lo:  \
 test/librbd/librbd_test_la-test_mirroring.lo:  \
 	test/librbd/$(am__dirstamp) \
 	test/librbd/$(DEPDIR)/$(am__dirstamp)
+test/librbd/librbd_test_la-test_MirroringWatcher.lo:  \
+	test/librbd/$(am__dirstamp) \
+	test/librbd/$(DEPDIR)/$(am__dirstamp)
 test/librbd/librbd_test_la-test_ObjectMap.lo:  \
 	test/librbd/$(am__dirstamp) \
 	test/librbd/$(DEPDIR)/$(am__dirstamp)
@@ -15146,6 +15221,18 @@ test/librbd/journal/librbd_test_la-test_Replay.lo:  \
 
 librbd_test.la: $(librbd_test_la_OBJECTS) $(librbd_test_la_DEPENDENCIES) $(EXTRA_librbd_test_la_DEPENDENCIES) 
 	$(AM_V_CXXLD)$(librbd_test_la_LINK) $(am_librbd_test_la_rpath) $(librbd_test_la_OBJECTS) $(librbd_test_la_LIBADD) $(LIBS)
+test/librbd/mock/$(am__dirstamp):
+	@$(MKDIR_P) test/librbd/mock
+	@: > test/librbd/mock/$(am__dirstamp)
+test/librbd/mock/$(DEPDIR)/$(am__dirstamp):
+	@$(MKDIR_P) test/librbd/mock/$(DEPDIR)
+	@: > test/librbd/mock/$(DEPDIR)/$(am__dirstamp)
+test/librbd/mock/librbd_test_mock_la-MockImageCtx.lo:  \
+	test/librbd/mock/$(am__dirstamp) \
+	test/librbd/mock/$(DEPDIR)/$(am__dirstamp)
+
+librbd_test_mock.la: $(librbd_test_mock_la_OBJECTS) $(librbd_test_mock_la_DEPENDENCIES) $(EXTRA_librbd_test_mock_la_DEPENDENCIES) 
+	$(AM_V_CXXLD)$(librbd_test_mock_la_LINK) $(am_librbd_test_mock_la_rpath) $(librbd_test_mock_la_OBJECTS) $(librbd_test_mock_la_LIBADD) $(LIBS)
 tracing/librbd_tp_la-librbd.lo: tracing/$(am__dirstamp) \
 	tracing/$(DEPDIR)/$(am__dirstamp)
 
@@ -15153,6 +15240,15 @@ librbd_tp.la: $(librbd_tp_la_OBJECTS) $(librbd_tp_la_DEPENDENCIES) $(EXTRA_librb
 	$(AM_V_CCLD)$(librbd_tp_la_LINK) $(am_librbd_tp_la_rpath) $(librbd_tp_la_OBJECTS) $(librbd_tp_la_LIBADD) $(LIBS)
 librbd/journal/Types.lo: librbd/journal/$(am__dirstamp) \
 	librbd/journal/$(DEPDIR)/$(am__dirstamp)
+librbd/mirroring_watcher/$(am__dirstamp):
+	@$(MKDIR_P) librbd/mirroring_watcher
+	@: > librbd/mirroring_watcher/$(am__dirstamp)
+librbd/mirroring_watcher/$(DEPDIR)/$(am__dirstamp):
+	@$(MKDIR_P) librbd/mirroring_watcher/$(DEPDIR)
+	@: > librbd/mirroring_watcher/$(DEPDIR)/$(am__dirstamp)
+librbd/mirroring_watcher/Types.lo:  \
+	librbd/mirroring_watcher/$(am__dirstamp) \
+	librbd/mirroring_watcher/$(DEPDIR)/$(am__dirstamp)
 librbd/WatchNotifyTypes.lo: librbd/$(am__dirstamp) \
 	librbd/$(DEPDIR)/$(am__dirstamp)
 
@@ -17891,6 +17987,9 @@ test/librbd/unittest_librbd-test_mock_ExclusiveLock.$(OBJEXT):  \
 test/librbd/unittest_librbd-test_mock_Journal.$(OBJEXT):  \
 	test/librbd/$(am__dirstamp) \
 	test/librbd/$(DEPDIR)/$(am__dirstamp)
+test/librbd/unittest_librbd-test_mock_ObjectWatcher.$(OBJEXT):  \
+	test/librbd/$(am__dirstamp) \
+	test/librbd/$(DEPDIR)/$(am__dirstamp)
 test/librbd/exclusive_lock/$(am__dirstamp):
 	@$(MKDIR_P) test/librbd/exclusive_lock
 	@: > test/librbd/exclusive_lock/$(am__dirstamp)
@@ -18103,6 +18202,9 @@ test/rbd_mirror/unittest_rbd_mirror-test_main.$(OBJEXT):  \
 	test/rbd_mirror/$(am__dirstamp) \
 	test/rbd_mirror/$(DEPDIR)/$(am__dirstamp)
 test/rbd_mirror/unittest_rbd_mirror-test_mock_fixture.$(OBJEXT):  \
+	test/rbd_mirror/$(am__dirstamp) \
+	test/rbd_mirror/$(DEPDIR)/$(am__dirstamp)
+test/rbd_mirror/unittest_rbd_mirror-test_mock_ImageReplayer.$(OBJEXT):  \
 	test/rbd_mirror/$(am__dirstamp) \
 	test/rbd_mirror/$(DEPDIR)/$(am__dirstamp)
 test/rbd_mirror/unittest_rbd_mirror-test_mock_ImageSync.$(OBJEXT):  \
@@ -18682,6 +18784,8 @@ mostlyclean-compile:
 	-rm -f librbd/image_watcher/*.lo
 	-rm -f librbd/journal/*.$(OBJEXT)
 	-rm -f librbd/journal/*.lo
+	-rm -f librbd/mirroring_watcher/*.$(OBJEXT)
+	-rm -f librbd/mirroring_watcher/*.lo
 	-rm -f librbd/object_map/*.$(OBJEXT)
 	-rm -f librbd/object_map/*.lo
 	-rm -f librbd/operation/*.$(OBJEXT)
@@ -18756,6 +18860,8 @@ mostlyclean-compile:
 	-rm -f test/librbd/image/*.$(OBJEXT)
 	-rm -f test/librbd/journal/*.$(OBJEXT)
 	-rm -f test/librbd/journal/*.lo
+	-rm -f test/librbd/mock/*.$(OBJEXT)
+	-rm -f test/librbd/mock/*.lo
 	-rm -f test/librbd/object_map/*.$(OBJEXT)
 	-rm -f test/librbd/operation/*.$(OBJEXT)
 	-rm -f test/mds/*.$(OBJEXT)
@@ -19349,7 +19455,9 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@librbd/$(DEPDIR)/Journal.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@librbd/$(DEPDIR)/LibrbdAdminSocketHook.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@librbd/$(DEPDIR)/LibrbdWriteback.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@librbd/$(DEPDIR)/MirroringWatcher.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@librbd/$(DEPDIR)/ObjectMap.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@librbd/$(DEPDIR)/ObjectWatcher.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@librbd/$(DEPDIR)/Operations.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@librbd/$(DEPDIR)/Utils.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@librbd/$(DEPDIR)/WatchNotifyTypes.Plo@am__quote@
@@ -19358,6 +19466,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@librbd/$(DEPDIR)/librbd_la-librbd.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@librbd/exclusive_lock/$(DEPDIR)/AcquireRequest.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@librbd/exclusive_lock/$(DEPDIR)/ReleaseRequest.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@librbd/exclusive_lock/$(DEPDIR)/StandardPolicy.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@librbd/image/$(DEPDIR)/CloseRequest.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@librbd/image/$(DEPDIR)/OpenRequest.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@librbd/image/$(DEPDIR)/RefreshParentRequest.Plo@am__quote@
@@ -19366,7 +19475,9 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@librbd/image_watcher/$(DEPDIR)/Notifier.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@librbd/image_watcher/$(DEPDIR)/NotifyLockOwner.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@librbd/journal/$(DEPDIR)/Replay.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@librbd/journal/$(DEPDIR)/StandardPolicy.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@librbd/journal/$(DEPDIR)/Types.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@librbd/mirroring_watcher/$(DEPDIR)/Types.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@librbd/object_map/$(DEPDIR)/InvalidateRequest.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@librbd/object_map/$(DEPDIR)/LockRequest.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@librbd/object_map/$(DEPDIR)/RefreshRequest.Plo@am__quote@
@@ -19974,6 +20085,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@test/librbd/$(DEPDIR)/ceph_test_librbd_api-test_support.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/librbd/$(DEPDIR)/ceph_test_librbd_fsx-fsx.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/librbd/$(DEPDIR)/librbd_test_la-test_ImageWatcher.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@test/librbd/$(DEPDIR)/librbd_test_la-test_MirroringWatcher.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/librbd/$(DEPDIR)/librbd_test_la-test_ObjectMap.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/librbd/$(DEPDIR)/librbd_test_la-test_fixture.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/librbd/$(DEPDIR)/librbd_test_la-test_internal.Plo@am__quote@
@@ -19983,6 +20095,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@test/librbd/$(DEPDIR)/unittest_librbd-test_main.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/librbd/$(DEPDIR)/unittest_librbd-test_mock_ExclusiveLock.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/librbd/$(DEPDIR)/unittest_librbd-test_mock_Journal.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@test/librbd/$(DEPDIR)/unittest_librbd-test_mock_ObjectWatcher.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/librbd/$(DEPDIR)/unittest_librbd-test_mock_fixture.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/librbd/exclusive_lock/$(DEPDIR)/unittest_librbd-test_mock_AcquireRequest.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/librbd/exclusive_lock/$(DEPDIR)/unittest_librbd-test_mock_ReleaseRequest.Po@am__quote@
@@ -19990,6 +20103,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@test/librbd/journal/$(DEPDIR)/librbd_test_la-test_Entries.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/librbd/journal/$(DEPDIR)/librbd_test_la-test_Replay.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/librbd/journal/$(DEPDIR)/unittest_librbd-test_mock_Replay.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@test/librbd/mock/$(DEPDIR)/librbd_test_mock_la-MockImageCtx.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/librbd/object_map/$(DEPDIR)/unittest_librbd-test_mock_InvalidateRequest.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/librbd/object_map/$(DEPDIR)/unittest_librbd-test_mock_LockRequest.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/librbd/object_map/$(DEPDIR)/unittest_librbd-test_mock_RefreshRequest.Po@am__quote@
@@ -20060,6 +20174,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/$(DEPDIR)/librbd_mirror_test_la-test_PoolWatcher.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/$(DEPDIR)/librbd_mirror_test_la-test_fixture.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/$(DEPDIR)/unittest_rbd_mirror-test_main.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/$(DEPDIR)/unittest_rbd_mirror-test_mock_ImageReplayer.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/$(DEPDIR)/unittest_rbd_mirror-test_mock_ImageSync.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/$(DEPDIR)/unittest_rbd_mirror-test_mock_fixture.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@test/rbd_mirror/image_sync/$(DEPDIR)/unittest_rbd_mirror-test_mock_ImageCopyRequest.Po@am__quote@
@@ -23982,6 +24097,13 @@ test/librbd/librbd_test_la-test_mirroring.lo: test/librbd/test_mirroring.cc
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(librbd_test_la_CXXFLAGS) $(CXXFLAGS) -c -o test/librbd/librbd_test_la-test_mirroring.lo `test -f 'test/librbd/test_mirroring.cc' || echo '$(srcdir)/'`test/librbd/test_mirroring.cc
 
+test/librbd/librbd_test_la-test_MirroringWatcher.lo: test/librbd/test_MirroringWatcher.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(librbd_test_la_CXXFLAGS) $(CXXFLAGS) -MT test/librbd/librbd_test_la-test_MirroringWatcher.lo -MD -MP -MF test/librbd/$(DEPDIR)/librbd_test_la-test_MirroringWatcher.Tpo -c -o test/librbd/librbd_test_la-test_MirroringWatcher.lo `test -f 'test/librbd/test_MirroringWatcher.cc' || echo '$(srcdir)/'`test/librbd/test_MirroringWatcher.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/librbd/$(DEPDIR)/librbd_test_la-test_MirroringWatcher.Tpo test/librbd/$(DEPDIR)/librbd_test_la-test_MirroringWatcher.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/librbd/test_MirroringWatcher.cc' object='test/librbd/librbd_test_la-test_MirroringWatcher.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(librbd_test_la_CXXFLAGS) $(CXXFLAGS) -c -o test/librbd/librbd_test_la-test_MirroringWatcher.lo `test -f 'test/librbd/test_MirroringWatcher.cc' || echo '$(srcdir)/'`test/librbd/test_MirroringWatcher.cc
+
 test/librbd/librbd_test_la-test_ObjectMap.lo: test/librbd/test_ObjectMap.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(librbd_test_la_CXXFLAGS) $(CXXFLAGS) -MT test/librbd/librbd_test_la-test_ObjectMap.lo -MD -MP -MF test/librbd/$(DEPDIR)/librbd_test_la-test_ObjectMap.Tpo -c -o test/librbd/librbd_test_la-test_ObjectMap.lo `test -f 'test/librbd/test_ObjectMap.cc' || echo '$(srcdir)/'`test/librbd/test_ObjectMap.cc
 @am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/librbd/$(DEPDIR)/librbd_test_la-test_ObjectMap.Tpo test/librbd/$(DEPDIR)/librbd_test_la-test_ObjectMap.Plo
@@ -24002,6 +24124,13 @@ test/librbd/journal/librbd_test_la-test_Replay.lo: test/librbd/journal/test_Repl
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/librbd/journal/test_Replay.cc' object='test/librbd/journal/librbd_test_la-test_Replay.lo' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(librbd_test_la_CXXFLAGS) $(CXXFLAGS) -c -o test/librbd/journal/librbd_test_la-test_Replay.lo `test -f 'test/librbd/journal/test_Replay.cc' || echo '$(srcdir)/'`test/librbd/journal/test_Replay.cc
+
+test/librbd/mock/librbd_test_mock_la-MockImageCtx.lo: test/librbd/mock/MockImageCtx.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(librbd_test_mock_la_CXXFLAGS) $(CXXFLAGS) -MT test/librbd/mock/librbd_test_mock_la-MockImageCtx.lo -MD -MP -MF test/librbd/mock/$(DEPDIR)/librbd_test_mock_la-MockImageCtx.Tpo -c -o test/librbd/mock/librbd_test_mock_la-MockImageCtx.lo `test -f 'test/librbd/mock/MockImageCtx.cc' || echo '$(srcdir)/'`test/librbd/mock/MockImageCtx.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/librbd/mock/$(DEPDIR)/librbd_test_mock_la-MockImageCtx.Tpo test/librbd/mock/$(DEPDIR)/librbd_test_mock_la-MockImageCtx.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/librbd/mock/MockImageCtx.cc' object='test/librbd/mock/librbd_test_mock_la-MockImageCtx.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(librbd_test_mock_la_CXXFLAGS) $(CXXFLAGS) -c -o test/librbd/mock/librbd_test_mock_la-MockImageCtx.lo `test -f 'test/librbd/mock/MockImageCtx.cc' || echo '$(srcdir)/'`test/librbd/mock/MockImageCtx.cc
 
 rgw/librgw_la-rgw_acl.lo: rgw/rgw_acl.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(librgw_la_CXXFLAGS) $(CXXFLAGS) -MT rgw/librgw_la-rgw_acl.lo -MD -MP -MF rgw/$(DEPDIR)/librgw_la-rgw_acl.Tpo -c -o rgw/librgw_la-rgw_acl.lo `test -f 'rgw/rgw_acl.cc' || echo '$(srcdir)/'`rgw/rgw_acl.cc
@@ -28966,6 +29095,20 @@ test/librbd/unittest_librbd-test_mock_Journal.obj: test/librbd/test_mock_Journal
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_librbd_CXXFLAGS) $(CXXFLAGS) -c -o test/librbd/unittest_librbd-test_mock_Journal.obj `if test -f 'test/librbd/test_mock_Journal.cc'; then $(CYGPATH_W) 'test/librbd/test_mock_Journal.cc'; else $(CYGPATH_W) '$(srcdir)/test/librbd/test_mock_Journal.cc'; fi`
 
+test/librbd/unittest_librbd-test_mock_ObjectWatcher.o: test/librbd/test_mock_ObjectWatcher.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_librbd_CXXFLAGS) $(CXXFLAGS) -MT test/librbd/unittest_librbd-test_mock_ObjectWatcher.o -MD -MP -MF test/librbd/$(DEPDIR)/unittest_librbd-test_mock_ObjectWatcher.Tpo -c -o test/librbd/unittest_librbd-test_mock_ObjectWatcher.o `test -f 'test/librbd/test_mock_ObjectWatcher.cc' || echo '$(srcdir)/'`test/librbd/test_mock_ObjectWatcher.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/librbd/$(DEPDIR)/unittest_librbd-test_mock_ObjectWatcher.Tpo test/librbd/$(DEPDIR)/unittest_librbd-test_mock_ObjectWatcher.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/librbd/test_mock_ObjectWatcher.cc' object='test/librbd/unittest_librbd-test_mock_ObjectWatcher.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_librbd_CXXFLAGS) $(CXXFLAGS) -c -o test/librbd/unittest_librbd-test_mock_ObjectWatcher.o `test -f 'test/librbd/test_mock_ObjectWatcher.cc' || echo '$(srcdir)/'`test/librbd/test_mock_ObjectWatcher.cc
+
+test/librbd/unittest_librbd-test_mock_ObjectWatcher.obj: test/librbd/test_mock_ObjectWatcher.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_librbd_CXXFLAGS) $(CXXFLAGS) -MT test/librbd/unittest_librbd-test_mock_ObjectWatcher.obj -MD -MP -MF test/librbd/$(DEPDIR)/unittest_librbd-test_mock_ObjectWatcher.Tpo -c -o test/librbd/unittest_librbd-test_mock_ObjectWatcher.obj `if test -f 'test/librbd/test_mock_ObjectWatcher.cc'; then $(CYGPATH_W) 'test/librbd/test_mock_ObjectWatcher.cc'; else $(CYGPATH_W) '$(srcdir)/test/librbd/test_mock_ObjectWatcher.cc'; fi`
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/librbd/$(DEPDIR)/unittest_librbd-test_mock_ObjectWatcher.Tpo test/librbd/$(DEPDIR)/unittest_librbd-test_mock_ObjectWatcher.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/librbd/test_mock_ObjectWatcher.cc' object='test/librbd/unittest_librbd-test_mock_ObjectWatcher.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_librbd_CXXFLAGS) $(CXXFLAGS) -c -o test/librbd/unittest_librbd-test_mock_ObjectWatcher.obj `if test -f 'test/librbd/test_mock_ObjectWatcher.cc'; then $(CYGPATH_W) 'test/librbd/test_mock_ObjectWatcher.cc'; else $(CYGPATH_W) '$(srcdir)/test/librbd/test_mock_ObjectWatcher.cc'; fi`
+
 test/librbd/exclusive_lock/unittest_librbd-test_mock_AcquireRequest.o: test/librbd/exclusive_lock/test_mock_AcquireRequest.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_librbd_CXXFLAGS) $(CXXFLAGS) -MT test/librbd/exclusive_lock/unittest_librbd-test_mock_AcquireRequest.o -MD -MP -MF test/librbd/exclusive_lock/$(DEPDIR)/unittest_librbd-test_mock_AcquireRequest.Tpo -c -o test/librbd/exclusive_lock/unittest_librbd-test_mock_AcquireRequest.o `test -f 'test/librbd/exclusive_lock/test_mock_AcquireRequest.cc' || echo '$(srcdir)/'`test/librbd/exclusive_lock/test_mock_AcquireRequest.cc
 @am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/librbd/exclusive_lock/$(DEPDIR)/unittest_librbd-test_mock_AcquireRequest.Tpo test/librbd/exclusive_lock/$(DEPDIR)/unittest_librbd-test_mock_AcquireRequest.Po
@@ -29497,6 +29640,20 @@ test/rbd_mirror/unittest_rbd_mirror-test_mock_fixture.obj: test/rbd_mirror/test_
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/rbd_mirror/test_mock_fixture.cc' object='test/rbd_mirror/unittest_rbd_mirror-test_mock_fixture.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -c -o test/rbd_mirror/unittest_rbd_mirror-test_mock_fixture.obj `if test -f 'test/rbd_mirror/test_mock_fixture.cc'; then $(CYGPATH_W) 'test/rbd_mirror/test_mock_fixture.cc'; else $(CYGPATH_W) '$(srcdir)/test/rbd_mirror/test_mock_fixture.cc'; fi`
+
+test/rbd_mirror/unittest_rbd_mirror-test_mock_ImageReplayer.o: test/rbd_mirror/test_mock_ImageReplayer.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -MT test/rbd_mirror/unittest_rbd_mirror-test_mock_ImageReplayer.o -MD -MP -MF test/rbd_mirror/$(DEPDIR)/unittest_rbd_mirror-test_mock_ImageReplayer.Tpo -c -o test/rbd_mirror/unittest_rbd_mirror-test_mock_ImageReplayer.o `test -f 'test/rbd_mirror/test_mock_ImageReplayer.cc' || echo '$(srcdir)/'`test/rbd_mirror/test_mock_ImageReplayer.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/rbd_mirror/$(DEPDIR)/unittest_rbd_mirror-test_mock_ImageReplayer.Tpo test/rbd_mirror/$(DEPDIR)/unittest_rbd_mirror-test_mock_ImageReplayer.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/rbd_mirror/test_mock_ImageReplayer.cc' object='test/rbd_mirror/unittest_rbd_mirror-test_mock_ImageReplayer.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -c -o test/rbd_mirror/unittest_rbd_mirror-test_mock_ImageReplayer.o `test -f 'test/rbd_mirror/test_mock_ImageReplayer.cc' || echo '$(srcdir)/'`test/rbd_mirror/test_mock_ImageReplayer.cc
+
+test/rbd_mirror/unittest_rbd_mirror-test_mock_ImageReplayer.obj: test/rbd_mirror/test_mock_ImageReplayer.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -MT test/rbd_mirror/unittest_rbd_mirror-test_mock_ImageReplayer.obj -MD -MP -MF test/rbd_mirror/$(DEPDIR)/unittest_rbd_mirror-test_mock_ImageReplayer.Tpo -c -o test/rbd_mirror/unittest_rbd_mirror-test_mock_ImageReplayer.obj `if test -f 'test/rbd_mirror/test_mock_ImageReplayer.cc'; then $(CYGPATH_W) 'test/rbd_mirror/test_mock_ImageReplayer.cc'; else $(CYGPATH_W) '$(srcdir)/test/rbd_mirror/test_mock_ImageReplayer.cc'; fi`
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) test/rbd_mirror/$(DEPDIR)/unittest_rbd_mirror-test_mock_ImageReplayer.Tpo test/rbd_mirror/$(DEPDIR)/unittest_rbd_mirror-test_mock_ImageReplayer.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='test/rbd_mirror/test_mock_ImageReplayer.cc' object='test/rbd_mirror/unittest_rbd_mirror-test_mock_ImageReplayer.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -c -o test/rbd_mirror/unittest_rbd_mirror-test_mock_ImageReplayer.obj `if test -f 'test/rbd_mirror/test_mock_ImageReplayer.cc'; then $(CYGPATH_W) 'test/rbd_mirror/test_mock_ImageReplayer.cc'; else $(CYGPATH_W) '$(srcdir)/test/rbd_mirror/test_mock_ImageReplayer.cc'; fi`
 
 test/rbd_mirror/unittest_rbd_mirror-test_mock_ImageSync.o: test/rbd_mirror/test_mock_ImageSync.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(unittest_rbd_mirror_CXXFLAGS) $(CXXFLAGS) -MT test/rbd_mirror/unittest_rbd_mirror-test_mock_ImageSync.o -MD -MP -MF test/rbd_mirror/$(DEPDIR)/unittest_rbd_mirror-test_mock_ImageSync.Tpo -c -o test/rbd_mirror/unittest_rbd_mirror-test_mock_ImageSync.o `test -f 'test/rbd_mirror/test_mock_ImageSync.cc' || echo '$(srcdir)/'`test/rbd_mirror/test_mock_ImageSync.cc
@@ -30232,6 +30389,7 @@ clean-libtool:
 	-rm -rf librbd/image/.libs librbd/image/_libs
 	-rm -rf librbd/image_watcher/.libs librbd/image_watcher/_libs
 	-rm -rf librbd/journal/.libs librbd/journal/_libs
+	-rm -rf librbd/mirroring_watcher/.libs librbd/mirroring_watcher/_libs
 	-rm -rf librbd/object_map/.libs librbd/object_map/_libs
 	-rm -rf librbd/operation/.libs librbd/operation/_libs
 	-rm -rf log/.libs log/_libs
@@ -30253,6 +30411,7 @@ clean-libtool:
 	-rm -rf test/libradosstriper/.libs test/libradosstriper/_libs
 	-rm -rf test/librbd/.libs test/librbd/_libs
 	-rm -rf test/librbd/journal/.libs test/librbd/journal/_libs
+	-rm -rf test/librbd/mock/.libs test/librbd/mock/_libs
 	-rm -rf test/rbd_mirror/.libs test/rbd_mirror/_libs
 	-rm -rf test/system/.libs test/system/_libs
 	-rm -rf tools/rbd_mirror/.libs tools/rbd_mirror/_libs
@@ -30434,6 +30593,27 @@ uninstall-radosstriper_includeDATA:
 	@list='$(radosstriper_include_DATA)'; test -n "$(radosstriper_includedir)" || list=; \
 	files=`for p in $$list; do echo $$p; done | sed -e 's|^.*/||'`; \
 	dir='$(DESTDIR)$(radosstriper_includedir)'; $(am__uninstall_files_from_dir)
+install-submanDATA: $(subman_DATA)
+	@$(NORMAL_INSTALL)
+	@list='$(subman_DATA)'; test -n "$(submandir)" || list=; \
+	if test -n "$$list"; then \
+	  echo " $(MKDIR_P) '$(DESTDIR)$(submandir)'"; \
+	  $(MKDIR_P) "$(DESTDIR)$(submandir)" || exit 1; \
+	fi; \
+	for p in $$list; do \
+	  if test -f "$$p"; then d=; else d="$(srcdir)/"; fi; \
+	  echo "$$d$$p"; \
+	done | $(am__base_list) | \
+	while read files; do \
+	  echo " $(INSTALL_DATA) $$files '$(DESTDIR)$(submandir)'"; \
+	  $(INSTALL_DATA) $$files "$(DESTDIR)$(submandir)" || exit $$?; \
+	done
+
+uninstall-submanDATA:
+	@$(NORMAL_UNINSTALL)
+	@list='$(subman_DATA)'; test -n "$(submandir)" || list=; \
+	files=`for p in $$list; do echo $$p; done | sed -e 's|^.*/||'`; \
+	dir='$(DESTDIR)$(submandir)'; $(am__uninstall_files_from_dir)
 
 # This directory's subdirectories are mostly independent; you can cd
 # into them and run 'make' without going through this Makefile.
@@ -31543,6 +31723,13 @@ test/mon/mon-scrub.sh.log: test/mon/mon-scrub.sh
 	--log-file $$b.log --trs-file $$b.trs \
 	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
 	"$$tst" $(AM_TESTS_FD_REDIRECT)
+test/mon/test_pool_quota.sh.log: test/mon/test_pool_quota.sh
+	@p='test/mon/test_pool_quota.sh'; \
+	b='test/mon/test_pool_quota.sh'; \
+	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
+	--log-file $$b.log --trs-file $$b.trs \
+	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
+	"$$tst" $(AM_TESTS_FD_REDIRECT)
 test/osd/osd-scrub-repair.sh.log: test/osd/osd-scrub-repair.sh
 	@p='test/osd/osd-scrub-repair.sh'; \
 	b='test/osd/osd-scrub-repair.sh'; \
@@ -31739,7 +31926,7 @@ install-binPROGRAMS: install-libLTLIBRARIES
 
 installdirs: installdirs-recursive
 installdirs-am:
-	for dir in "$(DESTDIR)$(compressorlibdir)" "$(DESTDIR)$(erasure_codelibdir)" "$(DESTDIR)$(libdir)" "$(DESTDIR)$(radoslibdir)" "$(DESTDIR)$(bindir)" "$(DESTDIR)$(sbindir)" "$(DESTDIR)$(su_sbindir)" "$(DESTDIR)$(bindir)" "$(DESTDIR)$(ceph_libexecdir)" "$(DESTDIR)$(ceph_monstore_update_crushdir)" "$(DESTDIR)$(ceph_sbindir)" "$(DESTDIR)$(bindir)" "$(DESTDIR)$(sbindir)" "$(DESTDIR)$(su_sbindir)" "$(DESTDIR)$(pythondir)" "$(DESTDIR)$(bash_completiondir)" "$(DESTDIR)$(docdir)" "$(DESTDIR)$(libcephfs_includedir)" "$(DESTDIR)$(librbd_includedir)" "$(DESTDIR)$(rados_includedir)" "$(DESTDIR)$(radosstriper_includedir)"; do \
+	for dir in "$(DESTDIR)$(compressorlibdir)" "$(DESTDIR)$(erasure_codelibdir)" "$(DESTDIR)$(libdir)" "$(DESTDIR)$(radoslibdir)" "$(DESTDIR)$(bindir)" "$(DESTDIR)$(sbindir)" "$(DESTDIR)$(su_sbindir)" "$(DESTDIR)$(bindir)" "$(DESTDIR)$(ceph_libexecdir)" "$(DESTDIR)$(ceph_monstore_update_crushdir)" "$(DESTDIR)$(ceph_sbindir)" "$(DESTDIR)$(bindir)" "$(DESTDIR)$(sbindir)" "$(DESTDIR)$(su_sbindir)" "$(DESTDIR)$(pythondir)" "$(DESTDIR)$(bash_completiondir)" "$(DESTDIR)$(docdir)" "$(DESTDIR)$(libcephfs_includedir)" "$(DESTDIR)$(librbd_includedir)" "$(DESTDIR)$(rados_includedir)" "$(DESTDIR)$(radosstriper_includedir)" "$(DESTDIR)$(submandir)"; do \
 	  test -z "$$dir" || $(MKDIR_P) "$$dir"; \
 	done
 install: $(BUILT_SOURCES)
@@ -31869,6 +32056,8 @@ distclean-generic:
 	-rm -f librbd/image_watcher/$(am__dirstamp)
 	-rm -f librbd/journal/$(DEPDIR)/$(am__dirstamp)
 	-rm -f librbd/journal/$(am__dirstamp)
+	-rm -f librbd/mirroring_watcher/$(DEPDIR)/$(am__dirstamp)
+	-rm -f librbd/mirroring_watcher/$(am__dirstamp)
 	-rm -f librbd/object_map/$(DEPDIR)/$(am__dirstamp)
 	-rm -f librbd/object_map/$(am__dirstamp)
 	-rm -f librbd/operation/$(DEPDIR)/$(am__dirstamp)
@@ -31975,6 +32164,8 @@ distclean-generic:
 	-rm -f test/librbd/image/$(am__dirstamp)
 	-rm -f test/librbd/journal/$(DEPDIR)/$(am__dirstamp)
 	-rm -f test/librbd/journal/$(am__dirstamp)
+	-rm -f test/librbd/mock/$(DEPDIR)/$(am__dirstamp)
+	-rm -f test/librbd/mock/$(am__dirstamp)
 	-rm -f test/librbd/object_map/$(DEPDIR)/$(am__dirstamp)
 	-rm -f test/librbd/object_map/$(am__dirstamp)
 	-rm -f test/librbd/operation/$(DEPDIR)/$(am__dirstamp)
@@ -32043,7 +32234,7 @@ clean-am: clean-binPROGRAMS clean-checkPROGRAMS \
 	clean-sbinPROGRAMS clean-su_sbinPROGRAMS mostlyclean-am
 
 distclean: distclean-recursive
-	-rm -rf ./$(DEPDIR) arch/$(DEPDIR) auth/$(DEPDIR) auth/cephx/$(DEPDIR) auth/none/$(DEPDIR) auth/unknown/$(DEPDIR) civetweb/src/$(DEPDIR) client/$(DEPDIR) cls/cephfs/$(DEPDIR) cls/hello/$(DEPDIR) cls/journal/$(DEPDIR) cls/lock/$(DEPDIR) cls/log/$(DEPDIR) cls/numops/$(DEPDIR) cls/rbd/$(DEPDIR) cls/refcount/$(DEPDIR) cls/replica_log/$(DEPDIR) cls/rgw/$(DEPDIR) cls/statelog/$(DEPDIR) cls/timeindex/$(DEPDIR) cls/user/$(DEPDIR) cls/version/$(DEPDIR) common/$(DEPDIR) compressor/$(DEPDIR) compressor/snappy/$(DEPDIR) compressor/zlib/$(DEPDIR) crush/$(DEPDIR) erasure-code/$(DEPDIR) erasure-code/isa/$(DEPDIR) erasure-code/isa/isa-l/erasure_code/$(DEPDIR) erasure-code/jerasure/$(DEPDIR) erasure-code/jerasure/gf-complete/src/$(DEPDIR) erasure-code/jerasure/gf-complete/src/neon/$(DEPDIR) erasure-code/jerasure/jerasure/src/$(DEPDIR) erasure-code/lrc/$(DEPDIR) erasure-code/shec/$(DEPDIR) global/$(DEPDIR) java/native/$(DEPDIR) journal/$(DEPDIR) json_spirit/$(DEPDIR) key_value_store/$(DEPDIR) kv/$(DEPDIR) librados/$(DEPDIR) libradosstriper/$(DEPDIR) librbd/$(DEPDIR) librbd/exclusive_lock/$(DEPDIR) librbd/image/$(DEPDIR) librbd/image_watcher/$(DEPDIR) librbd/journal/$(DEPDIR) librbd/object_map/$(DEPDIR) librbd/operation/$(DEPDIR) log/$(DEPDIR) mds/$(DEPDIR) mon/$(DEPDIR) mount/$(DEPDIR) msg/$(DEPDIR) msg/async/$(DEPDIR) msg/simple/$(DEPDIR) msg/xio/$(DEPDIR) objclass/$(DEPDIR) os/$(DEPDIR) os/bluestore/$(DEPDIR) os/filestore/$(DEPDIR) os/fs/$(DEPDIR) os/kstore/$(DEPDIR) os/memstore/$(DEPDIR) osd/$(DEPDIR) osdc/$(DEPDIR) perfglue/$(DEPDIR) rbd_fuse/$(DEPDIR) rbd_replay/$(DEPDIR) rgw/$(DEPDIR) test/$(DEPDIR) test/ObjectMap/$(DEPDIR) test/bench/$(DEPDIR) test/cls_hello/$(DEPDIR) test/cls_journal/$(DEPDIR) test/cls_lock/$(DEPDIR) test/cls_log/$(DEPDIR) test/cls_numops/$(DEPDIR) test/cls_rbd/$(DEPDIR) test/cls_refcount/$(DEPDIR) test/cls_replica_log/$(DEPDIR) test/cls_rgw/$(DEPDIR) test/cls_statelog/$(DEPDIR) test/cls_version/$(DEPDIR) test/common/$(DEPDIR) test/compressor/$(DEPDIR) test/crush/$(DEPDIR) test/encoding/$(DEPDIR) test/erasure-code/$(DEPDIR) test/filestore/$(DEPDIR) test/fs/$(DEPDIR) test/journal/$(DEPDIR) test/libcephfs/$(DEPDIR) test/librados/$(DEPDIR) test/librados_test_stub/$(DEPDIR) test/libradosstriper/$(DEPDIR) test/librbd/$(DEPDIR) test/librbd/exclusive_lock/$(DEPDIR) test/librbd/image/$(DEPDIR) test/librbd/journal/$(DEPDIR) test/librbd/object_map/$(DEPDIR) test/librbd/operation/$(DEPDIR) test/mds/$(DEPDIR) test/messenger/$(DEPDIR) test/mon/$(DEPDIR) test/msgr/$(DEPDIR) test/objectstore/$(DEPDIR) test/os/$(DEPDIR) test/osd/$(DEPDIR) test/osdc/$(DEPDIR) test/rbd_mirror/$(DEPDIR) test/rbd_mirror/image_sync/$(DEPDIR) test/rbd_mirror/mock/$(DEPDIR) test/rgw/$(DEPDIR) test/system/$(DEPDIR) tools/$(DEPDIR) tools/cephfs/$(DEPDIR) tools/rados/$(DEPDIR) tools/rbd/$(DEPDIR) tools/rbd/action/$(DEPDIR) tools/rbd_mirror/$(DEPDIR) tools/rbd_mirror/image_replayer/$(DEPDIR) tools/rbd_mirror/image_sync/$(DEPDIR) tools/rbd_nbd/$(DEPDIR) tracing/$(DEPDIR) xxHash/$(DEPDIR)
+	-rm -rf ./$(DEPDIR) arch/$(DEPDIR) auth/$(DEPDIR) auth/cephx/$(DEPDIR) auth/none/$(DEPDIR) auth/unknown/$(DEPDIR) civetweb/src/$(DEPDIR) client/$(DEPDIR) cls/cephfs/$(DEPDIR) cls/hello/$(DEPDIR) cls/journal/$(DEPDIR) cls/lock/$(DEPDIR) cls/log/$(DEPDIR) cls/numops/$(DEPDIR) cls/rbd/$(DEPDIR) cls/refcount/$(DEPDIR) cls/replica_log/$(DEPDIR) cls/rgw/$(DEPDIR) cls/statelog/$(DEPDIR) cls/timeindex/$(DEPDIR) cls/user/$(DEPDIR) cls/version/$(DEPDIR) common/$(DEPDIR) compressor/$(DEPDIR) compressor/snappy/$(DEPDIR) compressor/zlib/$(DEPDIR) crush/$(DEPDIR) erasure-code/$(DEPDIR) erasure-code/isa/$(DEPDIR) erasure-code/isa/isa-l/erasure_code/$(DEPDIR) erasure-code/jerasure/$(DEPDIR) erasure-code/jerasure/gf-complete/src/$(DEPDIR) erasure-code/jerasure/gf-complete/src/neon/$(DEPDIR) erasure-code/jerasure/jerasure/src/$(DEPDIR) erasure-code/lrc/$(DEPDIR) erasure-code/shec/$(DEPDIR) global/$(DEPDIR) java/native/$(DEPDIR) journal/$(DEPDIR) json_spirit/$(DEPDIR) key_value_store/$(DEPDIR) kv/$(DEPDIR) librados/$(DEPDIR) libradosstriper/$(DEPDIR) librbd/$(DEPDIR) librbd/exclusive_lock/$(DEPDIR) librbd/image/$(DEPDIR) librbd/image_watcher/$(DEPDIR) librbd/journal/$(DEPDIR) librbd/mirroring_watcher/$(DEPDIR) librbd/object_map/$(DEPDIR) librbd/operation/$(DEPDIR) log/$(DEPDIR) mds/$(DEPDIR) mon/$(DEPDIR) mount/$(DEPDIR) msg/$(DEPDIR) msg/async/$(DEPDIR) msg/simple/$(DEPDIR) msg/xio/$(DEPDIR) objclass/$(DEPDIR) os/$(DEPDIR) os/bluestore/$(DEPDIR) os/filestore/$(DEPDIR) os/fs/$(DEPDIR) os/kstore/$(DEPDIR) os/memstore/$(DEPDIR) osd/$(DEPDIR) osdc/$(DEPDIR) perfglue/$(DEPDIR) rbd_fuse/$(DEPDIR) rbd_replay/$(DEPDIR) rgw/$(DEPDIR) test/$(DEPDIR) test/ObjectMap/$(DEPDIR) test/bench/$(DEPDIR) test/cls_hello/$(DEPDIR) test/cls_journal/$(DEPDIR) test/cls_lock/$(DEPDIR) test/cls_log/$(DEPDIR) test/cls_numops/$(DEPDIR) test/cls_rbd/$(DEPDIR) test/cls_refcount/$(DEPDIR) test/cls_replica_log/$(DEPDIR) test/cls_rgw/$(DEPDIR) test/cls_statelog/$(DEPDIR) test/cls_version/$(DEPDIR) test/common/$(DEPDIR) test/compressor/$(DEPDIR) test/crush/$(DEPDIR) test/encoding/$(DEPDIR) test/erasure-code/$(DEPDIR) test/filestore/$(DEPDIR) test/fs/$(DEPDIR) test/journal/$(DEPDIR) test/libcephfs/$(DEPDIR) test/librados/$(DEPDIR) test/librados_test_stub/$(DEPDIR) test/libradosstriper/$(DEPDIR) test/librbd/$(DEPDIR) test/librbd/exclusive_lock/$(DEPDIR) test/librbd/image/$(DEPDIR) test/librbd/journal/$(DEPDIR) test/librbd/mock/$(DEPDIR) test/librbd/object_map/$(DEPDIR) test/librbd/operation/$(DEPDIR) test/mds/$(DEPDIR) test/messenger/$(DEPDIR) test/mon/$(DEPDIR) test/msgr/$(DEPDIR) test/objectstore/$(DEPDIR) test/os/$(DEPDIR) test/osd/$(DEPDIR) test/osdc/$(DEPDIR) test/rbd_mirror/$(DEPDIR) test/rbd_mirror/image_sync/$(DEPDIR) test/rbd_mirror/mock/$(DEPDIR) test/rgw/$(DEPDIR) test/system/$(DEPDIR) tools/$(DEPDIR) tools/cephfs/$(DEPDIR) tools/rados/$(DEPDIR) tools/rbd/$(DEPDIR) tools/rbd/action/$(DEPDIR) tools/rbd_mirror/$(DEPDIR) tools/rbd_mirror/image_replayer/$(DEPDIR) tools/rbd_mirror/image_sync/$(DEPDIR) tools/rbd_nbd/$(DEPDIR) tracing/$(DEPDIR) xxHash/$(DEPDIR)
 	-rm -f Makefile
 distclean-am: clean-am distclean-compile distclean-generic \
 	distclean-hdr distclean-tags
@@ -32068,7 +32259,8 @@ install-data-am: install-bash_completionDATA \
 	install-libcephfs_includeDATA install-librbd_includeDATA \
 	install-pythonPYTHON install-rados_includeDATA \
 	install-radoslibLTLIBRARIES install-radosstriper_includeDATA \
-	install-su_sbinPROGRAMS install-su_sbinSCRIPTS
+	install-su_sbinPROGRAMS install-su_sbinSCRIPTS \
+	install-submanDATA
 
 install-dvi: install-dvi-recursive
 
@@ -32100,7 +32292,7 @@ install-ps-am:
 installcheck-am:
 
 maintainer-clean: maintainer-clean-recursive
-	-rm -rf ./$(DEPDIR) arch/$(DEPDIR) auth/$(DEPDIR) auth/cephx/$(DEPDIR) auth/none/$(DEPDIR) auth/unknown/$(DEPDIR) civetweb/src/$(DEPDIR) client/$(DEPDIR) cls/cephfs/$(DEPDIR) cls/hello/$(DEPDIR) cls/journal/$(DEPDIR) cls/lock/$(DEPDIR) cls/log/$(DEPDIR) cls/numops/$(DEPDIR) cls/rbd/$(DEPDIR) cls/refcount/$(DEPDIR) cls/replica_log/$(DEPDIR) cls/rgw/$(DEPDIR) cls/statelog/$(DEPDIR) cls/timeindex/$(DEPDIR) cls/user/$(DEPDIR) cls/version/$(DEPDIR) common/$(DEPDIR) compressor/$(DEPDIR) compressor/snappy/$(DEPDIR) compressor/zlib/$(DEPDIR) crush/$(DEPDIR) erasure-code/$(DEPDIR) erasure-code/isa/$(DEPDIR) erasure-code/isa/isa-l/erasure_code/$(DEPDIR) erasure-code/jerasure/$(DEPDIR) erasure-code/jerasure/gf-complete/src/$(DEPDIR) erasure-code/jerasure/gf-complete/src/neon/$(DEPDIR) erasure-code/jerasure/jerasure/src/$(DEPDIR) erasure-code/lrc/$(DEPDIR) erasure-code/shec/$(DEPDIR) global/$(DEPDIR) java/native/$(DEPDIR) journal/$(DEPDIR) json_spirit/$(DEPDIR) key_value_store/$(DEPDIR) kv/$(DEPDIR) librados/$(DEPDIR) libradosstriper/$(DEPDIR) librbd/$(DEPDIR) librbd/exclusive_lock/$(DEPDIR) librbd/image/$(DEPDIR) librbd/image_watcher/$(DEPDIR) librbd/journal/$(DEPDIR) librbd/object_map/$(DEPDIR) librbd/operation/$(DEPDIR) log/$(DEPDIR) mds/$(DEPDIR) mon/$(DEPDIR) mount/$(DEPDIR) msg/$(DEPDIR) msg/async/$(DEPDIR) msg/simple/$(DEPDIR) msg/xio/$(DEPDIR) objclass/$(DEPDIR) os/$(DEPDIR) os/bluestore/$(DEPDIR) os/filestore/$(DEPDIR) os/fs/$(DEPDIR) os/kstore/$(DEPDIR) os/memstore/$(DEPDIR) osd/$(DEPDIR) osdc/$(DEPDIR) perfglue/$(DEPDIR) rbd_fuse/$(DEPDIR) rbd_replay/$(DEPDIR) rgw/$(DEPDIR) test/$(DEPDIR) test/ObjectMap/$(DEPDIR) test/bench/$(DEPDIR) test/cls_hello/$(DEPDIR) test/cls_journal/$(DEPDIR) test/cls_lock/$(DEPDIR) test/cls_log/$(DEPDIR) test/cls_numops/$(DEPDIR) test/cls_rbd/$(DEPDIR) test/cls_refcount/$(DEPDIR) test/cls_replica_log/$(DEPDIR) test/cls_rgw/$(DEPDIR) test/cls_statelog/$(DEPDIR) test/cls_version/$(DEPDIR) test/common/$(DEPDIR) test/compressor/$(DEPDIR) test/crush/$(DEPDIR) test/encoding/$(DEPDIR) test/erasure-code/$(DEPDIR) test/filestore/$(DEPDIR) test/fs/$(DEPDIR) test/journal/$(DEPDIR) test/libcephfs/$(DEPDIR) test/librados/$(DEPDIR) test/librados_test_stub/$(DEPDIR) test/libradosstriper/$(DEPDIR) test/librbd/$(DEPDIR) test/librbd/exclusive_lock/$(DEPDIR) test/librbd/image/$(DEPDIR) test/librbd/journal/$(DEPDIR) test/librbd/object_map/$(DEPDIR) test/librbd/operation/$(DEPDIR) test/mds/$(DEPDIR) test/messenger/$(DEPDIR) test/mon/$(DEPDIR) test/msgr/$(DEPDIR) test/objectstore/$(DEPDIR) test/os/$(DEPDIR) test/osd/$(DEPDIR) test/osdc/$(DEPDIR) test/rbd_mirror/$(DEPDIR) test/rbd_mirror/image_sync/$(DEPDIR) test/rbd_mirror/mock/$(DEPDIR) test/rgw/$(DEPDIR) test/system/$(DEPDIR) tools/$(DEPDIR) tools/cephfs/$(DEPDIR) tools/rados/$(DEPDIR) tools/rbd/$(DEPDIR) tools/rbd/action/$(DEPDIR) tools/rbd_mirror/$(DEPDIR) tools/rbd_mirror/image_replayer/$(DEPDIR) tools/rbd_mirror/image_sync/$(DEPDIR) tools/rbd_nbd/$(DEPDIR) tracing/$(DEPDIR) xxHash/$(DEPDIR)
+	-rm -rf ./$(DEPDIR) arch/$(DEPDIR) auth/$(DEPDIR) auth/cephx/$(DEPDIR) auth/none/$(DEPDIR) auth/unknown/$(DEPDIR) civetweb/src/$(DEPDIR) client/$(DEPDIR) cls/cephfs/$(DEPDIR) cls/hello/$(DEPDIR) cls/journal/$(DEPDIR) cls/lock/$(DEPDIR) cls/log/$(DEPDIR) cls/numops/$(DEPDIR) cls/rbd/$(DEPDIR) cls/refcount/$(DEPDIR) cls/replica_log/$(DEPDIR) cls/rgw/$(DEPDIR) cls/statelog/$(DEPDIR) cls/timeindex/$(DEPDIR) cls/user/$(DEPDIR) cls/version/$(DEPDIR) common/$(DEPDIR) compressor/$(DEPDIR) compressor/snappy/$(DEPDIR) compressor/zlib/$(DEPDIR) crush/$(DEPDIR) erasure-code/$(DEPDIR) erasure-code/isa/$(DEPDIR) erasure-code/isa/isa-l/erasure_code/$(DEPDIR) erasure-code/jerasure/$(DEPDIR) erasure-code/jerasure/gf-complete/src/$(DEPDIR) erasure-code/jerasure/gf-complete/src/neon/$(DEPDIR) erasure-code/jerasure/jerasure/src/$(DEPDIR) erasure-code/lrc/$(DEPDIR) erasure-code/shec/$(DEPDIR) global/$(DEPDIR) java/native/$(DEPDIR) journal/$(DEPDIR) json_spirit/$(DEPDIR) key_value_store/$(DEPDIR) kv/$(DEPDIR) librados/$(DEPDIR) libradosstriper/$(DEPDIR) librbd/$(DEPDIR) librbd/exclusive_lock/$(DEPDIR) librbd/image/$(DEPDIR) librbd/image_watcher/$(DEPDIR) librbd/journal/$(DEPDIR) librbd/mirroring_watcher/$(DEPDIR) librbd/object_map/$(DEPDIR) librbd/operation/$(DEPDIR) log/$(DEPDIR) mds/$(DEPDIR) mon/$(DEPDIR) mount/$(DEPDIR) msg/$(DEPDIR) msg/async/$(DEPDIR) msg/simple/$(DEPDIR) msg/xio/$(DEPDIR) objclass/$(DEPDIR) os/$(DEPDIR) os/bluestore/$(DEPDIR) os/filestore/$(DEPDIR) os/fs/$(DEPDIR) os/kstore/$(DEPDIR) os/memstore/$(DEPDIR) osd/$(DEPDIR) osdc/$(DEPDIR) perfglue/$(DEPDIR) rbd_fuse/$(DEPDIR) rbd_replay/$(DEPDIR) rgw/$(DEPDIR) test/$(DEPDIR) test/ObjectMap/$(DEPDIR) test/bench/$(DEPDIR) test/cls_hello/$(DEPDIR) test/cls_journal/$(DEPDIR) test/cls_lock/$(DEPDIR) test/cls_log/$(DEPDIR) test/cls_numops/$(DEPDIR) test/cls_rbd/$(DEPDIR) test/cls_refcount/$(DEPDIR) test/cls_replica_log/$(DEPDIR) test/cls_rgw/$(DEPDIR) test/cls_statelog/$(DEPDIR) test/cls_version/$(DEPDIR) test/common/$(DEPDIR) test/compressor/$(DEPDIR) test/crush/$(DEPDIR) test/encoding/$(DEPDIR) test/erasure-code/$(DEPDIR) test/filestore/$(DEPDIR) test/fs/$(DEPDIR) test/journal/$(DEPDIR) test/libcephfs/$(DEPDIR) test/librados/$(DEPDIR) test/librados_test_stub/$(DEPDIR) test/libradosstriper/$(DEPDIR) test/librbd/$(DEPDIR) test/librbd/exclusive_lock/$(DEPDIR) test/librbd/image/$(DEPDIR) test/librbd/journal/$(DEPDIR) test/librbd/mock/$(DEPDIR) test/librbd/object_map/$(DEPDIR) test/librbd/operation/$(DEPDIR) test/mds/$(DEPDIR) test/messenger/$(DEPDIR) test/mon/$(DEPDIR) test/msgr/$(DEPDIR) test/objectstore/$(DEPDIR) test/os/$(DEPDIR) test/osd/$(DEPDIR) test/osdc/$(DEPDIR) test/rbd_mirror/$(DEPDIR) test/rbd_mirror/image_sync/$(DEPDIR) test/rbd_mirror/mock/$(DEPDIR) test/rgw/$(DEPDIR) test/system/$(DEPDIR) tools/$(DEPDIR) tools/cephfs/$(DEPDIR) tools/rados/$(DEPDIR) tools/rbd/$(DEPDIR) tools/rbd/action/$(DEPDIR) tools/rbd_mirror/$(DEPDIR) tools/rbd_mirror/image_replayer/$(DEPDIR) tools/rbd_mirror/image_sync/$(DEPDIR) tools/rbd_nbd/$(DEPDIR) tracing/$(DEPDIR) xxHash/$(DEPDIR)
 	-rm -f Makefile
 maintainer-clean-am: distclean-am maintainer-clean-generic
 
@@ -32128,7 +32320,7 @@ uninstall-am: uninstall-bash_completionDATA uninstall-binPROGRAMS \
 	uninstall-rados_includeDATA uninstall-radoslibLTLIBRARIES \
 	uninstall-radosstriper_includeDATA uninstall-sbinPROGRAMS \
 	uninstall-sbinSCRIPTS uninstall-su_sbinPROGRAMS \
-	uninstall-su_sbinSCRIPTS
+	uninstall-su_sbinSCRIPTS uninstall-submanDATA
 
 .MAKE: $(am__recursive_targets) all check check-am install install-am \
 	install-strip
@@ -32160,8 +32352,8 @@ uninstall-am: uninstall-bash_completionDATA uninstall-binPROGRAMS \
 	install-rados_includeDATA install-radoslibLTLIBRARIES \
 	install-radosstriper_includeDATA install-sbinPROGRAMS \
 	install-sbinSCRIPTS install-strip install-su_sbinPROGRAMS \
-	install-su_sbinSCRIPTS installcheck installcheck-am \
-	installdirs installdirs-am maintainer-clean \
+	install-su_sbinSCRIPTS install-submanDATA installcheck \
+	installcheck-am installdirs installdirs-am maintainer-clean \
 	maintainer-clean-generic mostlyclean mostlyclean-compile \
 	mostlyclean-generic mostlyclean-libtool pdf pdf-am ps ps-am \
 	recheck tags tags-am uninstall uninstall-am \
@@ -32176,7 +32368,7 @@ uninstall-am: uninstall-bash_completionDATA uninstall-binPROGRAMS \
 	uninstall-rados_includeDATA uninstall-radoslibLTLIBRARIES \
 	uninstall-radosstriper_includeDATA uninstall-sbinPROGRAMS \
 	uninstall-sbinSCRIPTS uninstall-su_sbinPROGRAMS \
-	uninstall-su_sbinSCRIPTS
+	uninstall-su_sbinSCRIPTS uninstall-submanDATA
 
 
 # display the output of failed check_SCRIPTS after a failed make check
@@ -32194,9 +32386,13 @@ export PYTHONPATH=$(top_srcdir)/src/pybind
 @SOLARIS_TRUE@	AM_COMMON_CFLAGS += -Wno-unused-local-typedefs
 @CLANG_FALSE@	AM_CXXFLAGS += -Wstrict-null-sentinel
 
+# put virtualenvs in this directory
+# otherwise it may overflow #! 80 kernel limit
+export CEPH_BUILD_VIRTUALENV = /tmp
+
 @NO_GIT_VERSION_TRUE@export NO_VERSION="yes"
 
-export CEPH_DETECT_INIT_VIRTUALENV = ${CEPH_BUILD_VIRTUALENV}ceph-detect-init-virtualenv
+export CEPH_DETECT_INIT_VIRTUALENV = ${CEPH_BUILD_VIRTUALENV}/ceph-detect-init-virtualenv
 
 ceph-detect-init-all: ${CEPH_DETECT_INIT_VIRTUALENV}
 
@@ -32218,7 +32414,7 @@ ceph-detect-init-install-data:
 	fi ; \
 	python setup.py install $$root $$options
 
-export CEPH_DISK_VIRTUALENV = ${CEPH_BUILD_VIRTUALENV}ceph-disk-virtualenv
+export CEPH_DISK_VIRTUALENV = ${CEPH_BUILD_VIRTUALENV}/ceph-disk-virtualenv
 
 ceph-disk-all: ${CEPH_DISK_VIRTUALENV}
 

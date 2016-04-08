@@ -123,6 +123,7 @@ cdef extern from "cephfs/libcephfs.h" nogil:
                       void *value, size_t size)
     int ceph_write(ceph_mount_info *cmount, int fd, const char *buf, int64_t size, int64_t offset)
     int ceph_read(ceph_mount_info *cmount, int fd, char *buf, int64_t size, int64_t offset)
+    int ceph_flock(ceph_mount_info *cmount, int fd, int operation, uint64_t owner)
     int ceph_close(ceph_mount_info *cmount, int fd)
     int ceph_open(ceph_mount_info *cmount, const char *path, int flags, mode_t mode)
     int ceph_mkdir(ceph_mount_info *cmount, const char *path, mode_t mode)
@@ -182,16 +183,23 @@ class IncompleteWriteError(Error):
 class LibCephFSStateError(Error):
     pass
 
+class WouldBlock(Error):
+    pass
+
+class OutOfRange(Error):
+    pass
 
 cdef errno_to_exception =  {
-    errno.EPERM     : PermissionError,
-    errno.ENOENT    : ObjectNotFound,
-    errno.EIO       : IOError,
-    errno.ENOSPC    : NoSpace,
-    errno.EEXIST    : ObjectExists,
-    errno.ENODATA   : NoData,
-    errno.EINVAL    : InvalidValue,
-    errno.EOPNOTSUPP: OperationNotSupported,
+    errno.EPERM      : PermissionError,
+    errno.ENOENT     : ObjectNotFound,
+    errno.EIO        : IOError,
+    errno.ENOSPC     : NoSpace,
+    errno.EEXIST     : ObjectExists,
+    errno.ENODATA    : NoData,
+    errno.EINVAL     : InvalidValue,
+    errno.EOPNOTSUPP : OperationNotSupported,
+    errno.ERANGE     : OutOfRange,
+    errno.EWOULDBLOCK: WouldBlock,
 }
 
 
@@ -689,7 +697,25 @@ cdef class LibCephFS(object):
             raise make_ex(ret, "error in write")
         return ret
 
-    def getxattr(self, path, name):
+    def flock(self, fd, operation, owner):
+        self.require_state("mounted")
+        if not isinstance(fd, int):
+            raise TypeError('fd must be an int')
+        if not isinstance(operation, int):
+            raise TypeError('operation must be an int')
+
+        cdef:
+            int _fd = fd
+            int _op = operation
+            uint64_t _owner = owner
+
+        with nogil:
+            ret = ceph_flock(self.cluster, _fd, _op, _owner)
+        if ret < 0:
+            raise make_ex(ret, "error in write")
+        return ret
+
+    def getxattr(self, path, name, size=255):
         self.require_state("mounted")
 
         path = cstr(path, 'path')
@@ -699,7 +725,7 @@ cdef class LibCephFS(object):
             char* _path = path
             char* _name = name
 
-            size_t ret_length = 255
+            size_t ret_length = size
             char *ret_buf = NULL
 
         try:
@@ -710,14 +736,6 @@ cdef class LibCephFS(object):
 
             if ret < 0:
                 raise make_ex(ret, "error in getxattr")
-
-            if ret > ret_length:
-                ret_buf = <char *>realloc_chk(ret_buf, ret)
-                with nogil:
-                    ret = ceph_getxattr(self.cluster, _path, _name, ret_buf,
-                                        ret)
-                if ret < 0:
-                    raise make_ex(ret, "error in getxattr")
 
             return ret_buf[:ret]
         finally:

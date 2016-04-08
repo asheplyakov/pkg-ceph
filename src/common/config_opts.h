@@ -31,7 +31,7 @@ OPTION(crushtool, OPT_STR, "crushtool") // crushtool utility path
 OPTION(daemonize, OPT_BOOL, false) // default changed by common_preinit()
 OPTION(setuser, OPT_STR, "")        // uid or user name
 OPTION(setgroup, OPT_STR, "")        // gid or group name
-OPTION(setuser_match_path, OPT_STR, "")  // make setuser/group conditional on this patch matching ownership
+OPTION(setuser_match_path, OPT_STR, "")  // make setuser/group conditional on this path matching ownership
 OPTION(pid_file, OPT_STR, "") // default changed by common_preinit()
 OPTION(chdir, OPT_STR, "/")
 OPTION(max_open_files, OPT_LONGLONG, 0)
@@ -312,6 +312,7 @@ OPTION(mon_osd_min_down_reporters, OPT_INT, 2)   // number of OSDs from differen
 OPTION(mon_osd_reporter_subtree_level , OPT_STR, "host")   // in which level of parent bucket the reporters are counted
 OPTION(mon_osd_force_trim_to, OPT_INT, 0)   // force mon to trim maps to this point, regardless of min_last_epoch_clean (dangerous, use with care)
 OPTION(mon_mds_force_trim_to, OPT_INT, 0)   // force mon to trim mdsmaps to this point (dangerous, use with care)
+OPTION(mon_mds_skip_sanity, OPT_BOOL, false)  // skip safety assertions on FSMap (in case of bugs where we want to continue anyway)
 
 // monitor debug options
 OPTION(mon_debug_deprecated_as_obsolete, OPT_BOOL, false) // consider deprecated commands as obsolete
@@ -385,6 +386,7 @@ OPTION(client_oc_max_dirty, OPT_INT, 1024*1024* 100)    // MB * n  (dirty OR tx.
 OPTION(client_oc_target_dirty, OPT_INT, 1024*1024* 8) // target dirty (keep this smallish)
 OPTION(client_oc_max_dirty_age, OPT_DOUBLE, 5.0)      // max age in cache before writeback
 OPTION(client_oc_max_objects, OPT_INT, 1000)      // max objects in cache
+OPTION(client_debug_getattr_caps, OPT_BOOL, false) // check if MDS reply contains wanted caps
 OPTION(client_debug_force_sync_read, OPT_BOOL, false)     // always read synchronously (go to osds)
 OPTION(client_debug_inject_tick_delay, OPT_INT, 0) // delay the client tick for a number of seconds
 OPTION(client_max_inline_size, OPT_U64, 4096)
@@ -520,6 +522,7 @@ OPTION(mds_skip_ino, OPT_INT, 0)
 OPTION(max_mds, OPT_INT, 1)
 OPTION(mds_standby_for_name, OPT_STR, "")
 OPTION(mds_standby_for_rank, OPT_INT, -1)
+OPTION(mds_standby_for_fscid, OPT_INT, -1)
 OPTION(mds_standby_replay, OPT_BOOL, false)
 OPTION(mds_enable_op_tracker, OPT_BOOL, true) // enable/disable MDS op tracking
 OPTION(mds_op_history_size, OPT_U32, 20)    // Max number of completed ops to track
@@ -803,7 +806,7 @@ OPTION(osd_tracing, OPT_BOOL, false) // true if LTTng-UST tracepoints should be 
 
 // determines whether PGLog::check() compares written out log to stored log
 OPTION(osd_debug_pg_log_writeout, OPT_BOOL, false)
-
+OPTION(osd_loop_before_reset_tphandle, OPT_U32, 64) // Max number of loop before we reset thread-pool's handle
 // default timeout while caling WaitInterval on an empty queue
 OPTION(threadpool_default_timeout, OPT_INT, 60)
 // default wait time for an empty queue before pinging the hb timeout
@@ -963,6 +966,7 @@ OPTION(bluestore_debug_small_allocations, OPT_INT, 0)
 OPTION(bluestore_debug_freelist, OPT_BOOL, false)
 OPTION(bluestore_debug_prefill, OPT_FLOAT, 0)
 OPTION(bluestore_debug_prefragment_max, OPT_INT, 1048576)
+OPTION(bluestore_inject_wal_apply_delay, OPT_FLOAT, 0)
 
 OPTION(kstore_max_ops, OPT_U64, 512)
 OPTION(kstore_max_bytes, OPT_U64, 64*1024*1024)
@@ -1058,18 +1062,18 @@ OPTION(filestore_queue_max_bytes, OPT_U64, 100 << 20)
 OPTION(filestore_caller_concurrency, OPT_INT, 10)
 
 /// Expected filestore throughput in B/s
-OPTION(filestore_expected_throughput_bytes, OPT_DOUBLE, 100 << 20)
+OPTION(filestore_expected_throughput_bytes, OPT_DOUBLE, 200 << 20)
 /// Expected filestore throughput in ops/s
-OPTION(filestore_expected_throughput_ops, OPT_DOUBLE, 100)
+OPTION(filestore_expected_throughput_ops, OPT_DOUBLE, 200)
 
-/// Filestore max delay multiple (probably don't need to change)
-OPTION(filestore_queue_max_delay_multiple, OPT_DOUBLE, 10)
-/// Filestore max delay multiple (probably don't need to change)
-OPTION(filestore_queue_high_delay_multiple, OPT_DOUBLE, 2)
+/// Filestore max delay multiple.  Defaults to 0 (disabled)
+OPTION(filestore_queue_max_delay_multiple, OPT_DOUBLE, 0)
+/// Filestore high delay multiple.  Defaults to 0 (disabled)
+OPTION(filestore_queue_high_delay_multiple, OPT_DOUBLE, 0)
 
 /// Use above to inject delays intended to keep the op queue between low and high
-OPTION(filestore_queue_low_threshhold, OPT_DOUBLE, 0.2)
-OPTION(filestore_queue_high_threshhold, OPT_DOUBLE, 0.8)
+OPTION(filestore_queue_low_threshhold, OPT_DOUBLE, 0.3)
+OPTION(filestore_queue_high_threshhold, OPT_DOUBLE, 0.9)
 
 OPTION(filestore_op_threads, OPT_INT, 2)
 OPTION(filestore_op_thread_timeout, OPT_INT, 60)
@@ -1102,13 +1106,13 @@ OPTION(journal_max_write_bytes, OPT_INT, 10 << 20)
 OPTION(journal_max_write_entries, OPT_INT, 100)
 
 /// Target range for journal fullness
-OPTION(journal_throttle_low_threshhold, OPT_DOUBLE, 0.5)
-OPTION(journal_throttle_high_threshhold, OPT_DOUBLE, 0.8)
+OPTION(journal_throttle_low_threshhold, OPT_DOUBLE, 0.6)
+OPTION(journal_throttle_high_threshhold, OPT_DOUBLE, 0.9)
 
-/// Multiple over expected at high_threshhold (probably don't need to change)
-OPTION(journal_throttle_high_multiple, OPT_DOUBLE, 2)
-/// Multiple over expected at max (probably don't need to change)
-OPTION(journal_throttle_max_multiple, OPT_DOUBLE, 10)
+/// Multiple over expected at high_threshhold. Defaults to 0 (disabled).
+OPTION(journal_throttle_high_multiple, OPT_DOUBLE, 0)
+/// Multiple over expected at max.  Defaults to 0 (disabled).
+OPTION(journal_throttle_max_multiple, OPT_DOUBLE, 0)
 
 OPTION(journal_align_min_size, OPT_INT, 64 << 10)  // align data payloads >= this.
 OPTION(journal_replay_from, OPT_INT, 0)

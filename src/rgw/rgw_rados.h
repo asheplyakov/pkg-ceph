@@ -783,7 +783,7 @@ public:
   }
   int init(CephContext *_cct, RGWRados *_store, bool setup_obj = true, bool old_format = false);
   virtual int read_default_id(string& default_id, bool old_format = false);
-  virtual int set_as_default();
+  virtual int set_as_default(bool exclusive = false);
   int delete_default();
   virtual int create(bool exclusive = true);
   int delete_obj(bool old_format = false);
@@ -884,7 +884,7 @@ struct RGWZoneParams : RGWSystemMetaObj {
 	   bool old_format = false);
   using RGWSystemMetaObj::init;
   int read_default_id(string& default_id, bool old_format = false);
-  int set_as_default();
+  int set_as_default(bool exclusive = false) override;
   int create_default(bool old_format = false);
   int create(bool exclusive = true);
   int fix_pool_names();
@@ -1151,7 +1151,7 @@ struct RGWZoneGroup : public RGWSystemMetaObj {
   }
 
   int read_default_id(string& default_id, bool old_format = false);
-  int set_as_default();
+  int set_as_default(bool exclusive = false) override;
   int create_default(bool old_format = false);
   int equals(const string& other_zonegroup) const;
   int add_zone(const RGWZoneParams& zone_params, bool *is_master, bool *read_only, const list<string>& endpoints);
@@ -1301,7 +1301,7 @@ class RGWRealm : public RGWSystemMetaObj
   string current_period;
   epoch_t epoch{0}; //< realm epoch, incremented for each new period
 
-  int create_control();
+  int create_control(bool exclusive);
   int delete_control();
 public:
   RGWRealm() {}
@@ -1469,7 +1469,8 @@ public:
   int update();
 
   // commit a staging period; only for use on master zone
-  int commit(RGWRealm& realm, const RGWPeriod &current_period);
+  int commit(RGWRealm& realm, const RGWPeriod &current_period,
+             std::ostream& error_stream);
 
   void encode(bufferlist& bl) const {
     ENCODE_START(1, 1, bl);
@@ -2430,6 +2431,7 @@ public:
                        const rgw_user& user_id,
                        const string& client_id,
                        const string& op_id,
+                       bool record_op_state,
                        req_info *info,
                        const string& source_zone,
                        rgw_obj& dest_obj,
@@ -2646,7 +2648,7 @@ public:
                             const string& op_tag, struct rgw_bucket_dir_entry_meta *meta,
                             uint64_t olh_epoch,
                             ceph::real_time unmod_since, bool high_precision_time);
-  int bucket_index_unlink_instance(rgw_obj& obj_instance, const string& op_tag, uint64_t olh_epoch);
+  int bucket_index_unlink_instance(rgw_obj& obj_instance, const string& op_tag, const string& olh_tag, uint64_t olh_epoch);
   int bucket_index_read_olh_log(RGWObjState& state, rgw_obj& obj_instance, uint64_t ver_marker,
                                 map<uint64_t, vector<rgw_bucket_olh_log_entry> > *log, bool *is_truncated);
   int bucket_index_trim_olh_log(RGWObjState& obj_state, rgw_obj& obj_instance, uint64_t ver);
@@ -2749,6 +2751,7 @@ public:
   int cls_bucket_head_async(rgw_bucket& bucket, int shard_id, RGWGetDirHeader_CB *ctx, int *num_aio);
   int list_bi_log_entries(rgw_bucket& bucket, int shard_id, string& marker, uint32_t max, std::list<rgw_bi_log_entry>& result, bool *truncated);
   int trim_bi_log_entries(rgw_bucket& bucket, int shard_id, string& marker, string& end_marker);
+  int get_bi_log_status(rgw_bucket& bucket, int shard_id, map<int, string>& max_marker);
 
   int bi_get_instance(rgw_obj& obj, rgw_bucket_dir_entry *dirent);
   int bi_get(rgw_bucket& bucket, rgw_obj& obj, BIIndexType index_type, rgw_cls_bi_entry *entry);

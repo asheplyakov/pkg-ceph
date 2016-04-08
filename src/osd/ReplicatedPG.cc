@@ -925,8 +925,10 @@ void ReplicatedPG::do_pg_op(OpRequestRef op)
       // fall through
 
     case CEPH_OSD_OP_PGNLS:
-      if (m->get_pg() != info.pgid.pgid) {
-        dout(10) << " pgnls pg=" << m->get_pg() << " != " << info.pgid << dendl;
+      if (get_osdmap()->raw_pg_to_pg(m->get_pg()) != info.pgid.pgid) {
+        dout(10) << " pgnls pg=" << m->get_pg()
+		 << " " << get_osdmap()->raw_pg_to_pg(m->get_pg())
+		 << " != " << info.pgid << dendl;
 	result = 0; // hmm?
       } else {
 	unsigned list_size = MIN(cct->_conf->osd_max_pgls, p->op.pgls.count);
@@ -946,7 +948,21 @@ void ReplicatedPG::do_pg_op(OpRequestRef op)
 
 	hobject_t next;
 	hobject_t lower_bound = response.handle;
-        dout(10) << " pgnls lower_bound " << lower_bound << dendl;
+	hobject_t pg_start = info.pgid.pgid.get_hobj_start();
+	hobject_t pg_end = info.pgid.pgid.get_hobj_end(pool.info.get_pg_num());
+        dout(10) << " pgnls lower_bound " << lower_bound
+		 << " pg_end " << pg_end << dendl;
+	if (get_sort_bitwise() &&
+	    ((lower_bound != hobject_t::get_max() &&
+	      cmp_bitwise(lower_bound, pg_end) >= 0) ||
+	     (lower_bound != hobject_t() &&
+	      cmp_bitwise(lower_bound, pg_start) < 0))) {
+	  // this should only happen with a buggy client.
+	  dout(10) << "outside of PG bounds " << pg_start << " .. "
+		   << pg_end << dendl;
+	  result = -EINVAL;
+	  break;
+	}
 
 	hobject_t current = lower_bound;
 	osr->flush();
@@ -1081,7 +1097,7 @@ void ReplicatedPG::do_pg_op(OpRequestRef op)
 	} else {
           response.handle = next;
         }
-        dout(10) << "pgls handle=" << response.handle << dendl;
+        dout(10) << "pgnls handle=" << response.handle << dendl;
 	::encode(response, osd_op.outdata);
 	if (filter)
 	  ::encode(filter_out, osd_op.outdata);
@@ -1113,8 +1129,10 @@ void ReplicatedPG::do_pg_op(OpRequestRef op)
       // fall through
 
     case CEPH_OSD_OP_PGLS:
-      if (m->get_pg() != info.pgid.pgid) {
-        dout(10) << " pgls pg=" << m->get_pg() << " != " << info.pgid << dendl;
+      if (get_osdmap()->raw_pg_to_pg(m->get_pg()) != info.pgid.pgid) {
+        dout(10) << " pgls pg=" << m->get_pg()
+		 << " " << get_osdmap()->raw_pg_to_pg(m->get_pg())
+		 << " != " << info.pgid << dendl;
 	result = 0; // hmm?
       } else {
 	unsigned list_size = MIN(cct->_conf->osd_max_pgls, p->op.pgls.count);
@@ -2255,6 +2273,7 @@ ReplicatedPG::cache_result_t ReplicatedPG::maybe_handle_cache_detail(
     return cache_result_t::NOOP;
 
   case pg_pool_t::CACHEMODE_FORWARD:
+    // FIXME: this mode allows requests to be reordered.
     do_cache_redirect(op);
     return cache_result_t::HANDLED_REDIRECT;
 
@@ -2288,6 +2307,28 @@ ReplicatedPG::cache_result_t ReplicatedPG::maybe_handle_cache_detail(
     // If it is a read, we can read, we need to forward it
     do_cache_redirect(op);
     return cache_result_t::HANDLED_REDIRECT;
+
+  case pg_pool_t::CACHEMODE_PROXY:
+    if (!must_promote) {
+      if (op->may_write() || op->may_cache() || write_ordered) {
+	if (can_proxy_write) {
+	  do_proxy_write(op, missing_oid);
+	  return cache_result_t::HANDLED_PROXY;
+	}
+      } else {
+	do_proxy_read(op);
+	return cache_result_t::HANDLED_PROXY;
+      }
+    }
+    // ugh, we're forced to promote.
+    if (agent_state &&
+	agent_state->evict_mode == TierAgentState::EVICT_MODE_FULL) {
+      dout(20) << __func__ << " cache pool full, waiting" << dendl;
+      block_write_on_full_cache(missing_oid, op);
+      return cache_result_t::BLOCKED_FULL;
+    }
+    promote_object(obc, missing_oid, oloc, op, promote_obc);
+    return cache_result_t::BLOCKED_PROMOTE;
 
   case pg_pool_t::CACHEMODE_READPROXY:
     // Do writeback to the cache tier for writes
@@ -5516,7 +5557,7 @@ int ReplicatedPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
 	tracepoint(osd, do_osd_op_pre_omapgetkeys, soid.oid.name.c_str(), soid.snap.val, start_after.c_str(), max_return);
 	set<string> out_set;
 
-	if (pool.info.supports_omap()) {
+	if (oi.is_omap()) {
 	  ObjectMap::ObjectMapIterator iter = osd->store->get_omap_iterator(
 	    coll, ghobject_t(soid)
 	    );
@@ -5553,7 +5594,7 @@ int ReplicatedPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
 	tracepoint(osd, do_osd_op_pre_omapgetvals, soid.oid.name.c_str(), soid.snap.val, start_after.c_str(), max_return, filter_prefix.c_str());
 	map<string, bufferlist> out_set;
 
-	if (pool.info.supports_omap()) {
+	if (oi.is_omap()) {
 	  ObjectMap::ObjectMapIterator iter = osd->store->get_omap_iterator(
 	    coll, ghobject_t(soid)
 	    );
@@ -5579,7 +5620,7 @@ int ReplicatedPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
 
     case CEPH_OSD_OP_OMAPGETHEADER:
       tracepoint(osd, do_osd_op_pre_omapgetheader, soid.oid.name.c_str(), soid.snap.val);
-      if (!pool.info.supports_omap()) {
+      if (!oi.is_omap()) {
 	// return empty header
 	break;
       }
@@ -5605,7 +5646,7 @@ int ReplicatedPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
 	}
 	tracepoint(osd, do_osd_op_pre_omapgetvalsbykeys, soid.oid.name.c_str(), soid.snap.val, list_entries(keys_to_get).c_str());
 	map<string, bufferlist> out;
-	if (pool.info.supports_omap()) {
+	if (oi.is_omap()) {
 	  osd->store->omap_get_values(ch, ghobject_t(soid), keys_to_get, &out);
 	} // else return empty omap entries
 	::encode(out, osd_op.outdata);
@@ -5635,7 +5676,7 @@ int ReplicatedPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
 	
 	map<string, bufferlist> out;
 
-	if (pool.info.supports_omap()) {
+	if (oi.is_omap()) {
 	  set<string> to_get;
 	  for (map<string, pair<bufferlist, int> >::iterator i = assertions.begin();
 	       i != assertions.end();
@@ -5761,10 +5802,13 @@ int ReplicatedPG::do_osd_ops(OpContext *ctx, vector<OSDOp>& ops)
 	  result = -ENOENT;
 	  break;
 	}
-	t->omap_clear(soid);
-	ctx->delta_stats.num_wr++;
+	if (oi.is_omap()) {
+	  t->omap_clear(soid);
+	  ctx->delta_stats.num_wr++;
+	  obs.oi.clear_omap_digest();
+	  obs.oi.clear_flag(object_info_t::FLAG_OMAP);
+	}
       }
-      obs.oi.clear_omap_digest();
       break;
 
     case CEPH_OSD_OP_OMAPRMKEYS:
