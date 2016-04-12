@@ -56,7 +56,7 @@ case "$1" in
        usermod -c "$SERVER_NAME" \
                -d $SERVER_HOME   \
                -g $SERVER_GROUP  \
-               $SERVER_USER
+               $SERVER_USER 2>/dev/null
 
        # 5. adjust file and directory permissions
        if ! dpkg-statoverride --list $SERVER_HOME >/dev/null
