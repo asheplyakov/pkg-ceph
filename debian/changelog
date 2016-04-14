@@ -1,4 +1,4 @@
-ceph (10.1.2-0ubuntu1) UNRELEASED; urgency=medium
+ceph (10.1.2-0ubuntu1) xenial; urgency=medium
 
   * New upstream release candidate for Ceph Jewel:
     - FFe: http://pad.lv/1563714.
@@ -6,7 +6,7 @@ ceph (10.1.2-0ubuntu1) UNRELEASED; urgency=medium
       included upstream.
   * d/ceph-common.postinst: Silence output of usermod call (LP: #1569249).
 
- -- James Page <james.page@ubuntu.com>  Tue, 12 Apr 2016 11:02:42 +0100
+ -- James Page <james.page@ubuntu.com>  Thu, 14 Apr 2016 14:46:58 +0100
 
 ceph (10.1.1-0ubuntu1) xenial; urgency=medium
 
