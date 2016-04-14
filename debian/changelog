@@ -1,6 +1,13 @@
-ceph (0.94.6-1~1.gbpc2328e) UNRELEASED; urgency=medium
+ceph (0.94.7~g20160406+254+ge219e85-1~1.gbp2be2a1) UNRELEASED; urgency=low
 
-  ** SNAPSHOT build @c2328efe4ae09e0c3d117bb25c23c826ad9d7d21 **
+  ** SNAPSHOT build @2be2a1b25d34593b092311e8f67793a94ceb56b7 **
+
+  * New upstream bugfix pre-release
+  * d/p: drop #14873 fix, included upstream
+
+ -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Thu, 14 Apr 2016 18:25:34 +0300
+
+ceph (0.94.6-1) experimental; urgency=medium
 
   * New upstream bugfix release
   * Refresh "rbd lazy umount before unmap" patch
