@@ -68,6 +68,9 @@
 /* Define to 1 if you have the `fuse_getgroups' function. */
 #undef HAVE_FUSE_GETGROUPS
 
+/* Define to 1 if you have the `getgrouplist' function. */
+#undef HAVE_GETGROUPLIST
+
 /* we have a recent yasm and are x86_64 */
 #undef HAVE_GOOD_YASM_ELF64
 

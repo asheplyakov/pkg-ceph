@@ -22744,6 +22744,19 @@ $as_echo "#define CEPH_HAVE_FALLOCATE /**/" >>confdefs.h
 fi
 
 
+# getgrouplist
+for ac_func in getgrouplist
+do :
+  ac_fn_c_check_func "$LINENO" "getgrouplist" "ac_cv_func_getgrouplist"
+if test "x$ac_cv_func_getgrouplist" = xyes; then :
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_GETGROUPLIST 1
+_ACEOF
+
+fi
+done
+
+
 #
 # Test for time-related `struct stat` members.
 #
