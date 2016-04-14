@@ -380,7 +380,8 @@ check_PROGRAMS = $(am__EXEEXT_44) $(am__EXEEXT_45) $(am__EXEEXT_46) \
 @ENABLE_CLIENT_TRUE@	client/SyntheticClient.h \
 @ENABLE_CLIENT_TRUE@	client/Trace.h \
 @ENABLE_CLIENT_TRUE@	client/ioctl.h \
-@ENABLE_CLIENT_TRUE@	client/ObjecterWriteback.h
+@ENABLE_CLIENT_TRUE@	client/ObjecterWriteback.h \
+@ENABLE_CLIENT_TRUE@	client/InodeRef.h
 
 @ENABLE_CLIENT_TRUE@@WITH_FUSE_TRUE@am__append_61 = libclient_fuse.la
 @ENABLE_CLIENT_TRUE@@WITH_FUSE_TRUE@am__append_62 = client/fuse_ll.h
@@ -1271,7 +1272,7 @@ am__aclocal_m4_deps = $(top_srcdir)/m4/ac_check_classpath.m4 \
 	$(top_srcdir)/m4/ax_intel.m4 $(top_srcdir)/m4/libtool.m4 \
 	$(top_srcdir)/m4/ltoptions.m4 $(top_srcdir)/m4/ltsugar.m4 \
 	$(top_srcdir)/m4/ltversion.m4 $(top_srcdir)/m4/lt~obsolete.m4 \
-	$(top_srcdir)/m4/pkg.m4 $(top_srcdir)/configure.ac
+	$(top_srcdir)/configure.ac
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 mkinstalldirs = $(install_sh) -d
@@ -6002,8 +6003,8 @@ am__noinst_HEADERS_DIST = arch/intel.h arch/arm.h arch/probe.h \
 	client/Dir.h client/Fh.h client/Inode.h client/MetaRequest.h \
 	client/MetaSession.h client/ClientSnapRealm.h \
 	client/SyntheticClient.h client/Trace.h client/ioctl.h \
-	client/ObjecterWriteback.h client/fuse_ll.h global/pidfile.h \
-	global/global_init.h global/global_context.h \
+	client/ObjecterWriteback.h client/InodeRef.h client/fuse_ll.h \
+	global/pidfile.h global/global_init.h global/global_context.h \
 	global/signal_handler.h json_spirit/json_spirit.h \
 	json_spirit/json_spirit_error_position.h \
 	json_spirit/json_spirit_reader.h \
@@ -7027,10 +7028,10 @@ check_SCRIPTS = $(am__append_117) test/ceph_objectstore_tool.py \
 	test/mon/osd-pool-create.sh test/mon/misc.sh \
 	test/mon/osd-crush.sh test/mon/osd-erasure-code-profile.sh \
 	test/mon/mkfs.sh test/osd/osd-scrub-repair.sh \
-	test/osd/osd-config.sh test/osd/osd-bench.sh \
-	test/osd/osd-copy-from.sh test/mon/mon-handle-forward.sh \
-	$(am__append_181) $(am__append_182) \
-	test/pybind/test_ceph_argparse.py
+	test/osd/osd-scrub-snaps.sh test/osd/osd-config.sh \
+	test/osd/osd-bench.sh test/osd/osd-copy-from.sh \
+	test/mon/mon-handle-forward.sh $(am__append_181) \
+	$(am__append_182) test/pybind/test_ceph_argparse.py
 
 ##################################
 AM_COMMON_CPPFLAGS = \
@@ -22235,6 +22236,13 @@ test/mon/mkfs.sh.log: test/mon/mkfs.sh
 test/osd/osd-scrub-repair.sh.log: test/osd/osd-scrub-repair.sh
 	@p='test/osd/osd-scrub-repair.sh'; \
 	b='test/osd/osd-scrub-repair.sh'; \
+	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
+	--log-file $$b.log --trs-file $$b.trs \
+	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \
+	"$$tst" $(AM_TESTS_FD_REDIRECT)
+test/osd/osd-scrub-snaps.sh.log: test/osd/osd-scrub-snaps.sh
+	@p='test/osd/osd-scrub-snaps.sh'; \
+	b='test/osd/osd-scrub-snaps.sh'; \
 	$(am__check_pre) $(LOG_DRIVER) --test-name "$$f" \
 	--log-file $$b.log --trs-file $$b.trs \
 	$(am__common_driver_flags) $(AM_LOG_DRIVER_FLAGS) $(LOG_DRIVER_FLAGS) -- $(LOG_COMPILE) \

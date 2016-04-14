@@ -598,13 +598,13 @@ int ObjBencher::seq_read_bench(int seconds_to_run, int num_objects, int concurre
     index[slot] = data.started;
     lock.Unlock();
     completion_wait(slot);
+    lock.Lock();
     r = completion_ret(slot);
     if (r < 0) {
       cerr << "read got " << r << std::endl;
       lock.Unlock();
       goto ERR;
     }
-    lock.Lock();
     total_latency += data.cur_latency;
     if (data.cur_latency > data.max_latency) data.max_latency = data.cur_latency;
     if (data.cur_latency < data.min_latency) data.min_latency = data.cur_latency;
@@ -624,14 +624,7 @@ int ObjBencher::seq_read_bench(int seconds_to_run, int num_objects, int concurre
     lock.Lock();
     ++data.started;
     ++data.in_flight;
-      lock.Unlock();
-    if (memcmp(data.object_contents, cur_contents->c_str(), data.object_size) != 0) {
-      cerr << name[slot] << " is not correct!" << std::endl;
-      ++errors;
-    } else {
-      lock.Unlock();
-    }
-
+    lock.Unlock();
     name[slot] = newName;
   }
 
@@ -690,7 +683,7 @@ int ObjBencher::seq_read_bench(int seconds_to_run, int num_objects, int concurre
 
   completions_done();
 
-  return 0;
+  return (errors > 0 ? -EIO : 0);
 
  ERR:
   lock.Lock();
@@ -898,7 +891,7 @@ int ObjBencher::rand_read_bench(int seconds_to_run, int num_objects, int concurr
 
   completions_done();
 
-  return 0;
+  return (errors > 0 ? -EIO : 0);
 
  ERR:
   lock.Lock();

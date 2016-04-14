@@ -1,18 +1,195 @@
-e832001 (HEAD, tag: v0.94.6, origin/hammer) 0.94.6
+77a4ed0 ceph.spec.in: disable lttng and babeltrace explicitly
+97f474f cls_rbd: protect against excessively large object maps
+ac3569c (sa/hammer-wip-15336, hammer-wip-15336) hammer: monclient: avoid key renew storm on clock skew
+f8d2abd osd/osd_types: encode pg_pool_t the old way
+720a090 mon: disable gmt_hitset if not supported
+7aec079 osd: do not let OSD_HITSET_GMT reuse the feature bit
+3704341 osd: Decode use_gmt_hitset with a unique version
+64bca2a mon: print use_gmt_hitset in "ceph osd pool get"
+87df212 mon: add "ceph osd pool set $pool use_gmt_hitset true" cmd
+0392404 osd: use GMT time for the object name of hitsets
+744e9f8 test/bufferlist: do not expect !is_page_aligned() after unaligned rebuild
+0830275 (origin/wip-10794-hammer) osd/PG: fix generate_past_intervals
+7eae05e osd/ReplicatedPG: do not proxy read *and* process op locally
+be4a9fe osd/OSDMap: fix typo in summarize_mapping_stats
+2072a53 qa/workunits: remove 'mds setmap' from workunits
+01672b4 mon: Monitor: get rid of weighted clock skew reports
+f90b8bc mon: Monitor: adaptative clock skew detection interval
+57fd7f8 (origin/hammer-pr-8052) test/librados/test.cc: clean up EC pools' crush rules too
+d4cf190 keyring permissions for mon daemon
+1b922e5 test/pybind/test_ceph_argparse: fix reweight-by-utilization tests
+06a2a75 man/8/ceph.rst: remove invalid option for reweight-by-*
+241f762 mon: remove range=100 from reweight-by-* commands
+55ad2c7 mon: make max_osds an optional arg
+f13cdea mon: make reweight max_change default configurable
+f4b4ef7 mon/OSDMonitor: fix indentation
+76eb3c8 qa/workunits/cephtool/test.sh: test reweight-by-x commands
+9a9d147 osd/MonCommand: add/fix up 'osd [test-]reweight-by-{pg,utilization}'
+6ec676d mon: add 'osd utilization' command
+94134d9 osd/OSDMap: add summarize_mapping_stats
+932f75d mon: make reweight-by-* max_change an argument
+d8372ce osd: add mon_reweight_max_osds to limit reweight-by-* commands
+6a422b2 osd: add mon_reweight_max_change option which limits reweight-by-*
+d3635b7 test: add simple test for new reweight-by-* options
+e993851 osd: add sure and no-increasing options to reweight-by-*
+281d63d librbd: complete cache reads on cache's dedicate thread
+621e3ae test: reproducer for writeback CoW deadlock
+38b9c0b osdc/Objecter: call notify completion only once
+f794ada tests: Add TEST_no_segfault_for_bad_keyring to test/mon/misc.sh
+94da46b tests: make sure no segfault occurs when using some bad keyring
+a371c0f auth: fix a crash issue due to CryptoHandler::create() failed
+af5da4f auth: fix double PK11_DestroyContext() if PK11_DigestFinal() failed
+c3f031a ceph-objectstore-tool, osd: Fix import handling
+647723e tools, test: Add ceph-objectstore-tool to operate on the meta collection
+d875620 common/obj_bencher.cc: make verify error fatal
+04fe951 test/test_rados_tool.sh: force rados bench rand and seq
+6a6754f (sa/hammer-bug-14873, hammer-bug-14873-p2) hammer: tools: fix race condition in seq/rand bench (part 2)
+3a5b102 (sa/hammer-bug-14873-p1) hammer: tools: fix race condition in seq/rand bench (part 1)
+c4ba93a client: use fuse_req_getgroups() to get group list
+a84ed87 client: use thread local data to track fuse request
+e7f299a client/Client.cc: remove only once used variable
+16e3e2f client/Client.cc: fix realloc memory leak
+b13ddc0 client: added permission check based on getgrouplist
+562c0a9 configure.ac: added autoconf check for getgrouplist
+e014ea8 init-ceph: check if /lib/lsb/init-functions exists
+5726463 packaging: lsb_release build and runtime dependency
+c63baeb global: do not start two daemons with a single pid-file (part 2)
+9282c1d ceph-objectstore-tool: Add dry-run checking to ops missing it
+efc2183 test: Remove redundant test output
+3226615 test: osd-scrub-snaps.sh uses ceph-helpers.sh and added to make check
+995a004 test: Verify replicated PG beyond just data after vstart
+6afb5d3 osd: Use boost::optional instead of snap 0 for "all_clones"
+750f817 test: Fix verify() used after import to also check xattr and omap
+b8c9507 osd, test: When head missing a snapset, clones not an error
+59fee8a test: Add test cases for xattr and omap ceph-objectstore-tool operations
+0988b12 osd, test: Keep missing count and log number of missing clones
+37be959 rados: Minor output changes for consistency across operations
+6c51e48 test: Eliminate check for bogus "obj13/head snaps empty" error
+e92505b ceph-objectstore-tool: Add new remove-clone-metadata object op
+8f88b44 osd: Fix trim_object() to not crash on corrupt snapset
+78b13f5 ceph-objectstore-tool: Improve object spec error handling
+7b800b7 ceph-objectstore-tool: Add undocumented clear-snapset command for testing
+7f398bd ceph-objectstore-tool: Add set-size command for objects
+53dc87f ceph-objectstore-tool: Enhanced dump command replaces dump-info
+a46fc66 test: Add some clones to ceph-objectstore-tool test
+fd518e7 ceph-objectstore-tool: For corrupt objectstores, don't abort listing on errors
+ad7825a ceph-objectstore-tool: Improve some error messages
+26cbf14 ceph-objectstore-tool: White space fixes
+0f78564 tools/rados: Improve xattr import handling so future internal xattrs ignored
+c8e2772 test: Test scrubbing of snapshot problems
+113d5c7 osd: Don't crash if OI_ATTR attribute is missing or corrupt
+3af8f9e osd: Additional _scrub() check for snapset inconsistency
+7103e74 osd: Better SnapSet scrub checking (find issues instead of asserting)
+18af852 osd: Make the _scrub routine produce good output and detect errors properly
+3a1b588 osd: Fix log message name of ceph-objectstore-tool
+0fe3dfe ceph-objectstore-tool: add mark-complete operation
+1bc8882 test: Fix failure test to find message anywhere in stderr
+6ff4217 test: add test for {get,set}-inc-osdmap commands.
+de80bbf test: Add debug argument to the ceph-objectstore-tool test
+0643797 rados: Fix usage for "notify" command
+5ba8649 test: add test for {get,set}-osdmap commands
+3276258 tools, test: Some ceph-objectstore-tool error handling fixes
+cfabcc1 tools/ceph-objectstore-tool: add get-inc-osdmap command
+c7d0fda tools: Check for valid --op earlier so we can get a better error message
+be24c50 tools/ceph-objectstore-tool: add set-inc-osdmap command
+06dcf74 tools: Fix newlines in output of --op list
+e44c042 tools/ceph-objectstore-tool: add "get-osdmap" command
+3f9e467 tools: Fix dump-super which doesn't require pgid
+c60eee1 tools/ceph-objectstore-tool: add "set-osdmap" command
+cfe7d47 tools: Check and specify commands that require the pgid specification
+df0e11e hobject_t: modify operator<<
+6c8884b test, tools: Improve ceph-objectstore-tool import error handling and add tests
+87a7f99 tools: For ec pools list objects in all shards if the pgid doesn't specify
+9ca2f35 tools: clean up errors in ceph-objectstore-tool
+78a59f8 test/ceph-objectstore-tool: Don't need stderr noise
+eab0f24 osd: Show number of divergent_priors in log message
+d58793d osd, tools: Always filter temp objects since not being exported
+efc402e test/ceph-objectstore-tool: Show command that should have failed
+88ac519 test: Add config changes to all tests to avoid order dependency
+3d99ecd tools: Don't export temporary objects until we have persistent-temp objects
+13360d3 test/ceph_objectstore_tool: Improve dump-journal testing
+444ce0a ceph-objectstore-tool: Allow --pgid specified on import (for post split)
+aed1c49 ceph-objectstore-tool: Invalidate pg stats when objects were skipped during pg import
+af3f8ae ceph-objectstore-tool: Add dump-super to show OSDSuperblock in format specified
+4dcf15b mds, include: Fix dump() numeric char array to include additional alpha chars
+feecacf ceph-objectstore-tool: Add dump-journal as not requiring --pgid in usage
+5e8fbb1 test: ceph_test_filejournal: Conform to test infrastructure requirements
+c161cbf test: ceph_test_filejournal need to force aio because testing with a file
+06d3f51 test: ceph_test_filejournal fix missing argument to FileJournal constructor
+2078f63 test: ceph_test_filejournal  Add check of journalq in WriteTrim test
+ab893d7 test: Fix ceph-objectstore-tool test missing fd.close()
+b5f2ccd test: Fix ceph-objectstore-tool test error message
+848822d test: ceph-objectstore-tool: Remove duplicate debug messages, keep cmd/log/call together
+771dcd9 test: ceph-objectstore-tool import after split testing
+4f387b1 test: Use CEPH_DIR where appropriate
+b337d67 test: Limit how long ceph-objectstore-tool test will wait for health
+09cb8a4 test: Add optional arg to vstart() to provide additional args to vstart
+b4ac42b test: Test ceph-objectstore-tool --op dump-journal output
+729abf5 test: Pep8 fixes for ceph-objectstore-tool test
+33813b6 test: Fix ceph-objectstore-tool test, overwrite OTHERFILE so second check is meaningful
+f7ab316 osd: FileJournal: Add _fdump() that takes Formatter instead of ostream
+99d3e17 osd: Add simple_dump() to FileJournal for unit testing
+80fc57f osd: FileJournal clean-up
+b8f4ea1 osd: Dump header in FileJournal::dump()
+21c3c18 osd: FileJournal::read_entry() can't use a zero seq to check for corruption
+288902f osd: Fix flushing in FileJournal::dump()
+a935ce5 osd: Add admin socket feature set_recovery_delay
+4ae3f88 ceph-objectstore-tool: For import/export --debug dump the log
+cc5fa68 ceph-objectstore-tool: If object re-appears after removal, just skip it
+d8ae1a9 ceph-objectstore-tool: Add --no-overwrite flag for import-rados
+2dbf843 ceph-objectstore-tool: Remove list-lost because now we have --dry-run flag
+3599174 ceph-objectstore-tool: Add --dry-run option
+05d3b73 ceph-objectstore-tool: Add dump-info command to show object info
+2d764c5 ceph-objectstore-tool: Use empty string for <object> to specify pgmeta object
+3a533d7 ceph-objectstore-tool: Add a couple of strategically placed prints
+7947f4f ceph-objectstore-tool: Clean up error handling
+83de86e ceph-objectstore-tool: Create section around log/missing/divergent_priors of --op log
+ddfaa70 ceph-objectstore-tool: Add divergent_priors handling
+add937c ceph-objectstore-tool: Add --force option which is used for import only
+f332748 ceph-objectstore-tool: Fix pgid scan to skip snapdirs
+3e68825 ceph-objectstore-tool: Add dump-journal op
+aaff4d7 ceph-objectstore-tool: On any exit release CephContext so logging can flush
+7445cf5 ceph-objectstore-tool: Check for keyvaluestore experimental feature
+9da6c01 ceph-objectstore-tool: Eliminate obscure "Invalid params" error
+c5ac7ce ceph-objectstore-tool: Check pgid validity earlier like we did before
+18c49b6 Backport the merge commit of branch 'wip-journal-header' of git://github.com/XinzeChi/ceph
+cf433ba global/pidfile: do not start two daemons with a single pid-file
+b43c5b2 unittest_crypto: benchmark 100,000 CryptoKey::encrypt() calls
+e832001 (tag: v0.94.6) 0.94.6
+a1fc101 crushtool: send --tree to stdout
+4fb688d osd: write journal header by force when journal write close
+31a2fc4 common/bit_vector: use hard-coded value for block size
+3352b14 ceph.in: Notify user that 'tell' can't be used in interactive mode
+14b5fea mon/LogMonitor: use the configured facility if log to syslog
+10d29da os/LevelDBStore:fix bug when compact_on_mount
+d5ba063 OSDMap: reset osd_primary_affinity shared_ptr when deepish_copy_from
+9e0a165 OSD::consume_map: correctly remove pg shards which are no longer acting
+5a450e6 mon: add mon_config_key prefix when sync full
 9ab5fd9 rgw-admin: document orphans commands in usage
 0e1378e [backport] rgw: fix wrong etag calculation during POST on S3 bucket.
 5c8d1d7 [backport] rgw: Make RGW_MAX_PUT_SIZE configurable
 f2ca42b doc: add orphans commands to radosgw-admin(8)
 e42ed6d man: rebuild manpages
 a8fc6a9 fsx: checkout old version until it compiles properly on miras
+eb048a3 qa/workunits/post-file.sh: sudo
+e9039f4 qa/workunits/post-file: pick a dir that's readable by world
+902abe7 qa/workunits/post-file.sh: use /etc/default
+1c8c708 librbd: ensure librados callbacks are flushed prior to destroying image
+f892566 librbd: simplify IO flush handling
+e5dfd3d WorkQueue: PointerWQ drain no longer waits for other queues
+edf60b4 test: new librbd flatten test case
+88ffcc2 ceph-disk: use blkid instead of sgdisk -i
 1b02859 qa/fsstress.sh: fix 'cp not writing through dangling symlink'
+f209819 [ceph-fuse] fix ceph-fuse writing to stale log file after log rotation
 9109304 mon: compact full epochs also
-2817ffc Check for full before changing the cached obc
+2817ffc (sa/hammer-bug-12449) Check for full before changing the cached obc
 ae56de0 osd: recency should look at newest (not oldest) hitsets
 5cefcb9 osd/ReplicatedPG: fix promotion recency logic
 a5e4f70 man: document listwatchers cmd in "rados" manpage
 46d626d rbd: remove canceled tasks from timer thread
 24c0b27 rbd-replay: handle EOF gracefully
+3d84420 PG::activate(): handle unexpected cached_removed_snaps more gracefully
+ad4df3b rgw: warn on suspicious civetweb frontend parameters
 70f1ba3 tools: monstore: add 'show-versions' command.
 9260171 tools: ceph_monstore_tool: add inflate-pgmap command
 a1d5728 tools:support printing the crushmap in readable fashion.
@@ -28,8 +205,8 @@ c7252a3 osd: disable filestore_xfs_extsize by default
 9f30fe1 upstart/ceph-osd.conf: pass TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES through
 a58873e init-ceph: pass TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES through
 8d9e08c tools: ceph-monstore-tool must do out_store.close()
-0325f8a deb: strip tracepoint libraries from Wheezy/Precise builds
-e4d3e9b qa: disable rbd/qemu-iotests test case 055 on RHEL/CentOS
+0325f8a (origin/wip-deb-lttng-hammer) deb: strip tracepoint libraries from Wheezy/Precise builds
+e4d3e9b (origin/wip-13483-hammer) qa: disable rbd/qemu-iotests test case 055 on RHEL/CentOS
 f7acd44 qa: remove legacy OS support from rbd/qemu-iotests
 8c28f2f librbd: optionally validate RBD pool configuration (snapshot support)
 700be56 config_opts: increase suicide timeout to 300 to match recovery
@@ -37,17 +214,28 @@ f7acd44 qa: remove legacy OS support from rbd/qemu-iotests
 53742bd ceph_osd: Add required feature bits related to this branch to osd_required mask
 3066231 osd: CEPH_FEATURE_CHUNKY_SCRUB feature now required
 6379ff1 configure.ac: no use to add "+" before ac_ext=c
+5c92d1d rgw: Add default quota config
 f96c812 rgw: fix reload on non Debian systems.
 cbb5c1f Fixing NULL pointer dereference
+17d1b0d rgw: radosgw-admin bucket check --fix not work
 b2961ce rbd: fix bench-write
 9cee89b Check that delta_sum.stats.sum.num_object_copies and delta_sum.stats.sum.num_object are greater than zero
 1ab2b48 ReplicatedPG: fix sparse-read result code checking logic
 86f5cf6 osd: clear pg_stat_queue after stopping pgs
 b0856ee osd: Test osd_find_best_info_ignore_history_les config in another assert
 b2f1e76 Compare parted output with the dereferenced path
+df3f971 (origin/wip-auth-hammer) auth: return error code from encrypt/decrypt; make error string optional
+224bb39 auth: optimize crypto++ key context
+f11718d auth/Crypto: optimize libnss key
+d1b6096 auth: refactor crypto key context
+3249f48 auth/cephx: optimize signature check
+51eaf98 auth/cephx: move signature calc into helper
+c240da9 auth/Crypto: avoid memcpy on libnss crypto operation
+86cc0f0 auth: make CryptoHandler implementations totally private
 5264bc6 mon: OSDMonitor: do not assume a session exists in send_incremental()
 4d0b9a1 log: Log.cc: Assign LOG_DEBUG priority to syslog calls
 26e832e librbd: fix merge-diff for >2GB diff-files
+f04e007 osd: log inconsistent shard sizes
 a9d3f07 osd/osd_types: skip encoding newer object_info_t fields if they are unused
 1548a3f osd/ReplicatedPG: do not set local_mtime on non-tiered pool
 98bdb09 osd/PGBackend: use mtime for digest decision if local_mtime is empty
@@ -71,6 +259,7 @@ d02beff tracing: dynamic tracepoint provider helper
 e53d66e packaging: add new tracepoint probe shared libraries
 bb7c0f5 ceph.spec.in: add new tracepoint probe shared libraries
 e1da271 lttng: move tracepoint probes to dynamic libraries
+b2393dc (sa/hammer-client-inoderef, origin/hammer-client-inoderef) client: add InodeRef.h to make dist
 8358fb8 revert: osd: use GMT time for hitsets
 4420929 rgw: fix modification to index attrs when setting acls
 8378aaf build/ops: rbd-replay moved from ceph-test-dbg to ceph-common-dbg
@@ -83,6 +272,14 @@ a322317 librbd: resize should only update image size within header
 6a40e4f ceph.spec.in: lttng in SLES12 only
 e508a44 ceph.spec.in: fix lttng/babeltrace conditionals
 19c9546 packaging: move rbd-replay* to ceph-common
+fa79bd9 client: use smart pointer to track 'cwd' and 'root_parents'
+fcafc65 client: convert Inode::snapdir_parent to smart pointer
+78cca4e client: use smart pointer to track temporary inode reference
+bad6f33 client: convert CapSnap::in to smart pointer
+4bb48ee client: convert Fh::inode to smart pointer
+5bebb3a client: use smart pointers in MetaRequest
+e18f1ae client: convert Dentry::inode to smart pointer
+a7f6d2f client: hold reference for returned inode
 3d3595f krbd: remove deprecated --quiet param from udevadm
 4d81cd1 run_cmd: close parent process console file descriptors
 2052187 init-rbdmap: Rewrite to use logger + clean-up
@@ -107,7 +304,7 @@ db1cbe7 Fix casing of Content-Type header
 9f3aebe osd: fix requeue of replay requests during activating
 ade0f1a OSD:shall reset primary and up_primary fields when beginning a new past_interval.
 9085c82 mon: should not set isvalid = true when cephx_verify_authorizer return false
-9764da5 0.94.5
+9764da5 (tag: v0.94.5) 0.94.5
 4875d05 ceph.spec.in: rm EOL Fedoras; add OBS RHEL5 instead
 dfba6ac packaging: Add rgw placeholder dirs in proper packages
 2387c8e ceph.spec.in: consolidate centos/rhel macros
@@ -216,7 +413,7 @@ d4e4d85 mon/Elector: do a trivial write on every election cycle
 e72bdc3 osd/ReplicatedPG: tolerate promotion completion with stopped agent
 a3afb3f rgw: remove trailing :port from host for purposes of subdomain matching
 71a42f7 bug fix: osd: avoid multi set osd_op.outdata in tier pool
-77cb503 rgw: preserve all attrs if intra-zone copy
+77cb503 (origin/wip-13015-hammer) rgw: preserve all attrs if intra-zone copy
 b9f2ed3 rgw: don't preserve acls when copying object
 e8cce08 bug fix: osd: requeue_scrub when kick_object_context_blocked
 8ee93d5 PG::handle_advance_map: on_pool_change after handling the map change
@@ -234,7 +431,7 @@ d8ac510 WorkQueue: add/remove_work_queue methods now thread safe
 0a5b856 ReplicatedPG,Objecter: copy_get should include truncate_seq and size
 82ea02a rgw: fix assignment of copy obj attributes
 3b2affc rgw: add delimiter to prefix only when path is specified
-e8d6d5a mon: MonitorDBStore: make get_next_key() work properly
+e8d6d5a (sa/wip-11786.hammer, origin/wip-11786.hammer) mon: MonitorDBStore: make get_next_key() work properly
 9f69660 tests: tiering agent and proxy read
 5656eec osd: trigger the cache agent after a promotion
 dc693fc lockdep: allow lockdep to be dynamically enabled/disabled
@@ -277,8 +474,8 @@ c94fd92 osd: Keep a reference count on Connection while calling send_message()
 059bf98 WBThrottle::clear_object: signal if we cleared an object
 a478385 ceph-disk: always check zap is applied on a full device
 e471c5d librados: Make librados pool_create respect default_crush_ruleset
-35fa47a ceph-object-corpus: add 0.94.2-207-g88e7ee7 hammer objects
-b80859e rgw: init some manifest fields when handling explicit objs
+35fa47a (sa/wip-corpus-hammer, origin/wip-corpus-hammer) ceph-object-corpus: add 0.94.2-207-g88e7ee7 hammer objects
+b80859e (sa/wip-11455-hammer, origin/wip-11455-hammer) rgw: init some manifest fields when handling explicit objs
 f47ba4b mon: test the crush ruleset when creating a pool
 b58cbba erasure-code: set max_size to chunk_count() instead of 20 for shec
 6f0af18 vstart.sh: set PATH to include pwd
@@ -313,18 +510,18 @@ a13c7fd rgw:the arguments 'domain' should not be assigned when return false
 0bc909e mon: add a cache layer over MonitorDBStore
 bee8666 Objecter: pg_interval_t::is_new_interval needs pgid from previous pool
 b5418b9 osd_types::is_new_interval: size change triggers new interval
-f028389 include/ceph_features: define HAMMER_0_94_4 feature
+f028389 (sa/liewegas-wip-hammer-feature-hammer, origin/liewegas-wip-hammer-feature-hammer) include/ceph_features: define HAMMER_0_94_4 feature
 95cefea (tag: v0.94.3) 0.94.3
 81a311a Workunits : fs/misc/chmod.sh : Include ACL characters in permission check.
 153744d tests: increase test coverage for partial encodes/decodes
 fca7876 common: bit_vector extent calculation incorrect for last page
 3396a96 osd/OSDMap: handle incrementals that modify+del pool
-3ab5d82 rgw: set http status in civetweb
+3ab5d82 (origin/wip-12432-hammer) rgw: set http status in civetweb
 10a0383 civetweb: update submodule to support setting of http status
 00d802d hobject_t: fix get_boundary to work with new sorting regime
-9b91adc mon: disallow post-hammer OSDs if there are up pre-hammer OSDs
+9b91adc (sa/wip-osd-compat-hammer, origin/wip-osd-compat-hammer) mon: disallow post-hammer OSDs if there are up pre-hammer OSDs
 8a559c1 include/ceph_features: define MON_METADATA feature
-4faa8e0 osd: include newlines in scrub errors
+4faa8e0 (sa/wip-12577-hammer, origin/wip-12577-hammer) osd: include newlines in scrub errors
 455eb2a osd: fix condition for loggin scrub errors
 67e7946 osd: fix fallback logic; move into be_select_auth_object
 0f57c70 osd: log a scrub error when we can't pick an auth object
@@ -413,8 +610,8 @@ fa19474 os/chain_xattr: handle read on chnk-aligned xattr
 0fde3a2 buffer: Fix bufferlist::zero bug with special case
 dabc611 UnittestBuffer: Add bufferlist zero test case
 e6eaa91 mon: MonitorDBStore: get_next_key() only if prefix matches
-d08db7a mon: PaxosService: call post_refresh() instead of post_paxos_update()
-154f18c Log::reopen_log_file: take m_flush_mutex
+d08db7a (sa/wip-11470.hammer, origin/wip-11470.hammer) mon: PaxosService: call post_refresh() instead of post_paxos_update()
+154f18c (sa/wip-12465-hammer, origin/wip-12465-hammer) Log::reopen_log_file: take m_flush_mutex
 b872882 librados_test_stub: read op should return number of bytes read
 7d9fce3 tests: fixed TestObjectMap.InvalidateFlagInMemoryOnly
 4a77be0 librbd: don't attempt to invalidate an object map in R/O mode
@@ -557,7 +754,7 @@ a62c3aa ceph.in: handle unknown Exception correctly
 cc7f744 ceph.in: improve the interactive mode
 eb26388 ceph.in: parse quote correctly in interactive mode
 344328d debian: set rest-bench-dbg ceph-test-dbg dependencies
-293affe rgw: merge manifests correctly when there's prefix override
+293affe (origin/wip-11622-hammer) rgw: merge manifests correctly when there's prefix override
 a43d248 rgw: restore buffer of multipart upload after EEXIST
 558d639 json_sprit: fix the FTBFS on old gcc
 678b3e6 json_spirit: use utf8 intenally when parsing \uHHHH
@@ -659,7 +856,7 @@ c751191 ceph-objectstore-tool, osd: Filter the pg_log_t for objects no longer in
 ccc0839 common: send cluster log messages to 'cluster' channel by default
 f9b98c9 ceph-objectstore-tool: Fix message and make it debug only to stderr
 923d532 ceph-objectstore-tool: Remove bogus comment and eliminate a debug message
-c176ebf osd/: Move ReplicatedBackend methods into ReplicatedBackend.cc
+c176ebf (sa/wip-move-code, origin/wip-move-code) osd/: Move ReplicatedBackend methods into ReplicatedBackend.cc
 e9d6096 ReplicatedPG: remove unused C_OnPushCommit
 ddf0292 PG: set/clear CREATING in Primary state entry/exit
 6f218b1 qa/workunits/fs/misc: fix filelock_interrupt.py
@@ -1056,7 +1253,7 @@ adebf22 rbd_recover_tool: move rbd_recover_tool directory to src/tools subdirect
 2f49de5 ReplicatedPG: block writes on degraded objects unless all peers support it
 2a83ef3 include/encoding: fix an compile warning
 71c6d98 msg: fixup for 2ffacbe (crc configuration in messenger)
-2598fc5 ObjectStore: fix Transaction encoding version number
+2598fc5 (sa/wip-10734, origin/wip-10734) ObjectStore: fix Transaction encoding version number
 46f9ca4 pybind: fixed runtime errors with librbdpy
 9124a76 test/vstart_wrapper.sh: set PATH before calling vstart.sh
 189ef38 init-ceph.in: add $PWD to PATH if running as ./init-ceph
@@ -1135,13 +1332,13 @@ e0f12d9 Fix do_autogen.sh so that -L is allowed
 cfab01e rgw: move perf cleanup before context cleanup
 4074a91 pybind: fix error hiding and inconsistency on librados load.
 cfcfafc Objecter::_op_submit_with_budget: add timeout before call
-00a3ac3 (tag: v0.92) 0.92
+00a3ac3 (tag: v0.92, sa/wip-sam-v0.92, origin/wip-sam-v0.92) 0.92
 c656bce PGLog: improve PGLog::check() debugging
 05ce2aa qa: use correct binary path on rpm-based systems
 eb526af rbd: watch command should unwatch before exiting
 2a0e9b7 encoding: ignore uninitialized instantiation in boost::optional decode
 f40ee8c do_autogen.sh: default to --with-lttng, -L to build without
-7590387 librados: add missing tracepoints
+7590387 (sa/wip-assert-version, origin/wip-assert-version) librados: add missing tracepoints
 57bac8e osd:  change pg_stat plain to display CRUSH_ITEM_NONE in pgmap output section.
 4aa9f3f man: add rbd status to doc/man/8/rbd.rst
 a007c52 doc: add cephfs disaster recovery guidance
@@ -1159,7 +1356,7 @@ a1f634b add CLI ceph pg ls [pool] [state]
 bd8671f ceph_test_rados: fix typo
 ac161bf librados: expose rados_{read|write}_op_assert_version() in C
 11b6424 Add test case for librados assert_version()
-eb45f86 rgw: flush xml header on get acl request
+eb45f86 (origin/wip-10106) rgw: flush xml header on get acl request
 de2e5fa rgw: finalize perfcounters after shutting down storage
 cab246d librbd: Don't do readahead for random read.
 77689f1 ReplicatedPG::C_ProxyRead: fix dropped lock
@@ -1205,7 +1402,7 @@ fc76c89 osdc: add new filed dontneed in BufferHead.
 c83a288 Rework ceph-disk to allow LUKS for encrypted partitions
 707c78b Only create a key of 256 bits length, not 256 bytes
 6a45b8e add all possible ceph-disk run-time requirements to build time deps
-4c50f6a rgw: more merge related fixes
+4c50f6a (sa/wip-rgw-versioning-4, origin/wip-rgw-versioning-4) rgw: more merge related fixes
 01cc9d5 rgw: fix merge artifact
 e26023e PG: set scrubber.start = scrubber.end after scrub_compare_maps
 4f9e6ed PG: remove block_writes from scrubber
@@ -1262,7 +1459,7 @@ c4a6eab rgw: fixing rebase casualties
 b6d6f90 mon/MDSMonitor: fix gid/rank/state parsing
 9b9a682 msg/Pipe: set dscp as CS6 for heartbeat socket
 1e236a3 mds: don't join on thread which has not been runned.
-6939e8c Update git submodule to use the same https protocol
+6939e8c (sa/zhouyuan-submodule_https_git, origin/zhouyuan-submodule_https_git) Update git submodule to use the same https protocol
 e393810 librbd: make librbd cache send read op with fadvise_flags.
 a23676b librbd: Don't do readahead for random read.
 8d0295c rgw: extend replica log api (purge-all)
@@ -1296,7 +1493,7 @@ e6f1280 librados: Expose RadosClient instance id through librados
 87ef462 rgw: format mtime of radosgw-admin bucket stats
 dc1630e librbd: trim would not complete if exclusive lock is lost
 3347e0d bug: error when installing ceph dependencies with install-deps.sh
-4e90a31 osd: add failure injection on pg removals
+4e90a31 (sa/wip-10617, origin/wip-10617) osd: add failure injection on pg removals
 9b220bd ceph.spec.in: use wildcards to capture man pages
 51e3ffa rgw: reorder bucket cleanup on bucket overwrite
 313d6a5 rgw: access appropriate shard on bi_get(), bi_put()
@@ -1358,7 +1555,7 @@ b04f698 Doc: Fix the extra blank space in doc/start/quick-rbd.rst
 9ad9ba8 doc: Fix a typo in radosgw-admin doc
 008698b doc: Change Availability text in all of the man pages
 6f44f7a Revert "Revert "Merge remote-tracking branch 'origin/wip-bi-sharding-3' into next""
-90a90bb rgw: set default value for swift versioning extension
+90a90bb (sa/wip-rgw-versioning-3, origin/wip-rgw-versioning-3) rgw: set default value for swift versioning extension
 dc11ef1 PGBackend: fix and clarify be_select_auth_object
 26656e3 rgw: fix bucket removal with data purge
 b18b14b ObjectStore::_update_op: treat CLONERANGE2 like CLONE
@@ -1604,7 +1801,7 @@ b383b52 rgw: enable s3 get/set versioning ops
 0d97b40 rgw: get bucket versioning status op
 8ed79d6 rgw: add versioning_enabled field to bucket info
 50547dc mon: PGMonitor: fix division by zero on stats dump
-dbaa142 rgw: bilog marker related fixes
+dbaa142 (sa/wip-bi-sharding-3, origin/wip-bi-sharding-3) rgw: bilog marker related fixes
 c4548f6 pybind: ceph_argparse: validate incorrectly formed targets
 80a9d99 mon: Monitor: return 'required_features' on get_required_features()
 ab996c1 mon: Elector: output features in handle_propose()
@@ -1708,7 +1905,7 @@ d80ded9 mailmap: David Zhang affiliation
 33ba23f common/shared_cache.hpp: empty() iff weak_refs is empty
 d532f3e remove unused hold_map_lock in _open_lock_pg
 9748655 man: add help for rbd merge-diff command
-6986ec1 osd/PG: populate blocked_by with peers we are trying to activate
+6986ec1 (sa/wip-10477, origin/wip-10477) osd/PG: populate blocked_by with peers we are trying to activate
 5b0e8ae mailmap: Yehuda Sadeh name normalization
 3f03a7b doc/release-notes: v0.91
 4ca6931 doc/release-notes: typo
@@ -1797,7 +1994,7 @@ f9b280e Adjust bi log listing to work with multiple bucket shards. Signed-off-by
 67a90dd mon: accumulate a single pending transaction and propose it all at once
 d159586 PendingReleaseNotes: make a note about librados flag changes
 725d660 (tag: v0.91) 0.91
-9264d25 common/Formatter: new_formatter -> Formatter::create
+9264d25 (sa/wip-formatter, origin/wip-formatter) common/Formatter: new_formatter -> Formatter::create
 617ad5d common/Formatter: improve json-pretty whitespace
 83c3b13 common/Formatter: add newline to flushed output if m_pretty
 e2a7b17 osd/PG: remove unnecessary publish_stats_to_osd() in all_activated_and_committted()
@@ -2098,7 +2295,7 @@ a302c44 ceph-disk: Fix wrong string formatting
 9783a5c test/msgr/test_msgr: Fix potential unsafe cond wakeup and wrap check
 bba4d35 librados: init last_objver
 2cd9dc0 messages/MClientCaps: init peer.flags
-679652a osd: fix leaked OSDMap
+679652a (sa/wip-osdmap-leak, origin/wip-osdmap-leak) osd: fix leaked OSDMap
 18f545b librados: Avoid copy data from librados to caller buff when using rados_read_op_read.
 001ea29 Messenger: Create an Messenger implementation by name.
 3a2cb71 mds: fix asok on rank 0
@@ -2245,7 +2442,7 @@ b1f1381 ceph-dencoder: mark OSDMap as featureful, but with stray data
 32a837d osd: add osd_inject_bad_map_crc_probability option
 d898698 osd: verify our OSDMap encoding based on crc
 716f90f mon/OSDMonitor: verify full_crc when available
-5fc7a0b rgw: change multipart upload id magic
+5fc7a0b (origin/wip-10271) rgw: change multipart upload id magic
 7925b82 rgw: Conditional PUT on ETag
 023927b ReplicatedPG: For MAPEXT, using bl.length() instead of op.extent.length as num_rd_kb.
 c1dc361 ReplicatedPG: Don't use the return value of getattr_maybe_cache as attr length.
@@ -2308,7 +2505,7 @@ b34e545 os/FileStore.cc: insert not empty list<Context*> to op_finisher/ondisk_f
 7ab4a39 ceph.conf: update sample
 efd9d8d tests: Minor cleanup to librbd test
 78a15ee Fix libstriprados::remove, use strtoll insdead of strtol
-2d4dca7 SimpleMessenger: Retry binding on addresses if binding fails
+2d4dca7 (sa/wip-10029, origin/wip-10029) SimpleMessenger: Retry binding on addresses if binding fails
 e8063a1 test: modify cephfs quota test case
 31a0cdc mds: fix parse_quota_vxattr for invalid data
 bab7122 OSD: FileJournal: call writeq_cond.Signal if necessary in submit_entry
@@ -2317,7 +2514,7 @@ bab7122 OSD: FileJournal: call writeq_cond.Signal if necessary in submit_entry
 6b51a9f mds: set dirfrag version when fetching dirfrag is skipped
 17c72f5 ceph-osd: remove extra close of stderr
 5836899 Revert "client: support listxattr for quota attributes"
-89b2fee mon: 'osd crush reweight-all'
+89b2fee (sa/wip-crush-straw, origin/wip-crush-straw) mon: 'osd crush reweight-all'
 dd7b58f crush: set straw_calc_version=1 for default+optimal; do not touch for presets
 adf5c6d crush/builder: a note about the original crush_calc_straw()
 9000068 mon: add 'osd crush {get,set}-tunable <name> [value]' commands
@@ -2326,7 +2523,7 @@ bf0d8d3 osd: Remove dead code related to old pg removal mechanism
 0827bb7 client: use remount to trim kernel dcache
 dfcb1c9 client: cleanup client callback registration
 2f52202 Revert "client: invalidate kernel dentries one by one"
-9902383 crush/CrushWrapper: fix create_or_move_item when name exists but item does not
+9902383 (sa/wip-9998, origin/wip-9998) crush/CrushWrapper: fix create_or_move_item when name exists but item does not
 8c87e95 crush/builder: prevent bucket weight underflow on item removal
 eeadd60 crush/CrushWrapper: fix _search_item_exists
 a198dee Modifying the docs to add the Get pool commands to match the CLI. Signed-off-by: Chris Holcombe <chris.holcombe@nebula.com>
@@ -2517,7 +2714,7 @@ b8f6b5f doc: Added rbd-replay-many and restructured index.
 6862891 doc: Adds man page for ceph disk in TOC.
 491da51 client: invalidate kernel dentries one by one
 2fa4884 mds: fix race of trimming log segments
-70e1a5d doc: Document RBD Replay
+70e1a5d (sa/wip-doc-rbd-replay, origin/wip-doc-rbd-replay) doc: Document RBD Replay
 131f092 mds: don't blindly create empty object when dirfrag is missing
 9b9e3ed mds: allow choosing action for wirte error
 dafef3c mds: add asok command to force MDS readonly
@@ -2530,7 +2727,7 @@ cfef515 mds: disallow slave requests when MDS is readonly
 4aed047 mds: keep locks in sync state when MDS is readonly
 2d4a746 mds: don't trim log when MDS is readonly
 4f6474f mds: disallow write operations when MDS is readonly
-01df222 osd: tolerate sessionless con in fast dispatch path
+01df222 (sa/wip-10209, origin/wip-10209) osd: tolerate sessionless con in fast dispatch path
 0f1c9fd msg: do not const methods that return a mutable pointer
 0d6c803 osd/osd_types: drop category from object_info_t
 5ecdce3 osdc/Objecter: drop category from copy-get
@@ -2891,7 +3088,7 @@ fe7bf06 rgw: RGWRados::get_obj() returns wrong len if len == 0
 f4ee949 osd: cache pool: flush object ignoring cache min flush age when cache pool is full Signed-off-by: Xinze Chi <xmdxcxz@gmail.com>
 6da9405 doc: Edited Key/Value store config reference.
 03be944 doc: Added Key/Value store config reference to index.
-72fc262 doc: Update for OpenStack Juno.
+72fc262 (sa/wip-doc-openstack-juno, origin/wip-doc-openstack-juno) doc: Update for OpenStack Juno.
 65c3350 tools: skip up to expire_pos in journal-tool
 e0166a2 osdc/Objecter: Fix a bug of dead looping in Objecter::handle_osd_map
 31c584c osdc/Objecter: e shouldn't be zero in Objecter::handle_osd_map
@@ -3037,7 +3234,7 @@ f76f83c osdc/Objecter: fix tick_event handling in shutdown vs tick race
 60eaeca .gitmodules: ignoring changes in rocksdb submodule
 a9dd4af rgw: send http status reason explicitly in fastcgi
 44a8d59 java: fill in stat structure correctly
-cb9262a Objecter: resend linger ops on any interval change
+cb9262a (sa/wip-9806-giant, origin/wip-9806-giant) Objecter: resend linger ops on any interval change
 1a3ad30 ReplicatedPG: writeout hit_set object with correct prior_version
 8ae942a Remove unnecessary expressions about conf_journal_sz
 024efeb EC: document the LRC per layer plugin configuration
@@ -3155,7 +3352,7 @@ c9f9e72 Revert "Objecter: disable fast dispatch of CEPH_MSG_OSD_OPREPLY messages
 c4bac3e mds: fix inotable initialization/reset
 c95bb59 mds: fix inotable initialization/reset
 f1fccb1 rpm: 95-ceph-osd-alt.rules is not needed for centos7 / rhel7
-b73fe1a doc: remove node requirement from 'mon create-initial'
+b73fe1a (sa/wip-9730, origin/wip-9730) doc: remove node requirement from 'mon create-initial'
 264f0fc doc: remove whitespace
 20b2766 Update vstart to setup users for s3-tests
 0969945 client: use finisher to abort MDS request
@@ -3172,7 +3369,7 @@ d947050 osd/osd_types: consider CRUSH_ITEM_NONE in check_new_interval() min_size
 50987ec libcephfs.h libcephfs.cc : Defined error codes for the mount function Used new error codes from libcephfs.h to replace the magic numbers in the mount functon found in libcephfs.cc.
 7bab093 return value of handle_message for MSG_OSD_SUBOP/MSG_OSD_SUBOPREPLY should be true
 d955676 rados: Use strict_strtoll instead of strtoll
-809ddd2 osdc/Objecter: fix use-after-frees in close_session, shutdown
+809ddd2 (sa/wip-9706, origin/wip-9706) osdc/Objecter: fix use-after-frees in close_session, shutdown
 72a2ab1 osdc/Objecter: fix tick() session locking
 d98b755 librados: Fix function prototypes in librados.h
 d458b4f PGLog::IndexedLog::trim(): rollback_info_trimmed_to_riter may be log.rend()
@@ -3308,7 +3505,7 @@ b2e4bd5 msg: move SimpleMessenger to msg/simple/
 5eff0ee msg: use localized cct for derr
 06aef6f doc/release-notes: v0.86
 10fe7cf ceph_objectstore_tool: Accept CEPH_ARGS environment arguments
-6aba0ab Add reset_tp_timeout in long loop in add_source_info for suicide timeout
+6aba0ab (sa/wip-9128, origin/wip-9128) Add reset_tp_timeout in long loop in add_source_info for suicide timeout
 52ac520 tools: remove old ceph.cc
 63c7e16 test/osd/Object: don't generate length of 0
 abe4c35 doc: update kernel recommendations, add tunables link
@@ -3354,7 +3551,7 @@ fa0bd06 ceph-disk: bootstrap-osd keyring ignores --statedir
 19be358 PG::actingset should be used when checking the number of acting OSDs for a given PG. Signed-off-by: Guang Yang <yguang@yahoo-inc.com>
 8253ead osdc/Objecter: use SafeTimer; make callbacks race-tolerant
 6c37984 mailmap: Yehuda Sadeh name normalization
-beff616 ceph-disk: set guid if reusing a journal partition
+beff616f ceph-disk: set guid if reusing a journal partition
 50e8040 tools: rados put /dev/null should write() and not create()
 0b0a373 mailmap: update email address
 188370a doc/release-notes: fix attributions for 8702 fix
@@ -3453,7 +3650,7 @@ ed77178 erasure-code: run isa tests via libtool and valgrind
 6886224 mailmap: Yan Zheng affiliation
 fc1380b mailmap: Thorsten Glaser affiliation
 7973280 osd: Remove unused PG functions queue_notify(), queue_info(), queue_log()
-0f884fd For pgls OP, get/put budget on per list session basis, instead of per OP basis, which could lead to deadlock.
+0f884fd (sa/wip-9008, origin/wip-9008) For pgls OP, get/put budget on per list session basis, instead of per OP basis, which could lead to deadlock.
 7f87cf1 ReplicatedPG: clean out completed trimmed objects as we go
 2cd9b5f tests: use memcmp to compare binary buffers
 c17ac03 ReplicatedPG: don't move on to the next snap immediately
@@ -3580,7 +3777,7 @@ bb49547 KeyValueStore: Reduce redundancy set_header call
 baf7be9 osdc/Objecter: cancel timeout before clearing op->session
 1149639 ceph-disk: mount xfs with inode64 by default
 ded1b30 erasure-code: preload fails if < 0
-27208db doc: Added feedback.
+27208db (sa/wip-doc-preflight, origin/wip-doc-preflight) doc: Added feedback.
 a140439 mds: limit number of caps inspected in caps_tick
 bf590f8 mds: keep per-client revoking caps list
 a6a0fd8 xlist: implement copy constructor
@@ -3754,7 +3951,7 @@ a754ce5 ErasureCodeLrc.cc: fix -Wmaybe-uninitialized compiler warning
 16cbaba osd/PGLog.h: prefer ++operator for non-primitive iterators
 8f368c5 mailmap: Ashish Chandra affiliation
 5fd50c9 mailmap: Boris Ranto affiliation
-a5b4c58 lockdep: increase max locks (1000 -> 2000)
+a5b4c58 (sa/wip-9309, origin/wip-9309) lockdep: increase max locks (1000 -> 2000)
 9fac072 documentation: add the mark_unfound_lost delete option
 bec3032 osd: MissingLoc::get_all_missing is const
 e13ddc7 tests: qa/workunits/cephtool/test.sh early fail
@@ -4067,7 +4264,7 @@ f7c0001 common: remove spurious uint32_t in buffer.c
 b0cc869 mds: rename a bunch of metrics
 31ef1a9 mds: set l_mds_req on client request
 06682c4 vstart.sh: debug rgw = 20 on -d
-00c677b rgw: use a separate callback for civetweb access log
+00c677b (sa/wip-civetweb-log, origin/wip-civetweb-log) rgw: use a separate callback for civetweb access log
 850242c rgw: separate civetweb log from rgw log
 f246b56 common/shared_cache: dump weak refs on shutdown
 6cf583c common/shared_cache: take a cct
@@ -4239,7 +4436,7 @@ dd11042 os/FileStore: fix mount/remount force_sync race
 c83c90c rgw: update civetweb submodule
 0d6d1aa init-ceph: don't use bashism
 7df67a5 Fix -Wno-format and -Werror=format-security options clash
-ae0b9f1 osd: fix feature requirement for mons
+ae0b9f1 (sa/wip-osd-mon-feature, origin/wip-osd-mon-feature) osd: fix feature requirement for mons
 0db3e51 ReplicatedPG::maybe_handle_cache: do not forward RWORDERED reads
 5040413 ReplicatedPG::cancel_copy: clear cop->obc
 2f0e295 unittest_osdmap: test EC rule and pool features
@@ -4269,7 +4466,7 @@ a1e79db rgw_admin: add --min-rewrite-stripe-size for object rewrite
 46d8c97 doc: Add documentation about Wireshark dissector.
 6a55543 rgw: fix compilation
 f6771f2 shared_cache: use a single lookup for lookup() too
-cec40da qa/workunits/cephtool: verify setmaxosd doesn't let you clobber osds
+cec40da (sa/historic/old-wireshark-dissectors, origin/historic/old-wireshark-dissectors) qa/workunits/cephtool: verify setmaxosd doesn't let you clobber osds
 a1c3afb OSDMonitor: Do not allow OSD removal using setmaxosd
 16a4360 rgw: pass set_mtime to copy_obj_data()
 800eff2 rgw: copy_obj_data() uses atomic processor
@@ -4601,14 +4798,14 @@ eb697dd librbd: make rbd_get_parent_info() accept NULL out params
 04d0526 PGMonitor: fix bug in caculating pool avail space
 b08470f configure.ac: link libboost_thread only with json-spirit
 9d23cc6 configure: don't link blkid, udev to everything
-de9cfca Only write bufferhead when it's dirty
+de9cfca (sa/wip-flush-set, origin/wip-flush-set) Only write bufferhead when it's dirty
 1c26266 ObjectCacher: fix bh_{add,remove} dirty_or_tx_bh accounting
 727ac1d ObjectCacher: fix dirty_or_tx_bh logic in bh_set_state()
 5283cfe Wait tx state buffer in flush_set
 d858fdc Add rbdcache max dirty object option
 b8a5668 Reduce ObjectCacher flush overhead
 288908b Revert "Merge pull request #2129 from ceph/wip-librbd-oc"
-0553890 rgw: call processor->handle_data() again if needed
+0553890 (origin/wip-8937) rgw: call processor->handle_data() again if needed
 d3de69f mds: fix journal reformat failure in standbyreplay
 8fb761b osd/ReplicatedPG: requeue cache full waiters if no longer writeback
 36aaab9 osd/ReplicatedPG: fix cache full -> not full requeueing when !active
@@ -4873,7 +5070,7 @@ c0ffa01 mon: Set crash_replay_interval automatically
 917ef15 test: use 0U with gtest to avoid spurious warnings
 522174b qa: support running under non privileged user
 8697d6a OSD: await_reserved_maps() prior to calling mark_down
-6f97206 osd: allow osd map cache size to be adjusted at runtime
+6f97206 (sa/wip-osd-map-cache-size, origin/wip-osd-map-cache-size) osd: allow osd map cache size to be adjusted at runtime
 bcc09f9 qa/workunits/cephtool/test.sh: sudo ceph daemon
 959f2b2 PGLog: fix clear() to avoid the IndexLog::zero() asserts
 e0d3b78 rgw: fix uninit ofs in RGWObjManifect::obj_iterator
@@ -5078,7 +5275,7 @@ e720314 doc: Updated the OS Recommendations for Firefly.
 2e3302c doc: Updated the example configuration.
 5a31df2 doc: Updated doc for more recent versions.
 2eab1c1 Update RBD doc for OpenStack
-a290d34 test_librbd_fsx: fix sign-compare gcc warning
+a290d349 test_librbd_fsx: fix sign-compare gcc warning
 40c48bc qa: add script to test krbd setting ro/rw ioctl
 b2542f8 rgw: set a default data extra pool name
 94c8f70 doc: Made mention of "incomplete" status.
@@ -5157,7 +5354,7 @@ f31e4c8 libs3: update to latest git master of ceph/libs3
 23b657c Remove unused variables in KeyValueStore.cc
 307ba48 Remove unused variables in MemStore.cc
 5185a36 automake: add dummy.cc to fix 'make tags'
-35509d2 bloom_filter, add test to validate assignement operator
+35509d274 bloom_filter, add test to validate assignement operator
 c50f85e bloom_filter, remove unecessary operators
 90cc6dd bloom_filter, add assertion to test validate element_count()
 c323c5b Fix keyvaluestore fiemap bug
@@ -5650,7 +5847,7 @@ e97b56e doc: New Admin Guide for Ceph Object Storage.
 24c5ea8 osd: check blacklisted clients in ReplicatedPG::do_op()
 f92677c osd: check blacklisted clients in ReplicatedPG::do_op()
 c64b67b ceph-object-corpus: rebase onto firefly corpus
-077e6f8 ceph-object-corpus: v0.80-rc1-35-g4812150
+077e6f86 ceph-object-corpus: v0.80-rc1-35-g4812150
 8bd4e58 Fix out of source builds
 3aee1e0 Fix clone problem
 fd970bb mon: OSDMonitor: disallow nonsensical cache-mode transitions
@@ -7874,7 +8071,7 @@ c7d8ba7 osd: better performances for the erasure code example
 ff9455b osd: conditionally disable dlclose of erasure code plugins
 8879e43 osd: Fix assert which doesn't apply when compat_mode on
 0bd5cb6 Add backward comptible acting set until all OSDs updated
-8d31f71 osd/ReplicatedPG: fix promote cancellation
+8d31f71b osd/ReplicatedPG: fix promote cancellation
 923bff1 osd/ReplicatedPG: drop RepGather::ondone callback
 2a9c6fc vstart.sh: go faster
 bc893f5 osd/ReplicatedPG: fix undirty on clean object
@@ -7971,7 +8168,7 @@ ebb3ad9 osd/PG: move some pg stat update into a helper
 05274f3 osd: include peer_info in pg query
 5fdcc56 mds: fix bug in MDCache::open_ino_finish
 71d1eb3 mds: add CEPH_FEATURE_EXPORT_PEER and bump the protocal version
-d0b744a client: handle session flush message
+d0b744a1 client: handle session flush message
 05b192f mds: simplify how to export non-auth caps
 9dc52ff mds: send cap import messages to clients after importing subtree succeeds
 6a56588 mds: re-send cap exports in resolve message.
@@ -8115,7 +8312,7 @@ a888a57 crush: implement --show-bad-mappings for indep
 fbc4f99 crush: remove scary message string
 472f495 crush: document the --test mode of operations
 ea86444 Monitor: Elector: share the classic command set if we have a classic mon
-f1ccdb4 Elector: share local command set when deferring
+f1ccdb41 Elector: share local command set when deferring
 ba673be Monitor: import MonCommands.h from original Dumpling and expose it
 3cb58f7 Monitor: validate incoming commands against the leader's set too
 cb51b1e Monitor: disseminate leader's command set instead of our own
@@ -9372,7 +9569,7 @@ ab69d99 mon: fix typo and remove redundant sentence
 b4cf0f2 (tag: v0.68) v0.68
 dcbdeaf doc: Fix repo URL for Ceph cloning (dev/generatedocs)
 996af2d ceph_test_rados: test COPY_FROM
-ed68079 osd: initial COPY_FROM (not viable for large objects)
+ed680791 osd: initial COPY_FROM (not viable for large objects)
 3a8adf5 objecter, librados: add COPY_FROM operation
 746e78c doc: Updated manual install to include sync agent, ARM packages, and DNS configuration.
 c367d6f ceph_test_rados: add missing kick for rollback
@@ -10425,7 +10622,7 @@ ffe7045 install rules for init-rbdmap
 cfc1f2e rgw: modify RGWBucketInfo::creation_time encoding / decoding
 4089001 rgw: Fix return value for swift user not found
 c73a24b rgw: end-marker serves as last value, not as upperbound
-c414030 rgw: relax marker requirements for log apis
+c4140303 rgw: relax marker requirements for log apis
 b21a41a rgw: update log APIs to use markers
 ce7d816 rgw: cls_log_entry has id field
 064e92f Makefile.am: some more makefile rules fixes
@@ -10806,7 +11003,7 @@ c112fc8 mon: add is_shutdown() state helper/accessor
 652c599 mon: shut down Paxos on shutdown
 6630462 osd: break con <-> session cycle on reset
 99172c3 osd: do not leak HeartbeatSession on shutdown
-449bcd6 osd: close classes on shutdown
+449bcd6f osd: close classes on shutdown
 b56c965 osd: do not leak MOSDPings on shutdown
 d172c33 osd/ReplicatedPG: don't leak Session refs in do_osd_op_effects()
 cd1c289 messages/MMonSync: initialize crc in ctor
@@ -18548,7 +18745,7 @@ a53a017 ReplicatedPG: pull() should return PULL_NONE, not false
 f9b7529 osd_types.h: Add constructors for ObjectRecovery*
 7b1c144 test_filestore_idempotent: fix test to create initial object
 6b30cd3 libcephfs: define CEPH_SETATTR_*
-b54bac3 test/encoding/readable.sh: drop bashisms
+b54bac30 test/encoding/readable.sh: drop bashisms
 ffa1de3 filejournal: drop unused variable
 ccf8867 filejournal: aio off by default
 9fded38 test/encoding/readable.sh: skip old version with known incompatibilities
@@ -19888,7 +20085,7 @@ a50fbe2 PG: merge_old_entry: merged delete might not be in missing
 e07b956 rgw: implement some missing swift api, other swift fixes
 5790a36 rgw: encoded swift key contains full user name
 f883e63 rgw: multiple swift keys per user
-9b18e55 PG,OSD: clean up xlist::items on pg removal
+9b18e55e PG,OSD: clean up xlist::items on pg removal
 b43b864 osd: fix race between op requeueing and _dispatch
 f7ec9f7 thread: whitespace
 fc3aac6 filestore: clean up error output
@@ -20186,7 +20383,7 @@ b2d46ef doc: Search page is always in sidebar, no need to have it on page.
 76fbdfb doc: Add index entries, remove glossary as it's practically replaced by the index.
 65d2c49 doc: Leftovers of the c* -> ceph-* rename.
 29bbcee rgw: update index when doing put_obj_meta
-05b06e8 rgw: tolerate missing content-length header on canned ACL puts
+05b06e80 rgw: tolerate missing content-length header on canned ACL puts
 3b5cb69 cls_rgw: list entries return upper_bound of marker
 2ffb04b rgw: fix a few regressions
 e0be65c mon: remember source client address in routed requests
@@ -21228,7 +21425,7 @@ cbeedeb proflogger: Unlink our UNIX domain sockets on exit
 adafec4 test/proflogger.cc: read length of message first
 f8b4aa3 ProfLogger: write out length of message first
 325951d test/proflogger: Add TeardownSetup and SimpleTest
-134a680 Add test/proflogger.cc, fix ProfLogger::init()
+134a680a Add test/proflogger.cc, fix ProfLogger::init()
 5517b8f Rework ProfLogger
 6424149 osd: remove unused variables
 d07c480 mon: remove unused variables
@@ -21516,7 +21713,7 @@ f1f75df ceph_argparse_witharg: fix dashes in args
 4549501 common/Throttle: Remove unused return type on Throttle::get()
 c23d4c2 libceph: delogbalize, again
 92a3a47 Makefile: add missing common/dout.h header to dist tarball
-5da0662 librados: fix end_block calculation for aio_read
+5da06628 librados: fix end_block calculation for aio_read
 823a05c proflogger: only register one event for all loggers
 629ac0d librados: deglobalize, again
 9a3a685 OSDMap: kill some deadcode, deglobalize
@@ -23020,7 +23217,7 @@ cae43fc Makefile: drop libradosgw_a LDFLAGS
 32fce3c rados_create: correctly handle null id
 f06f4ee librados: always call keyring_init in connect
 586fc66 librados: don't call keyring_init in init_internal
-9e1828a objecter: make response_data bufferlist static
+9e1828af objecter: make response_data bufferlist static
 251fd50 rados_create_internal calls keyring_init
 c548976 rados_create: set id based on parameter
 b1c3321 librados: add rados_create_internal
@@ -25515,7 +25712,7 @@ b01cc38 rgw: set default log level to 20
 6bd40ac qa: consistent snaptest-%d.sh naming
 9127cd9 mds: fix uninitialized LeaseStat for null lease
 5c714bf osd: log when we get marked down but aren't
-7fbe165 debug: no name symlink when explicit --log-file
+7fbe1655 debug: no name symlink when explicit --log-file
 3de9c8d client: some whitespace cleanup
 8195899 qa: add localized version of Thomas Mueller's snaptest-2.sh
 2d35d24 rgw: exit after 5 seconds from SIGUSR1 anyway
@@ -27109,7 +27306,7 @@ ba515fe mkcephfs: generate cephx keys during mkfs
 329178d mount: set flags when getting -o sync
 6ea3030 mds: fix dumpcache
 6285b61 authtool: only create keyring if --create-keyring (or -c)
-f40957e config: rename 'keys file' to 'keyring'
+f40957eb config: rename 'keys file' to 'keyring'
 3ebf9a4 filestore: optionally checkpoint with snaps
 5bdb348 journal: make sure max_size is multiple of block_size
 54898b3 mds: print setattr'd values with MClientRequest
@@ -27354,7 +27551,7 @@ e439bd3 config: add kill arguments for mds import/export
 b709a72 mds: bracket mds journal events with {start,submit}_entry
 95ee211 todo
 adbd7d8 dropped old aleung mds branch code
-714a9af mon: fix allocation of low global_ids after mon restart
+714a9af (sa/historic/aleung_mds_security, origin/historic/aleung_mds_security) mon: fix allocation of low global_ids after mon restart
 89603b6 test_ioctls: print preferred_osd value from GET_LAYOUT ioctl
 54b8537 hash: fix whitespace
 fd0195a mds: set mdr->in[n] in rdlock_path_xlock_dentry
@@ -27619,7 +27816,7 @@ e97c152 auth: fix verify_authorize_reply stupid
 08fbca8 auth: simplify challenge key encoding
 05e198b buffer: make [], hexdump const
 6133f02 auth: break client/server challenge calc into helper
-9ea4e4a auth: CEPH_AUTH_NONE auth and caps working
+9ea4e4a5 auth: CEPH_AUTH_NONE auth and caps working
 e98eb90 auth: return correct auth type
 8de5de0 auth: auth-none protocol stubs
 0717270 auth: redefine CEPH_AUTH_NONE
@@ -27929,7 +28126,7 @@ bc9b863 kclient: include fs/{Kconfig,Makefile} in patchset
 3a3ccd8 kclient: checkpatch cleanups
 522f570 mds: fix default layout settings
 38dbaa5 (tag: v0.16) v0.16
-e678fbc msgr: authorizer get/verify callbacks
+e678fbc1 msgr: authorizer get/verify callbacks
 faa5fb5 msgr: get_authorizer hook?
 56f45b4 objecter: Session type
 8b04f9a auth: authorizer for osd
@@ -30299,7 +30496,7 @@ c46e1b3 (tag: v0.7) mkcephfs: btrfsctl -a between mkfs and mount
 f5a3d61 kclient: fix /sys/fs/ceph/mdsmap
 e2afd17 kclient: sysfs whitespace cleanup
 cbd43e3 kclient: fix patch series
-c057c83 osdmap: use generic crush_build_bucket
+c057c834 osdmap: use generic crush_build_bucket
 f05b1be kclient: fix osdmap decoding of straw buckets
 a098a3f kclient: sysfs, free path after build_path
 c90746a kclient: sysfs cleanup
@@ -30782,7 +30979,7 @@ e4c8ef0 mds: redo choose_loner/drop_loner
 0a20684 mds: more lock refactoring.  merge *_lock() methods.
 7a9a689 mds: ENOENT on null dentry in unlink()
 5a29c9f mds: add lock->xlock state
-49fea8a mds: simplify loner_cap update
+49fea8a3 mds: simplify loner_cap update
 d467cbf mds: generic locking helpers, step 1
 3eabcec mds: rewrite SimpleLock using generic state specifications; new xlock semantics
 31bc1b0 lease: difrentiate lease release cases (revoke, preemptive)
@@ -36036,7 +36233,7 @@ eba9e7e *** empty log message ***
 ee63c70 *** empty log message ***
 90a1c02 *** empty log message ***
 bac0031 *** empty log message ***
-2576492 import is currently broken
+25764921 import is currently broken
 b247412 *** empty log message ***
 61a5130 *** empty log message ***
 9475610 *** empty log message ***
