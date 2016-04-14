@@ -5153,6 +5153,8 @@ am__rbd_SOURCES_DIST = tools/rbd/rbd.cc tools/rbd/ArgumentTypes.cc \
 rbd_OBJECTS = $(am_rbd_OBJECTS)
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@rbd_DEPENDENCIES = libjournal.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	libcls_journal_client.la \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	libcls_rbd_client.la \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	libcls_lock_client.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(LIBRBD) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(LIBRBD_TYPES) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(LIBRADOS) \
@@ -12261,6 +12263,8 @@ ceph_test_cfuse_cache_invalidate_SOURCES = test/test_cfuse_cache_invalidate.cc
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(am__append_267)
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@rbd_LDADD = libjournal.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	libcls_journal_client.la \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	libcls_rbd_client.la \
+@ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	libcls_lock_client.la \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(LIBRBD) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(LIBRBD_TYPES) \
 @ENABLE_CLIENT_TRUE@@WITH_RADOS_TRUE@@WITH_RBD_TRUE@	$(LIBRADOS) \
@@ -32388,7 +32392,9 @@ export PYTHONPATH=$(top_srcdir)/src/pybind
 
 # put virtualenvs in this directory
 # otherwise it may overflow #! 80 kernel limit
-export CEPH_BUILD_VIRTUALENV = /tmp
+# beware that some build environments might not be able to write to /tmp
+export TMPDIR ?= /tmp
+export CEPH_BUILD_VIRTUALENV = $(TMPDIR)
 
 @NO_GIT_VERSION_TRUE@export NO_VERSION="yes"
 

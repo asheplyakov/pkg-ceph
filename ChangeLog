@@ -1,5 +1,107 @@
-ce50389 (HEAD, tag: v10.1.1, origin/jewel) 10.1.1
+4a2a6f7 (HEAD, tag: v10.1.2, origin/jewel) 10.1.2
+8b98556 PG: set epoch_created and parent_split_bits for child pg
+bd1c548 test: fix ut test failure caused by lfn change
+45219e0 Fixed ceph-common install.
+fd2f455 mds: take standby_for_fscid into account in FSMap::find_unused()
+b6d8c32 librbd: Fixed bug in disabling non-primary image mirroring
+14a66f6 ceph-disk: fix PrepareData.set_type() args should be class member.
+4c203b3 ceph-disk: fix spelling mistake geattr to getattr.
+5b098ca ceph-disk: fix lockbox set_or_create_partition()
+b7708da radosgw-admin: fix name checking
+770846b radosgw-admin: allow setting zone when there is no realm
+49886d5 check-generated.sh: can't source bash from sh
+8bc8085 tests: add Ubuntu 16.04 xenial dockerfile
+0e4a92e crush: fix typo
+0a622e6 doc: rgw admin uses "region list" not "regions list"
+3c77292 journal: fix final result for JournalTrimmer::C_RemoveSet
+3b54d5d test/rados/misc.cc: add long locator key and namespace tests
+cb03d4d LFNIndex: use chain_getxattr_buf
+c7db303 chain_xattr: add chain_getxattr_buf
+755c685 LFNIndex::lfn_parse_object_name: return int rather than bool
+e4916f6 LFNIndex::list_objects: lfn_translate does not set errno
+25f937e FileStore::set_xattr_limits_via_conf: add warning if max xattr size smaller than max name
+18b9f95 test/objectstore/chain_xattr.cc: add test for ensure_single_attr
+73778f1 LFNIndex: ensure that lfn and directory attrs are written atomically
+ac750ce chain_[f]getxattr: always use size, no reaon to consider CHAIN_XATTR_MAX_BLOCK_LEN
+8dc0330 chain_xattr: s/onechunk/skip_chain_cleanup, add ensure_single_attr
+21487fd os/,osd/: restructure the rados name length check
+8770043 ceph-disk: fix set_data_partition() when data is partition.
+a330078 rgw-admin: fix period delete error message
+3320f8f rgw-admin: remove unused iterator
+64a8a6a rbd-mirror: fixed bug that caused infinite loop when disabling image mirroring
+a651598 mailmap: Luo Kexue name normalization
+c36c5d4 mailmap: Ning Yao affiliation
+eb536bb mailmap: Vitja Makarov affiliation
+323276e release-notes: v10.1.1 release notes
+18d06ef release-notes: v10.1.1 release notes (draft)
+1be8dba mailmap: sunspot affiliation
+c256a9c mailmap: Qinghua Jin affiliation
+c312b52 mailmap: Richard W.M. Jones affiliation
+b441722 mailmap: Ira Cooper affiliation
+f4f9d91 mailmap: Star Guo affiliation
+ceb2a72 mailmap: Xiaoxi Chen affiliation
+885db95 mailmap: Jenkins name normalization
+fb63721 releases: firefly was EOL december 2015
+fc29dc2 releases: update the v10.1.0 release link
+d82c497 doc: add a page for CephFS' experimental features describing lockout rules
+6974ed4 doc: update cephfs administration page for enable_multiple safety check
+4b3802e mdsmonitor: unify experimental warnings
+ea1b276 test: update tests for new flag requirements
+4bc4e74 MDSMap: lock out multimds clusters and directory fragmentation by default
+15d1fd4 MDSMap: switch from booleans to flags for feature enablement logging
+cda1c1a FSMap: add output for enabled_multiple flags
+3130132 MDSMonitor: make enabling multiple FSes a lot scarier
+3b9371a FSMap: print out compat instead of erroneously repeating enable_multiple
+2429463 ceph-dencoder: add FSMap
+15cabdc rgw_ldap: make ldap.h inclusion conditional
+d58e5fe rgw: fix problem deleting objects begining with double underscore
+492a572 test: fix memory leaks in rbd-mirror test cases
+acfc2b1 test: avoid leaking librados connections when creating pools
+88e244c rbd: journal reset should disable/re-enable journaling feature
+2fa4147 osd/ReplicatedPG: clean up temp object if copy-from fails
+a0bb575 ceph_test_rados_api_misc: make CopyFrom omap test be a big object
+134416a Revert "rados: Add new field flags for ceph_osd_op.copy_get."
+017d830 rbd-mirror: workaround for intermingled lockdep singletons
+98744fd logrotate.conf: poke ceph-fuse after log rotation
+91e0be0 ceph-fuse: reopen log file on SIGHUP
+60679fc librbd: restore out-of-band future callbacks to avoid lock cycles
+e98d046 MDS: unregister command add in clean_up_admin_socket
+2f4bc84 rgw: aws4 subdomain calling bugfix
+dab0b55 rgw: the map 'headers' is assigned a wrong value
+f01261f authtool: fix test output validation & minor whitespace.
+408964e journal: fix context memory leak when shutting down live replay
+f931066 journal: Future does not require metadata shared pointer
+d3dbd85 mon: warn if 'sortbitwise' flag is not set and no legacy OSDs are present
+d544e44 mds: validate file layouts during replay
+9414bef debian/rules: include ceph-mds-*.conf upstart files in ceph-mds
+45a0bc1 mds: add operator<< for file_layout_t
+693f46a mds: skip size recovery on non-file inodes
+0f09642 mds: tidy up backtrace pool handling
+4ddcf41 mds: health metric for being read only
+79b19a6 osd: cancel scrub if noscrub is set for pool or all
+4d3aef7 osd: reset tp handle when search for boundary of chunky-scrub
+25d8007 os/bluestore: use short, relative paths with bluefs
+ce50389 (tag: v10.1.1) 10.1.1
+6c0ab75 librbd: disallow unsafe rbd_op_threads values
+bb4c2ca librgw/rgw_file:  correctly handle object permissions
+6851822 rgw_file: print DIRS1 read parameters at verbose
+d84f55f rgw_file:  fix attributes for "special" test cases
+1bd1ffd rgw_file unit tests: validate Unix owners in DIRS1
+8e2c804 authtool: update --help and manpage to match code.
+dffd867 build: Respect TMPDIR for virtualenv.
+048251b common/fs_types: dump pool_id signed
+cd41ca2 mds: fix legacy layout decode with pool 0
+b8e0458 rgw: retry read_log_info() while master is down
+05cafcf Drop any systemd imposed process/thread limits
 02ab8a2 mrun: update path to cmake binaries
+67f8f1f os/bluestore/BlueFS: add some perfcounters
+75ddd73 os/bluestore/BlueFS: revamp bdev ids
+a5564a6 os/ObjectStore: make device uuid probe output something friendly
+4f6523d rgw: aws4 uri encoding bugfix
+bc9607b mon/OSDMonitor: fix off-by-one for osd_map_message_max
+81cc288 osd: improve full map requests
+2e22f54 osd: create rerequest_full_maps() helper
+961a46f client: fix pool permisson check
 d248128 config: fix setuser_match_path typo
 d5ec33f tests: Removing one ceph-dencoder call in check-generated.sh
 4af1aa6 tests: Fixing python statement in ceph_objectstore_tool.py
@@ -18,10 +120,24 @@ d66c852 tests: Adding parallelism for sequential ceph-dencoder calls
 8b6be11 tests: Adding parallelism to encoding/readable.sh
 db31cc6 tests: Adding parallelism helpers in ceph-helpers.sh
 93ace63 cmake: fix the build of test_rados_api_list
+524f8e6 mds: unregister newly added commands correctly
+da27c33 mds: avoid key renew storm on clock skew
+7dae094 mds: drop message reference on error exit
+1f54f73 mds: fix message leak during handle_core_message()
 b7a5f8b test: TestMirroringWatcher test cases were not closing images
+ae39517 rgw: fix a typo in error message
 8231208 global/global_init: expand metavariables in setuser_match_path
+1a6c686 mds: Add cmapv to ESessions default constructor initializer list
 dd167cf crush: fix error log
+3562323 librados: use Objecter::prepare_*_op helpers to set c->tid safely
+cd167c0 osdc/Objecter: create more prepare_foo_op() helpers
 f47e06b tests: Fixing broken test/cephtool-test-mon.sh test
+8f9e7b0 rgw: Do not try to encode or decode time_t
+778506e time: Change temporary variable types in time decode
+4a88a7f librados: fix narrow race with tid return value assignment
+b7eb86f osdc/Objecter: fix narrow race with tid assignment
+1de73d7 qa/workunits/rest/test.py: fs flag set enable_multiple true
+42e692a ceph-rest-api: do not include single-option CephChoices in prefix
 9565a50 set 128MB tcmalloc cache size by bytes
 ff9843b Striper: reduce assemble_result log level
 f812199 qa/workunits/rbd: qemu tests need to wait for image to be created
@@ -36,6 +152,7 @@ a92fa83 osdmap: rm nonused variable
 c432691 os/ObjectStore: add noexcept to ensure move ctor is used
 1c2831a common/Cycles: Do not initialize Cycles globally.
 ec79b64 unittest_erasure_code_plugin: fix deadlock caused by locked mutex in cancelled thread
+554d1b4 ReplicatedPG::_rollback_to: update the OMAP flag
 aedc529 test: Fix test to run with btrfs which has snap_### dirs
 3dd5249 librbd: avoid throwing error if mirroring is unsupported
 280b8a1 rgw: add exclusive flag to set_as_default()
@@ -44,7 +161,9 @@ aedc529 test: Fix test to run with btrfs which has snap_### dirs
 c4efef5 rgw: add a few missing cmdline switches in help
 09b5356 cls_journal: fix -EEXIST checking
 2c0f03a rgw_admin: remove unused parent_period arg
+85229f6 mds: fix potential null pointer access
 a29b96a debian/rules: put init-ceph in /etc/init.d/ceph, not ceph-base
+09c4195 MDSMonitor: introduce command 'fs set_default <fs_name>'
 602425a configure: Add -D_LARGEFILE64_SOURCE to Linux build.
 639f158 mon: remove unnecessary comment for update_from_paxos
 f5ef4d4 cmake: add missing librbd/MirrorWatcher.cc and librd/ObjectWatcher.cc
@@ -161,6 +280,7 @@ f3ebe46 rbd: rbd-mirroring: Updated rbd mirroring unit tests to reflect the new 
 bc254c8 rbd: rbd-mirroring: Enabling image mirroring depends on pool mirroring mode
 668c8f9 script: subscription-manager support (part 3)
 97b74bd osd/ClassHandler: only dlclose() the classes not missing
+dad3b84 client: pass 'newly issued caps' to Client::check_cap_issue()
 349c81f ceph_test_rados_api_pool: fix command for readonly cache-mode
 ad2e6f4 ceph.in: update for cmake path changes
 5da6ae8 vstart: update for cmake build path changes
@@ -592,6 +712,8 @@ a0a8dcc rgw: free components on shutdown
 bdcff15 mds: fix FSMap upgrade on mixed mon versions
 38fd3f1 rgw: LDAP pass-through authentication
 e52f7b4 mds: fix FSMap upgrade with daemons in the map
+7b33156 common: thread: allow set_affinity() to return a error code
+e10c6e4 common: buffer: put a guard for stat() syscall during read_file
 1ea1735 osd: fix wrong counter for batch objects removal during remove_dir()
 12d151f osd: initialize last_recalibrate field at construction
 f1a4490 ceph.spec.in: disable lttng and babeltrace explicitly
