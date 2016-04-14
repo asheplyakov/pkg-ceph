@@ -3409,7 +3409,7 @@ int RGW_Auth_S3::authorize_v4(RGWRados *store, struct req_state *s)
    * that SigV4 typically does. this code follows the same approach that boto library
    * see auth.py:canonical_uri(...) */
 
-  s->aws4_auth->canonical_uri = s->info.request_uri;
+  s->aws4_auth->canonical_uri = s->info.request_uri_aws4;
 
   if (s->aws4_auth->canonical_uri.empty()) {
     s->aws4_auth->canonical_uri = "/";
@@ -3437,8 +3437,20 @@ int RGW_Auth_S3::authorize_v4(RGWRados *store, struct req_state *s)
         string encoded_key;
         string encoded_val;
         if (key != "X-Amz-Credential") {
-          aws4_uri_encode(key, encoded_key);
-          aws4_uri_encode(val, encoded_val);
+          string key_decoded;
+          url_decode(key, key_decoded);
+          if (key.length() != key_decoded.length()) {
+            encoded_key = key;
+          } else {
+            aws4_uri_encode(key, encoded_key);
+          }
+          string val_decoded;
+          url_decode(val, val_decoded);
+          if (val.length() != val_decoded.length()) {
+            encoded_val = val;
+          } else {
+            aws4_uri_encode(val, encoded_val);
+          }
         } else {
           encoded_key = key;
           encoded_val = val;

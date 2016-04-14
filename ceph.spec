@@ -74,7 +74,7 @@ restorecon -R /var/log/radosgw > /dev/null 2>&1;
 # common
 #################################################################################
 Name:		ceph
-Version:	10.1.1
+Version:	10.1.2
 Release:	0%{?dist}
 Epoch:		1
 Summary:	User space components of the Ceph file system

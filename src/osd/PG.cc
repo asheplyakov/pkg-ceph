@@ -2298,6 +2298,7 @@ void PG::split_into(pg_t child_pgid, PG *child, unsigned split_bits)
 
   // Info
   child->info.history = info.history;
+  child->info.history.epoch_created = get_osdmap()->get_epoch();
   child->info.purged_snaps = info.purged_snaps;
 
   if (info.last_backfill.is_max()) {
@@ -2313,6 +2314,7 @@ void PG::split_into(pg_t child_pgid, PG *child, unsigned split_bits)
   }
 
   child->info.stats = info.stats;
+  child->info.stats.parent_split_bits = split_bits;
   info.stats.stats_invalid = true;
   child->info.stats.stats_invalid = true;
   child->info.last_epoch_started = info.last_epoch_started;
@@ -3357,8 +3359,16 @@ bool PG::sched_scrub()
 
     //NOSCRUB so skip regular scrubs
     if ((osd->osd->get_osdmap()->test_flag(CEPH_OSDMAP_NOSCRUB) ||
-	 pool.info.has_flag(pg_pool_t::FLAG_NOSCRUB)) && !time_for_deep)
+	 pool.info.has_flag(pg_pool_t::FLAG_NOSCRUB)) && !time_for_deep) {
+      if (scrubber.reserved) {
+        // cancel scrub if it is still in scheduling,
+        // so pgs from other pools where scrub are still legal
+        // have a chance to go ahead with scrubbing.
+        clear_scrub_reserved();
+        scrub_unreserve_replicas();
+      }
       return false;
+    }
   }
 
   if (cct->_conf->osd_scrub_auto_repair
@@ -4108,6 +4118,7 @@ void PG::chunky_scrub(ThreadPool::TPHandle &handle)
 
           bool boundary_found = false;
           hobject_t start = scrubber.start;
+          unsigned loop = 0;
           while (!boundary_found) {
             vector<hobject_t> objects;
             ret = get_pgbackend()->objects_list_partial(
@@ -4136,6 +4147,12 @@ void PG::chunky_scrub(ThreadPool::TPHandle &handle)
                 candidate_end = end;
                 boundary_found = true;
               }
+            }
+
+            // reset handle once in a while, the search maybe takes long.
+            if (++loop >= g_conf->osd_loop_before_reset_tphandle) {
+              handle.reset_tp_timeout();
+              loop = 0;
             }
           }
 
