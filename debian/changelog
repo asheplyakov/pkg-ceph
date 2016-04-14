@@ -2,6 +2,8 @@ ceph (10.1.2-0ubuntu1) UNRELEASED; urgency=medium
 
   * New upstream release candidate for Ceph Jewel:
     - FFe: http://pad.lv/1563714.
+    - d/p/32bit-compat.patch,tasksmax-infinity.patch: Dropped,
+      included upstream.
   * d/ceph-common.postinst: Silence output of usermod call (LP: #1569249).
 
  -- James Page <james.page@ubuntu.com>  Tue, 12 Apr 2016 11:02:42 +0100

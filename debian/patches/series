@@ -17,6 +17,4 @@ fix-cycles-arch.patch
 rocksdb-flags.patch
 skip-setup.py-makefiles.patch
 disable-openssl-linking.patch
-32bit-compat.patch
 drop-user-group-osd-prestart.patch
-tasksmax-infinity.patch
