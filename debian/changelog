@@ -1,11 +1,14 @@
-ceph (0.94.7~g20160406+254+ge219e85-1~1.gbp2be2a1) UNRELEASED; urgency=low
+ceph (0.94.7~g20160415+255+g45e73f3-1~1.gbp98ebca) UNRELEASED; urgency=low
 
-  ** SNAPSHOT build @2be2a1b25d34593b092311e8f67793a94ceb56b7 **
+  ** SNAPSHOT build @98ebcac076088d2f18c9348a7a8058aa827c337b **
 
-  * New upstream bugfix pre-release
-  * d/p: drop #14873 fix, included upstream
+  * Package 0.94.7 pre-release snapshot
+  * debian/rules: set consistent hardening flags for compiler and linker
+  * debian/patches:
+    - drop ObjBencher-seq_read_bench-fix-locking-errors.patch,
+      included upstream
 
- -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Thu, 14 Apr 2016 18:25:34 +0300
+ -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Fri, 15 Apr 2016 14:16:24 +0300
 
 ceph (0.94.6-1) experimental; urgency=medium
 
