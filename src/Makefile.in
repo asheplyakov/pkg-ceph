@@ -6673,7 +6673,7 @@ top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 AUTOMAKE_OPTIONS = gnu subdir-objects
 SUBDIRS = ocf java $(am__append_193) $(am__append_194)
-DIST_SUBDIRS = gmock ocf libs3 java
+DIST_SUBDIRS = gmock ocf libs3 java rocksdb
 BUILT_SOURCES = $(am__append_197) $(am__append_216)
 
 # extra bits
