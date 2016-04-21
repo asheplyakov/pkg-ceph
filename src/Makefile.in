@@ -12409,6 +12409,9 @@ libos_tp_la_LDFLAGS = -version-info 1:0:0
 @ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@CYTHON_BUILD_DIR = "$(shell readlink -f $(builddir))/build"
 @ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@PY_DISTUTILS = \
 @ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@	mkdir -p $(CYTHON_BUILD_DIR); \
+@ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@	CC="${CC}" \
+@ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@	CXX="${CXX}" \
+@ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@	LDSHARED="${CC} -shared" \
 @ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@	CPPFLAGS="-iquote \${abs_srcdir}/include ${AM_CPPFLAGS} ${CPPFLAGS}" \
 @ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@	CFLAGS="-iquote \${abs_srcdir}/include ${AM_CFLAGS} ${PYTHON_CFLAGS}" \
 @ENABLE_CLIENT_TRUE@@WITH_CYTHON_TRUE@	LDFLAGS="-L\${abs_builddir}/.libs $(subst -pie,,${AM_LDFLAGS}) ${PYTHON_LDFLAGS}" \
@@ -12443,6 +12446,11 @@ ceph_libexec_SCRIPTS = ceph_common.sh ceph-osd-prestart.sh
 # See: https://www.gnu.org/software/automake/manual/html_node/Scripts_002dbased-Testsuites.html
 # I don't see the serial-tests Automake option anywhere, but my AM_TESTS_ENVIRONMENT was being ignored.
 @WITH_LTTNG_TRUE@TESTS_ENVIRONMENT = LD_PRELOAD=liblttng-ust-fork.so; export LD_PRELOAD; echo "LD_PRELOAD=$${LD_PRELOAD}";
+AM_TESTS_ENVIRONMENT = export CEPH_ROOT="$(abs_top_srcdir)"; export \
+	CEPH_BUILD_DIR="$(abs_srcdir)"; export \
+	CEPH_BIN="$(abs_srcdir)"; export \
+	CEPH_LIB="$(abs_srcdir)/.libs"; export \
+	PATH="$(abs_srcdir):$$PATH";
 
 # pybind
 python_PYTHON = $(am__append_293) $(am__append_303) $(am__append_308)

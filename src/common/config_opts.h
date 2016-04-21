@@ -556,6 +556,9 @@ OPTION(mds_max_scrub_ops_in_progress, OPT_INT, 5) // the number of simultaneous 
 // Maximum number of damaged frags/dentries before whole MDS rank goes damaged
 OPTION(mds_damage_table_max_entries, OPT_INT, 10000)
 
+// verify backend can support configured max object name length
+OPTION(osd_check_max_object_name_len_on_startup, OPT_BOOL, true)
+
 // If true, compact leveldb store on mount
 OPTION(osd_compact_leveldb_on_mount, OPT_BOOL, false)
 
@@ -1165,6 +1168,7 @@ OPTION(rbd_skip_partial_discard, OPT_BOOL, false) // when trying to discard a ra
 OPTION(rbd_enable_alloc_hint, OPT_BOOL, true) // when writing a object, it will issue a hint to osd backend to indicate the expected size object need
 OPTION(rbd_tracing, OPT_BOOL, false) // true if LTTng-UST tracepoints should be enabled
 OPTION(rbd_validate_pool, OPT_BOOL, true) // true if empty pools should be validated for RBD compatibility
+OPTION(rbd_validate_names, OPT_BOOL, true) // true if image specs should be validated
 
 /*
  * The following options change the behavior for librbd's image creation methods that

@@ -1,15 +1,199 @@
-4a2a6f7 (HEAD, tag: v10.1.2, origin/jewel) 10.1.2
+3a9fba2 (HEAD, tag: v10.2.0, origin/jewel) 10.2.0
+f86f73f rgw: drop rest op reference in error path
+88369e2 doc: rgw multisite, add pools section & minor cosmetic improvements
+7ca01d4 rgw_admin: improve period update errors
+558863a test: set a default $CEPH_ROOT env variable
+ea2c703 rgw: clean async rest ops in calling cr
+2a15418 rgw: drop async cr reference on simple cr completion
+0a361d5 rgw: RGWRealmWatcher::watch_restart() also unwatches watch
+fe0f4bb rgw: stop cr manager in destructor
+f0e3b61 osd: fix noisy debug line
+61acd9d doc/release-notes.rst: clarify ceph UID/GID assignment on SUSE
+b74a9dd doc/release-notes.rst: minor grammar and style corrections
+b5d973f doc/release-notes: expand distro/arch section to include arm64 info
+b2d9467 doc/release-notes: more detail about the ext4 checks
+ad77f45 doc/release-notes: include changes in rcs
+a4ee2b7 doc/release-notes: clean up jewel notes
+451af76 doc/release-notes: fix rados scrub summary
+3108c34 ceph.spec.in: terminate if statement in %pre scriptlet
+b19bac7 rgw: Add a test for multi-tenancy
+4e1f282 common: typo-fix for osd_check_max_object_name_len_on_startup
+17c4bcf rgw: cross rgw request need to send 'zonegroup' http header
+24b1968 rgw: fix get_zonegroup()
+f78af6f doc: add multisite to index
+c2e4106 doc: rgw multisite documentation
+eefcc67 rgw: binfo_cache is now a RGWRados member
+6f638a5 rgw: RGWShardCollectCR does not need a cct member
+0cdf3bc debian: start ceph-mon-all and ceph-osd-all on package install
+c4b7a25 mailmap: Abhishek Lekshmanan affiliation
+a8efd40 mds/FSMap: use _ in key name
+8642b34 osd: some debug output for old osdmap trimming
+02f5885 osd: add option to disable startup check
+8c1a8a6 osd: refuse to start if configure object limits don't work
+a13ae6f vstart.sh: --short to set ext4-friendly object name and namespace limits
+413b3e7 osd/ReplicatedPG: fix implementation of register_on_success()
+f1cfcff mailmap: Jenkins name normalization
+b3991d0 mailmap: Abhishek Lekshmanan name normalization
+9cdba6c mailmap: Wei Qiaomiao affiliation
+a79a9dc mailmap: Luo Runbing affiliation
+28b91f2 cmake: link ceph_test_rados_api_list against libglobal
+8ddfcb12 cmake: Add cython_modules to `make check`
+e0bda0b cmake: remove repeat OSD.cc
+56c37ea cmake: CMake environment variables added to automake
+b4de745 cmake: Building ceph-detect-init from source code
+4fc06be cmake: Building ceph-disk from source code
+a7b6c01 cmake: Add librgw_file tests
+60e5fa9 cmake: Added rbd_mirror targets
+21ec89f cmake: Added an absolute path for libs
+9288e98 cmake: test_pidfile.sh test passing
+de97f67 cmake: Protect againist getenv returning nullptr
+cfcbe21 cmake: erasure-decode-non-regression.sh passing
+fd978ce unittest_journal: got rid of relative paths
+dd0ac99 unittest_blkdev: absolute path for cmake make check
+49da534 cmake: test_objectstore_memstore.sh test passing
+1c8cd00 cmake: erasure-code tests passing
+6596373 cmake: ceph_objectstore_tool.py test passing
+f43dd0f cmake: unittest_bufferlist passing in cmake
+cf24535 cmake: cephtool-test-rados/mds/osd passing in cmake
+005e4b4 cmake: working on cephtool-test-rados.sh test
+d189270 cmake: working on rados-striper.sh test
+8e3e3f4 cmake: librbd fixes
+54eb382 cmake: moved tests into test/system dir
+803def3 cmake: moved tests into test/rgw dir
+798b821 cmake: moved tests into test/osdc dir
+4492439 cmake: moved tests into test/ObjectMap dir
+e7c1459 cmake: moved tests into test/msgr dir
+cfffdf6 cmake: moved tests into test/messenger dir
+99d3436 cmake: moved tests into test/librados_test_stub dir
+eb8e49c cmake: moved tests into test/libcephfs dir
+99d66ca cmake: moved tests into test/journal dir
+997291e cmake: moved tests into test/filestore dir
+02d508c cmake: moved tests into test/compressor dir
+d50478f cmake: moved tests into test/cls_version dir
+e2b0f6f cmake: moved tests into test/cls_statelog dir
+8da608d cmake: moved tests into test/cls_rgw dir
+521b07b cmake: moved tests into test/cls_replica_log dir
+2636c16 cmake: moved tests into test/cls_refcount dir
+fe673ea cmake: moved tests into test/cls_rbd dir
+7271c96 cmake: moved tests into test/cls_numops dir
+de64f82 cmake: moved tests into test/cls_log dir
+0e851de cmake: moved tests into test/cls_lock dir
+6a791fa cmake: moved tests into test/cls_hello dir
+c1f94df cmake: moved tests into test/bench dir
+025f552 cmake: moved tests into test/os dir
+ef8b113 cmake: moved tests into test/pybind dir
+74ea1f9 cmake: moved tests into test/objectstore dir
+852276d cmake: moved tests into test/mds dir
+3fffaa6 cmake: moved tests into test/libradosstriper dir
+83ff750 cmake: moved tests into test/librados dir
+84c999a cmake: moved tests into test/fs dir
+3a10843 cmake: moved tests into test/crush dir
+f65c87a cmake: moved tests into test/common dir
+9be9060 cmake: shell scripts in test/encoding passing in cmake
+5d4d3ff cmake: shell scripts in test/mon passing in cmake
+3186c00 cmake: moved tests into test/osd dir
+59568e5 cmake: encode-decode-non-regression.sh passing in cmake
+e0f400f cmake: test-ceph-helpers working
+a7bd5e4 cmake: Reorganized test dir, added cmake functions
+9634214 release-notes: document rbd cli name validation override
+08c8cee rbd: fail if cannot extract spec from legacy "--image" optional
+08fcc72 rbd: optionally disable spec validation when creating images/snapshots
+e57d7c1 rbd: add support for relaxed image spec validation
+6579c7d common: new rbd image spec validation option
+18ea756 Removed parentheses for if statement.
+d1ed6eb update release-notes manually
+df4e134 msg/simple/DispatchQueue: inject internal delays in special event dispatch
+0b0d584 Fixes for python omap method return values.
+b358c61 FSMap: guard the ever_enabled_multiple decode
+d26322d ceph_test_rados: make long name ~300 chars, (not ~800)
+ecf4572 rgw: aws4: handle UNSIGNED-PAYLOAD under header auth
+769f994 librbd: dynamically disabling exclusive lock might leave lingering request
+ae604de rgw: handle no current_preiod in is_syncing_bucket_meta
+489d062 release-notes: v10.1.2 release notes
+a4819a6 release-notes: v10.1.2 release notes (draft)
+a353eac rgw_file: fixup attrs across renames
+bf299dc rgw: try to use current period id in a few more cases
+c04fd42 osd: fix watch reconnect race
+8166042 osd/Watch: slightly more informative debug output
+0f8585c doc: fix dependencies
+6208437 systemd: Use the same restart limits as upstart
+a201365 rgw: call rgw_log_usage_finalize() on reconfiguration
+4b1d169 test: image replayer needs dummy remote mirror peer uuid
+5230967 rgw: RGWPeriod::reflect() sets master zonegroup as default
+877d44b journal: race possible when re-watching a journal object
+b6297a7 rgw_file: fix silly abuse of flags in fh_lookup
+6651e51 os/bluestore: fix shortened bluefs paths in env mirror case
+fb924f2 rgw_file: don't need to memset Latch
+842828a cohort_lru: define ctor for TreeX::Latch
+8d346ac test/encoding/readable: use [ for "test" not ((
+f30db90 osd: clear requeue_scrub_on_unblock flag after requeue scrub
+760863f journal: potential for double-free of context on shut down
+5b608ed rgw_file: fix 2 attr decoding issues
+11a9722 journal: possible race condition during live replay
+aece824 doc: reinstate accidentally removed section header
+942504d radosgw-admin: 'realm pull' only accepts --url
+70ff086 radosgw-admin: allow 'period pull --url' without full multisite config
+8451c0f librbd: cancel ops before blocking IO
+e90e3d9 librbd: delay invalidation of exclusive lock pointer
+1e6fc45 rbd: cleanly fail bench-write upon failure
+1761a38 librbd: gracefully handle blacklisted client in ImageWatcher
+5d8b656 rgw_file: force move semantics on rvalue refs in emplace_attrs
+b9ce840 rgw_file: remove RGWLibFS::mkdir() (no longer called)
+917a25d rgw_file: fix nfsns unit test when !created and !create
+bd2c681 rgw_file: check for leaf dir objects and restore their state
+9830f95 rgw_file: use emplace_attr in both paths in mkdir2()
+601b193 rgw_file: use emplace_attr in RGWCreateBucket and RGWCopyObj
+7a7de9b rgw_file: use emplace_attr in RGWPostObj and RGWPutMetadataBucket
+8b2616b rgw_file: remove unused label in mkdir2()
+6bda1e0 rgw_file: use emplace_attr in RGWPutObj::execute()
+6a86ed9 rgw_file: encode ux attrs in mkdir2
+8f5ff95 rgw_file: implement new mkdir2 with atomicity
+34ba7c0 rgw_file: add encode/decode hooks, emplace_attr
+2dbefba rgw_file: move internals of rgw_read into RGWLibFS::read(...)
+8b01e12 rgw_file: declare encoder for Unix object attributes
+f87af25 rgw_file:  declare an attribute for all Unix/rgw_file attrs
+4a2a6f7 (tag: v10.1.2) 10.1.2
+489324f doc/configuration/filesystem-recommendations: recommend against ext4
+a8e2869 doc/release-notes: mention ext4 in the release notes
+112649f doc/start/os-recommendations: drop ancient 'syncfs' note
+638fd2e doc/rados/configuration: minor cleanup of inline xattr description
+2601e2f rgw/rgw_rados: use to_str() instead of c_str()
+d56e439 buffer: add list::to_str()
+bcfce59 doc: do not include ext4 as an example
+2c72c9a doc/8/ceph-deploy: do not include ext4 as an example value
+61c4c1c doc: list ext4 last
+ae97840 doc/dev: remove ancient filestore-filesystem-compat doc
+d5bc886 xio: refactor release_xio_req -> release_xio_msg
+262d85c xio: refactor flush_input_queue -> flush_out_queues
+8162218 xio: refactor on_msg_req -> on_msg
+bde87d3 xio: fix invalid access to member pointer before it is being initialized
+5a746e6 xio: use const for input argument in 2 functions' prototype
 8b98556 PG: set epoch_created and parent_split_bits for child pg
+2be6017 pybind/Makefile.am: fix build with ccache
+142610a os/filestore: fix return type mismatch for lfn parse
 bd1c548 test: fix ut test failure caused by lfn change
+8087cfa librbd: do not return a failure if a peer cannot be notified of update
 45219e0 Fixed ceph-common install.
 fd2f455 mds: take standby_for_fscid into account in FSMap::find_unused()
 b6d8c32 librbd: Fixed bug in disabling non-primary image mirroring
+0b98b4f rgw-rados: return RGWSystemMetaObj init directly
 14a66f6 ceph-disk: fix PrepareData.set_type() args should be class member.
 4c203b3 ceph-disk: fix spelling mistake geattr to getattr.
 5b098ca ceph-disk: fix lockbox set_or_create_partition()
 b7708da radosgw-admin: fix name checking
 770846b radosgw-admin: allow setting zone when there is no realm
+3b83001 rgw: Ensure xmlns is consistent on S3 responses.
+30ce32a cmake: pass RULE_LAUNCHER_* to cython
+2145d72 mailmap: Kris Jurka affiliation
+175b379 AsyncConnection: avoid is_connected require connection's lock
 49886d5 check-generated.sh: can't source bash from sh
+ad489f7 librbd: exclusive lock might be disabled while waiting to acquire lock
+fd24361 librbd: acquire exclusive lock before disabling features
+458bef8 librbd: dynamically disabling journaling needs to block writes
+aa31e52 test: fix race conditions with re-initializing the journal
+3c4a859 librbd: AIO work queue needs to support dynamic feature updates
+032fda5 WorkQueue: add ability to requeue an item that was dequeued
+a33ee34 qa/workunits/rbd: switch qemu test script shell to bash
 8bc8085 tests: add Ubuntu 16.04 xenial dockerfile
 0e4a92e crush: fix typo
 0a622e6 doc: rgw admin uses "region list" not "regions list"
@@ -28,6 +212,7 @@ ac750ce chain_[f]getxattr: always use size, no reaon to consider CHAIN_XATTR_MAX
 8770043 ceph-disk: fix set_data_partition() when data is partition.
 a330078 rgw-admin: fix period delete error message
 3320f8f rgw-admin: remove unused iterator
+4b0e39e osd/ReplicatedPG: make handle_watch_timeout no-op if !active
 64a8a6a rbd-mirror: fixed bug that caused infinite loop when disabling image mirroring
 a651598 mailmap: Luo Kexue name normalization
 c36c5d4 mailmap: Ning Yao affiliation
@@ -191,6 +376,8 @@ e95a383 librbd: send notifications on mirroring updates
 3748b88 librbd: helper methods for mirroring notifications
 934ce86 librbd: mirroring object notification types
 3145109 librbd: generic object watcher and mirroring watcher
+184ec19 pybind: remove language="c++"
+68ce9a9 cmake: remove unneeded C++ from cython build
 bb07a1b rbd: rbd-mirroring: Automatically disable image mirroring when image is removed
 f254486 os/bluestore: _do_write: fix _do_zero_tail_extent to handle shared extents
 2ed445e os/bluestore: _do_zero: simply truncate up if past eof
@@ -841,6 +1028,7 @@ ce33a41 osd: drop unused from arg from handle_pg_peering_evt
 e929b0b osd: only pass history to handle_pg_peering_evt
 363e431 doc: Add French mirror
 868b794 mirrors: Change contact e-mail address for se.ceph.com
+4c3c2ae common: WeightedPriorityQueue Boost 1.60.0 requires some more comparisions for advanced lookp and insertion functions.
 ca16037 pybind: flag an RBD Image as closed regardless of result code
 a8e82a3 librbd: permit watch flush to return error code
 bc62792 rgw: free components on shutdown
@@ -1121,6 +1309,9 @@ b0b4b6d os/bluestore/BlueStore: Fix bug when calc offset & end whether locate in
 cd49615 common/obj_bencher.cc: use more readable constant instead of magic number
 9acb00e ceph.spec.in: do not install Ceph RA on systemd platforms
 acfc06d ceph.spec.in: use %{_prefix} for ocf instead of hardcoding /usr
+e13a4b1 test: common/test_weighted_priority_queue Add Some More Corner Cases
+33f68b8 Revert "test/common/test_weighted_priority_queue Fix the unit tests since the"
+de001bd osd: common/WeightedPriorityQueue.h Re-add Round Robin between classes
 a2d58fc rgw: TempURL of Swift URL does support Content-Disposition override.
 c857fcf rgw: ONLY refactor dump_object_metadata() of rgw_rest_swift.cc.
 26f9d69 rgw: add support for overriding Content-Disposition in GET of Swift API.

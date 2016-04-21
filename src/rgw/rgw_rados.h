@@ -1181,7 +1181,7 @@ struct RGWPeriodMap
   void encode(bufferlist& bl) const;
   void decode(bufferlist::iterator& bl);
 
-  int update(const RGWZoneGroup& zonegroup);
+  int update(const RGWZoneGroup& zonegroup, CephContext *cct);
 
   void dump(Formatter *f) const;
   void decode_json(JSONObj *obj);
@@ -1690,6 +1690,15 @@ struct RGWObjectCtx {
 class Finisher;
 class RGWAsyncRadosProcessor;
 
+template <class T>
+class RGWChainedCacheImpl;
+
+struct bucket_info_entry {
+  RGWBucketInfo info;
+  real_time mtime;
+  map<string, bufferlist> attrs;
+};
+
 class RGWRados
 {
   friend class RGWGC;
@@ -1797,6 +1806,9 @@ protected:
   RWLock handle_lock;
   std::map<pthread_t, int> rados_map;
 
+  using RGWChainedCacheImpl_bucket_info_entry = RGWChainedCacheImpl<bucket_info_entry>;
+  RGWChainedCacheImpl_bucket_info_entry *binfo_cache;
+
   librados::IoCtx gc_pool_ctx;        // .rgw.gc
   librados::IoCtx objexp_pool_ctx;
 
@@ -1831,6 +1843,7 @@ public:
                max_bucket_id(0), cct(NULL),
                rados(NULL), next_rados_handle(0),
                num_rados_handles(0), handle_lock("rados_handle_lock"),
+               binfo_cache(NULL),
                pools_initialized(false),
                quota_handler(NULL),
                finisher(NULL),
@@ -1904,7 +1917,7 @@ public:
     if (id == get_zonegroup().get_id()) {
       zonegroup = get_zonegroup();
     } else if (!current_period.get_id().empty()) {
-      ret = current_period.get_zonegroup(zonegroup, zonegroup_id);
+      ret = current_period.get_zonegroup(zonegroup, id);
     }
     return ret;
   }
