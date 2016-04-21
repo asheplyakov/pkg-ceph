@@ -106,14 +106,6 @@ static string RGW_DEFAULT_PERIOD_ROOT_POOL = "rgw.root";
 
 #define dout_subsys ceph_subsys_rgw
 
-struct bucket_info_entry {
-  RGWBucketInfo info;
-  real_time mtime;
-  map<string, bufferlist> attrs;
-};
-
-static RGWChainedCacheImpl<bucket_info_entry> binfo_cache;
-
 void RGWDefaultZoneGroupInfo::dump(Formatter *f) const {
   encode_json("default_zonegroup", default_zonegroup, f);
 }
@@ -1147,7 +1139,7 @@ int RGWPeriod::add_zonegroup(const RGWZoneGroup& zonegroup)
   if (zonegroup.realm_id != realm_id) {
     return 0;
   }
-  int ret = period_map.update(zonegroup);
+  int ret = period_map.update(zonegroup, cct);
   if (ret < 0) {
     ldout(cct, 0) << "ERROR: updating period map: " << cpp_strerror(-ret) << dendl;
     return ret;
@@ -1184,9 +1176,8 @@ int RGWPeriod::update()
       master_zone = zg.master_zone;
     }
 
-    int ret = period_map.update(zg);
+    int ret = period_map.update(zg, cct);
     if (ret < 0) {
-      ldout(cct, 0) << "ERROR: updating period map: " << cpp_strerror(-ret) << dendl;
       return ret;
     }
   }
@@ -1203,6 +1194,14 @@ int RGWPeriod::reflect()
     if (r < 0) {
       ldout(cct, 0) << "ERROR: failed to store zonegroup info for zonegroup=" << iter.first << ": " << cpp_strerror(-r) << dendl;
       return r;
+    }
+    if (zg.is_master_zonegroup()) {
+      // set master as default if no default exists
+      r = zg.set_as_default(true);
+      if (r == 0) {
+        ldout(cct, 1) << "Set the period's master zonegroup " << zg.get_id()
+            << " as the default" << dendl;
+      }
     }
   }
   return 0;
@@ -1549,12 +1548,7 @@ int RGWZoneParams::init(CephContext *cct, RGWRados *store, bool setup_obj, bool 
     name = cct->_conf->rgw_zone;
   }
 
-  int ret = RGWSystemMetaObj::init(cct, store, setup_obj, old_format);
-  if (ret < 0) {
-    return ret;
-  }
-
-  return ret;
+  return RGWSystemMetaObj::init(cct, store, setup_obj, old_format);
 }
 
 int RGWZoneParams::read_default_id(string& default_id, bool old_format)
@@ -1620,9 +1614,11 @@ void RGWPeriodMap::decode(bufferlist::iterator& bl) {
   }
 }
 
-int RGWPeriodMap::update(const RGWZoneGroup& zonegroup)
+int RGWPeriodMap::update(const RGWZoneGroup& zonegroup, CephContext *cct)
 {
   if (zonegroup.is_master && (!master_zonegroup.empty() && zonegroup.get_id() != master_zonegroup)) {
+    ldout(cct,0) << "Error updating periodmap, multiple master zonegroups configured "<< dendl;
+    ldout(cct,0) << "master zonegroup: " << master_zonegroup << " and  " << zonegroup.get_id() <<dendl;
     return -EINVAL;
   }
   map<string, RGWZoneGroup>::iterator iter = zonegroups.find(zonegroup.get_id());
@@ -3123,6 +3119,7 @@ void RGWRados::finalize()
   if (cr_registry) {
     cr_registry->put();
   }
+  delete binfo_cache;
 }
 
 /** 
@@ -3719,7 +3716,8 @@ int RGWRados::init_complete()
   }
   ldout(cct, 20) << __func__ << " bucket index max shards: " << bucket_index_max_shards << dendl;
 
-  binfo_cache.init(this);
+  binfo_cache = new RGWChainedCacheImpl<bucket_info_entry>;
+  binfo_cache->init(this);
 
   return ret;
 }
@@ -6975,6 +6973,12 @@ bool RGWRados::is_meta_master()
   */
 bool RGWRados::is_syncing_bucket_meta(rgw_bucket& bucket)
 {
+
+  /* no current period  */
+  if (current_period.get_id().empty()) {
+    return false;
+  }
+
   /* zonegroup is not master zonegroup */
   if (!get_zonegroup().is_master) {
     return false;
@@ -7130,7 +7134,7 @@ int RGWRados::Object::complete_atomic_modification()
   cls_rgw_obj_chain chain;
   store->update_gc_chain(obj, state->manifest, &chain);
 
-  string tag = (state->obj_tag.c_str() ? state->obj_tag.c_str() : "");
+  string tag = state->obj_tag.to_str();
   int ret = store->gc->send_chain(chain, tag, false);  // do it async
 
   return ret;
@@ -10366,7 +10370,7 @@ int RGWRados::get_bucket_info(RGWObjectCtx& obj_ctx,
   string bucket_entry;
   rgw_make_bucket_entry_name(tenant, bucket_name, bucket_entry);
 
-  if (binfo_cache.find(bucket_entry, &e)) {
+  if (binfo_cache->find(bucket_entry, &e)) {
     info = e.info;
     if (pattrs)
       *pattrs = e.attrs;
@@ -10436,7 +10440,7 @@ int RGWRados::get_bucket_info(RGWObjectCtx& obj_ctx,
 
 
   /* chain to both bucket entry point and bucket instance */
-  if (!binfo_cache.put(this, bucket_entry, &e, cache_info_entries)) {
+  if (!binfo_cache->put(this, bucket_entry, &e, cache_info_entries)) {
     ldout(cct, 20) << "couldn't put binfo cache entry, might have raced with data changes" << dendl;
   }
 

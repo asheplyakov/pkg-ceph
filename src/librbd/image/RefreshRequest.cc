@@ -42,6 +42,7 @@ RefreshRequest<I>::~RefreshRequest() {
   assert(m_object_map == nullptr);
   assert(m_journal == nullptr);
   assert(m_refresh_parent == nullptr);
+  assert(!m_blocked_writes);
 }
 
 template <typename I>
@@ -459,7 +460,7 @@ Context *RefreshRequest<I>::send_v2_open_journal() {
         m_image_ctx.journal == nullptr) {
       m_image_ctx.aio_work_queue->set_require_lock_on_read();
     }
-    return send_v2_finalize_refresh_parent();
+    return send_v2_block_writes();
   }
 
   // implies journal dynamically enabled since ExclusiveLock will init
@@ -488,6 +489,47 @@ Context *RefreshRequest<I>::handle_v2_open_journal(int *result) {
     save_result(result);
   }
 
+  return send_v2_block_writes();
+}
+
+template <typename I>
+Context *RefreshRequest<I>::send_v2_block_writes() {
+  bool disabled_journaling = false;
+  {
+    RWLock::RLocker snap_locker(m_image_ctx.snap_lock);
+    disabled_journaling = ((m_features & RBD_FEATURE_EXCLUSIVE_LOCK) != 0 &&
+                           (m_features & RBD_FEATURE_JOURNALING) == 0 &&
+                           m_image_ctx.journal != nullptr);
+  }
+
+  if (!disabled_journaling) {
+    return send_v2_finalize_refresh_parent();
+  }
+
+  CephContext *cct = m_image_ctx.cct;
+  ldout(cct, 10) << this << " " << __func__ << dendl;
+
+  // we need to block writes temporarily to avoid in-flight journal
+  // writes
+  m_blocked_writes = true;
+  Context *ctx = create_context_callback<
+    RefreshRequest<I>, &RefreshRequest<I>::handle_v2_block_writes>(this);
+
+  RWLock::RLocker owner_locker(m_image_ctx.owner_lock);
+  m_image_ctx.aio_work_queue->block_writes(ctx);
+  return nullptr;
+}
+
+template <typename I>
+Context *RefreshRequest<I>::handle_v2_block_writes(int *result) {
+  CephContext *cct = m_image_ctx.cct;
+  ldout(cct, 10) << this << " " << __func__ << ": r=" << *result << dendl;
+
+  if (*result < 0) {
+    lderr(cct) << "failed to block writes: " << cpp_strerror(*result)
+               << dendl;
+    save_result(result);
+  }
   return send_v2_finalize_refresh_parent();
 }
 
@@ -581,7 +623,8 @@ Context *RefreshRequest<I>::send_v2_shut_down_exclusive_lock() {
   CephContext *cct = m_image_ctx.cct;
   ldout(cct, 10) << this << " " << __func__ << dendl;
 
-  // exclusive lock feature was dynamically disabled
+  // exclusive lock feature was dynamically disabled. in-flight IO will be
+  // flushed and in-flight requests will be canceled before releasing lock
   using klass = RefreshRequest<I>;
   Context *ctx = create_context_callback<
     klass, &klass::handle_v2_shut_down_exclusive_lock>(this);
@@ -598,6 +641,11 @@ Context *RefreshRequest<I>::handle_v2_shut_down_exclusive_lock(int *result) {
     lderr(cct) << "failed to shut down exclusive lock: "
                << cpp_strerror(*result) << dendl;
     save_result(result);
+  }
+
+  {
+    RWLock::WLocker owner_locker(m_image_ctx.owner_lock);
+    assert(m_image_ctx.exclusive_lock == nullptr);
   }
 
   assert(m_exclusive_lock != nullptr);
@@ -639,6 +687,10 @@ Context *RefreshRequest<I>::handle_v2_close_journal(int *result) {
   delete m_journal;
   m_journal = nullptr;
 
+  assert(m_blocked_writes);
+  m_blocked_writes = false;
+
+  m_image_ctx.aio_work_queue->unblock_writes();
   return send_v2_close_object_map();
 }
 
@@ -784,9 +836,11 @@ void RefreshRequest<I>::apply() {
                                    m_image_ctx.snap_lock)) {
       // disabling exclusive lock will automatically handle closing
       // object map and journaling
-      std::swap(m_exclusive_lock, m_image_ctx.exclusive_lock);
+      assert(m_exclusive_lock == nullptr);
+      m_exclusive_lock = m_image_ctx.exclusive_lock;
     } else {
       if (m_exclusive_lock != nullptr) {
+        assert(m_image_ctx.exclusive_lock == nullptr);
         std::swap(m_exclusive_lock, m_image_ctx.exclusive_lock);
       }
       if (!m_image_ctx.test_features(RBD_FEATURE_JOURNALING,

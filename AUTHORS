@@ -2,7 +2,6 @@ Aaron Bassett <abassett@gmail.com>
 Abhishek Dixit <dixitabhi@gmail.com>
 Abhishek Lekshmanan <abhishek.lekshmanan@ril.com>
 Abhishek Lekshmanan <abhishek@suse.com>
-Abhishek Lekshmanan <alekshmanan@suse.com>
 Abhishek Varshney <abhishek.varshney@flipkart.com>
 Accela Zhao <accelazh@gmail.com>
 Adam C. Emerson <aemerson@linuxbox.com>
@@ -152,6 +151,7 @@ Erik Logtenberg <erik@logtenberg.eu>
 Erwan Velu <erwan@redhat.com>
 Erwin, Brock A <Brock.Erwin@pnl.gov>
 Esteban Molina-Estolano <eestolan@lanl.gov>
+Etienne Menguy <etienne.menguy@corp.ovh.com>
 Evan Felix <evan.felix@pnnl.gov>
 Evgeniy Firsov <evgeniy.firsov@sandisk.com>
 Fabio Alessandro Locati <fabiolocati@gmail.com>
@@ -229,7 +229,7 @@ Jean-Rémi Deveaux <jeanremi.deveaux@gmail.com>
 Jeff Epstein <jepst79@gmail.com>
 Jeffrey Lu <lzhng2000@aliyun.com>
 Jeff Weber <jweber@cofront.net>
-Jenkins Build Slave User <jenkins-build@trusty-small-unique--a7f82f5f-8832-433e-a632-928924f47e04.localdomain>
+Jenkins Build Slave User <jenkins-build@trusty-small-unique--68a2c286-dc75-4669-822d-28cd109dc3c5.localdomain>
 Jenkins <jenkins@ceph.com>
 Jens-Christian Fischer <jens-christian.fischer@switch.ch>
 Jeremy Qian <vanpire110@163.com>
@@ -315,6 +315,7 @@ Luis Pabón <lpabon@redhat.com>
 Luis Periquito <luis.periquito@ocado.com>
 Lukasz Jagiello <lukasz@wikia-inc.com>
 Luo Kexue <luo.kexue@zte.com.cn>
+Luo Runbing <runsisi@zte.com.cn>
 Lu Shi <shi.lu@h3c.com>
 Ma Jianpeng <jianpeng.ma@intel.com>
 Marcel Lauhoff <lauhoff@uni-mainz.de>
@@ -410,6 +411,7 @@ Robin H. Johnson <robin.johnson@dreamhost.com>
 Robin Tang <robintang974@gmail.com>
 Rohan Mars <code@rohanmars.com>
 Roi Dayan <roid@mellanox.com>
+Roland Mechler <rmechler@cisco.com>
 Roman Haritonov <reclosedev@gmail.com>
 Ron Allred <rallred@itrefined.com>
 Rongze Zhu <zrzhit@gmail.com>
@@ -419,7 +421,6 @@ Ross Turk <rturk@redhat.com>
 Ruben Kerkhof <ruben@rubenkerkhof.com>
 Ruifeng Yang <yangruifeng.09209@h3c.com>
 runsisi <runsisi@hust.edu.cn>
-runsisi <runsisi@zte.com.cn>
 Rust Shen <rustinpeace@163.com>
 Rutger ter Borg <rutger@terborg.net>
 Sage Weil <sage@inktank.com>
@@ -518,7 +519,7 @@ Weijun Duan <duanweijun@h3c.com>
 Wei Luo <luowei@yahoo-inc.com>
 Wei Luo <weilluo@tencent.com>
 Wei Qian <weiq@dtdream.com>
-weiqiaomiao <wei.qiaomiao@zte.com.cn>
+Wei Qiaomiao <wei.qiaomiao@zte.com.cn>
 Wenjun Huang <wenjunhuang@tencent.com>
 Wesley Spikes <wesley.spikes@dreamhost.com>
 Wido den Hollander <wido@42on.com>

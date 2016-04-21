@@ -74,7 +74,7 @@ restorecon -R /var/log/radosgw > /dev/null 2>&1;
 # common
 #################################################################################
 Name:		ceph
-Version:	10.1.2
+Version:	10.2.0
 Release:	0%{?dist}
 Epoch:		1
 Summary:	User space components of the Ceph file system
@@ -1040,6 +1040,7 @@ if ! getent passwd ceph >/dev/null ; then
     CEPH_USER_ID_OPTION=""
     getent passwd $CEPH_USER_ID >/dev/null || CEPH_USER_ID_OPTION="-u $CEPH_USER_ID"
     useradd ceph $CEPH_USER_ID_OPTION -r -g ceph -s /sbin/nologin -c "Ceph daemons" -d %{_localstatedir}/lib/ceph 2>/dev/null || :
+fi
 %endif
 exit 0
 
