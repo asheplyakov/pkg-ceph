@@ -1,4 +1,4 @@
-ceph (10.2.0-0ubuntu1) xenial; urgency=medium
+ceph (10.2.0-0ubuntu0.16.04.1) xenial; urgency=medium
 
   * Ceph Jewel stable release (LP: #1569249).
 
