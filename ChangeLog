@@ -1,3 +1,7 @@
+fa56748 (HEAD) hammer: make dist: include rocksdb sources
+d56bdf9 (tag: v0.94.7) 0.94.7
+76c33de (origin/wip-sam-testing-hammer) OSDMonitor: avoid underflow in reweight-by-utilization if max_change=1
+3c03eee rgw:bucket link now set the bucket.instance acl
 77a4ed0 ceph.spec.in: disable lttng and babeltrace explicitly
 97f474f cls_rbd: protect against excessively large object maps
 ac3569c (sa/hammer-wip-15336, hammer-wip-15336) hammer: monclient: avoid key renew storm on clock skew
