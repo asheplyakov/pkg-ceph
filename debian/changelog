@@ -1,14 +1,15 @@
-ceph (0.94.7~g20160415+255+g45e73f3-1~1.gbp98ebca) UNRELEASED; urgency=low
+ceph (0.94.7~g20160513+1+gfa56748-1~1.gbp9b4914) UNRELEASED; urgency=low
 
-  ** SNAPSHOT build @98ebcac076088d2f18c9348a7a8058aa827c337b **
+  ** SNAPSHOT build @9b4914c1bf145b96b0c71c3be543ce12e291ec79 **
 
   * Package 0.94.7 pre-release snapshot
   * debian/rules: set consistent hardening flags for compiler and linker
   * debian/patches:
     - drop ObjBencher-seq_read_bench-fix-locking-errors.patch,
       included upstream
+    - add rbd snap rollback data loss bugfix
 
- -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Fri, 15 Apr 2016 14:16:24 +0300
+ -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Fri, 13 May 2016 17:19:30 +0300
 
 ceph (0.94.6-1) experimental; urgency=medium
 
