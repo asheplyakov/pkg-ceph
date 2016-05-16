@@ -1,9 +1,11 @@
-ceph (0.94.7~g20160513+1+gfa56748-1~1.gbp9b4914) UNRELEASED; urgency=low
+ceph (0.94.7~g20160513+1+gfa56748-1~2.gbpf044c2) UNRELEASED; urgency=low
 
-  ** SNAPSHOT build @9b4914c1bf145b96b0c71c3be543ce12e291ec79 **
+  ** SNAPSHOT build @f044c2963aaee43a3616ecbe794f4e0b6d849f28 **
 
   * Package 0.94.7 pre-release snapshot
   * debian/rules: set consistent hardening flags for compiler and linker
+  * debian/ceph.install: skip ceph-deploy.8 to avoid file conflict with
+    ceph-deploy
   * debian/patches:
     - drop ObjBencher-seq_read_bench-fix-locking-errors.patch,
       included upstream
