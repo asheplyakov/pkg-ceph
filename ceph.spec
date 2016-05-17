@@ -15,7 +15,7 @@
 
 Name:		ceph
 Version:	0.94.7
-Release:	1.gfa56748%{?dist}
+Release:	0%{?dist}
 Epoch:		1
 Summary:	User space components of the Ceph file system
 License:	LGPL-2.1 and CC-BY-SA-1.0 and GPL-2.0 and BSL-1.0 and GPL-2.0-with-autoconf-exception and BSD-3-Clause and MIT
