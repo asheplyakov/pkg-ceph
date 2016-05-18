@@ -1,6 +1,4 @@
-ceph (0.94.7-1~1.gbp4097e2) UNRELEASED; urgency=low
-
-  ** SNAPSHOT build @4097e2f3d29484667125f4d319caf602d29d707e **
+ceph (0.94.7-1) experimental; urgency=low
 
   * Package 0.94.7 upstream release, most notable changes:
     - librbd: possible QEMU deadlock after creating image snapshots,
@@ -24,7 +22,7 @@ ceph (0.94.7-1~1.gbp4097e2) UNRELEASED; urgency=low
     - added rgw #15812 fix (`No Last-Modified, Content-Size and
       X-Object-Manifest headers if no segments in DLO manifest')
 
- -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Wed, 18 May 2016 10:17:24 +0300
+ -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Wed, 18 May 2016 17:05:28 +0300
 
 ceph (0.94.6-1) experimental; urgency=medium
 
