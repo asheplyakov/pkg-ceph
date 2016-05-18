@@ -1,17 +1,30 @@
-ceph (0.94.7~g20160513+1+gfa56748-1~2.gbpf044c2) UNRELEASED; urgency=low
+ceph (0.94.7-1~1.gbp4097e2) UNRELEASED; urgency=low
 
-  ** SNAPSHOT build @f044c2963aaee43a3616ecbe794f4e0b6d849f28 **
+  ** SNAPSHOT build @4097e2f3d29484667125f4d319caf602d29d707e **
 
-  * Package 0.94.7 pre-release snapshot
+  * Package 0.94.7 upstream release, most notable changes:
+    - librbd: possible QEMU deadlock after creating image snapshots,
+      http://tracker.ceph.com/issues/14988
+    - librbd: flattening an rbd image with active IO can lead to hang,
+      http://tracker.ceph.com/issues/14092
+    - osd: fixed corruption when min_read_recency_for_promote > 1,
+      http://tracker.ceph.com/issues/15171
+    - mon: implement reweight-by-utilization feature,
+      https://github.com/ceph/ceph/pull/8026
+    See http://ceph.com/releases/v0-94-7-hammer-released for more details
   * debian/rules: set consistent hardening flags for compiler and linker
   * debian/ceph.install: skip ceph-deploy.8 to avoid file conflict with
     ceph-deploy
   * debian/patches:
     - drop ObjBencher-seq_read_bench-fix-locking-errors.patch,
       included upstream
-    - add rbd snap rollback data loss bugfix
+    - keep ceph-disk-fix-symlinks-handling.patch, the problem won't be
+      fixed in upstream 0.94.x
+    - add rbd #14512 fix (data loss on clone, snapshot, rollback)
+    - added rgw #15812 fix (`No Last-Modified, Content-Size and
+      X-Object-Manifest headers if no segments in DLO manifest')
 
- -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Fri, 13 May 2016 17:19:30 +0300
+ -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Wed, 18 May 2016 10:17:24 +0300
 
 ceph (0.94.6-1) experimental; urgency=medium
 
