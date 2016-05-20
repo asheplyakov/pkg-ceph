@@ -1,13 +1,11 @@
 Source: ceph
 Section: admin
 Priority: optional
-Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
+Maintainer: MOS Ceph team <mos-ceph@mirantis.com>
 XSBC-Original-Maintainer: Ceph Maintainers <ceph-maintainers@lists.ceph.com>
-Uploaders: Laszlo Boszormenyi (GCS) <gcs@debian.org>,
-           James Page <jamespage@debian.org>
 Homepage: http://ceph.com/
-Vcs-Git: git://anonscm.debian.org/pkg-ceph/ceph.git
-Vcs-Browser: http://anonscm.debian.org/gitweb/?p=pkg-ceph/ceph.git
+Vcs-Git: https://review.fuel-infra.org/p/packages/xenial/ceph.git
+Vcs-Browser: https://review.fuel-infra.org/gitweb?p=packages/xenial/ceph.git;a=summary
 Build-Depends: cython,
                debhelper (>= 9~),
                default-jdk,
