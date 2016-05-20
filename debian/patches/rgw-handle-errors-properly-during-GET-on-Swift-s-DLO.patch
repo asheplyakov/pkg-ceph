@@ -1,0 +1,24 @@
+From: Radoslaw Zarzynski <rzarzynski@mirantis.com>
+Date: Tue, 10 May 2016 17:45:20 +0200
+Subject: rgw: handle errors properly during GET on Swift's DLO.
+
+Backport: Jewel, Hammer
+Fixes: http://tracker.ceph.com/issues/15812
+Signed-off-by: Radoslaw Zarzynski <rzarzynski@mirantis.com>
+(cherry picked from commit 5ef0202a86a1e4cb56bd29d926555f114a1acdd8)
+---
+ src/rgw/rgw_op.cc | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/rgw/rgw_op.cc b/src/rgw/rgw_op.cc
+index d050821..0c0ada4 100644
+--- a/src/rgw/rgw_op.cc
++++ b/src/rgw/rgw_op.cc
+@@ -1225,6 +1225,7 @@ void RGWGetObj::execute()
+     if (op_ret < 0) {
+       ldout(s->cct, 0) << "ERROR: failed to handle user manifest ret="
+ 		       << op_ret << dendl;
++      goto done_err;
+     }
+     return;
+   }
