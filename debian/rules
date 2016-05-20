@@ -41,18 +41,11 @@ else
   extraopts += --without-tcmalloc
 endif
 
-# Setup max parallel builds based on architecture
-ifeq ($(DEB_HOST_ARCH), arm64)
-  maxparallel=1
-else
-  maxparallel=2
-endif
-
 # Use system provided libs3
 extraopts += --with-system-libs3
 
 %:
-	dh $@ --with javahelper,python2,autoreconf,systemd --parallel --max-parallel=$(maxparallel)
+	dh $@ --with javahelper,python2,autoreconf,systemd --parallel
 
 # use --as-needed only if supported by dh-autoreconf (to simplify backporting)
 DH_AS_NEEDED=$(shell dpkg --compare-versions $$(dpkg --status dh-autoreconf | grep Version | cut -d' ' -f2) ge 6 && echo --as-needed)
