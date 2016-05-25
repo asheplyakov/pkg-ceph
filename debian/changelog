@@ -1,3 +1,10 @@
+ceph (10.2.1-0ubuntu1) UNRELEASED; urgency=medium
+
+  * New upstream version (LP: #1585660).
+    - d/p/drop-user-group-osd-prestart.patch: Dropped, included upstream.
+
+ -- James Page <james.page@ubuntu.com>  Wed, 25 May 2016 15:10:55 +0100
+
 ceph (10.2.0-0ubuntu0.16.04.1) xenial; urgency=medium
 
   * Ceph Jewel stable release (LP: #1563714).
