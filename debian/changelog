@@ -2,6 +2,8 @@ ceph (10.2.1-0ubuntu0.16.04.1) UNRELEASED; urgency=medium
 
   * New upstream stable release (LP: #1585660).
     - d/p/drop-user-group-osd-prestart.patch: Dropped, included upstream.
+  * d/rules,ceph-common.install: Ensure that /etc/default/ceph is a file
+    and not a directory (LP: #1587516).
 
  -- James Page <james.page@ubuntu.com>  Wed, 25 May 2016 15:29:41 +0100
 

@@ -1,6 +1,7 @@
 etc/bash_completion.d/rados
 etc/bash_completion.d/rbd
 etc/ceph/rbdmap
+etc/default/ceph
 udev/50-rbd.rules /lib/udev/rules.d
 usr/bin/ceph
 usr/bin/ceph-authtool
