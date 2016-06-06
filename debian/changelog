@@ -1,11 +1,11 @@
-ceph (10.2.1-0ubuntu1) UNRELEASED; urgency=medium
+ceph (10.2.1-0ubuntu1) yakkety; urgency=medium
 
   * New upstream version (LP: #1585660).
     - d/p/drop-user-group-osd-prestart.patch: Dropped, included upstream.
   * d/rules,ceph-common.install: Ensure that /etc/default/ceph is a file
     and not a directory (LP: #1587516).
 
- -- James Page <james.page@ubuntu.com>  Wed, 25 May 2016 15:10:55 +0100
+ -- James Page <james.page@ubuntu.com>  Mon, 06 Jun 2016 09:23:35 +0100
 
 ceph (10.2.0-0ubuntu1) yakkety; urgency=medium
 
