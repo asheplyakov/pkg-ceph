@@ -45,8 +45,6 @@ finish_mv_ceph_defaults() {
     if [ -f "/etc/default/ceph" ]; then
         mv -f "/etc/default/ceph" "/etc/default/ceph.dpkg-new"
     fi
-    # Preserve /etc/default/ceph directory just in case users
-    # have added additional files to it.
     mv -f "/etc/default/ceph.dpkg-backup/ceph" "/etc/default/ceph"
 }
 
@@ -101,6 +99,11 @@ case "$1" in
        if [ -n "$2" ] &&
           dpkg --compare-versions -- "$2" le-nl 10.2.1-0ubuntu1; then
            finish_mv_ceph_defaults
+	   # Preserve dpkg-backup directory if it still contains
+	   # any file
+           if ! ls -1qA "/etc/default/ceph.dpkg-backup" | grep -q . ; then
+              rm -rf "/etc/default/ceph.dpkg-backup"
+           fi
        fi
     ;;
     abort-upgrade|abort-remove|abort-deconfigure)
