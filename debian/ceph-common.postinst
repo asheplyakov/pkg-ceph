@@ -37,9 +37,9 @@ set -e
 # Custom dpkg-maintscript-helper type function to deal with
 # nested /etc/default/ceph/ceph
 finish_mv_ceph_defaults() {
-    rm -rf "/etc/default/ceph/ceph.dpkg-remove"
+    rm -rf "/etc/default/ceph.dpkg-old/ceph.dpkg-remove"
 
-    [ -e "/etc/default/ceph/ceph" ] || return 0
+    [ -e "/etc/default/ceph.dpkg-old/ceph" ] || return 0
 
     echo "Preserving user changes to /etc/default/ceph (renamed from /etc/default/ceph/ceph)..."
     if [ -f "/etc/default/ceph" ]; then
@@ -47,7 +47,6 @@ finish_mv_ceph_defaults() {
     fi
     # Preserve /etc/default/ceph directory just in case users
     # have added additional files to it.
-    mv -f "/etc/default/ceph" "/etc/default/ceph.dpkg-old"
     mv -f "/etc/default/ceph.dpkg-old/ceph" "/etc/default/ceph"
 }
 
