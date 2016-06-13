@@ -34,6 +34,22 @@ set -e
 # Groups that the user will be added to, if undefined, then none.
 [ -z "$SERVER_ADDGROUP" ] && SERVER_ADDGROUP=
 
+finish_mv_ceph_defaults() {
+    rm -rf "/etc/default/ceph.dpkg-remove"
+
+    [ -e "/etc/default/ceph/ceph" ] || return 0
+
+    echo "Preserving user changes to /etc/default/ceph (renamed from /etc/default/ceph/ceph)..."
+    if [ -f "/etc/default/ceph" ]; then
+        mv -f "/etc/default/ceph" "/etc/default/ceph.dpkg-new"
+    fi
+    # Move ceph default file via staging location to allow deletion
+    # of nested ceph directory
+    mv -f "/etc/default/ceph/ceph" "/etc/default/ceph.dpkg-staging"
+    rm -rf "/etc/default/ceph"
+    mv -f "/etc/default/ceph.dpkg-staging" "/etc/default/ceph"
+}
+
 case "$1" in
     configure)
        # create user to avoid running server as root
@@ -80,6 +96,12 @@ case "$1" in
        # create /run/ceph.  fail softly if systemd isn't present or
        # something.
        [ -x /bin/systemd-tmpfiles ] && systemd-tmpfiles --create || true
+
+       # Complete renames of /etc/default/ceph
+       if [ -n "$2" ] &&
+          dpkg --compare-versions -- "$2" le-nl 10.2.1-0ubuntu1; then
+           finish_mv_ceph_defaults
+       fi
     ;;
     abort-upgrade|abort-remove|abort-deconfigure)
 	:
