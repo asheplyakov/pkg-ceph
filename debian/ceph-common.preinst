@@ -11,6 +11,7 @@ prepare_mv_ceph_defaults() {
         sed -n -e "\'^ /etc/default/ceph/ceph ' { s/ obsolete$//; s/.* //; p }")"
     if [ "$md5sum" = "$old_md5sum" ]; then
         mv -f "/etc/default/ceph/ceph" "/etc/default/ceph/ceph.dpkg-remove"
+        mv -f "/etc/default/ceph" "/etc/default/ceph.dpkg-old"
     fi
 }
 
