@@ -1,4 +1,4 @@
-ceph (10.2.1-0ubuntu0.16.04.1) UNRELEASED; urgency=medium
+ceph (10.2.1-0ubuntu0.16.04.1) xenial; urgency=medium
 
   * New upstream stable release (LP: #1585660).
     - d/p/drop-user-group-osd-prestart.patch: Dropped, included upstream.
@@ -9,7 +9,7 @@ ceph (10.2.1-0ubuntu0.16.04.1) UNRELEASED; urgency=medium
       /etc/default/ceph/ceph -> /etc/default/ceph is handled correctly
       and that any end-user changes are preserved.
 
- -- James Page <james.page@ubuntu.com>  Wed, 25 May 2016 15:29:41 +0100
+ -- James Page <james.page@ubuntu.com>  Mon, 13 Jun 2016 20:55:09 +0100
 
 ceph (10.2.0-0ubuntu0.16.04.1) xenial; urgency=medium
 
