@@ -1,10 +1,10 @@
-ceph (10.2.1-0ubuntu2) UNRELEASED; urgency=medium
+ceph (10.2.1-0ubuntu2) yakkety; urgency=medium
 
   * d/ceph-common.{preinst,postinst,postrm}: Ensure that rename of
     /etc/default/ceph/ceph -> /etc/default/ceph is handled correctly
     and that any end-user changes are preserved (LP: #1587516).
 
- -- James Page <james.page@ubuntu.com>  Mon, 13 Jun 2016 10:55:26 +0100
+ -- James Page <james.page@ubuntu.com>  Mon, 13 Jun 2016 20:53:52 +0100
 
 ceph (10.2.1-0ubuntu1) yakkety; urgency=medium
 
