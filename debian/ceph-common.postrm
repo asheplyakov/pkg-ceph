@@ -19,10 +19,12 @@ set -e
 # the debian-policy package
 
 
+# Custom dpkg-maintscript-helper type function to deal with
+# nested /etc/default/ceph/ceph
 abort_mv_ceph_defaults() {
-    if [ -e "/etc/default/ceph.dpkg-remove" ]; then
+    if [ -e "/etc/default/ceph/ceph.dpkg-remove" ]; then
         echo "Reinstalling /etc/default/ceph/ceph that was moved away"
-        mv "/etc/default/ceph.dpkg-remove" "/etc/default/ceph"
+        mv "/etc/default/ceph/ceph.dpkg-remove" "/etc/default/ceph/ceph"
     fi
 }
 
