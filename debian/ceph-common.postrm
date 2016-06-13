@@ -19,6 +19,13 @@ set -e
 # the debian-policy package
 
 
+abort_mv_ceph_defaults() {
+    if [ -e "/etc/default/ceph.dpkg-remove" ]; then
+        echo "Reinstalling /etc/default/ceph/ceph that was moved away"
+        mv "/etc/default/ceph.dpkg-remove" "/etc/default/ceph"
+    fi
+}
+
 case "$1" in
     remove)
     ;;
@@ -28,7 +35,14 @@ case "$1" in
 	rm -rf /etc/ceph
     ;;
 
-    upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+    abort-install|abort-upgrade)
+        if [ -n "$2" ] &&
+           dpkg --compare-versions -- "$2" le-nl 10.2.1-0ubuntu1; then
+            abort_mv_ceph_defaults
+        fi
+    ;;
+
+    upgrade|failed-upgrade|disappear)
     ;;
 
     *)
