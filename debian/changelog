@@ -2,6 +2,8 @@ ceph (10.2.2-0ubuntu0.16.04.1) xenial; urgency=medium
 
   * New upstream stable release (LP: #1585660).
     - d/p/drop-user-group-osd-prestart.patch: Dropped, included upstream.
+    - d/ceph.install: Drop install of 60-ceph-partuuid-workaround.rules, no
+      longer needed and not shipped by upstream.
   * Rename /etc/default/ceph/ceph -> /etc/default/ceph (LP: #1587516):
     - d/rules,ceph-common.install: Ensure that /etc/default/ceph is a file
       and not a directory.
