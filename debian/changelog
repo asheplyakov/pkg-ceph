@@ -1,6 +1,7 @@
 ceph (10.2.2-0ubuntu1) UNRELEASED; urgency=medium
 
   * New upstream version.
+  * d/control: Bumped Standards-Version to 3.9.8, no changes.
 
  -- James Page <james.page@ubuntu.com>  Thu, 16 Jun 2016 11:27:22 +0100
 
