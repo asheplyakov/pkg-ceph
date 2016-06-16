@@ -1,3 +1,9 @@
+ceph (10.2.2-0ubuntu1) UNRELEASED; urgency=medium
+
+  * New upstream version.
+
+ -- James Page <james.page@ubuntu.com>  Thu, 16 Jun 2016 11:27:22 +0100
+
 ceph (10.2.1-0ubuntu2) yakkety; urgency=medium
 
   * d/ceph-common.{preinst,postinst,postrm}: Ensure that rename of
