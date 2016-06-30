@@ -1,38 +1,22 @@
 ## install from source tree
 debian/etc/pm/sleep.d/*    /etc/pm/sleep.d/
 etc/bash_completion.d/ceph
-udev/95-ceph-osd.rules lib/udev/rules.d
-usr/bin/ceph-bluefs-tool
-usr/bin/ceph-clsinfo
 usr/bin/ceph-debugpack
-usr/bin/ceph-mon
-usr/bin/ceph-objectstore-tool
-usr/bin/ceph-osd
-usr/bin/ceph-rest-api
 usr/bin/ceph-run
 usr/bin/crushtool
 usr/bin/monmaptool
 usr/bin/osdmaptool
-usr/lib/*/ceph/ceph-osd-prestart.sh    /usr/lib/ceph/
 usr/lib/*/ceph/ceph_common.sh
 usr/lib/*/ceph/erasure-code/libec_*.so
 usr/lib/*/rados-classes/*.so
 usr/lib/python*/dist-packages/ceph_detect_init*
-usr/lib/python*/dist-packages/ceph_disk*
-usr/lib/python*/dist-packages/ceph_rest_api.py
 usr/sbin/ceph-create-keys
 usr/sbin/ceph-detect-init
-usr/sbin/ceph-disk
 usr/share/doc/ceph/sample.ceph.conf
 usr/share/doc/ceph/sample.fetch_config
-usr/share/man/man8/ceph-clsinfo.8
 usr/share/man/man8/ceph-create-keys.8
 usr/share/man/man8/ceph-debugpack.8
 usr/share/man/man8/ceph-detect-init.8
-usr/share/man/man8/ceph-disk.8
-usr/share/man/man8/ceph-mon.8
-usr/share/man/man8/ceph-osd.8
-usr/share/man/man8/ceph-rest-api.8
 usr/share/man/man8/ceph-run.8
 usr/share/man/man8/crushtool.8
 usr/share/man/man8/monmaptool.8

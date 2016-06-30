@@ -117,25 +117,24 @@ override_dh_installinit:
 	install -m0644 systemd/ceph.target debian/ceph-common/lib/systemd/system
 	install -d -m0755 debian/ceph-common/usr/lib/tmpfiles.d
 	install -m 0644 -D systemd/ceph.tmpfiles.d debian/ceph-common/usr/lib/tmpfiles.d/ceph.conf
-	# systemd:ceph
-	install -d -m0755 debian/ceph/lib/systemd/system
-	install -m0644 systemd/ceph-mon@.service debian/ceph/lib/systemd/system
-	install -m0644 systemd/ceph-create-keys@.service debian/ceph/lib/systemd/system
-	install -m0644 systemd/ceph-osd@.service debian/ceph/lib/systemd/system
-	install -m0644 systemd/ceph-disk@.service debian/ceph/lib/systemd/system
-	sed -i s./etc/sysconfig/./etc/default/.g debian/ceph/lib/systemd/system/ceph-mon@.service
-	sed -i s./etc/sysconfig/./etc/default/.g debian/ceph/lib/systemd/system/ceph-create-keys@.service
-	sed -i s./etc/sysconfig/./etc/default/.g debian/ceph/lib/systemd/system/ceph-osd@.service
-	sed -i s./etc/sysconfig/./etc/default/.g debian/ceph/lib/systemd/system/ceph-disk@.service
-	# NOTE(jamespage): Install previous ceph-mon/create-keys service from packaging for upgrades
-	install -m0644 debian/lib-systemd/system/ceph-mon.service debian/ceph/lib/systemd/system
-	install -m0644 debian/lib-systemd/system/ceph-create-keys.service debian/ceph/lib/systemd/system
+	# systemd:ceph-base
+	install -d -m0755 debian/ceph-base/lib/systemd/system
+	install -m0644 systemd/ceph-create-keys@.service debian/ceph-base/lib/systemd/system
+	sed -i s./etc/sysconfig/./etc/default/.g debian/ceph-base/lib/systemd/system/ceph-create-keys@.service
+	# systemd:ceph-mon
+	install -d -m0755 debian/ceph-mon/lib/systemd/system
+	install -m0644 systemd/ceph-mon@.service debian/ceph-mon/lib/systemd/system
+	sed -i s./etc/sysconfig/./etc/default/.g debian/ceph-mon/lib/systemd/system/ceph-mon@.service
+	# systemd:ceph-osd
+	install -d -m0755 debian/ceph-osd/lib/systemd/system
+	install -m0644 systemd/ceph-osd@.service debian/ceph-osd/lib/systemd/system
+	install -m0644 systemd/ceph-disk@.service debian/ceph-osd/lib/systemd/system
+	sed -i s./etc/sysconfig/./etc/default/.g debian/ceph-osd/lib/systemd/system/ceph-osd@.service
+	sed -i s./etc/sysconfig/./etc/default/.g debian/ceph-osd/lib/systemd/system/ceph-disk@.service
 	# systemd:ceph-mds
 	install -d -m0755 debian/ceph-mds/lib/systemd/system
 	install -m0644 systemd/ceph-mds@.service debian/ceph-mds/lib/systemd/system
 	sed -i s./etc/sysconfig/./etc/default/.g debian/ceph-mds/lib/systemd/system/ceph-mds@.service
-	# NOTE(jamespage): Install previous ceph-mds service from packaging for upgrades
-	install -m0644 debian/lib-systemd/system/ceph-mds.service debian/ceph-mds/lib/systemd/system
 	# systemd:radosgw
 	install -d -m0755 debian/radosgw/lib/systemd/system
 	install -m0644 systemd/ceph-radosgw@.service debian/radosgw/lib/systemd/system
