@@ -1,3 +1,10 @@
+ceph (10.2.2-0ubuntu2) UNRELEASED; urgency=medium
+
+  * d/ceph.install,d/etc/*: Drop pm based power management scripts; they
+    are not used under systemd (LP: #1455097).
+
+ -- James Page <james.page@ubuntu.com>  Thu, 30 Jun 2016 10:52:37 +0100
+
 ceph (10.2.2-0ubuntu1) yakkety; urgency=medium
 
   * New upstream version (LP: #1585660):

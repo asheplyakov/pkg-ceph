@@ -1,5 +1,4 @@
 ## install from source tree
-debian/etc/pm/sleep.d/*    /etc/pm/sleep.d/
 etc/bash_completion.d/ceph
 udev/95-ceph-osd.rules lib/udev/rules.d
 usr/bin/ceph-bluefs-tool
