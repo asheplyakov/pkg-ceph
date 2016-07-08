@@ -5,6 +5,9 @@ ceph (10.2.2-0ubuntu2) UNRELEASED; urgency=medium
   * d/*: Split ceph-osd and ceph-mon into separate binary packages and add
     new ceph-base binary package inline with upstream packaging changes
     (LP: #1596063).
+  * d/rules,*.{postinst,prerm}: Drop install and management of upstart
+    configuration files; this package version onwards will only ever
+    target >= Xenial, which is a systemd baseline.
 
  -- James Page <james.page@ubuntu.com>  Thu, 30 Jun 2016 10:52:37 +0100
 

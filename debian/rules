@@ -87,28 +87,6 @@ override_dh_auto_install:
 override_dh_installinit:
 	dh_installinit --no-start
 	dh_installinit -pceph-common --no-start --name=rbdmap
-	# Install upstart configurations using dh_installinit
-	for conf in `ls -1 src/upstart/ceph*.conf | grep -v mds`; do \
-        name=`basename $$conf | cut -d . -f 1`; \
-        cp -v $$conf debian/ceph.$$name.upstart; \
-        dh_installinit -pceph --no-start --name=$$name; \
-    done
-	for conf in `ls -1 src/upstart/ceph-mds*.conf`; do \
-        name=`basename $$conf | cut -d . -f 1`; \
-        cp -v $$conf debian/ceph-mds.$$name.upstart; \
-        dh_installinit -pceph-mds --no-start --name=$$name; \
-    done
-	for conf in `ls -1 src/upstart/radosgw*.conf`; do \
-        name=`basename $$conf | cut -d . -f 1`; \
-        [ $$name = "radosgw" ] && name="radosgw-instance";\
-        cp -v $$conf debian/radosgw.$$name.upstart; \
-        dh_installinit -pradosgw --no-start --name=$$name; \
-    done
-	for conf in `ls -1 src/upstart/ceph-rbd-mirror*.conf`; do \
-		name=`basename $$conf | cut -d . -f 1`; \
-		cp -v $$conf debian/rbd-mirror.$$name.upstart; \
-		dh_installinit -prbd-mirror --no-start --name=$$name; \
-	done
 	# install the systemd stuff manually since we have funny service names
 	# and need to update the paths in all of the files post install
 	# systemd:ceph-common
@@ -118,17 +96,17 @@ override_dh_installinit:
 	install -m 0644 -D systemd/ceph.tmpfiles.d debian/ceph-common/usr/lib/tmpfiles.d/ceph.conf
 	# systemd:ceph
 	install -d -m0755 debian/ceph/lib/systemd/system
-	install -m0644 systemd/ceph-mon@.service debian/ceph/lib/systemd/system
-	install -m0644 systemd/ceph-create-keys@.service debian/ceph/lib/systemd/system
-	install -m0644 systemd/ceph-osd@.service debian/ceph/lib/systemd/system
-	install -m0644 systemd/ceph-disk@.service debian/ceph/lib/systemd/system
-	sed -i s./etc/sysconfig/./etc/default/.g debian/ceph/lib/systemd/system/ceph-mon@.service
-	sed -i s./etc/sysconfig/./etc/default/.g debian/ceph/lib/systemd/system/ceph-create-keys@.service
-	sed -i s./etc/sysconfig/./etc/default/.g debian/ceph/lib/systemd/system/ceph-osd@.service
-	sed -i s./etc/sysconfig/./etc/default/.g debian/ceph/lib/systemd/system/ceph-disk@.service
+	install -m0644 systemd/ceph-mon@.service debian/ceph-mon/lib/systemd/system
+	install -m0644 systemd/ceph-create-keys@.service debian/ceph-base/lib/systemd/system
+	install -m0644 systemd/ceph-osd@.service debian/ceph-osd/lib/systemd/system
+	install -m0644 systemd/ceph-disk@.service debian/ceph-osd/lib/systemd/system
+	sed -i s./etc/sysconfig/./etc/default/.g debian/ceph-mon/lib/systemd/system/ceph-mon@.service
+	sed -i s./etc/sysconfig/./etc/default/.g debian/ceph-base/lib/systemd/system/ceph-create-keys@.service
+	sed -i s./etc/sysconfig/./etc/default/.g debian/ceph-osd/lib/systemd/system/ceph-osd@.service
+	sed -i s./etc/sysconfig/./etc/default/.g debian/ceph-osd/lib/systemd/system/ceph-disk@.service
 	# NOTE(jamespage): Install previous ceph-mon/create-keys service from packaging for upgrades
-	install -m0644 debian/lib-systemd/system/ceph-mon.service debian/ceph/lib/systemd/system
-	install -m0644 debian/lib-systemd/system/ceph-create-keys.service debian/ceph/lib/systemd/system
+	install -m0644 debian/lib-systemd/system/ceph-mon.service debian/ceph-mon/lib/systemd/system
+	install -m0644 debian/lib-systemd/system/ceph-create-keys.service debian/ceph-base/lib/systemd/system
 	# systemd:ceph-mds
 	install -d -m0755 debian/ceph-mds/lib/systemd/system
 	install -m0644 systemd/ceph-mds@.service debian/ceph-mds/lib/systemd/system

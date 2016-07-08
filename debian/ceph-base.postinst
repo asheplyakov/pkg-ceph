@@ -31,14 +31,6 @@ set -e
 case "$1" in
 	configure)
 		rm -f /etc/init/ceph.conf
-		if [ -x /sbin/start ]; then
-			invoke-rc.d ceph-all start || {
-				RESULT=$?
-				if [ $RESULT != 100 ]; then
-					exit $RESULT
-				fi
-			}
-		fi
 		for DIR in `ls -1 /var/lib/ceph` ; do
 		    if ! dpkg-statoverride --list /var/lib/ceph/$DIR >/dev/null; then
 			if [ -d /run/systemd/system ] && [ $DIR = 'mon' ]; then
