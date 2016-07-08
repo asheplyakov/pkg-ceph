@@ -1,4 +1,4 @@
-lib/udev/rules.d/95-ceph-osd.rules
+udev/95-ceph-osd.rules lib/udev/rules.d
 usr/sbin/ceph-disk
 usr/sbin/ceph-disk-udev
 usr/bin/ceph-clsinfo
