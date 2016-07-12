@@ -95,7 +95,9 @@ override_dh_installinit:
 	install -d -m0755 debian/ceph-common/usr/lib/tmpfiles.d
 	install -m 0644 -D systemd/ceph.tmpfiles.d debian/ceph-common/usr/lib/tmpfiles.d/ceph.conf
 	# systemd:ceph
-	install -d -m0755 debian/ceph/lib/systemd/system
+	install -d -m0755 debian/ceph-base/lib/systemd/system
+	install -d -m0755 debian/ceph-mon/lib/systemd/system
+	install -d -m0755 debian/ceph-osd/lib/systemd/system
 	install -m0644 systemd/ceph-mon@.service debian/ceph-mon/lib/systemd/system
 	install -m0644 systemd/ceph-create-keys@.service debian/ceph-base/lib/systemd/system
 	install -m0644 systemd/ceph-osd@.service debian/ceph-osd/lib/systemd/system
