@@ -64,7 +64,9 @@ XS-Testsuite: autopkgtest
 
 Package: ceph
 Architecture: linux-any
-Depends: ceph-mon (= ${binary:Version}), ceph-osd (= ${binary:Version})
+Depends: ceph-mon (= ${binary:Version}),
+         ceph-osd (= ${binary:Version}),
+         ${misc:Depends}
 Suggests: ceph-mds (= ${binary:Version})
 Description: distributed storage and file system
  Ceph is a massively scalable, open-source, distributed
