@@ -62,14 +62,6 @@ override_dh_autoreconf:
 override_dh_auto_configure:
 	dh_auto_configure -- $(extraopts)
 
-override_dh_auto_build:
-	dh_auto_build
-	cp -v src/upstart/rbdmap.conf debian/ceph-common.rbdmap.upstart
-
-override_dh_auto_clean:
-	dh_auto_clean
-	rm -fv debian/*.upstart
-
 override_dh_auto_install:
 	dh_auto_install --destdir=$(CURDIR)/debian/tmp
 	# NOTE: manually install python modules to avoid virtualenvs
@@ -86,7 +78,8 @@ override_dh_auto_install:
 
 override_dh_installinit:
 	dh_installinit --no-start
-	dh_installinit -pceph-common --no-start --name=rbdmap
+	dh_installinit -pceph-common --name=rbdmap --no-start
+	dh_installinit -pceph-base --name ceph --no-start
 	# install the systemd stuff manually since we have funny service names
 	# and need to update the paths in all of the files post install
 	# systemd:ceph-common
@@ -138,7 +131,10 @@ override_dh_systemd_start:
 
 override_dh_strip:
 	dh_strip -pceph --dbg-package=ceph-dbg
+	dh_strip -pceph-base --dbg-package=ceph-base-dbg
 	dh_strip -pceph-mds --dbg-package=ceph-mds-dbg
+	dh_strip -pceph-mon --dbg-package=ceph-mon-dbg
+	dh_strip -pceph-osd --dbg-package=ceph-osd-dbg
 	dh_strip -pceph-fuse --dbg-package=ceph-fuse-dbg
 	dh_strip -prbd-fuse --dbg-package=rbd-fuse-dbg
 	dh_strip -prbd-mirror --dbg-package=rbd-mirror-dbg
