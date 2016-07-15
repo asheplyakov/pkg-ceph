@@ -1,3 +1,10 @@
+ceph (10.2.2-0ubuntu3) UNRELEASED; urgency=medium
+
+  * d/rules,control: Drop -dbg packages and let Ubuntu builds take care of
+    ddeb generation instead.
+
+ -- James Page <james.page@ubuntu.com>  Fri, 15 Jul 2016 12:21:42 +0100
+
 ceph (10.2.2-0ubuntu2) yakkety; urgency=medium
 
   * d/ceph.install,d/etc/*: Drop pm based power management scripts as they
