@@ -1,0 +1,87 @@
+From: Loic Dachary <ldachary@redhat.com>
+Date: Thu, 23 Jun 2016 09:23:09 +0200
+Subject: udev: always populate /dev/disk/by-parttypeuuid
+
+ceph-disk activate-all walks /dev/disk/by-parttypeuuid at boot time. It
+is not necessary when udev fires ADD event for each partition and
+95-ceph-osd.rules gets a chance to activate a ceph disk or journal.
+
+There are various reasons why udev ADD events may not be fired at
+boot (for instance Debian Jessi 8.5 never does it and CentOS 7.2 seems
+to be racy in that regard when a LVM root is being used).
+
+Populating /dev/disk/by-parttypeuuid fixes ceph-disk activate-all that
+would not work without it. And it guarantees disks are activated at boot
+time regardless of wether udev fires ADD events at the right time (or at
+all).
+
+The new udev file is a partial resurection of the
+60-ceph-partuuid-workaround-rules that was removed by
+9f77244b8e0782921663e52005b725cca58a8753. It is given a name that
+reflects its new purpose.
+
+Fixes http://tracker.ceph.com/issues/16351
+
+Signed-off-by: Loic Dachary <loic@dachary.org>
+
+Cherry-picked from commit 35004a628b2969d8b2f1c02155bb235165a1d809
+Conflicts:
+
+* debian/rules: drop, not necessary
+* debian/ceph-osd.install: skip, should be applied to debian/ceph.install
+* ceph.spec.in: skip, we don't build rpms
+---
+ Makefile.am                        |  1 +
+ udev/60-ceph-by-parttypeuuid.rules | 31 +++++++++++++++++++++++++++++++
+ 2 files changed, 32 insertions(+)
+ create mode 100644 udev/60-ceph-by-parttypeuuid.rules
+
+diff --git a/Makefile.am b/Makefile.am
+index 6fa1a00..a7f0e3e 100644
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -15,6 +15,7 @@ EXTRA_DIST += \
+ 	etc/sysconfig/SuSEfirewall2.d/services/ceph-mon \
+ 	etc/sysconfig/SuSEfirewall2.d/services/ceph-osd-mds \
+ 	udev/50-rbd.rules \
++	udev/60-ceph-by-parttypeuuid.rules \
+ 	udev/95-ceph-osd.rules \
+ 	share/known_hosts_drop.ceph.com \
+ 	share/id_dsa_drop.ceph.com \
+diff --git a/udev/60-ceph-by-parttypeuuid.rules b/udev/60-ceph-by-parttypeuuid.rules
+new file mode 100644
+index 0000000..1fe8fc5
+--- /dev/null
++++ b/udev/60-ceph-by-parttypeuuid.rules
+@@ -0,0 +1,31 @@
++#
++# Make sure /dev/disk/by-parttypeuuid is populated because
++# ceph-disk activate-all relies on it.
++#
++
++# forward scsi device event to corresponding block device
++ACTION=="change", SUBSYSTEM=="scsi", ENV{DEVTYPE}=="scsi_device", TEST=="block", ATTR{block/*/uevent}="change"
++
++ACTION=="remove", GOTO="persistent_storage_end_two"
++
++SUBSYSTEM!="block", GOTO="persistent_storage_end_two"
++
++# skip rules for inappropriate block devices
++KERNEL=="fd*|mtd*|nbd*|gnbd*|btibm*|md*", GOTO="persistent_storage_end_two"
++
++# ignore partitions that span the entire disk
++TEST=="whole_disk", GOTO="persistent_storage_end_two"
++
++# for partitions import parent information
++ENV{DEVTYPE}=="partition", IMPORT{parent}="ID_*"
++
++# skip unpartitioned removable media devices from drivers which do not send "change" events
++ENV{DEVTYPE}=="disk", KERNEL!="sd*|sr*", ATTR{removable}=="1", GOTO="persistent_storage_end_two"
++
++# probe filesystem metadata of disks
++KERNEL!="sr*", IMPORT{program}="/sbin/blkid -o udev -p $tempnode"
++
++# NEW: by-parttypeuuid links (type.id)
++ENV{ID_PART_ENTRY_SCHEME}=="gpt", ENV{ID_PART_ENTRY_TYPE}=="?*", ENV{ID_PART_ENTRY_UUID}=="?*", SYMLINK+="disk/by-parttypeuuid/$env{ID_PART_ENTRY_TYPE}.$env{ID_PART_ENTRY_UUID}"
++
++LABEL="persistent_storage_end_two"
