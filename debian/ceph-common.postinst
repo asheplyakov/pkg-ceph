@@ -97,7 +97,7 @@ case "$1" in
 
        # Complete renames of /etc/default/ceph
        if [ -n "$2" ] &&
-          dpkg --compare-versions -- "$2" le-nl 10.2.0-0ubuntu0.16.04.1; then
+          dpkg --compare-versions -- "$2" le-nl 10.2.2-0ubuntu0.16.04.2; then
            finish_mv_ceph_defaults
 	   # Preserve dpkg-backup directory if it still contains
 	   # any file

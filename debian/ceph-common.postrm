@@ -40,7 +40,7 @@ case "$1" in
 
     abort-install|abort-upgrade)
         if [ -n "$2" ] &&
-           dpkg --compare-versions -- "$2" le-nl 10.2.0-0ubuntu0.16.04.1; then
+           dpkg --compare-versions -- "$2" le-nl 10.2.2-0ubuntu0.16.04.2; then
             abort_mv_ceph_defaults
         fi
     ;;

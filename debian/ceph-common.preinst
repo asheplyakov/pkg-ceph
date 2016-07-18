@@ -18,7 +18,7 @@ prepare_mv_ceph_defaults() {
 case "$1" in
     upgrade|install)
         if [ -d /etc/default/ceph ] && [ -n "$2" ] &&
-           dpkg --compare-versions -- "$2" le-nl 10.2.0-0ubuntu0.16.04.1; then
+           dpkg --compare-versions -- "$2" le-nl 10.2.2-0ubuntu0.16.04.2; then
             prepare_mv_ceph_defaults
         fi
     ;;
