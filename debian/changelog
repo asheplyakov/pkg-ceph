@@ -1,3 +1,10 @@
+ceph (10.2.2-0ubuntu4) yakkety; urgency=medium
+
+  * d/rules: Drop override_dh_strip from .PHONY to ensure files actually
+    get stripped.
+
+ -- James Page <james.page@ubuntu.com>  Wed, 20 Jul 2016 09:26:41 +0100
+
 ceph (10.2.2-0ubuntu3) yakkety; urgency=medium
 
   * d/rules,control: Drop -dbg packages and let Ubuntu builds take care of
