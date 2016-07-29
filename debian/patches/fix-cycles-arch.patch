@@ -6,7 +6,7 @@ Forwarded: no
 
 --- a/src/common/Cycles.cc
 +++ b/src/common/Cycles.cc
-@@ -56,6 +56,10 @@ void Cycles::init()
+@@ -57,6 +57,10 @@
    if (rdtsc() == 0)
      return;
  

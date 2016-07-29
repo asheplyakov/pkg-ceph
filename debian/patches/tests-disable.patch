@@ -5,7 +5,7 @@ Description: disable tests that depend on network...
 
 --- a/src/test/Makefile.am
 +++ b/src/test/Makefile.am
-@@ -62,6 +62,7 @@ bin_DEBUGPROGRAMS += ceph_bench_log
+@@ -63,6 +63,7 @@
  
  ## Unit tests
  
@@ -13,17 +13,17 @@ Description: disable tests that depend on network...
  check_SCRIPTS += \
  	test/ceph_objectstore_tool.py \
  	test/test-ceph-helpers.sh \
-@@ -87,6 +88,7 @@ check_SCRIPTS += \
- 	test/mon/mon-handle-forward.sh \
+@@ -94,6 +95,7 @@
  	test/libradosstriper/rados-striper.sh \
- 	test/test_objectstore_memstore.sh
+ 	test/test_objectstore_memstore.sh \
+         test/test_pidfile.sh
 +endif
  
  EXTRA_DIST += \
- 	$(srcdir)/test/python/ceph-disk/setup.py \
+ 	$(srcdir)/test/python/brag-client/setup.py \
 --- a/configure.ac
 +++ b/configure.ac
-@@ -1382,6 +1382,13 @@ AC_LANG_POP([C++])
+@@ -1349,6 +1349,13 @@
  
  AM_CONDITIONAL(WITH_BUILD_TESTS, test "$WITH_BUILD_TESTS" = "1")
  
