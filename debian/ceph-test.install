@@ -1,3 +1,4 @@
+usr/bin/ceph-client-debug /usr/lib/ceph/bin
 usr/bin/ceph-coverage /usr/lib/ceph/bin
 usr/bin/ceph-kvstore-tool /usr/lib/ceph/bin
 usr/bin/ceph-monstore-tool /usr/lib/ceph/bin
