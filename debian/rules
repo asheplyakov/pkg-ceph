@@ -105,6 +105,11 @@ override_dh_installinit:
         cp -v $$conf debian/radosgw.$$name.upstart; \
         dh_installinit -pradosgw --no-start --name=$$name; \
     done
+	for conf in `ls -1 src/upstart/ceph-rbd-mirror*.conf`; do \
+		name=`basename $$conf | cut -d . -f 1`; \
+		cp -v $$conf debian/rbd-mirror.$$name.upstart; \
+		dh_installinit -prbd-mirror --no-start --name=$$name; \
+	done
 	# install the systemd stuff manually since we have funny service names
 	# and need to update the paths in all of the files post install
 	# systemd:ceph-common
@@ -137,6 +142,10 @@ override_dh_installinit:
 	install -d -m0755 debian/radosgw/lib/systemd/system
 	install -m0644 systemd/ceph-radosgw@.service debian/radosgw/lib/systemd/system
 	sed -i s./etc/sysconfig/./etc/default/.g debian/radosgw/lib/systemd/system/ceph-radosgw@.service
+	# systemd:rbd-mirror
+	install -d -m0755 debian/rbd-mirror/lib/systemd/system
+	install -m0644 systemd/ceph-rbd-mirror@.service debian/rbd-mirror/lib/systemd/system
+	sed -i s./etc/sysconfig/./etc/default/.g debian/rbd-mirror/lib/systemd/system/ceph-rbd-mirror@.service
 
 override_dh_systemd_enable:
 	## Do not enable services to match `dh_installinit --no-start`
