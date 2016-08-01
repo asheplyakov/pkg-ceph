@@ -1,13 +1,19 @@
-ceph (10.2.2-1~1.gbpe89b4f) UNRELEASED; urgency=low
+ceph (10.2.2-1~u14.04~2.gbp5c8ffa) UNRELEASED; urgency=low
 
-  ** SNAPSHOT build @e89b4f1ca2742b500de5abaeb042c3b98ee00f17 **
+  ** SNAPSHOT build @5c8ffaab159c1801960612e0d7aeceff715440b0 **
 
+  [ James Page ]
+  * d/ceph-common.{preinst,postinst,postrm}: Fix version checks in maintainer scripts to ensure that /etc/default/ceph actually gets installed on upgrade (LP: #1587516).
+  * releasing package ceph version 10.2.2-0ubuntu0.16.04.2
+
+  [ Alexey Sheplyakov ]
   * Adjusted gbp.conf for backport to Ubuntu 14.04
   * Lift the maxparallel=2 limitation
   * Fix link failure due to inconsistent compiler/linker flags
   * d/patches: added "rgw: handle errors properly during GET on Swift's DLO"
   * d/control: update vcs location and maintainers info
   * debian: added MOS related helper script
+  * Fix ceph-disk activate-all
 
  -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Fri, 24 Jun 2016 16:29:46 +0300
 
