@@ -1,3 +1,9 @@
+ceph (10.2.2-0ubuntu5) yakkety; urgency=medium
+
+  * No-change rebuild for boost soname change.
+
+ -- Matthias Klose <doko@ubuntu.com>  Thu, 04 Aug 2016 08:13:41 +0000
+
 ceph (10.2.2-0ubuntu4) yakkety; urgency=medium
 
   * d/rules: Drop override_dh_strip from .PHONY to ensure files actually
