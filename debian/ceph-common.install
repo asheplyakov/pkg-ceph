@@ -31,3 +31,4 @@ usr/share/man/man8/ceph.8
 usr/share/man/man8/rados.8
 usr/share/man/man8/rbd-replay*.8
 usr/share/man/man8/rbd.8
+usr/share/man/man8/rbdmap.8
