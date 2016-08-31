@@ -8,7 +8,7 @@ AC_PREREQ(2.59)
 # VERSION define is not used by the code.  It gets a version string
 # from 'git describe'; see src/ceph_ver.[ch]
 
-AC_INIT([ceph], [0.94.7], [ceph-devel@vger.kernel.org])
+AC_INIT([ceph], [0.94.8], [ceph-devel@vger.kernel.org])
 
 # Create release string.  Used with VERSION for RPMs.
 RPM_RELEASE=0
@@ -51,6 +51,7 @@ darwin*)
 	;;
 linux*)
 	linux="yes"
+	CFLAGS="-D_LARGEFILE64_SOURCE ${CFLAGS}"
 	;;
 freebsd*)
 	freebsd="yes"
@@ -255,7 +256,6 @@ AX_C_PRETTY_FUNC
 # Checks for libraries.
 ACX_PTHREAD
 
-AC_CHECK_LIB([uuid], [uuid_parse], [true], AC_MSG_FAILURE([libuuid not found]))
 
 # rbd {map,unmap,showmapped} dependencies, Linux only
 if test x"$linux" = x"yes" -a x"$with_rbd" = x"yes"; then
@@ -882,6 +882,17 @@ AC_CHECK_LIB(boost_thread-mt, main, [],
 BOOST_THREAD_LIBS="${LIBS}"
 LIBS="${saved_LIBS}"
 AC_SUBST(BOOST_THREAD_LIBS)
+
+# boost-random
+BOOST_RANDOM_LIBS=""
+saved_LIBS="${LIBS}"
+LIBS=""
+AC_CHECK_LIB(boost_random, main, [],
+    [AC_CHECK_LIB(boost_random, main, [],
+        AC_MSG_FAILURE(["Boost random library not found."]))])
+BOOST_RANDOM_LIBS="${LIBS}"
+LIBS="${saved_LIBS}"
+AC_SUBST(BOOST_RANDOM_LIBS)
 
 #
 # Check for boost_program_options library (defines BOOST_PROGRAM_OPTIONS_LIBS).

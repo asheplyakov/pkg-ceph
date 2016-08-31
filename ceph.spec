@@ -14,7 +14,7 @@
 %{!?_udevrulesdir: %global _udevrulesdir /lib/udev/rules.d}
 
 Name:		ceph
-Version:	0.94.7
+Version:	0.94.8
 Release:	0%{?dist}
 Epoch:		1
 Summary:	User space components of the Ceph file system
@@ -50,6 +50,7 @@ BuildRequires: sharutils
 %endif
 BuildRequires:	gcc-c++
 BuildRequires:	boost-devel
+BuildRequires:  boost-random
 %if 0%{defined suse_version}
 BuildRequires:  libbz2-devel
 %else
@@ -63,7 +64,6 @@ BuildRequires:	libaio-devel
 BuildRequires:	libcurl-devel
 BuildRequires:	libedit-devel
 BuildRequires:	libxml2-devel
-BuildRequires:	libuuid-devel
 BuildRequires:	libblkid-devel >= 2.17
 BuildRequires:	libudev-devel
 BuildRequires:	libtool
@@ -466,7 +466,7 @@ done
 %endif
 
 ./autogen.sh
-MY_CONF_OPT=""
+MY_CONF_OPT="$CEPH_EXTRA_CONFIGURE_ARGS"
 
 MY_CONF_OPT="$MY_CONF_OPT --with-radosgw"
 
