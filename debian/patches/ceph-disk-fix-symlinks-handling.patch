@@ -22,7 +22,7 @@ Signed-off-by: Alexey Sheplyakov <asheplyakov@mirantis.com>
  1 file changed, 44 insertions(+), 12 deletions(-)
 
 diff --git a/src/ceph-disk b/src/ceph-disk
-index 7620ff8..49bc978 100755
+index 0525945..0e12e04 100755
 --- a/src/ceph-disk
 +++ b/src/ceph-disk
 @@ -88,6 +88,7 @@ DMCRYPT_TOBE_UUID =         '89c57f98-2fe5-4dc0-89c1-5ec00ceff2be'

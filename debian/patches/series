@@ -21,5 +21,3 @@ vivid-does-systemd.patch
 
 ## MOS
 ceph-disk-fix-symlinks-handling.patch
-hammer-rbd-snap-rollback-restore-the-link-to-parent.patch
-rgw-handle-errors-properly-during-GET-on-Swift-s-DLO.patch
