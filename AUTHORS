@@ -5,6 +5,7 @@ Abhishek Lekshmanan <abhishek.lekshmanan@ril.com>
 Accela Zhao <accelazh@gmail.com>
 Adam C. Emerson <aemerson@linuxbox.com>
 Adam Crume <adamcrume@gmail.com>
+Adam Kupczyk <akupczyk@mirantis.com>
 Adam Manzanares <nmtadam@gmail.com>
 Adam Spiers <aspiers@suse.com>
 Adam Twardowski <adam.twardowski@gmail.com>
@@ -146,6 +147,7 @@ Guangliang Zhao <guangliang@unitedstack.com>
 Guang Yang <yguang@yahoo-inc.com>
 guce <guce@h3c.com>
 Guilhem Lettron <guilhem@lettron.fr>
+Gu Zhongyan <guzhongyan@360.cn>
 Haifeng Liu <haifeng@yahoo-inc.com>
 Hannes Reinecke <hare@suse.de>
 Hannu Valtonen <hannu.valtonen@ormod.com>
@@ -165,6 +167,7 @@ Ian Holsman <lists@holsman.net>
 Igor Fedotov <ifedotov@mirantis.com>
 Ilya Dryomov <idryomov@redhat.com>
 Ilya Dryomov <ilya.dryomov@inktank.com>
+Ira Cooper <ira@redhat.com>
 islepnev <islepnev@gmail.com>
 James Page <james.page@ubuntu.com>
 James Ryan Cresawn <jrcresawn@gmail.com>
@@ -174,6 +177,7 @@ Jason Dillaman <dillaman@redhat.com>
 Javier M. Mellid <jmunhoz@igalia.com>
 Jeff Weber <jweber@cofront.net>
 Jenkins Build Slave User <jenkins-build@jenkins-slave-wheezy.localdomain>
+Jenkins Build Slave User <jenkins-build@trusty-huge--349f4788-0128-42d9-aca5-78c0aad008e6.localdomain>
 Jenkins Build Slave User <jenkins-build@trusty-small--296081f3-e7b1-46b1-96c2-d6b655cf71d3.localdomain>
 Jenkins <jenkins@ceph.com>
 Jenkins <jenkins@inktank.com>
@@ -267,9 +271,11 @@ Moritz Möller <mm@mxs.de>
 Mouad Benchchaoui <m.benchchaoui@x-ion.de>
 Mykola Golub <mgolub@mirantis.com>
 Mykola Golub <mgolub@zhuzha.mirantis.lviv.net>
+Mykola Golub <to.my.trociny@gmail.com>
 nairolf21 <fcoste21@gmail.com>
 Nathan Cutler <ncutler@suse.com>
 Nathan Cutler <ncutler@suse.cz>
+Nathan Cutler <presnypreklad@gmail.com>
 Neil Horman <nhorman@tuxdriver.com>
 Neil Levine <neil.levine@inktank.com>
 Nikola Kotur <kotnick@gmail.com>
@@ -303,6 +309,7 @@ rca <bertosmailbox@gmail.com>
 renhwztetecs <rhwlyw@163.com>
 riccardo80 <riccardo80@29311d96-e01e-0410-9327-a35deaab8ce9>
 Riccardo Ferretti <rferrett@soe.ucsc.edu>
+Richard W.M. Jones <rjones@redhat.com>
 ritz303 <ritz_303@yahoo.com>
 Roald J. van Loon <roald@roaldvanloon.nl>
 RobertJansen1 <r.jansen86@gmail.com>
@@ -312,6 +319,7 @@ Rohan Mars <code@rohanmars.com>
 Roman Haritonov <reclosedev@gmail.com>
 Ron Allred <rallred@itrefined.com>
 Rongze Zhu <zrzhit@gmail.com>
+root <root@ceph-node1.homeoffice.wal-mart.com>
 root <root@phenom.dyweni.com>
 Ross Turk <ross.turk@inktank.com>
 Ross Turk <rturk@redhat.com>
@@ -338,6 +346,7 @@ shawn <cxwshawn@gmail.com>
 Shawn Edwards <lesser.evil@gmail.com>
 shishir gowda <shishir.gowda@sandisk.com>
 shun-s <songshun134@126.com>
+shun-s <song.shun3@zte.com.cn>
 Shu, Xinxin <xinxin.shu@intel.com>
 Shylesh Kumar <shmohan@redhat.com>
 Simone Gotti <simone.gotti@gmail.com>
@@ -384,6 +393,7 @@ Venky Shankar <vshankar@redhat.com>
 Vicente Cheng <freeze.bilsted@gmail.com>
 Vikhyat Umrao <vumrao@redhat.com>
 Viktor Suprun <popsul1993@gmail.com>
+Vitja Makarov <vitja.makarov@gmail.com>
 Volker Assmann <volker@twisted-nerve.de>
 VRan Liu <gliuwr@gmail.com>
 Vu Pham <vu@mellanox.com>
@@ -403,6 +413,7 @@ Xan Peng <xanpeng@gmail.com>
 Xiaowei Chen <cxwshawn@gmail.com>
 Xiaoxi Chen <xiaoxi.chen@intel.com>
 xiexingguo <258156334@qq.com>
+xie xingguo <xie.xingguo@zte.com.cn>
 Xihui He <xihuihe@gmail.com>
 Xing Lin <xinglin@cs.utah.edu>
 Xinze Chi <xinze@xksy.com>

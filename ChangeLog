@@ -1,9 +1,103 @@
-d56bdf9 (HEAD, tag: v0.94.7, origin/hammer) 0.94.7
+838cd35 (HEAD, tag: v0.94.8, origin/hammer) 0.94.8
+5248929 rocksdb: disable tcmalloc if disabled
+fdfcd9b ceph.spec: respect CEPH_EXTRA_CONFIGURE_ARGS
+d5274a3 rgw: fix subuser rm command failure
+f963774 rgw: add a method to purge all associate keys when removing a subuser
+0d4b601 doc: fix by-parttypeuuid in ceph-disk(8) nroff
+a3003f6 rgw: reset return code in when iterating over the bucket the objects
+64211fa rgw: fix compilation
+3e45c6b rgw: add bucket_quota to RGWRegionMap::encode_json
+699b7c8 rgw: Have a flavor of bucket deletion to bypass GC and to trigger object deletions async.
+81aef60 rgw: remove bucket index objects when deleting the bucket
+23498a9 mon/OSDMonitor: avoid potential expensive grace calculation
+1b6f6f2 mon/OSDMonitor: improve reweight_by_utilization() logic
+474abb8 OSDMonitor: drop pg temp from sources other than the current primary
+b31ac2d osd: reset session->osdmap if session is not waiting for a map anymore
+3a30ffc qa: Add test for #13829
+f70e4ad common: Allow config set with negative value
+0498969 log: do not repeat errors to stderr
+2633ec3 mds: disallow 'open truncate' non-regular inode
+3f0fb20 mds: only open non-regular inode with mode FILE_MODE_PIN
+2c18015 rgw: fix multi-delete query param parsing.
+8a39e5e configure: Add -D_LARGEFILE64_SOURCE to Linux build.
+3bb248b replcatedBackend: delete one useless op->mark_started as there are two in ReplicatedBackend::sub_op_modify_impl delete one mark_start event as there are two same op->mark_started  in ReplicatedBackend::sub_op_modify_impl Fixes: http://tracker.ceph.com/issues/16572
+ed4ca7c rgw: Set Access-Control-Allow-Origin to a Asterisk if allowed in a rule
+b78a1be mon: Monitor: validate prefix on handle_command()
+850881c rgw: fix subuser rm command failure
+055427c Pipe: take a ref to existing while we are waiting
+24cc4f9 rgw: check for -ERR_NOT_MODIFIED in rgw_rest_s3.cc
+7dbace5 erasure-code: s/unreocvery/unfound/
+e726f21 test: add test-case for repair unrecovery-ec pg.
+40b1c2b osd: Remove the duplicated func MissingLoc::get_all_missing.
+47d5dfc osd: Fix ec pg repair endless when met unrecover object.
+187d308 uuid: use boost::random:random_device
+174de7f moved to use boost uuid implementation, based on commit 4fe89a7b14c97b2ed7f357132901beb2bdcec551
+5cd922c qa/workunits/rbd: respect RBD_CREATE_ARGS environment variable
+1ac920b rgw: fix identification of canceled operation
+a38f157 rgw: identify racing writes when using copy-if-newer
+02f6d8a rgw: translate http error 304 to appropriate status
+7319d76 rgw: fix if-modified-since boundary
+5e4de5a rgw: add rgwx-copy-if-newer http header
+006ea56 Revert "hammer: Scrub error: 0/1 pinned"
+c294bd3 ReplicatedPG: adjust num_pinned in _delete_oid
+43d1b92 test: Fix grouping of mon_cephdf_commands by moving to MON_TESTS
+300c111 rgw: convert plain object to versioned (with null version) when removing
+4eea92b rgw: handle stripe transition when flushing final pending_data_bl
+f6076dd mds: wrongly treat symlink inode as normal file/dir when symlink inode is stale on kcephfs
+ce313cd rgw: handle errors properly during GET on Swift's DLO.
+410ff15 osdc/Objecter: upper bound watch_check result
+d3eae0a osd: fix omap digest compare when scrub
+dd29310 rgw: keep track of written_objs correctly
+c2ea6db osd: remove all stale osdmaps in handle_osd_map()
+ac0340a osd: populate the trim_thru epoch using MOSDMap.oldest_map
+bb5e015 osd: dump full map bl at 20 when crc doesn't match
+5057c34 obj_bencher: cosmetic display fixes
+6d8ad0e common: Add space between timestamp and "min lat:" in bench output
+3184998 [MON] Fixed calculation of %USED. Now it is shows (space used by all replicas)/(raw space available on OSDs). Before it was (size of pool)/(raw space available on OSDs).
+fed256e mon: add a column 'RAW USED' for ceph df detail
+139691c src/test/objectstore/store_test.cc: fix shards for new tests
+221efb0 doc: s/by-parttype-uuid/by-parttypeuuid/ in ceph-disk
+d56bdf9 (tag: v0.94.7) 0.94.7
+62f4fbe store_test: improve synthetic coverage of the ec stash case
+b6bc9cb store_test: improve synthetic test coverage of long object names
+ec74c12 TestRados: make half the objects have long names
+9d1ee7c LFNIndex::lfn_translate: consider alt attr as well
+6b821cc LFNIndex::created: fix return value with failure injection
+f500435 store_test: add reproducer for #14766
+cbd5aaf osd/PG: update info.stats.* mappings on split
+d1ab71f hammer: rgw: S3: set EncodingType in ListBucketResult
+df4eadc rados: Add units to rados bench output
 76c33de OSDMonitor: avoid underflow in reweight-by-utilization if max_change=1
+d96086a PGLog::rewind_divergent_log: fix rollback_info_trimmed_to before index()
+e79162d TestPGLog: add test for 13965
+fb1b40f osd/Replicated: For CEPH_OSD_OP_WRITE, set data digest.
+f024259 osd/ReplicatedPG: For obj has omap, it mean have omap data or omap header or have both.
+7b3f1da mon/MonClient: fix shutdown race
+ec02d8b PG: set epoch_created and parent_split_bits for child pg
+049bc8a ceph-fuse: double decreased the count to trim caps
+e20df80 osd/ReplicatedPG: make handle_watch_timeout no-op if !active
+3cb72dd mon/OSDMonitor.cc: fix UNINTENDED_INTEGER_DIVISION
+aab3a40 hammer: rbd snap rollback: restore the link to parent
 3c03eee rgw:bucket link now set the bucket.instance acl
+488a787 ECBackend: send subop writes and reads at normal priority
+a2e7ca1 common/Cycles: Do not initialize Cycles globally.
+ca0beef osd/OSD: fix build_past_intervals_parallel
+fce7902 osd: When generating past intervals due to an import end at pg epoch
+2c97cb3 rgw: fix compiling error
+2aa1ea6 rgw: Multipart ListPartsResult ETag quotes
+365f21b tests: be more generous with test timeout
+c722d00 rgw: user quota may not adjust on bucket removal
 77a4ed0 ceph.spec.in: disable lttng and babeltrace explicitly
 97f474f cls_rbd: protect against excessively large object maps
 ac3569c hammer: monclient: avoid key renew storm on clock skew
+20f300e rgw: Do not send a Content-Length header on a 304 response
+e53751d rgw: Do not send a Content-Type on a '304 Not Modified' response
+19dbc25 rgw: dump_status() uses integer
+c79b481 rgw: move status_num initialization into constructor
+ceb8e19 rgw: Do not send a Content-Length header on status 204
+3ecdedd mds: fix stray purging in 'stripe_count > 1' case
+f28477c rgw: do not abort when user passed bad parameters to set quota
+9786394 rgw: do not abort when user passed bad parameters to set metadata
 f8d2abd osd/osd_types: encode pg_pool_t the old way
 720a090 mon: disable gmt_hitset if not supported
 7aec079 osd: do not let OSD_HITSET_GMT reuse the feature bit
@@ -168,6 +262,7 @@ a1fc101 crushtool: send --tree to stdout
 d5ba063 OSDMap: reset osd_primary_affinity shared_ptr when deepish_copy_from
 9e0a165 OSD::consume_map: correctly remove pg shards which are no longer acting
 5a450e6 mon: add mon_config_key prefix when sync full
+b9a4ad9 Fixed the ceph get mdsmap assertion.
 9ab5fd9 rgw-admin: document orphans commands in usage
 0e1378e [backport] rgw: fix wrong etag calculation during POST on S3 bucket.
 5c8d1d7 [backport] rgw: Make RGW_MAX_PUT_SIZE configurable
@@ -16604,7 +16699,7 @@ f69d025 conf: make dup lines override previous value
 5f3ef77 mon: make pool snap creation ops idempotent
 53aa959 objecter: return ENOENT/EEXIST on pool snap delete/create
 507f99e librados: make snap create/destroy handle client-side errors
-3715d20 mon: check for invalid pool snap creates in preprocess_op, too
+3715d205 mon: check for invalid pool snap creates in preprocess_op, too
 640e5fd qa: simple tests for 'ceph osd create|rm' commands
 6f7837a mon: make 'osd rm ...' idempotent
 4788567 qa: simple test for pool create/delete commands
