@@ -1,3 +1,29 @@
+ceph (0.94.8-1~2.gbp332b98) UNRELEASED; urgency=medium
+
+  ** SNAPSHOT build @332b9843640949934fabd080b2d27b8ef5cd60e7 **
+
+  * Package 0.94.8 upstream release, most notable bugfixes:
+    - monitor crashes on a command without a prefix,
+      http://tracker.ceph.com/issues/16297
+      https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2016-5009
+    - pool quota alarm is not in effect,
+      http://tracker.ceph.com/issues/15478
+    - OSD reports ENOTEMPTY and crashes,
+      http://tracker.ceph.com/issues/14766
+    - improved reweight-by-utilization to consider the least used OSDs first,
+      http://tracker.ceph.com/issues/15770
+    - no Last-Modified, Content-Size and X-Object-Manifest headers if no
+      segments in DLO manifest,
+      http://tracker.ceph.com/issues/15812
+  * Added missing build dependency on libboost-random-dev
+  * debian/patches:
+    - drop hammer-rbd-snap-rollback-restore-the-link-to-parent.patch,
+      included upstream
+    - drop patches/rgw-handle-errors-properly-during-GET-on-Swift-s-DLO.patch,
+      included upstream
+
+ -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Wed, 31 Aug 2016 14:05:35 +0300
+
 ceph (0.94.7-1) experimental; urgency=low
 
   * Package 0.94.7 upstream release, most notable changes:
