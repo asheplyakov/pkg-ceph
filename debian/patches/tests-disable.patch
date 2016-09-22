@@ -3,24 +3,14 @@ Forwarded: no
 Author: Dmitry Smirnov <onlyjob@member.fsf.org>
 Description: disable tests that depend on network...
 
---- a/src/test/Makefile.am
-+++ b/src/test/Makefile.am
-@@ -63,6 +63,7 @@ bin_DEBUGPROGRAMS += ceph_bench_log
- 
- ## Unit tests
- 
-+if WITH_CLUSTER_TESTS
- check_SCRIPTS += \
- 	test/ceph_objectstore_tool.py \
- 	test/test-ceph-helpers.sh \
-@@ -94,6 +95,7 @@ check_SCRIPTS += \
- 	test/libradosstriper/rados-striper.sh \
- 	test/test_objectstore_memstore.sh \
-         test/test_pidfile.sh
-+endif
- 
- EXTRA_DIST += \
- 	$(srcdir)/test/python/brag-client/setup.py \
+---
+ configure.ac                      | 7 +++++++
+ src/test/Makefile.am              | 2 ++
+ src/test/erasure-code/Makefile.am | 2 ++
+ 3 files changed, 11 insertions(+)
+
+diff --git a/configure.ac b/configure.ac
+index f715f5a..f044d11 100644
 --- a/configure.ac
 +++ b/configure.ac
 @@ -1349,6 +1349,13 @@ AC_LANG_POP([C++])
@@ -37,6 +27,28 @@ Description: disable tests that depend on network...
  AM_PATH_PYTHON([2.4],
  	[], [AC_MSG_FAILURE([Failed to find Python 2.4 or newer])])
  
+diff --git a/src/test/Makefile.am b/src/test/Makefile.am
+index c865b68..1ff9275 100644
+--- a/src/test/Makefile.am
++++ b/src/test/Makefile.am
+@@ -63,6 +63,7 @@ bin_DEBUGPROGRAMS += ceph_bench_log
+ 
+ ## Unit tests
+ 
++if WITH_CLUSTER_TESTS
+ check_SCRIPTS += \
+ 	test/ceph_objectstore_tool.py \
+ 	test/test-ceph-helpers.sh \
+@@ -95,6 +96,7 @@ check_SCRIPTS += \
+ 	test/test_objectstore_memstore.sh \
+         test/test_pidfile.sh \
+ 	test/test_subman.sh
++endif
+ 
+ EXTRA_DIST += \
+ 	$(srcdir)/test/python/brag-client/setup.py \
+diff --git a/src/test/erasure-code/Makefile.am b/src/test/erasure-code/Makefile.am
+index 3c45c67..b8ff4a0 100644
 --- a/src/test/erasure-code/Makefile.am
 +++ b/src/test/erasure-code/Makefile.am
 @@ -1,9 +1,11 @@
