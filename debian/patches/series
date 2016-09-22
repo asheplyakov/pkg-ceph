@@ -14,10 +14,5 @@ tests-disable.patch
 ## From Ubuntu
 fix-argparse-defaults.patch
 fix-cycles-arch.patch
-rocksdb-flags.patch
 skip-setup.py-makefiles.patch
 disable-openssl-linking.patch
-
-# Mirantis
-rgw-handle-errors-properly-during-GET-on-Swift-s-DLO.patch
-udev-always-populate-dev-disk-by-parttypeuuid.patch
