@@ -1,16 +1,17 @@
-ceph (10.2.2-1~1.gbp7aa836) UNRELEASED; urgency=medium
+ceph (10.2.3-1~3.gbpc75c14) UNRELEASED; urgency=low
 
-  ** SNAPSHOT build @7aa836fc746bb067b941a2cd9e494344a8e601e8 **
+  ** SNAPSHOT build @c75c14773f842639b6a19cb1ce081d779ad7e391 **
 
-  * Adjusted gbp.conf for backport to Ubuntu 16.04
-  * Lift the maxparallel=2 limitation
-  * Fix link failure due to inconsistent compiler/linker flags
-  * d/patches: added "rgw: handle errors properly during GET on Swift's DLO"
-  * d/control: update vcs location and maintainers info
-  * Fix ceph-disk activate-all
-  * debian: added MOS related helper script
+  * New upstream bugfix-only version
+  * debian/patches:
+    - dropped rgw-handle-errors-properly-during-GET-on-Swift-s-DLO.patch,
+      included upstream
+    - dropped rocksdb-flags.patch, included upstream
+    - dropped udev-always-populate-dev-disk-by-parttypeuuid.patch,
+      included upstream
+  * mount.ceph and mount.fuse.ceph moved to debian/tmp/usr/sbin
 
- -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Thu, 28 Jul 2016 15:33:21 +0300
+ -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Thu, 22 Sep 2016 19:09:33 +0300
 
 ceph (10.2.2-0ubuntu0.16.04.2) xenial; urgency=medium
 
