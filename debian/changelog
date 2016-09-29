@@ -1,15 +1,18 @@
-ceph (10.2.3-0ubuntu1) UNRELEASED; urgency=medium
+ceph (10.2.3-0ubuntu1) yakkety; urgency=medium
 
   * New upstream point release (LP: #1628809):
     - d/p/rocksdb-flags.patch: Dropped, included upstream.
     - d/p/*: Refreshed.
+    - d/p/32bit-ftbfs.patch: Cherry pick fix for 32bit arch compat.
+    - d/ceph-{fs-common,fuse}.install: Fix install locations
+      for mount{.fuse}.ceph.
   * Limit the amount of data per chunk in omap push operations to 64k,
     ensuring that OSD threads don't hit timeouts during recovery
     operations (LP: #1628750):
     - d/p/osd-limit-omap-data-in-push-op.patch: Cherry pick fix from
       upstream master branch.
 
- -- James Page <james.page@ubuntu.com>  Thu, 29 Sep 2016 08:43:09 +0100
+ -- James Page <james.page@ubuntu.com>  Thu, 29 Sep 2016 21:44:33 +0100
 
 ceph (10.2.2-0ubuntu5) yakkety; urgency=medium
 
