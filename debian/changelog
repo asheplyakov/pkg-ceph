@@ -1,3 +1,9 @@
+ceph (10.2.3-0ubuntu1) UNRELEASED; urgency=medium
+
+  * New upstream point release (LP: #1628809).
+
+ -- James Page <james.page@ubuntu.com>  Thu, 29 Sep 2016 08:43:09 +0100
+
 ceph (10.2.2-0ubuntu5) yakkety; urgency=medium
 
   * No-change rebuild for boost soname change.
