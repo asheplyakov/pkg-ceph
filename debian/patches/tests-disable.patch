@@ -13,14 +13,15 @@ Description: disable tests that depend on network...
  check_SCRIPTS += \
  	test/ceph_objectstore_tool.py \
  	test/test-ceph-helpers.sh \
-@@ -94,6 +95,7 @@ check_SCRIPTS += \
- 	test/libradosstriper/rados-striper.sh \
- 	test/test_objectstore_memstore.sh \
-         test/test_pidfile.sh
-+endif
+@@ -96,6 +97,8 @@ check_SCRIPTS += \
+         test/test_pidfile.sh \
+ 	test/test_subman.sh
  
++endif
++
  EXTRA_DIST += \
  	$(srcdir)/test/python/brag-client/setup.py \
+ 	$(srcdir)/test/python/brag-client/tox.ini \
 --- a/configure.ac
 +++ b/configure.ac
 @@ -1349,6 +1349,13 @@ AC_LANG_POP([C++])
