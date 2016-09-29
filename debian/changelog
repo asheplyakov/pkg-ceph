@@ -1,6 +1,8 @@
 ceph (10.2.3-0ubuntu0.16.04.1) UNRELEASED; urgency=medium
 
   * New upstream stable release (LP: #1628809).
+    - d/p/*: Refresh.
+    - d/p/rocksdb-flags.patch: Dropped, accepted upstream.
 
  -- James Page <james.page@ubuntu.com>  Thu, 29 Sep 2016 09:28:57 +0100
 
