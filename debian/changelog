@@ -1,4 +1,4 @@
-ceph (10.2.3-0ubuntu0.16.04.1) UNRELEASED; urgency=medium
+ceph (10.2.3-0ubuntu0.16.04.1) xenial; urgency=medium
 
   * New upstream stable release (LP: #1628809).
     - d/p/*: Refresh.
@@ -12,7 +12,7 @@ ceph (10.2.3-0ubuntu0.16.04.1) UNRELEASED; urgency=medium
     - d/p/osd-limit-omap-data-in-push-op.patch: Cherry pick fix from
       upstream master branch.
 
- -- James Page <james.page@ubuntu.com>  Thu, 29 Sep 2016 09:28:57 +0100
+ -- James Page <james.page@ubuntu.com>  Fri, 30 Sep 2016 09:22:50 +0100
 
 ceph (10.2.2-0ubuntu0.16.04.2) xenial; urgency=medium
 
