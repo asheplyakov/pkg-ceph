@@ -1,8 +1,8 @@
-ceph (0.94.8-1~2.gbp332b98) UNRELEASED; urgency=medium
+ceph (0.94.9-1~2.gbp3e69f0) UNRELEASED; urgency=medium
 
-  ** SNAPSHOT build @332b9843640949934fabd080b2d27b8ef5cd60e7 **
+  ** SNAPSHOT build @3e69f074ffd5970e8008aa3dbe662f8fa234db2d **
 
-  * Package 0.94.8 upstream release, most notable bugfixes:
+  * Package 0.94.9 upstream release, most notable bugfixes:
     - monitor crashes on a command without a prefix,
       http://tracker.ceph.com/issues/16297
       https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2016-5009
@@ -15,6 +15,9 @@ ceph (0.94.8-1~2.gbp332b98) UNRELEASED; urgency=medium
     - no Last-Modified, Content-Size and X-Object-Manifest headers if no
       segments in DLO manifest,
       http://tracker.ceph.com/issues/15812
+  * Backported fix of "Data corruption using RBD with caching enabled",
+    http://tracker.ceph.com/issues/17545
+  * Make a mixed 0.94.{6,9} cluster work properly
   * Added missing build dependency on libboost-random-dev
   * debian/patches:
     - drop hammer-rbd-snap-rollback-restore-the-link-to-parent.patch,
@@ -22,7 +25,7 @@ ceph (0.94.8-1~2.gbp332b98) UNRELEASED; urgency=medium
     - drop patches/rgw-handle-errors-properly-during-GET-on-Swift-s-DLO.patch,
       included upstream
 
- -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Wed, 31 Aug 2016 14:05:35 +0300
+ -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Thu, 06 Oct 2016 19:50:27 +0300
 
 ceph (0.94.7-1) experimental; urgency=low
 
