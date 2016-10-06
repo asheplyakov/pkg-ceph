@@ -1,0 +1,466 @@
+From: Alexey Sheplyakov <asheplyakov@mirantis.com>
+Date: Thu, 6 Oct 2016 19:13:00 +0300
+Subject: Remove HITSET_GMT related code so 0.94.{6,9} OSDs/mons can coexist
+
+Revert
+ - "osd: do not let OSD_HITSET_GMT reuse the feature bit"
+ - "osd/osd_types: encode pg_pool_t the old way"
+ - "osd: Decode use_gmt_hitset with a unique version"
+ - "mon: disable gmt_hitset if not supported"
+ - "mon: print use_gmt_hitset in "ceph osd pool get"
+ - "mon: add "ceph osd pool set $pool use_gmt_hitset true" cmd"
+ - "osd: use GMT time for the object name of hitsets"
+
+This reverts commits
+ - 7aec079f8a1bbe75625c438a17bb87e45398568e
+ - f8d2abd2e41c5dd04977f85cc1d6e65853c9a1b2
+ - 370434136ef076c350db3db4fca6489f88f70453
+ - 720a090eb67b3955b0cadb7633c5a28a934171a4
+ - 64bca2a43b34b265621bad2ec1fb980217223847
+ - 87df212cfca33efbbee6376f528cb7d4895d1dc0
+ - 039240418060c9a49298dacc0478772334526dce
+
+Required to allow 0.94.6 OSDs and monitors to inter-operate with 0.94.9 ones.
+
+The commit 039240418060c9a49298dacc0478772334526dce which fixes bug #9732
+breaks upgrade from 0.94.6 (which is shipped with MOS 8.x and 9.[01]) to
+newer versions, see http://tracker.ceph.com/issues/17386 for more details.
+Since MOS does not use cache pools and having a wrong time zone would
+cause multiple problems revert the above mentioned commit (along with
+the ones trying to address the breakage it causes) so a mixed cluster
+can work properly.
+---
+ src/common/config_opts.h    |  1 -
+ src/include/ceph_features.h |  2 --
+ src/mon/MonCommands.h       |  2 +-
+ src/mon/OSDMonitor.cc       | 38 --------------------
+ src/osd/ReplicatedPG.cc     | 27 ++++++--------
+ src/osd/ReplicatedPG.h      |  4 +--
+ src/osd/osd_types.cc        | 85 +++------------------------------------------
+ src/osd/osd_types.h         | 11 +++---
+ 8 files changed, 20 insertions(+), 150 deletions(-)
+
+diff --git a/src/common/config_opts.h b/src/common/config_opts.h
+index c55694e..e773300 100644
+--- a/src/common/config_opts.h
++++ b/src/common/config_opts.h
+@@ -500,7 +500,6 @@ OPTION(osd_client_message_cap, OPT_U64, 100)              // num client messages
+ OPTION(osd_pg_bits, OPT_INT, 6)  // bits per osd
+ OPTION(osd_pgp_bits, OPT_INT, 6)  // bits per osd
+ OPTION(osd_crush_chooseleaf_type, OPT_INT, 1) // 1 = host
+-OPTION(osd_pool_use_gmt_hitset, OPT_BOOL, true) // try to use gmt for hitset archive names if all osds in cluster support it.
+ OPTION(osd_pool_default_crush_rule, OPT_INT, -1) // deprecated for osd_pool_default_crush_replicated_ruleset
+ OPTION(osd_pool_default_crush_replicated_ruleset, OPT_INT, CEPH_DEFAULT_CRUSH_REPLICATED_RULESET)
+ OPTION(osd_pool_erasure_code_stripe_width, OPT_U32, OSD_POOL_ERASURE_CODE_STRIPE_WIDTH) // in bytes
+diff --git a/src/include/ceph_features.h b/src/include/ceph_features.h
+index 205e18f..781df1b 100644
+--- a/src/include/ceph_features.h
++++ b/src/include/ceph_features.h
+@@ -64,7 +64,6 @@
+ // duplicated since it was introduced at the same time as MIN_SIZE_RECOVERY
+ #define CEPH_FEATURE_OSD_PROXY_FEATURES (1ULL<<49)  /* overlap w/ above */
+ #define CEPH_FEATURE_MON_METADATA (1ULL<<50)
+-#define CEPH_FEATURE_OSD_HITSET_GMT (1ULL<<54)
+ /* ... */
+ #define CEPH_FEATURE_HAMMER_0_94_4 (1ULL<<55)
+ 
+@@ -152,7 +151,6 @@ static inline unsigned long long ceph_sanitize_features(unsigned long long f) {
+ 	 CEPH_FEATURE_MDS_QUOTA | \
+          CEPH_FEATURE_CRUSH_V4 |	     \
+          CEPH_FEATURE_OSD_MIN_SIZE_RECOVERY |		 \
+-     CEPH_FEATURE_OSD_HITSET_GMT |                       \
+ 	 CEPH_FEATURE_HAMMER_0_94_4 |		 \
+ 	 0ULL)
+ 
+diff --git a/src/mon/MonCommands.h b/src/mon/MonCommands.h
+index 3f0dae8..a66cc55 100644
+--- a/src/mon/MonCommands.h
++++ b/src/mon/MonCommands.h
+@@ -634,7 +634,7 @@ COMMAND("osd pool get " \
+ 	"get pool parameter <var>", "osd", "r", "cli,rest")
+ COMMAND("osd pool set " \
+ 	"name=pool,type=CephPoolname " \
+-	"name=var,type=CephChoices,strings=size|min_size|crash_replay_interval|pg_num|pgp_num|crush_ruleset|hashpspool|nodelete|nopgchange|nosizechange|hit_set_type|hit_set_period|hit_set_count|hit_set_fpp|use_gmt_hitset|debug_fake_ec_pool|target_max_bytes|target_max_objects|cache_target_dirty_ratio|cache_target_full_ratio|cache_min_flush_age|cache_min_evict_age|auid|min_read_recency_for_promote|write_fadvise_dontneed " \
++	"name=var,type=CephChoices,strings=size|min_size|crash_replay_interval|pg_num|pgp_num|crush_ruleset|hashpspool|nodelete|nopgchange|nosizechange|hit_set_type|hit_set_period|hit_set_count|hit_set_fpp|debug_fake_ec_pool|target_max_bytes|target_max_objects|cache_target_dirty_ratio|cache_target_full_ratio|cache_min_flush_age|cache_min_evict_age|auid|min_read_recency_for_promote|write_fadvise_dontneed " \
+ 	"name=val,type=CephString " \
+ 	"name=force,type=CephChoices,strings=--yes-i-really-mean-it,req=false", \
+ 	"set pool parameter <var> to <val>", "osd", "rw", "cli,rest")
+diff --git a/src/mon/OSDMonitor.cc b/src/mon/OSDMonitor.cc
+index a006dbd..afaea9f 100644
+--- a/src/mon/OSDMonitor.cc
++++ b/src/mon/OSDMonitor.cc
+@@ -16,7 +16,6 @@
+  * 
+  */
+ 
+-#include <algorithm>
+ #include <sstream>
+ 
+ #include "OSDMonitor.h"
+@@ -1648,9 +1647,6 @@ void OSDMonitor::take_all_failures(list<MOSDFailure*>& ls)
+   failure_info.clear();
+ }
+ 
+-static bool uses_gmt_hitset(const std::pair<int64_t, pg_pool_t>& pool) {
+-  return pool.second.use_gmt_hitset;
+-}
+ 
+ // boot --
+ 
+@@ -1720,19 +1716,6 @@ bool OSDMonitor::preprocess_boot(MOSDBoot *m)
+     }
+   }
+ 
+-  if (std::find_if(osdmap.get_pools().begin(),
+-		   osdmap.get_pools().end(),
+-		   uses_gmt_hitset) != osdmap.get_pools().end()) {
+-    assert(osdmap.get_num_up_osds() == 0 ||
+-	   osdmap.get_up_osd_features() & CEPH_FEATURE_OSD_HITSET_GMT);
+-    if (!(m->osd_features & CEPH_FEATURE_OSD_HITSET_GMT)) {
+-      dout(0) << __func__ << " one or more pools uses GMT hitsets but osd at "
+-	      << m->get_orig_source_inst()
+-	      << " doesn't announce support -- ignore" << dendl;
+-      goto ignore;
+-    }
+-  }
+-
+   // already booted?
+   if (osdmap.is_up(from) &&
+       osdmap.get_inst(from) == m->get_orig_source_inst()) {
+@@ -3174,7 +3157,6 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
+     if (!p->is_tier() &&
+         (var == "hit_set_type" || var == "hit_set_period" ||
+          var == "hit_set_count" || var == "hit_set_fpp" ||
+-	 var == "use_gmt_hitset" ||
+          var == "target_max_objects" || var == "target_max_bytes" ||
+          var == "cache_target_full_ratio" ||
+          var == "cache_target_dirty_ratio" ||
+@@ -3227,8 +3209,6 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
+ 	  BloomHitSet::Params *bloomp = static_cast<BloomHitSet::Params*>(p->hit_set_params.impl.get());
+ 	  f->dump_float("hit_set_fpp", bloomp->get_fpp());
+ 	}
+-      } else if (var == "use_gmt_hitset") {
+-	f->dump_bool("use_gmt_hitset", p->use_gmt_hitset);
+       } else if (var == "target_max_objects") {
+         f->dump_unsigned("target_max_objects", p->target_max_objects);
+       } else if (var == "target_max_bytes") {
+@@ -3286,8 +3266,6 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
+ 	}
+ 	BloomHitSet::Params *bloomp = static_cast<BloomHitSet::Params*>(p->hit_set_params.impl.get());
+ 	ss << "hit_set_fpp: " << bloomp->get_fpp();
+-      } else if (var == "use_gmt_hitset") {
+-	ss << "use_gmt_hitset: " << p->use_gmt_hitset << "\n";
+       } else if (var == "target_max_objects") {
+         ss << "target_max_objects: " << p->target_max_objects;
+       } else if (var == "target_max_bytes") {
+@@ -4170,11 +4148,6 @@ int OSDMonitor::prepare_new_pool(string& name, uint64_t auid,
+     pi->set_flag(pg_pool_t::FLAG_NOPGCHANGE);
+   if (g_conf->osd_pool_default_flag_nosizechange)
+     pi->set_flag(pg_pool_t::FLAG_NOSIZECHANGE);
+-  if (g_conf->osd_pool_use_gmt_hitset &&
+-      (osdmap.get_up_osd_features() & CEPH_FEATURE_OSD_HITSET_GMT))
+-    pi->use_gmt_hitset = true;
+-  else
+-    pi->use_gmt_hitset = false;
+ 
+   pi->size = size;
+   pi->min_size = min_size;
+@@ -4518,17 +4491,6 @@ int OSDMonitor::prepare_command_pool_set(map<string,cmd_vartype> &cmdmap,
+     }
+     BloomHitSet::Params *bloomp = static_cast<BloomHitSet::Params*>(p.hit_set_params.impl.get());
+     bloomp->set_fpp(f);
+-  } else if (var == "use_gmt_hitset") {
+-    if (val == "true" || (interr.empty() && n == 1)) {
+-      if (!(osdmap.get_up_osd_features() & CEPH_FEATURE_OSD_HITSET_GMT)) {
+-	ss << "not all OSDs support GMT hit set.";
+-	return -EINVAL;
+-      }
+-      p.use_gmt_hitset = true;
+-    } else {
+-      ss << "expecting value 'true' or '1'";
+-      return -EINVAL;
+-    }
+   } else if (var == "debug_fake_ec_pool") {
+     if (val == "true" || (interr.empty() && n == 1)) {
+       p.flags |= pg_pool_t::FLAG_DEBUG_FAKE_EC_POOL;
+diff --git a/src/osd/ReplicatedPG.cc b/src/osd/ReplicatedPG.cc
+index 1676a3e..429f9de 100644
+--- a/src/osd/ReplicatedPG.cc
++++ b/src/osd/ReplicatedPG.cc
+@@ -1135,7 +1135,7 @@ void ReplicatedPG::do_pg_op(OpRequestRef op)
+ 	       p != info.hit_set.history.end();
+ 	       ++p) {
+ 	    if (stamp >= p->begin && stamp <= p->end) {
+-	      oid = get_hit_set_archive_object(p->begin, p->end, p->using_gmt);
++	      oid = get_hit_set_archive_object(p->begin, p->end);
+ 	      break;
+ 	    }
+ 	  }
+@@ -10177,19 +10177,10 @@ hobject_t ReplicatedPG::get_hit_set_current_object(utime_t stamp)
+   return hoid;
+ }
+ 
+-hobject_t ReplicatedPG::get_hit_set_archive_object(utime_t start,
+-						   utime_t end,
+-						   bool using_gmt)
++hobject_t ReplicatedPG::get_hit_set_archive_object(utime_t start, utime_t end)
+ {
+   ostringstream ss;
+-  ss << "hit_set_" << info.pgid.pgid << "_archive_";
+-  if (using_gmt) {
+-    start.gmtime(ss) << "_";
+-    end.gmtime(ss);
+-  } else {
+-    start.localtime(ss) << "_";
+-    end.localtime(ss);
+-  }
++  ss << "hit_set_" << info.pgid.pgid << "_archive_" << start << "_" << end;
+   hobject_t hoid(sobject_t(ss.str(), CEPH_NOSNAP), "",
+ 		 info.pgid.ps(), info.pgid.pool(),
+ 		 cct->_conf->osd_hit_set_namespace);
+@@ -10326,7 +10317,7 @@ void ReplicatedPG::hit_set_persist()
+   for (list<pg_hit_set_info_t>::iterator p = info.hit_set.history.begin();
+        p != info.hit_set.history.end();
+        ++p) {
+-    hobject_t aoid = get_hit_set_archive_object(p->begin, p->end, p->using_gmt);
++    hobject_t aoid = get_hit_set_archive_object(p->begin, p->end);
+ 
+     // Once we hit a degraded object just skip further trim
+     if (is_degraded_or_backfilling_object(aoid))
+@@ -10335,8 +10326,10 @@ void ReplicatedPG::hit_set_persist()
+       return;
+   }
+ 
+-  oid = get_hit_set_archive_object(start, now, pool.info.use_gmt_hitset);
++  oid = get_hit_set_archive_object(start, now);
+   // If the current object is degraded we skip this persist request
++  if (is_degraded_or_backfilling_object(oid))
++    return;
+   if (scrubber.write_blocked_by_scrub(oid))
+     return;
+ 
+@@ -10427,7 +10420,7 @@ void ReplicatedPG::hit_set_persist()
+ 
+   updated_hit_set_hist.history.push_back(updated_hit_set_hist.current_info);
+   hit_set_create();
+-  updated_hit_set_hist.current_info = pg_hit_set_info_t(pool.info.use_gmt_hitset);
++  updated_hit_set_hist.current_info = pg_hit_set_info_t();
+   updated_hit_set_hist.current_last_stamp = utime_t();
+ 
+   // fabricate an object_info_t and SnapSet
+@@ -10490,7 +10483,7 @@ void ReplicatedPG::hit_set_trim(RepGather *repop, unsigned max)
+   for (unsigned num = updated_hit_set_hist.history.size(); num > max; --num) {
+     list<pg_hit_set_info_t>::iterator p = updated_hit_set_hist.history.begin();
+     assert(p != updated_hit_set_hist.history.end());
+-    hobject_t oid = get_hit_set_archive_object(p->begin, p->end, p->using_gmt);
++    hobject_t oid = get_hit_set_archive_object(p->begin, p->end);
+ 
+     assert(!is_degraded_or_backfilling_object(oid));
+ 
+@@ -10775,7 +10768,7 @@ void ReplicatedPG::agent_load_hit_sets()
+ 	  continue;
+ 	}
+ 
+-	hobject_t oid = get_hit_set_archive_object(p->begin, p->end, p->using_gmt);
++	hobject_t oid = get_hit_set_archive_object(p->begin, p->end);
+ 	if (is_unreadable_object(oid)) {
+ 	  dout(10) << __func__ << " unreadable " << oid << ", waiting" << dendl;
+ 	  break;
+diff --git a/src/osd/ReplicatedPG.h b/src/osd/ReplicatedPG.h
+index 0894be6..c8ed4fc 100644
+--- a/src/osd/ReplicatedPG.h
++++ b/src/osd/ReplicatedPG.h
+@@ -903,9 +903,7 @@ protected:
+   void hit_set_in_memory_trim();                     ///< discard old in memory HitSets
+ 
+   hobject_t get_hit_set_current_object(utime_t stamp);
+-  hobject_t get_hit_set_archive_object(utime_t start,
+-				       utime_t end,
+-				       bool using_gmt);
++  hobject_t get_hit_set_archive_object(utime_t start, utime_t end);
+ 
+   // agent
+   boost::scoped_ptr<TierAgentState> agent_state;
+diff --git a/src/osd/osd_types.cc b/src/osd/osd_types.cc
+index b13925c..f0126bc 100644
+--- a/src/osd/osd_types.cc
++++ b/src/osd/osd_types.cc
+@@ -926,7 +926,6 @@ void pg_pool_t::dump(Formatter *f) const
+   f->close_section(); // hit_set_params
+   f->dump_unsigned("hit_set_period", hit_set_period);
+   f->dump_unsigned("hit_set_count", hit_set_count);
+-  f->dump_bool("use_gmt_hitset", use_gmt_hitset);
+   f->dump_unsigned("min_read_recency_for_promote", min_read_recency_for_promote);
+   f->dump_unsigned("stripe_width", get_stripe_width());
+   f->dump_unsigned("expected_num_objects", expected_num_objects);
+@@ -1239,60 +1238,7 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
+     return;
+   }
+ 
+-  if ((features & CEPH_FEATURE_OSD_HITSET_GMT) == 0) {
+-    // CEPH_FEATURE_OSD_HITSET_GMT requires pg_pool_t v21 which has
+-    // use_gmt_hitset, and two fields added before v21. it's backward
+-    // compatible, but re-encoding the same osdmap with different ceph
+-    // versions causes CRC mismatch at the OSD side, the tracker#12410
+-    // prevents the monitor from sending the single full map requested
+-    // by OSD. so we need a way to encode pg_pool_t the same old way.
+-    ENCODE_START(17, 5, bl);
+-    ::encode(type, bl);
+-    ::encode(size, bl);
+-    ::encode(crush_ruleset, bl);
+-    ::encode(object_hash, bl);
+-    ::encode(pg_num, bl);
+-    ::encode(pgp_num, bl);
+-    __u32 lpg_num = 0, lpgp_num = 0;  // tell old code that there are no localized pgs.
+-    ::encode(lpg_num, bl);
+-    ::encode(lpgp_num, bl);
+-    ::encode(last_change, bl);
+-    ::encode(snap_seq, bl);
+-    ::encode(snap_epoch, bl);
+-    ::encode(snaps, bl, features);
+-    ::encode(removed_snaps, bl);
+-    ::encode(auid, bl);
+-    ::encode(flags, bl);
+-    ::encode(crash_replay_interval, bl);
+-    ::encode(min_size, bl);
+-    ::encode(quota_max_bytes, bl);
+-    ::encode(quota_max_objects, bl);
+-    ::encode(tiers, bl);
+-    ::encode(tier_of, bl);
+-    __u8 c = cache_mode;
+-    ::encode(c, bl);
+-    ::encode(read_tier, bl);
+-    ::encode(write_tier, bl);
+-    ::encode(properties, bl);
+-    ::encode(hit_set_params, bl);
+-    ::encode(hit_set_period, bl);
+-    ::encode(hit_set_count, bl);
+-    ::encode(stripe_width, bl);
+-    ::encode(target_max_bytes, bl);
+-    ::encode(target_max_objects, bl);
+-    ::encode(cache_target_dirty_ratio_micro, bl);
+-    ::encode(cache_target_full_ratio_micro, bl);
+-    ::encode(cache_min_flush_age, bl);
+-    ::encode(cache_min_evict_age, bl);
+-    ::encode(erasure_code_profile, bl);
+-    ::encode(last_force_op_resend, bl);
+-    ::encode(min_read_recency_for_promote, bl);
+-    ::encode(expected_num_objects, bl);
+-    ENCODE_FINISH(bl);
+-    return;
+-  }
+-
+-  ENCODE_START(21, 5, bl);
++  ENCODE_START(17, 5, bl);
+   ::encode(type, bl);
+   ::encode(size, bl);
+   ::encode(crush_ruleset, bl);
+@@ -1334,15 +1280,12 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
+   ::encode(last_force_op_resend, bl);
+   ::encode(min_read_recency_for_promote, bl);
+   ::encode(expected_num_objects, bl);
+-  ::encode(uint32_t(.6 * 1e6), bl);
+-  ::encode(uint32_t(1), bl);
+-  ::encode(use_gmt_hitset, bl);
+   ENCODE_FINISH(bl);
+ }
+ 
+ void pg_pool_t::decode(bufferlist::iterator& bl)
+ {
+-  DECODE_START_LEGACY_COMPAT_LEN(21, 5, 5, bl);
++  DECODE_START_LEGACY_COMPAT_LEN(17, 5, 5, bl);
+   ::decode(type, bl);
+   ::decode(size, bl);
+   ::decode(crush_ruleset, bl);
+@@ -1454,19 +1397,6 @@ void pg_pool_t::decode(bufferlist::iterator& bl)
+   } else {
+     expected_num_objects = 0;
+   }
+-  if (struct_v >= 19) {
+-    uint32_t dummy;	    
+-    ::decode(dummy, bl);
+-  }
+-  if (struct_v >= 20) {
+-    uint32_t dummy;
+-    ::decode(dummy, bl);
+-  }
+-  if (struct_v >= 21) {
+-    ::decode(use_gmt_hitset, bl);
+-  } else {
+-    use_gmt_hitset = false;
+-  }
+   DECODE_FINISH(bl);
+   calc_pg_masks();
+ }
+@@ -3866,25 +3796,19 @@ void pg_create_t::generate_test_instances(list<pg_create_t*>& o)
+ 
+ void pg_hit_set_info_t::encode(bufferlist& bl) const
+ {
+-  ENCODE_START(2, 1, bl);
++  ENCODE_START(1, 1, bl);
+   ::encode(begin, bl);
+   ::encode(end, bl);
+   ::encode(version, bl);
+-  ::encode(using_gmt, bl);
+   ENCODE_FINISH(bl);
+ }
+ 
+ void pg_hit_set_info_t::decode(bufferlist::iterator& p)
+ {
+-  DECODE_START(2, p);
++  DECODE_START(1, p);
+   ::decode(begin, p);
+   ::decode(end, p);
+   ::decode(version, p);
+-  if (struct_v >= 2) {
+-    ::decode(using_gmt, p);
+-  } else {
+-    using_gmt = false;
+-  }
+   DECODE_FINISH(p);
+ }
+ 
+@@ -3893,7 +3817,6 @@ void pg_hit_set_info_t::dump(Formatter *f) const
+   f->dump_stream("begin") << begin;
+   f->dump_stream("end") << end;
+   f->dump_stream("version") << version;
+-  f->dump_stream("using_gmt") << using_gmt;
+ }
+ 
+ void pg_hit_set_info_t::generate_test_instances(list<pg_hit_set_info_t*>& ls)
+diff --git a/src/osd/osd_types.h b/src/osd/osd_types.h
+index 92f6163..7557494 100644
+--- a/src/osd/osd_types.h
++++ b/src/osd/osd_types.h
+@@ -1035,7 +1035,6 @@ public:
+   HitSet::Params hit_set_params; ///< The HitSet params to use on this pool
+   uint32_t hit_set_period;      ///< periodicity of HitSet segments (seconds)
+   uint32_t hit_set_count;       ///< number of periods to retain
+-  bool use_gmt_hitset;	        ///< use gmt to name the hitset archive object
+   uint32_t min_read_recency_for_promote;   ///< minimum number of HitSet to check before promote
+ 
+   uint32_t stripe_width;        ///< erasure coded stripe size in bytes
+@@ -1064,7 +1063,6 @@ public:
+       hit_set_params(),
+       hit_set_period(0),
+       hit_set_count(0),
+-      use_gmt_hitset(true),
+       min_read_recency_for_promote(0),
+       stripe_width(0),
+       expected_num_objects(0)
+@@ -1602,11 +1600,10 @@ WRITE_CLASS_ENCODER_FEATURES(pool_stat_t)
+ struct pg_hit_set_info_t {
+   utime_t begin, end;   ///< time interval
+   eversion_t version;   ///< version this HitSet object was written
+-  bool using_gmt;	///< use gmt for creating the hit_set archive object name
+-  pg_hit_set_info_t(bool using_gmt = true)
+-    : using_gmt(using_gmt) {}
+-  pg_hit_set_info_t(utime_t b, bool using_gmt)
+-    : begin(b), using_gmt(using_gmt) {}
++
++  pg_hit_set_info_t() {}
++  pg_hit_set_info_t(utime_t b)
++    : begin(b) {}
+ 
+   void encode(bufferlist &bl) const;
+   void decode(bufferlist::iterator &bl);
