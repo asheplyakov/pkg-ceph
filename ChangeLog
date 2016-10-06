@@ -1,4 +1,10 @@
-838cd35 (HEAD, tag: v0.94.8, origin/hammer) 0.94.8
+fe6d859 (HEAD, tag: v0.94.9, origin/hammer) 0.94.9
+27d8055 Revert "moved to use boost uuid implementation, based on commit 4fe89a7b14c97b2ed7f357132901beb2bdcec551"
+21f6f1d Revert "uuid: use boost::random:random_device"
+a219cf5 doc: release-notes.rst: add missing line to v0.94.8
+a6ba101 doc: add missing changelogs up to 0.94.8
+f3dad33 doc: release-notes: add missing hammer releases
+838cd35 (tag: v0.94.8) 0.94.8
 5248929 rocksdb: disable tcmalloc if disabled
 fdfcd9b ceph.spec: respect CEPH_EXTRA_CONFIGURE_ARGS
 d5274a3 rgw: fix subuser rm command failure

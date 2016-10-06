@@ -115,9 +115,6 @@
    (-lboost_program_options-mt). */
 #undef HAVE_LIBBOOST_PROGRAM_OPTIONS_MT
 
-/* Define to 1 if you have the `boost_random' library (-lboost_random). */
-#undef HAVE_LIBBOOST_RANDOM
-
 /* Define to 1 if you have the `boost_regex' library (-lboost_regex). */
 #undef HAVE_LIBBOOST_REGEX
 
