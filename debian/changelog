@@ -1,21 +1,15 @@
-ceph (10.2.2-1~u14.04~2.gbp5c8ffa) UNRELEASED; urgency=low
+ceph (10.2.3-1~u14.04) trusty; urgency=low
 
-  ** SNAPSHOT build @5c8ffaab159c1801960612e0d7aeceff715440b0 **
+  * New upstream bugfix-only version
+  * debian/patches:
+    - dropped rgw-handle-errors-properly-during-GET-on-Swift-s-DLO.patch,
+      included upstream
+    - dropped rocksdb-flags.patch, included upstream
+    - dropped udev-always-populate-dev-disk-by-parttypeuuid.patch,
+      included upstream
+  * mount.ceph and mount.fuse.ceph moved to debian/tmp/usr/sbin
 
-  [ James Page ]
-  * d/ceph-common.{preinst,postinst,postrm}: Fix version checks in maintainer scripts to ensure that /etc/default/ceph actually gets installed on upgrade (LP: #1587516).
-  * releasing package ceph version 10.2.2-0ubuntu0.16.04.2
-
-  [ Alexey Sheplyakov ]
-  * Adjusted gbp.conf for backport to Ubuntu 14.04
-  * Lift the maxparallel=2 limitation
-  * Fix link failure due to inconsistent compiler/linker flags
-  * d/patches: added "rgw: handle errors properly during GET on Swift's DLO"
-  * d/control: update vcs location and maintainers info
-  * debian: added MOS related helper script
-  * Fix ceph-disk activate-all
-
- -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Fri, 24 Jun 2016 16:29:46 +0300
+ -- Alexey Sheplyakov <asheplyakov@as-ubuntu>  Tue, 01 Nov 2016 12:08:24 +0300
 
 ceph (10.2.2-0ubuntu0.16.04.1) xenial; urgency=medium
 
