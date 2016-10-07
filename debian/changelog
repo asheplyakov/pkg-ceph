@@ -1,11 +1,11 @@
-ceph (10.2.3-0ubuntu2) UNRELEASED; urgency=medium
+ceph (10.2.3-0ubuntu2) yakkety; urgency=medium
 
   * d/ceph-osd.postinst: Force reload of udev rules to ensure that
     OSD block device rules correctly apply ceph user and group
     permissions, fixing issues with initialization of ceph-osd
     processes via udev (LP: #1631328).
 
- -- James Page <james.page@ubuntu.com>  Fri, 07 Oct 2016 13:57:50 +0100
+ -- James Page <james.page@ubuntu.com>  Fri, 07 Oct 2016 13:59:54 +0100
 
 ceph (10.2.3-0ubuntu1) yakkety; urgency=medium
 
