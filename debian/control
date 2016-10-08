@@ -181,7 +181,6 @@ Depends: ceph-base (= ${binary:Version}),
          python-flask,
          ${misc:Depends},
          ${shlibs:Depends}
-Recommends: ceph-common
 Replaces: ceph (<< 10.2.2-0ubuntu2~)
 Breaks: ceph (<< 10.2.2-0ubuntu2~)
 Description: monitor server for the ceph storage system
@@ -197,7 +196,7 @@ Description: monitor server for the ceph storage system
 Package: ceph-osd
 Architecture: linux-any
 Depends: ceph-base (= ${binary:Version}), ${misc:Depends}, ${shlibs:Depends}
-Recommends: ceph-common (= ${binary:Version})
+Pre-Depends: ceph-common (= ${binary:Version})
 Replaces: ceph (<< 10.2.2-0ubuntu2~)
 Breaks: ceph (<< 10.2.2-0ubuntu2~)
 Description: OSD server for the ceph storage system
