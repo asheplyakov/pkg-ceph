@@ -23,10 +23,7 @@ set -e
 
 case "$1" in
     configure)
-	# Reload udev rules, to ensure correct application of
-	# ceph user and group permissions to block devices
-	# https://pad.lv/1631328
-	udevadm control --reload || :
+	:
     ;;
     abort-upgrade|abort-remove|abort-deconfigure)
 	:
