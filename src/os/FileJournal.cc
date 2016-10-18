@@ -27,6 +27,7 @@
 #include <limits.h>
 #include <sstream>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/mount.h>
@@ -296,24 +297,28 @@ int FileJournal::_open_file(int64_t oldsize, blksize_t blksize,
   if (create && g_conf->journal_zero_on_create) {
     derr << "FileJournal::_open_file : zeroing journal" << dendl;
     uint64_t write_size = 1 << 20;
-    char *buf = new char[write_size];
+    char *buf;
+    ret = ::posix_memalign((void **)&buf, block_size, write_size);
+    if (ret != 0) {
+      return ret;
+    }
     memset(static_cast<void*>(buf), 0, write_size);
     uint64_t i = 0;
     for (; (i + write_size) <= (unsigned)max_size; i += write_size) {
       ret = ::pwrite(fd, static_cast<void*>(buf), write_size, i);
       if (ret < 0) {
-	delete [] buf;
+	free(buf);
 	return -errno;
       }
     }
     if (i < (unsigned)max_size) {
       ret = ::pwrite(fd, static_cast<void*>(buf), max_size - i, i);
       if (ret < 0) {
-	delete [] buf;
+	free(buf);
 	return -errno;
       }
     }
-    delete [] buf;
+    free(buf);
   }
       
 
@@ -1712,13 +1717,14 @@ bool FileJournal::read_entry(
 }
 
 FileJournal::read_entry_result FileJournal::do_read_entry(
-  off64_t pos,
+  off64_t init_pos,
   off64_t *next_pos,
   bufferlist *bl,
   uint64_t *seq,
   ostream *ss,
   entry_header_t *_h)
 {
+  off64_t cur_pos = init_pos;
   bufferlist _bl;
   if (!bl)
     bl = &_bl;
@@ -1727,40 +1733,40 @@ FileJournal::read_entry_result FileJournal::do_read_entry(
   entry_header_t *h;
   bufferlist hbl;
   off64_t _next_pos;
-  wrap_read_bl(pos, sizeof(*h), &hbl, &_next_pos);
+  wrap_read_bl(cur_pos, sizeof(*h), &hbl, &_next_pos);
   h = (entry_header_t *)hbl.c_str();
 
-  if (!h->check_magic(pos, header.get_fsid64())) {
-    dout(25) << "read_entry " << pos
+  if (!h->check_magic(cur_pos, header.get_fsid64())) {
+    dout(25) << "read_entry " << init_pos
 	     << " : bad header magic, end of journal" << dendl;
     if (ss)
       *ss << "bad header magic";
     if (next_pos)
-      *next_pos = pos + (4<<10); // check 4k ahead
+      *next_pos = init_pos + (4<<10); // check 4k ahead
     return MAYBE_CORRUPT;
   }
-  pos = _next_pos;
+  cur_pos = _next_pos;
 
   // pad + body + pad
   if (h->pre_pad)
-    pos += h->pre_pad;
+    cur_pos += h->pre_pad;
 
   bl->clear();
-  wrap_read_bl(pos, h->len, bl, &pos);
+  wrap_read_bl(cur_pos, h->len, bl, &cur_pos);
 
   if (h->post_pad)
-    pos += h->post_pad;
+    cur_pos += h->post_pad;
 
   // footer
   entry_header_t *f;
   bufferlist fbl;
-  wrap_read_bl(pos, sizeof(*f), &fbl, &pos);
+  wrap_read_bl(cur_pos, sizeof(*f), &fbl, &cur_pos);
   f = (entry_header_t *)fbl.c_str();
   if (memcmp(f, h, sizeof(*f))) {
     if (ss)
       *ss << "bad footer magic, partial entry";
     if (next_pos)
-      *next_pos = pos;
+      *next_pos = cur_pos;
     return MAYBE_CORRUPT;
   }
 
@@ -1772,13 +1778,13 @@ FileJournal::read_entry_result FileJournal::do_read_entry(
 	*ss << "header crc (" << h->crc32c
 	    << ") doesn't match body crc (" << actual_crc << ")";
       if (next_pos)
-	*next_pos = pos;
+	*next_pos = cur_pos;
       return MAYBE_CORRUPT;
     }
   }
 
   // yay!
-  dout(2) << "read_entry " << pos << " : seq " << h->seq
+  dout(2) << "read_entry " << init_pos << " : seq " << h->seq
 	  << " " << h->len << " bytes"
 	  << dendl;
 
@@ -1790,15 +1796,15 @@ FileJournal::read_entry_result FileJournal::do_read_entry(
   // bind by reference to (packed) h->seq
   journalq.push_back(
     pair<uint64_t,off64_t>(static_cast<uint64_t>(h->seq),
-			   static_cast<off64_t>(pos)));
+			   static_cast<off64_t>(init_pos)));
 
   if (next_pos)
-    *next_pos = pos;
+    *next_pos = cur_pos;
 
   if (_h)
     *_h = *h;
 
-  assert(pos % header.alignment == 0);
+  assert(cur_pos % header.alignment == 0);
   return SUCCESS;
 }
 

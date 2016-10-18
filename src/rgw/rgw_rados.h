@@ -269,6 +269,12 @@ public:
       ::decode(rules, bl);
     } else {
       explicit_objs = true;
+      if (!objs.empty()) {
+        map<uint64_t, RGWObjManifestPart>::iterator iter = objs.begin();
+        head_obj = iter->second.loc;
+        head_size = iter->second.size;
+        max_head_size = head_size;
+      }
     }
 
     if (struct_v >= 4) {
@@ -1208,6 +1214,7 @@ class RGWRados
     GetObjState() : sent_data(false) {}
   };
 
+  atomic64_t max_req_id;
   Mutex lock;
   SafeTimer *timer;
 
@@ -1296,7 +1303,7 @@ protected:
   RGWQuotaHandler *quota_handler;
 
 public:
-  RGWRados() : lock("rados_timer_lock"), timer(NULL),
+  RGWRados() : max_req_id(0), lock("rados_timer_lock"), timer(NULL),
                gc(NULL), use_gc_thread(false), quota_threads(false),
                num_watchers(0), watchers(NULL), watch_handles(NULL),
                watch_initialized(false),
@@ -1306,6 +1313,10 @@ public:
                quota_handler(NULL),
                rest_master_conn(NULL),
                meta_mgr(NULL), data_log(NULL) {}
+
+  uint64_t get_new_req_id() {
+    return max_req_id.inc();
+  }
 
   void set_context(CephContext *_cct) {
     cct = _cct;
@@ -1590,6 +1601,11 @@ public:
    */
   virtual int delete_bucket(rgw_bucket& bucket, RGWObjVersionTracker& objv_tracker);
 
+  /**
+   * Check to see if the bucket metadata is synced
+   */
+  bool is_syncing_bucket_meta(rgw_bucket& bucket);
+  
   int set_bucket_owner(rgw_bucket& bucket, ACLOwner& owner);
   int set_buckets_enabled(std::vector<rgw_bucket>& buckets, bool enabled);
   int bucket_suspended(rgw_bucket& bucket, bool *suspended);

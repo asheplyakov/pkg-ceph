@@ -66,6 +66,12 @@ static ostream& _prefix(std::ostream *_dout, Monitor *mon, OSDMap& osdmap) {
 		<< ").osd e" << osdmap.get_epoch() << " ";
 }
 
+OSDMonitor::OSDMonitor(Monitor *mn, Paxos *p, string service_name)
+  : PaxosService(mn, p, service_name),
+    inc_osd_cache(g_conf->mon_osd_cache_size),
+    full_osd_cache(g_conf->mon_osd_cache_size),
+    thrash_map(0), thrash_last_up_osd(-1) { }
+
 bool OSDMonitor::_have_pending_crush()
 {
   return pending_inc.crush.length();
@@ -829,8 +835,9 @@ bool OSDMonitor::preprocess_failure(MOSDFailure *m)
   }
 
   // already reported?
-  if (osdmap.is_down(badboy)) {
-    dout(5) << "preprocess_failure dup: " << m->get_target() << ", from " << m->get_orig_source_inst() << dendl;
+  if (osdmap.is_down(badboy) ||
+      osdmap.get_up_from(badboy) > m->get_epoch()) {
+    dout(5) << "preprocess_failure dup/old: " << m->get_target() << ", from " << m->get_orig_source_inst() << dendl;
     if (m->get_epoch() < osdmap.get_epoch())
       send_incremental(m, m->get_epoch()+1);
     goto didit;
@@ -1348,8 +1355,13 @@ bool OSDMonitor::prepare_boot(MOSDBoot *m)
 	xi.laggy_probability * (1.0 - g_conf->mon_osd_laggy_weight);
       dout(10) << " laggy, now xi " << xi << dendl;
     }
+
     // set features shared by the osd
-    xi.features = m->get_connection()->get_features();
+    if (m->osd_features)
+      xi.features = m->osd_features;
+    else
+      xi.features = m->get_connection()->get_features();
+
     pending_inc.new_xinfo[from] = xi;
 
     // wait
@@ -1688,10 +1700,13 @@ void OSDMonitor::send_incremental(PaxosServiceMessage *req, epoch_t first)
     osd = req->get_source().num();
     map<int,epoch_t>::iterator p = osd_epoch.find(osd);
     if (p != osd_epoch.end()) {
-      dout(10) << " osd." << osd << " should have epoch " << p->second << dendl;
-      first = p->second + 1;
-      if (first > osdmap.get_epoch())
-	return;
+      if (first <= p->second) {
+	dout(10) << __func__ << " osd." << osd << " should already have epoch "
+		 << p->second << dendl;
+	first = p->second + 1;
+	if (first > osdmap.get_epoch())
+	  return;
+      }
     }
   }
 
@@ -1761,6 +1776,29 @@ void OSDMonitor::send_incremental(epoch_t first, entity_inst_t& dest, bool oneti
   }
 }
 
+int OSDMonitor::get_version(version_t ver, bufferlist& bl)
+{
+    if (inc_osd_cache.lookup(ver, &bl)) {
+      return 0;
+    }
+    int ret = PaxosService::get_version(ver, bl);
+    if (!ret) {
+      inc_osd_cache.add(ver, bl);
+    }
+    return ret;
+}
+
+int OSDMonitor::get_version_full(version_t ver, bufferlist& bl)
+{
+    if (full_osd_cache.lookup(ver, &bl)) {
+      return 0;
+    }
+    int ret = PaxosService::get_version_full(ver, bl);
+    if (!ret) {
+      full_osd_cache.add(ver, bl);
+    }
+    return ret;
+}
 
 
 
@@ -2297,6 +2335,8 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
     string format;
     cmd_getval(g_ceph_context, cmdmap, "format", format, string("json-pretty"));
     boost::scoped_ptr<Formatter> f(new_formatter(format));
+    if (!f)
+      f.reset(new_formatter("json-pretty"));
 
     f->open_object_section("osd_location");
     f->dump_int("osd", osd);
@@ -2324,6 +2364,8 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
     string format;
     cmd_getval(g_ceph_context, cmdmap, "format", format, string("json-pretty"));
     boost::scoped_ptr<Formatter> f(new_formatter(format));
+    if (!f)
+      f.reset(new_formatter("json-pretty"));
     f->open_object_section("osd_metadata");
     r = dump_osd_metadata(osd, f.get(), &ss);
     if (r < 0)
@@ -2468,8 +2510,6 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
   } else if (prefix == "osd crush get-tunable") {
     string tunable;
     cmd_getval(g_ceph_context, cmdmap, "tunable", tunable);
-    int value;
-    cmd_getval(g_ceph_context, cmdmap, "value", value);
     ostringstream rss;
     if (f)
       f->open_object_section("tunable");
@@ -2579,6 +2619,8 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
         f->dump_unsigned("cache_min_evict_age", p->cache_min_evict_age);
       } else if (var == "erasure_code_profile") {
        f->dump_string("erasure_code_profile", p->erasure_code_profile);
+      } else if (var == "min_read_recency_for_promote") {
+	f->dump_int("min_read_recency_for_promote", p->min_read_recency_for_promote);
       }
 
       f->close_section();
@@ -2628,6 +2670,8 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
         ss << "cache_min_evict_age: " << p->cache_min_evict_age;
       } else if (var == "erasure_code_profile") {
        ss << "erasure_code_profile: " << p->erasure_code_profile;
+      } else if (var == "min_read_recency_for_promote") {
+	ss << "min_read_recency_for_promote: " << p->min_read_recency_for_promote;
       }
 
       rdata.append(ss);
@@ -3031,7 +3075,7 @@ void OSDMonitor::get_pools_health(
       } else if (warn_threshold > 0 &&
 		 sum.num_bytes >= pool.quota_max_bytes*warn_threshold) {
         ss << "pool '" << pool_name
-           << "' has " << si_t(sum.num_bytes) << " objects"
+           << "' has " << si_t(sum.num_bytes) << " bytes"
            << " (max " << si_t(pool.quota_max_bytes) << ")";
         status = HEALTH_WARN;
       }
@@ -3744,6 +3788,12 @@ int OSDMonitor::prepare_command_pool_set(map<string,cmd_vartype> &cmdmap,
       return -EINVAL;
     }
     p.cache_min_evict_age = n;
+  } else if (var == "min_read_recency_for_promote") {
+    if (interr.length()) {
+      ss << "error parsing integer value '" << val << "': " << interr;
+      return -EINVAL;
+    }
+    p.min_read_recency_for_promote = n;
   } else {
     ss << "unrecognized variable '" << var << "'";
     return -EINVAL;
@@ -4826,7 +4876,7 @@ bool OSDMonitor::prepare_command_impl(MMonCommand *m,
     }
     if (osdmap.exists(id)) {
       pending_inc.new_weight[id] = ww;
-      ss << "reweighted osd." << id << " to " << w << " (" << ios::hex << ww << ios::dec << ")";
+      ss << "reweighted osd." << id << " to " << w << " (" << std::hex << ww << std::dec << ")";
       getline(ss, rs);
       wait_for_finished_proposal(new Monitor::C_Command(mon, m, 0, rs,
 						get_last_committed() + 1));
@@ -5302,6 +5352,17 @@ done:
       err = -ENOTEMPTY;
       goto reply;
     }
+    if (tp->ec_pool()) {
+      ss << "tier pool '" << tierpoolstr
+	 << "' is an ec pool, which cannot be a tier";
+      err = -ENOTSUP;
+      goto reply;
+    }
+    if (!tp->removed_snaps.empty() || !tp->snaps.empty()) {
+      ss << "tier pool '" << tierpoolstr << "' has snapshot state; it cannot be added as a tier without breaking the pool";
+      err = -ENOTEMPTY;
+      goto reply;
+    }
     // go
     pg_pool_t *np = pending_inc.get_new_pool(pool_id, p);
     pg_pool_t *ntp = pending_inc.get_new_pool(tierpool_id, tp);
@@ -5629,6 +5690,7 @@ done:
     ntp->cache_mode = mode;
     ntp->hit_set_count = g_conf->osd_tier_default_cache_hit_set_count;
     ntp->hit_set_period = g_conf->osd_tier_default_cache_hit_set_period;
+    ntp->min_read_recency_for_promote = g_conf->osd_tier_default_cache_min_read_recency_for_promote;
     ntp->hit_set_params = hsp;
     ntp->target_max_bytes = size;
     ss << "pool '" << tierpoolstr << "' is now (or already was) a cache tier of '" << poolstr << "'";
@@ -5982,6 +6044,12 @@ int OSDMonitor::_check_remove_pool(int64_t pool, const pg_pool_t *p,
     }
     return -EBUSY;
   }
+
+  if (!g_conf->mon_allow_pool_delete) {
+    *ss << "pool deletion is disabled; you must first set the mon_allow_pool_delete config option to true before you can destroy a pool";
+    return -EPERM;
+  }
+
   *ss << "pool '" << poolstr << "' removed";
   return 0;
 }

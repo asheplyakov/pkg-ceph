@@ -642,7 +642,7 @@ void Monitor::refresh_from_paxos(bool *need_bootstrap)
     paxos_service[i]->refresh(need_bootstrap);
   }
   for (int i = 0; i < PAXOS_NUM; ++i) {
-    paxos_service[i]->post_paxos_update();
+    paxos_service[i]->post_refresh();
   }
 }
 
@@ -1925,30 +1925,6 @@ void Monitor::get_health(string& status, bufferlist *detailbl, Formatter *f)
 
   health_monitor->get_health(f, summary, (detailbl ? &detail : NULL));
 
-  if (f)
-    f->open_array_section("summary");
-  stringstream ss;
-  health_status_t overall = HEALTH_OK;
-  if (!summary.empty()) {
-    ss << ' ';
-    while (!summary.empty()) {
-      if (overall > summary.front().first)
-	overall = summary.front().first;
-      ss << summary.front().second;
-      if (f) {
-        f->open_object_section("item");
-        f->dump_stream("severity") <<  summary.front().first;
-        f->dump_string("summary", summary.front().second);
-        f->close_section();
-      }
-      summary.pop_front();
-      if (!summary.empty())
-	ss << "; ";
-    }
-  }
-  if (f)
-    f->close_section();
-
   if (f) {
     f->open_object_section("timechecks");
     f->dump_int("epoch", get_epoch());
@@ -1957,6 +1933,8 @@ void Monitor::get_health(string& status, bufferlist *detailbl, Formatter *f)
       << ((timecheck_round%2) ? "on-going" : "finished");
   }
 
+  stringstream ss;
+  health_status_t overall = HEALTH_OK;
   if (!timecheck_skews.empty()) {
     list<string> warns;
     if (f)
@@ -2003,9 +1981,32 @@ void Monitor::get_health(string& status, bufferlist *detailbl, Formatter *f)
         if (!warns.empty())
           ss << ",";
       }
+      summary.push_back(make_pair(HEALTH_WARN, "Monitor clock skew detected "));
     }
     if (f)
       f->close_section();
+  }
+  if (f)
+    f->close_section();
+
+  if (f)
+    f->open_array_section("summary");
+  if (!summary.empty()) {
+    ss << ' ';
+    while (!summary.empty()) {
+      if (overall > summary.front().first)
+	overall = summary.front().first;
+      ss << summary.front().second;
+      if (f) {
+        f->open_object_section("item");
+        f->dump_stream("severity") <<  summary.front().first;
+        f->dump_string("summary", summary.front().second);
+        f->close_section();
+      }
+      summary.pop_front();
+      if (!summary.empty())
+        ss << "; ";
+    }
   }
   if (f)
     f->close_section();
@@ -2126,7 +2127,7 @@ bool Monitor::_allowed_command(MonSession *s, string &module, string &prefix,
   bool cmd_w = (this_cmd->req_perms.find('w') != string::npos);
   bool cmd_x = (this_cmd->req_perms.find('x') != string::npos);
 
-  bool capable = s->caps.is_capable(g_ceph_context, s->inst.name,
+  bool capable = s->caps.is_capable(g_ceph_context, s->entity_name,
                                     module, prefix, param_str_map,
                                     cmd_r, cmd_w, cmd_x);
 
@@ -2577,7 +2578,8 @@ void Monitor::forward_request_leader(PaxosServiceMessage *req)
     routed_requests[rr->tid] = rr;
     session->routed_request_tids.insert(rr->tid);
     
-    dout(10) << "forward_request " << rr->tid << " request " << *req << dendl;
+    dout(10) << "forward_request " << rr->tid << " request " << *req
+	     << " features " << rr->con_features << dendl;
 
     MForward *forward = new MForward(rr->tid, req,
 				     rr->con_features,
@@ -2869,7 +2871,6 @@ bool Monitor::_ms_dispatch(Message *m)
   ConnectionRef connection = m->get_connection();
   MonSession *s = NULL;
   MonCap caps;
-  EntityName entity_name;
   bool src_is_mon;
 
   // regardless of who we are or who the sender is, the message must
@@ -2935,12 +2936,11 @@ bool Monitor::_ms_dispatch(Message *m)
     dout(20) << "ms_dispatch existing session " << s << " for " << s->inst << dendl;
   }
 
-  if (s) {
-    if (s->auth_handler) {
-      entity_name = s->auth_handler->get_entity_name();
-    }
-    dout(20) << " caps " << s->caps.get_str() << dendl;
+  assert(s);
+  if (s->auth_handler) {
+    s->entity_name = s->auth_handler->get_entity_name();
   }
+  dout(20) << " caps " << s->caps.get_str() << dendl;
 
   if (is_synchronizing() && !src_is_mon) {
     waitlist_or_zap_client(m);
@@ -2948,11 +2948,7 @@ bool Monitor::_ms_dispatch(Message *m)
   }
 
   ret = dispatch(s, m, src_is_mon);
-
-  if (s) {
-    s->put();
-  }
-
+  s->put();
   return ret;
 }
 
@@ -3177,7 +3173,7 @@ void Monitor::timecheck_start_round()
     dout(10) << __func__ << " there's a timecheck going on" << dendl;
     utime_t curr_time = ceph_clock_now(g_ceph_context);
     double max = g_conf->mon_timecheck_interval*3;
-    if (curr_time - timecheck_round_start > max) {
+    if (curr_time - timecheck_round_start < max) {
       dout(10) << __func__ << " keep current round going" << dendl;
       goto out;
     } else {

@@ -439,6 +439,7 @@ public:
     bool user_modify;     // user-visible modification
     bool undirty;         // user explicitly un-dirtying this object
     bool cache_evict;     ///< true if this is a cache eviction
+    bool ignore_cache;    ///< true if IGNORE_CACHE flag is set
 
     // side effects
     list<watch_info_t> watch_connects;
@@ -541,6 +542,7 @@ public:
       op(_op), reqid(_reqid), ops(_ops), obs(_obs), snapset(0),
       new_obs(_obs->oi, _obs->exists),
       modify(false), user_modify(false), undirty(false), cache_evict(false),
+      ignore_cache(false),
       bytes_written(0), bytes_read(0), user_at_version(0),
       current_osd_subop_num(0),
       op_t(NULL),
@@ -800,6 +802,7 @@ protected:
   void hit_set_persist();   ///< persist hit info
   bool hit_set_apply_log(); ///< apply log entries to update in-memory HitSet
   void hit_set_trim(RepGather *repop, unsigned max); ///< discard old HitSets
+  void hit_set_in_memory_trim();                     ///< discard old in memory HitSets
 
   hobject_t get_hit_set_current_object(utime_t stamp);
   hobject_t get_hit_set_archive_object(utime_t start, utime_t end);
@@ -1054,13 +1057,17 @@ protected:
 				 bool write_ordered,
 				 ObjectContextRef obc, int r,
 				 const hobject_t& missing_oid,
-				 bool must_promote);
+				 bool must_promote,
+				 bool in_hit_set = false);
   /**
    * This helper function tells the client to redirect their request elsewhere.
    */
   void do_cache_redirect(OpRequestRef op, ObjectContextRef obc);
   /**
-   * This function starts up a copy from
+   * This function attempts to start a promote.  Either it succeeds,
+   * or places op on a wait list.  If op is null, failure means that
+   * this is a noop.  If a future user wants to be able to distinguish
+   * these cases, a return value should be added.
    */
   void promote_object(OpRequestRef op, ObjectContextRef obc,
 		      const hobject_t& missing_object);

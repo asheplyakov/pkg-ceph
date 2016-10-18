@@ -137,6 +137,8 @@ OPTION(mon_sync_fs_threshold, OPT_INT, 5)   // sync() when writing this many obj
 OPTION(mon_compact_on_start, OPT_BOOL, false)  // compact leveldb on ceph-mon start
 OPTION(mon_compact_on_bootstrap, OPT_BOOL, false)  // trigger leveldb compaction on bootstrap
 OPTION(mon_compact_on_trim, OPT_BOOL, true)       // compact (a prefix) when we trim old states
+OPTION(mon_osd_cache_size, OPT_INT, 10)  // the size of osdmaps cache, not to rely on underlying store's cache
+
 OPTION(mon_tick_interval, OPT_INT, 5)
 OPTION(mon_subscribe_interval, OPT_DOUBLE, 300)
 OPTION(mon_delta_reset_interval, OPT_DOUBLE, 10)   // seconds of inactivity before we reset the pg delta to 0
@@ -172,7 +174,8 @@ OPTION(mon_pg_warn_min_pool_objects, OPT_INT, 1000)  // do not warn on pools bel
 OPTION(mon_cache_target_full_warn_ratio, OPT_FLOAT, .66) // position between pool cache_target_full and max where we start warning
 OPTION(mon_osd_full_ratio, OPT_FLOAT, .95) // what % full makes an OSD "full"
 OPTION(mon_osd_nearfull_ratio, OPT_FLOAT, .85) // what % full makes an OSD near full
-OPTION(mon_globalid_prealloc, OPT_INT, 100)   // how many globalids to prealloc
+OPTION(mon_allow_pool_delete, OPT_BOOL, true) // allow pool deletion
+OPTION(mon_globalid_prealloc, OPT_INT, 10000)   // how many globalids to prealloc
 OPTION(mon_osd_report_timeout, OPT_INT, 900)    // grace period before declaring unresponsive OSDs dead
 OPTION(mon_force_standby_active, OPT_BOOL, true) // should mons force standby-replay mds to be active
 OPTION(mon_warn_on_old_mons, OPT_BOOL, true) // should mons set health to WARN if part of quorum is old?
@@ -452,6 +455,7 @@ OPTION(osd_tier_default_cache_mode, OPT_STR, "writeback")
 OPTION(osd_tier_default_cache_hit_set_count, OPT_INT, 4)
 OPTION(osd_tier_default_cache_hit_set_period, OPT_INT, 1200)
 OPTION(osd_tier_default_cache_hit_set_type, OPT_STR, "bloom")
+OPTION(osd_tier_default_cache_min_read_recency_for_promote, OPT_INT, 1) // number of recent HitSets the object must appear in to be promoted (on read)
 
 OPTION(osd_map_dedup, OPT_BOOL, true)
 OPTION(osd_map_max_advance, OPT_INT, 200) // make this < cache_size!
@@ -475,14 +479,21 @@ OPTION(osd_recover_clone_overlap_limit, OPT_INT, 10)
 OPTION(osd_backfill_scan_min, OPT_INT, 64)
 OPTION(osd_backfill_scan_max, OPT_INT, 512)
 OPTION(osd_op_thread_timeout, OPT_INT, 15)
+OPTION(osd_op_thread_suicide_timeout, OPT_INT, 150)
 OPTION(osd_recovery_thread_timeout, OPT_INT, 30)
+OPTION(osd_recovery_thread_suicide_timeout, OPT_INT, 300)
 OPTION(osd_snap_trim_thread_timeout, OPT_INT, 60*60*1)
+OPTION(osd_snap_trim_thread_suicide_timeout, OPT_INT, 60*60*10)
 OPTION(osd_snap_trim_sleep, OPT_FLOAT, 0)
 OPTION(osd_scrub_thread_timeout, OPT_INT, 60)
+OPTION(osd_scrub_thread_suicide_timeout, OPT_INT, 60)
 OPTION(osd_scrub_finalize_thread_timeout, OPT_INT, 60*10)
+OPTION(osd_scrub_finalize_thread_suicide_timeout, OPT_INT, 60*10*10)
 OPTION(osd_scrub_invalid_stats, OPT_BOOL, true)
 OPTION(osd_remove_thread_timeout, OPT_INT, 60*60)
+OPTION(osd_remove_thread_suicide_timeout, OPT_INT, 10*60*60)
 OPTION(osd_command_thread_timeout, OPT_INT, 10*60)
+OPTION(osd_command_thread_suicide_timeout, OPT_INT, 15*60)
 OPTION(osd_age, OPT_FLOAT, .8)
 OPTION(osd_age_time, OPT_INT, 0)
 OPTION(osd_heartbeat_addr, OPT_ADDR, entity_addr_t())
@@ -569,6 +580,11 @@ OPTION(osd_leveldb_log, OPT_STR, "")  // enable OSD leveldb log file
 
 // determines whether PGLog::check() compares written out log to stored log
 OPTION(osd_debug_pg_log_writeout, OPT_BOOL, false)
+
+// default timeout while caling WaitInterval on an empty queue
+OPTION(threadpool_default_timeout, OPT_INT, 60)
+// default wait time for an empty queue before pinging the hb timeout
+OPTION(threadpool_empty_queue_max_wait, OPT_INT, 2)
 
 OPTION(leveldb_write_buffer_size, OPT_U64, 8 *1024*1024) // leveldb write buffer size
 OPTION(leveldb_cache_size, OPT_U64, 128 *1024*1024) // leveldb cache size
@@ -722,6 +738,9 @@ OPTION(journal_ignore_corruption, OPT_BOOL, false) // assume journal is not corr
 OPTION(rados_mon_op_timeout, OPT_DOUBLE, 0) // how many seconds to wait for a response from the monitor before returning an error from a rados operation. 0 means on limit.
 OPTION(rados_osd_op_timeout, OPT_DOUBLE, 0) // how many seconds to wait for a response from osds before returning an error from a rados operation. 0 means no limit.
 
+OPTION(rbd_op_threads, OPT_INT, 1)
+OPTION(rbd_op_thread_timeout, OPT_INT, 60)
+OPTION(rbd_non_blocking_aio, OPT_BOOL, true) // process AIO ops from a worker thread to prevent blocking
 OPTION(rbd_cache, OPT_BOOL, false) // whether to enable caching (writeback unless rbd_cache_max_dirty is 0)
 OPTION(rbd_cache_writethrough_until_flush, OPT_BOOL, false) // whether to make writeback caching writethrough until flush is called, to be sure the user of librbd will send flushs so that writeback is safe
 OPTION(rbd_cache_size, OPT_LONGLONG, 32<<20)         // cache size in bytes
@@ -779,6 +798,7 @@ OPTION(rgw_swift_url_prefix, OPT_STR, "swift") // entry point for which a url is
 OPTION(rgw_swift_auth_url, OPT_STR, "")        // default URL to go and verify tokens for v1 auth (if not using internal swift auth)
 OPTION(rgw_swift_auth_entry, OPT_STR, "auth")  // entry point for which a url is considered a swift auth url
 OPTION(rgw_swift_tenant_name, OPT_STR, "")  // tenant name to use for swift access
+OPTION(rgw_swift_enforce_content_length, OPT_BOOL, false)  // enforce generation of Content-Length even in cost of performance or scalability
 OPTION(rgw_keystone_url, OPT_STR, "")  // url for keystone server
 OPTION(rgw_keystone_admin_token, OPT_STR, "")  // keystone admin token (shared secret)
 OPTION(rgw_keystone_admin_user, OPT_STR, "")  // keystone admin user name

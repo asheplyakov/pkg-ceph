@@ -940,8 +940,16 @@ OSD::OSD(CephContext *cct_, ObjectStore *store_,
   finished_lock("OSD::finished_lock"),
   op_tracker(cct, cct->_conf->osd_enable_op_tracker),
   test_ops_hook(NULL),
-  op_wq(this, cct->_conf->osd_op_thread_timeout, &op_tp),
-  peering_wq(this, cct->_conf->osd_op_thread_timeout, &op_tp),
+  op_wq(
+    this,
+    cct->_conf->osd_op_thread_timeout,
+    cct->_conf->osd_op_thread_suicide_timeout,
+    &op_tp),
+  peering_wq(
+    this,
+    cct->_conf->osd_op_thread_timeout,
+    cct->_conf->osd_op_thread_suicide_timeout,
+    &op_tp),
   map_lock("OSD::map_lock"),
   peer_map_epoch_lock("OSD::peer_map_epoch_lock"),
   debug_drop_pg_create_probability(cct->_conf->osd_debug_drop_pg_create_probability),
@@ -953,15 +961,42 @@ OSD::OSD(CephContext *cct_, ObjectStore *store_,
   pg_stat_queue_lock("OSD::pg_stat_queue_lock"),
   osd_stat_updated(false),
   pg_stat_tid(0), pg_stat_tid_flushed(0),
-  command_wq(this, cct->_conf->osd_command_thread_timeout, &command_tp),
+  command_wq(
+    this,
+    cct->_conf->osd_command_thread_timeout,
+    cct->_conf->osd_command_thread_suicide_timeout,
+    &command_tp),
   recovery_ops_active(0),
-  recovery_wq(this, cct->_conf->osd_recovery_thread_timeout, &recovery_tp),
+  recovery_wq(
+    this,
+    cct->_conf->osd_recovery_thread_timeout,
+    cct->_conf->osd_recovery_thread_suicide_timeout,
+    &recovery_tp),
   replay_queue_lock("OSD::replay_queue_lock"),
-  snap_trim_wq(this, cct->_conf->osd_snap_trim_thread_timeout, &disk_tp),
-  scrub_wq(this, cct->_conf->osd_scrub_thread_timeout, &disk_tp),
-  scrub_finalize_wq(cct->_conf->osd_scrub_finalize_thread_timeout, &op_tp),
-  rep_scrub_wq(this, cct->_conf->osd_scrub_thread_timeout, &disk_tp),
-  remove_wq(store, cct->_conf->osd_remove_thread_timeout, &disk_tp),
+  snap_trim_wq(
+    this,
+    cct->_conf->osd_snap_trim_thread_timeout,
+    cct->_conf->osd_snap_trim_thread_suicide_timeout,
+    &disk_tp),
+  scrub_wq(
+    this,
+    cct->_conf->osd_scrub_thread_timeout,
+    cct->_conf->osd_scrub_thread_suicide_timeout,
+    &disk_tp),
+  scrub_finalize_wq(
+    cct->_conf->osd_scrub_finalize_thread_timeout, 
+    cct->_conf->osd_scrub_finalize_thread_suicide_timeout, 
+    &op_tp),
+  rep_scrub_wq(
+    this,
+    cct->_conf->osd_scrub_thread_timeout,
+    cct->_conf->osd_scrub_thread_suicide_timeout,
+    &disk_tp),
+  remove_wq(
+    store,
+    cct->_conf->osd_remove_thread_timeout,
+    cct->_conf->osd_remove_thread_suicide_timeout,
+    &disk_tp),
   next_removal_seq(0),
   service(this)
 {
@@ -2104,12 +2139,6 @@ void OSD::load_pgs()
       continue;
     }
 
-    if (!osdmap->have_pg_pool(pgid.pool())) {
-      dout(10) << __func__ << ": skipping PG " << pgid << " because we don't have pool "
-	       << pgid.pool() << dendl;
-      continue;
-    }
-
     if (pgid.preferred() >= 0) {
       dout(10) << __func__ << ": skipping localized PG " << pgid << dendl;
       // FIXME: delete it too, eventually
@@ -2120,7 +2149,29 @@ void OSD::load_pgs()
     bufferlist bl;
     epoch_t map_epoch = PG::peek_map_epoch(store, coll_t(pgid), service.infos_oid, &bl);
 
-    PG *pg = _open_lock_pg(map_epoch == 0 ? osdmap : service.get_map(map_epoch), pgid);
+    PG *pg = NULL;
+    if (map_epoch > 0) {
+      OSDMapRef pgosdmap = service.try_get_map(map_epoch);
+      if (!pgosdmap) {
+	if (!osdmap->have_pg_pool(pgid.pool())) {
+	  derr << __func__ << ": could not find map for epoch " << map_epoch
+	       << " on pg " << pgid << ", but the pool is not present in the "
+	       << "current map, so this is probably a result of bug 10617.  "
+	       << "Skipping the pg for now, you can use ceph_objectstore_tool "
+	       << "to clean it up later." << dendl;
+	  continue;
+	} else {
+	  derr << __func__ << ": have pgid " << pgid << " at epoch "
+	       << map_epoch << ", but missing map.  Crashing."
+	       << dendl;
+	  assert(0 == "Missing map in load_pgs");
+	}
+      }
+      pg = _open_lock_pg(pgosdmap, pgid);
+    } else {
+      pg = _open_lock_pg(osdmap, pgid);
+    }
+    // there can be no waiters here, so we don't call wake_pg_waiters
 
     // read pg state, log
     pg->read_state(store, bl);
@@ -2208,7 +2259,7 @@ void OSD::build_past_intervals_parallel()
 {
   map<PG*,pistate> pis;
 
-  // calculate untion of map range
+  // calculate junction of map range
   epoch_t end_epoch = superblock.oldest_map;
   epoch_t cur_epoch = superblock.newest_map;
   for (ceph::unordered_map<spg_t, PG*>::iterator i = pg_map.begin();
@@ -2217,7 +2268,7 @@ void OSD::build_past_intervals_parallel()
     PG *pg = i->second;
 
     epoch_t start, end;
-    if (!pg->_calc_past_interval_range(&start, &end))
+    if (!pg->_calc_past_interval_range(&start, &end, superblock.oldest_map))
       continue;
 
     dout(10) << pg->info.pgid << " needs " << start << "-" << end << dendl;
@@ -2255,8 +2306,11 @@ void OSD::build_past_intervals_parallel()
       vector<int> acting, up;
       int up_primary;
       int primary;
+      pg_t pgid = pg->info.pgid.pgid;
+      if (p.same_interval_since && last_map->get_pools().count(pgid.pool()))
+	pgid = pgid.get_ancestor(last_map->get_pg_num(pgid.pool()));
       cur_map->pg_to_up_acting_osds(
-	pg->info.pgid.pgid, &up, &up_primary, &acting, &primary);
+	pgid, &up, &up_primary, &acting, &primary);
 
       if (p.same_interval_since == 0) {
 	dout(10) << __func__ << " epoch " << cur_epoch << " pg " << pg->info.pgid
@@ -2283,7 +2337,7 @@ void OSD::build_past_intervals_parallel()
 	pg->info.history.last_epoch_clean,
 	cur_map, last_map,
 	pg->info.pgid.pool(),
-	pg->info.pgid.pgid,
+	pgid,
 	&pg->past_intervals,
 	&debug);
       if (new_interval) {
@@ -3752,7 +3806,9 @@ void OSD::_send_boot()
     dout(10) << " assuming hb_front_addr ip matches client_addr" << dendl;
   }
 
-  MOSDBoot *mboot = new MOSDBoot(superblock, boot_epoch, hb_back_addr, hb_front_addr, cluster_addr);
+  MOSDBoot *mboot = new MOSDBoot(superblock, boot_epoch,
+                                 hb_back_addr, hb_front_addr, cluster_addr,
+                                 CEPH_FEATURES_ALL);
   dout(10) << " client_addr " << client_messenger->get_myaddr()
 	   << ", cluster_addr " << cluster_addr
 	   << ", hb_back_addr " << hb_back_addr
@@ -3930,8 +3986,8 @@ void OSDService::send_message_osd_cluster(int peer, Message *m, epoch_t from_epo
     return;
   }
   const entity_inst_t& peer_inst = next_osdmap->get_cluster_inst(peer);
-  Connection *peer_con = osd->cluster_messenger->get_connection(peer_inst).get();
-  osd->_share_map_outgoing(peer, peer_con, next_osdmap);
+  ConnectionRef peer_con = osd->cluster_messenger->get_connection(peer_inst);
+  osd->_share_map_outgoing(peer, peer_con.get(), next_osdmap);
   osd->cluster_messenger->send_message(m, peer_inst);
 }
 
@@ -5055,11 +5111,11 @@ void OSD::_dispatch(Message *m)
 
   case MSG_OSD_SCRUB:
     handle_scrub(static_cast<MOSDScrub*>(m));
-    break;    
+    break;
 
   case MSG_OSD_REP_SCRUB:
     handle_rep_scrub(static_cast<MOSDRepScrub*>(m));
-    break;    
+    break;
 
     // -- need OSDMap --
 
@@ -5085,7 +5141,21 @@ void OSD::_dispatch(Message *m)
 
 void OSD::handle_rep_scrub(MOSDRepScrub *m)
 {
-  dout(10) << "queueing MOSDRepScrub " << *m << dendl;
+  dout(10) << __func__ << " " << *m << dendl;
+  if (!require_self_aliveness(m, m->map_epoch)) {
+    m->put();
+    return;
+  }
+  if (!require_osd_peer(m)) {
+    m->put();
+    return;
+  }
+  if (osdmap->get_epoch() >= m->map_epoch &&
+      !require_same_peer_instance(m, osdmap)) {
+    m->put();
+    return;
+  }
+
   rep_scrub_wq.queue(m);
 }
 
@@ -6175,17 +6245,18 @@ bool OSD::require_mon_peer(Message *m)
   return true;
 }
 
-bool OSD::require_osd_peer(OpRequestRef& op)
+bool OSD::require_osd_peer(Message *m)
 {
-  if (!op->get_req()->get_connection()->peer_is_osd()) {
-    dout(0) << "require_osd_peer received from non-osd " << op->get_req()->get_connection()->get_peer_addr()
-	    << " " << *op->get_req() << dendl;
+  if (!m->get_connection()->peer_is_osd()) {
+    dout(0) << "require_osd_peer received from non-osd "
+	    << m->get_connection()->get_peer_addr()
+	    << " " << *m << dendl;
     return false;
   }
   return true;
 }
 
-bool OSD::require_self_aliveness(OpRequestRef& op, epoch_t epoch)
+bool OSD::require_self_aliveness(Message *m, epoch_t epoch)
 {
   if (epoch < up_epoch) {
     dout(7) << "from pre-up epoch " << epoch << " < " << up_epoch << dendl;
@@ -6193,16 +6264,15 @@ bool OSD::require_self_aliveness(OpRequestRef& op, epoch_t epoch)
   }
 
   if (!is_active()) {
-    dout(7) << "still in boot state, dropping message " << *op->get_req() << dendl;
+    dout(7) << "still in boot state, dropping message " << *m << dendl;
     return false;
   }
 
   return true;
 }
 
-bool OSD::require_same_peer_instance(OpRequestRef& op, OSDMapRef& map)
+bool OSD::require_same_peer_instance(Message *m, OSDMapRef& map)
 {
-  Message *m = op->get_req();
   int from = m->get_source().num();
 
   if (!map->have_inst(from) ||
@@ -6224,15 +6294,15 @@ bool OSD::require_same_peer_instance(OpRequestRef& op, OSDMapRef& map)
   return true;
 }
 
-bool OSD::require_up_osd_peer(OpRequestRef& op, OSDMapRef& map,
+bool OSD::require_up_osd_peer(Message *m, OSDMapRef& map,
                               epoch_t their_epoch)
 {
-  if (!require_self_aliveness(op, their_epoch)) {
+  if (!require_self_aliveness(m, their_epoch)) {
     return false;
-  } else if (!require_osd_peer(op)) {
+  } else if (!require_osd_peer(m)) {
     return false;
   } else if (map->get_epoch() >= their_epoch &&
-	     !require_same_peer_instance(op, map)) {
+	     !require_same_peer_instance(m, map)) {
     return false;
   }
   return true;
@@ -6256,13 +6326,13 @@ bool OSD::require_same_or_newer_map(OpRequestRef& op, epoch_t epoch)
     return false;
   }
 
-  if (!require_self_aliveness(op, epoch)) {
+  if (!require_self_aliveness(op->get_req(), epoch)) {
     return false;
   }
 
   // ok, our map is same or newer.. do they still exist?
   if (m->get_connection()->get_messenger() == cluster_messenger &&
-      !require_same_peer_instance(op, osdmap)) {
+      !require_same_peer_instance(op->get_req(), osdmap)) {
     return false;
   }
 
@@ -6731,7 +6801,7 @@ void OSD::handle_pg_notify(OpRequestRef op)
   dout(7) << "handle_pg_notify from " << m->get_source() << dendl;
   int from = m->get_source().num();
 
-  if (!require_osd_peer(op))
+  if (!require_osd_peer(op->get_req()))
     return;
 
   if (!require_same_or_newer_map(op, m->get_epoch())) return;
@@ -6766,7 +6836,7 @@ void OSD::handle_pg_log(OpRequestRef op)
   assert(m->get_header().type == MSG_OSD_PG_LOG);
   dout(7) << "handle_pg_log " << *m << " from " << m->get_source() << dendl;
 
-  if (!require_osd_peer(op))
+  if (!require_osd_peer(op->get_req()))
     return;
 
   int from = m->get_source().num();
@@ -6795,7 +6865,7 @@ void OSD::handle_pg_info(OpRequestRef op)
   assert(m->get_header().type == MSG_OSD_PG_INFO);
   dout(7) << "handle_pg_info " << *m << " from " << m->get_source() << dendl;
 
-  if (!require_osd_peer(op))
+  if (!require_osd_peer(op->get_req()))
     return;
 
   int from = m->get_source().num();
@@ -6832,7 +6902,7 @@ void OSD::handle_pg_trim(OpRequestRef op)
 
   dout(7) << "handle_pg_trim " << *m << " from " << m->get_source() << dendl;
 
-  if (!require_osd_peer(op))
+  if (!require_osd_peer(op->get_req()))
     return;
 
   int from = m->get_source().num();
@@ -6888,7 +6958,7 @@ void OSD::handle_pg_scan(OpRequestRef op)
   assert(m->get_header().type == MSG_OSD_PG_SCAN);
   dout(10) << "handle_pg_scan " << *m << " from " << m->get_source() << dendl;
   
-  if (!require_osd_peer(op))
+  if (!require_osd_peer(op->get_req()))
     return;
   if (!require_same_or_newer_map(op, m->query_epoch))
     return;
@@ -6916,7 +6986,7 @@ void OSD::handle_pg_backfill(OpRequestRef op)
   assert(m->get_header().type == MSG_OSD_PG_BACKFILL);
   dout(10) << "handle_pg_backfill " << *m << " from " << m->get_source() << dendl;
   
-  if (!require_osd_peer(op))
+  if (!require_osd_peer(op->get_req()))
     return;
   if (!require_same_or_newer_map(op, m->query_epoch))
     return;
@@ -6943,7 +7013,7 @@ void OSD::handle_pg_backfill_reserve(OpRequestRef op)
   MBackfillReserve *m = static_cast<MBackfillReserve*>(op->get_req());
   assert(m->get_header().type == MSG_OSD_BACKFILL_RESERVE);
 
-  if (!require_osd_peer(op))
+  if (!require_osd_peer(op->get_req()))
     return;
   if (!require_same_or_newer_map(op, m->query_epoch))
     return;
@@ -6992,7 +7062,7 @@ void OSD::handle_pg_recovery_reserve(OpRequestRef op)
   MRecoveryReserve *m = static_cast<MRecoveryReserve*>(op->get_req());
   assert(m->get_header().type == MSG_OSD_RECOVERY_RESERVE);
 
-  if (!require_osd_peer(op))
+  if (!require_osd_peer(op->get_req()))
     return;
   if (!require_same_or_newer_map(op, m->query_epoch))
     return;
@@ -7048,7 +7118,7 @@ void OSD::handle_pg_query(OpRequestRef op)
   MOSDPGQuery *m = (MOSDPGQuery*)op->get_req();
   assert(m->get_header().type == MSG_OSD_PG_QUERY);
 
-  if (!require_osd_peer(op))
+  if (!require_osd_peer(op->get_req()))
     return;
 
   dout(7) << "handle_pg_query from " << m->get_source() << " epoch " << m->get_epoch() << dendl;
@@ -7152,7 +7222,7 @@ void OSD::handle_pg_remove(OpRequestRef op)
   assert(m->get_header().type == MSG_OSD_PG_REMOVE);
   assert(osd_lock.is_locked());
 
-  if (!require_osd_peer(op))
+  if (!require_osd_peer(op->get_req()))
     return;
 
   dout(7) << "handle_pg_remove from " << m->get_source() << " on "
@@ -7642,7 +7712,7 @@ void OSD::handle_replica_op(OpRequestRef op)
     return;
   }
 
-  if (!require_up_osd_peer(op, osdmap, m->map_epoch))
+  if (!require_up_osd_peer(op->get_req(), osdmap, m->map_epoch))
     return;
 
   // must be a rep op.

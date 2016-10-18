@@ -1183,13 +1183,6 @@ int OSDMap::apply_incremental(const Incremental &inc)
   if (inc.new_pool_max != -1)
     pool_max = inc.new_pool_max;
 
-  for (set<int64_t>::const_iterator p = inc.old_pools.begin();
-       p != inc.old_pools.end();
-       ++p) {
-    pools.erase(*p);
-    name_pool.erase(pool_name[*p]);
-    pool_name.erase(*p);
-  }
   for (map<int64_t,pg_pool_t>::const_iterator p = inc.new_pools.begin();
        p != inc.new_pools.end();
        ++p) {
@@ -1203,6 +1196,13 @@ int OSDMap::apply_incremental(const Incremental &inc)
       name_pool.erase(pool_name[p->first]);
     pool_name[p->first] = p->second;
     name_pool[p->second] = p->first;
+  }
+  for (set<int64_t>::const_iterator p = inc.old_pools.begin();
+       p != inc.old_pools.end();
+       ++p) {
+    pools.erase(*p);
+    name_pool.erase(pool_name[*p]);
+    pool_name.erase(*p);
   }
 
   for (map<int32_t,uint32_t>::const_iterator i = inc.new_weight.begin();
@@ -1222,17 +1222,17 @@ int OSDMap::apply_incremental(const Incremental &inc)
   }
 
   // erasure_code_profiles
+  for (vector<string>::const_iterator i = inc.old_erasure_code_profiles.begin();
+       i != inc.old_erasure_code_profiles.end();
+       ++i)
+    erasure_code_profiles.erase(*i);
+  
   for (map<string,map<string,string> >::const_iterator i =
 	 inc.new_erasure_code_profiles.begin();
        i != inc.new_erasure_code_profiles.end();
        i++) {
     set_erasure_code_profile(i->first, i->second);
   }
-  
-  for (vector<string>::const_iterator i = inc.old_erasure_code_profiles.begin();
-       i != inc.old_erasure_code_profiles.end();
-       i++)
-    erasure_code_profiles.erase(*i);
   
   // up/down
   for (map<int32_t,uint8_t>::const_iterator i = inc.new_state.begin();

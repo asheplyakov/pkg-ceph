@@ -1068,12 +1068,18 @@ public:
     object_t target_oid;
     object_locator_t target_oloc;
 
-    bool precalc_pgid;   ///< true if we are directed at base_pgid, not base_oid
-    pg_t base_pgid;      ///< explciti pg target, if any
+    bool precalc_pgid;    ///< true if we are directed at base_pgid, not base_oid
+    pg_t base_pgid;       ///< explciti pg target, if any
 
-    pg_t pgid;           ///< last pg we mapped to
-    vector<int> acting;  ///< acting for last pg we mapped to
-    int primary;         ///< primary for last pg we mapped to
+    pg_t pgid;            ///< last pg we mapped to
+    unsigned pg_num;      ///< last pg_num we mapped to
+    unsigned pg_num_mask; ///< last pg_num_mask we mapped to
+    vector<int> up;       ///< set of up osds for last pg we mapped to
+    vector<int> acting;   ///< set of acting osds for last pg we mapped to
+    int up_primary;       ///< primary for last pg we mapped to based on the up set
+    int acting_primary;   ///< primary for last pg we mapped to based on the acting set
+    int size;             ///< the size of the pool when were were last mapped
+    int min_size;         ///< the min size of the pool when were were last mapped
 
     bool used_replica;
     bool paused;
@@ -1085,7 +1091,12 @@ public:
 	base_oid(oid),
 	base_oloc(oloc),
 	precalc_pgid(false),
-	primary(-1),
+	pg_num(0),
+        pg_num_mask(0),
+	up_primary(-1),
+	acting_primary(-1),
+	size(-1),
+	min_size(-1),
 	used_replica(false),
 	paused(false),
 	osd(-1)
@@ -1133,6 +1144,13 @@ public:
     /// true if we should resend this message on failure
     bool should_resend;
 
+    epoch_t last_force_resend;
+
+    /// true if the throttle budget is get/put on a series of OPs, instead of
+    /// per OP basis, when this flag is set, the budget is acquired before sending
+    /// the very first OP of the series and released upon receiving the last OP reply.
+    bool ctx_budgeted;
+
     Op(const object_t& o, const object_locator_t& ol, vector<OSDOp>& op,
        int f, Context *ac, Context *co, version_t *ov) :
       session(NULL), session_item(this), incarnation(0),
@@ -1146,7 +1164,9 @@ public:
       objver(ov), reply_epoch(NULL),
       map_dne_bound(0),
       budgeted(false),
-      should_resend(true) {
+      should_resend(true),
+      last_force_resend(0),
+      ctx_budgeted(false) {
       ops.swap(op);
       
       /* initialize out_* to match op vector */
@@ -1249,11 +1269,24 @@ public:
 
     bufferlist extra_info;
 
+    // The budget associated with this context, once it is set (>= 0),
+    // the budget is not get/released on OP basis, instead the budget
+    // is acquired before sending the first OP and released upon receiving
+    // the last op reply.
+    int ctx_budget;
+
     ListContext() : current_pg(0), current_pg_epoch(0), starting_pg_num(0),
 		    at_end_of_pool(false),
 		    at_end_of_pg(false),
 		    pool_id(0),
-		    pool_snap_seq(0), max_entries(0) {}
+		    pool_snap_seq(0),
+                    max_entries(0),
+                    nspace(),
+                    bl(),
+                    list(),
+                    filter(),
+                    extra_info(),
+                    ctx_budget(-1) {}
 
     bool at_end() const {
       return at_end_of_pool;
@@ -1372,6 +1405,7 @@ public:
 
     ceph_tid_t register_tid;
     epoch_t map_dne_bound;
+    epoch_t last_force_resend;
 
     LingerOp() : linger_id(0),
 		 target(object_t(), object_locator_t(), 0),
@@ -1381,7 +1415,8 @@ public:
 		 on_reg_ack(NULL), on_reg_commit(NULL),
 		 session(NULL), session_item(this),
 		 register_tid(0),
-		 map_dne_bound(0) {}
+		 map_dne_bound(0),
+                 last_force_resend(0) {}
 
     // no copy!
     const LingerOp &operator=(const LingerOp& r);
@@ -1480,7 +1515,7 @@ public:
   bool osdmap_full_flag() const;
   bool target_should_be_paused(op_target_t *op);
 
-  int calc_target(op_target_t *t, bool any_change=false);
+  int calc_target(op_target_t *t, epoch_t *last_force_resend=0, bool any_change=false);
   int recalc_op_target(Op *op);
   bool recalc_linger_op_target(LingerOp *op);
 
@@ -1517,7 +1552,7 @@ public:
    */
   int calc_op_budget(Op *op);
   void throttle_op(Op *op, int op_size=0);
-  void take_op_budget(Op *op) {
+  int take_op_budget(Op *op) {
     int op_budget = calc_op_budget(op);
     if (keep_balanced_budget) {
       throttle_op(op, op_budget);
@@ -1526,13 +1561,19 @@ public:
       op_throttle_ops.take(1);
     }
     op->budgeted = true;
+    return op_budget;
+  }
+  void put_op_budget_bytes(int op_budget) {
+    assert(op_budget >= 0);
+    op_throttle_bytes.put(op_budget);
+    op_throttle_ops.put(1);
   }
   void put_op_budget(Op *op) {
     assert(op->budgeted);
     int op_budget = calc_op_budget(op);
-    op_throttle_bytes.put(op_budget);
-    op_throttle_ops.put(1);
+    put_op_budget_bytes(op_budget);
   }
+  void put_list_context_budget(ListContext *list_context);
   Throttle op_throttle_bytes, op_throttle_ops;
 
  public:
@@ -1603,7 +1644,7 @@ private:
 
   // public interface
 public:
-  ceph_tid_t op_submit(Op *op);
+  ceph_tid_t op_submit(Op *op, int *ctx_budget = NULL);
   bool is_active() {
     return !(ops.empty() && linger_ops.empty() && poolstat_ops.empty() && statfs_ops.empty());
   }
@@ -1707,7 +1748,8 @@ public:
 		ObjectOperation& op,
 		bufferlist *pbl, int flags,
 		Context *onack,
-		epoch_t *reply_epoch) {
+		epoch_t *reply_epoch,
+                int *ctx_budget) {
     Op *o = new Op(object_t(), oloc,
 		   op.ops, flags | global_op_flags | CEPH_OSD_FLAG_READ,
 		   onack, NULL, NULL);
@@ -1720,7 +1762,11 @@ public:
     o->out_handler.swap(op.out_handler);
     o->out_rval.swap(op.out_rval);
     o->reply_epoch = reply_epoch;
-    return op_submit(o);
+    if (ctx_budget) {
+      // budget is tracked by listing context
+      o->ctx_budgeted = true;
+    }
+    return op_submit(o, ctx_budget);
   }
   ceph_tid_t linger_mutate(const object_t& oid, const object_locator_t& oloc,
 		      ObjectOperation& op,

@@ -185,6 +185,18 @@ void PGLog::proc_replica_log(
   dout(10) << "proc_replica_log for osd." << from << ": "
 	   << oinfo << " " << olog << " " << omissing << dendl;
 
+  if (olog.head < log.tail) {
+    dout(10) << __func__ << ": osd." << from << " does not overlap, not looking "
+	     << "for divergent objects" << dendl;
+    return;
+  }
+  if (olog.head == log.head) {
+    dout(10) << __func__ << ": osd." << from << " same log head, not looking "
+	     << "for divergent objects" << dendl;
+    return;
+  }
+  assert(olog.head >= log.tail);
+
   /*
     basically what we're doing here is rewinding the remote log,
     dropping divergent entries, until we find something that matches
@@ -202,48 +214,54 @@ void PGLog::proc_replica_log(
 	     << " have " << i->second.have << dendl;
   }
 
-  list<pg_log_entry_t>::const_iterator fromiter = log.log.end();
-  eversion_t lower_bound = log.tail;
+  list<pg_log_entry_t>::const_reverse_iterator first_non_divergent =
+    log.log.rbegin();
   while (1) {
-    if (fromiter == log.log.begin())
+    if (first_non_divergent == log.log.rend())
       break;
-    --fromiter;
-    if (fromiter->version <= olog.head) {
-      dout(20) << "merge_log cut point (usually last shared) is "
-	       << *fromiter << dendl;
-      lower_bound = fromiter->version;
-      ++fromiter;
+    if (first_non_divergent->version <= olog.head) {
+      dout(20) << "merge_log point (usually last shared) is "
+	       << *first_non_divergent << dendl;
       break;
     }
+    ++first_non_divergent;
   }
+
+  /* Because olog.head >= log.tail, we know that both pgs must at least have
+   * the event represented by log.tail.  Thus, lower_bound >= log.tail.  It's
+   * possible that olog/log contain no actual events between olog.head and
+   * log.tail, however, since they might have been split out.  Thus, if
+   * we cannot find an event e such that log.tail <= e.version <= log.head,
+   * the last_update must actually be log.tail.
+   */
+  eversion_t lu =
+    (first_non_divergent == log.log.rend() ||
+     first_non_divergent->version < log.tail) ?
+    log.tail :
+    first_non_divergent->version;
 
   list<pg_log_entry_t> divergent;
   list<pg_log_entry_t>::const_iterator pp = olog.log.end();
-  eversion_t lu(oinfo.last_update);
   while (true) {
-    if (pp == olog.log.begin()) {
-      if (pp != olog.log.end())   // no last_update adjustment if we discard nothing!
-	lu = olog.tail;
+    if (pp == olog.log.begin())
       break;
-    }
+
     --pp;
     const pg_log_entry_t& oe = *pp;
 
     // don't continue past the tail of our log.
     if (oe.version <= log.tail) {
-      lu = oe.version;
       ++pp;
       break;
     }
 
-    if (oe.version <= lower_bound) {
-      lu = oe.version;
+    if (oe.version <= lu) {
       ++pp;
       break;
     }
 
     divergent.push_front(oe);
-  }    
+  }
 
 
   IndexedLog folog;
@@ -557,10 +575,10 @@ void PGLog::merge_log(ObjectStore::Transaction& t,
   //  missing set, as that should already be consistent with our
   //  current log.
   if (olog.tail < log.tail) {
-    mark_dirty_to(log.log.begin()->version); // last clean entry
     dout(10) << "merge_log extending tail to " << olog.tail << dendl;
     list<pg_log_entry_t>::iterator from = olog.log.begin();
     list<pg_log_entry_t>::iterator to;
+    eversion_t last;
     for (to = from;
 	 to != olog.log.end();
 	 ++to) {
@@ -568,8 +586,10 @@ void PGLog::merge_log(ObjectStore::Transaction& t,
 	break;
       log.index(*to);
       dout(15) << *to << dendl;
+      last = to->version;
     }
-      
+    mark_dirty_to(last);
+
     // splice into our log.
     log.log.splice(log.log.begin(),
 		   olog.log, from, to);
@@ -687,6 +707,32 @@ void PGLog::merge_log(ObjectStore::Transaction& t,
   }
 }
 
+void PGLog::check() {
+  if (!pg_log_debug)
+    return;
+  if (log.log.size() != log_keys_debug.size()) {
+    derr << "log.log.size() != log_keys_debug.size()" << dendl;
+    derr << "actual log:" << dendl;
+    for (list<pg_log_entry_t>::iterator i = log.log.begin();
+	 i != log.log.end();
+	 ++i) {
+      derr << "    " << *i << dendl;
+    }
+    derr << "log_keys_debug:" << dendl;
+    for (set<string>::const_iterator i = log_keys_debug.begin();
+	 i != log_keys_debug.end();
+	 ++i) {
+      derr << "    " << *i << dendl;
+    }
+  }
+  assert(log.log.size() == log_keys_debug.size());
+  for (list<pg_log_entry_t>::iterator i = log.log.begin();
+       i != log.log.end();
+       ++i) {
+    assert(log_keys_debug.count(i->get_key_name()));
+  }
+}
+
 void PGLog::write_log(
   ObjectStore::Transaction& t, const hobject_t &log_oid)
 {
@@ -765,7 +811,7 @@ void PGLog::_write_log(
 
   map<string,bufferlist> keys;
   for (list<pg_log_entry_t>::iterator p = log.log.begin();
-       p != log.log.end() && p->version < dirty_to;
+       p != log.log.end() && p->version <= dirty_to;
        ++p) {
     bufferlist bl(sizeof(*p) * 2);
     p->encode_with_checksum(bl);
@@ -796,6 +842,7 @@ void PGLog::_write_log(
     ::encode(divergent_priors, keys["divergent_priors"]);
   }
   ::encode(log.can_rollback_to, keys["can_rollback_to"]);
+  ::encode(log.rollback_info_trimmed_to, keys["rollback_info_trimmed_to"]);
 
   t.omap_rmkeys(coll_t::META_COLL, log_oid, to_remove);
   t.omap_setkeys(coll_t::META_COLL, log_oid, keys);
@@ -820,8 +867,11 @@ bool PGLog::read_log(ObjectStore *store, coll_t coll, hobject_t log_oid,
     rewrite_log = true;
   } else {
     log.tail = info.log_tail;
+
     // will get overridden below if it had been recorded
     log.can_rollback_to = info.last_update;
+    log.rollback_info_trimmed_to = eversion_t();
+
     ObjectMap::ObjectMapIterator p = store->get_omap_iterator(coll_t::META_COLL, log_oid);
     if (p) for (p->seek_to_first(); p->valid() ; p->next()) {
       bufferlist bl = p->value();//Copy bufferlist before creating iterator
@@ -833,6 +883,10 @@ bool PGLog::read_log(ObjectStore *store, coll_t coll, hobject_t log_oid,
 	bufferlist bl = p->value();
 	bufferlist::iterator bp = bl.begin();
 	::decode(log.can_rollback_to, bp);
+      } else if (p->key() == "rollback_info_trimmed_to") {
+	bufferlist bl = p->value();
+	bufferlist::iterator bp = bl.begin();
+	::decode(log.rollback_info_trimmed_to, bp);
       } else {
 	pg_log_entry_t e;
 	e.decode_with_checksum(bp);

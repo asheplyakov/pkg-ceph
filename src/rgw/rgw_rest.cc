@@ -76,10 +76,10 @@ string lowercase_underscore_http_attr(const string& orig)
   for (size_t i = 0; i < orig.size(); ++i, ++s) {
     switch (*s) {
       case '-':
-	buf[i] = '_';
-	break;
+        buf[i] = '_';
+        break;
       default:
-	buf[i] = tolower(*s);
+        buf[i] = tolower(*s);
     }
   }
   return string(buf);
@@ -98,10 +98,32 @@ string uppercase_underscore_http_attr(const string& orig)
   for (size_t i = 0; i < orig.size(); ++i, ++s) {
     switch (*s) {
       case '-':
-	buf[i] = '_';
-	break;
+        buf[i] = '_';
+        break;
       default:
-	buf[i] = toupper(*s);
+        buf[i] = toupper(*s);
+    }
+  }
+  return string(buf);
+}
+
+/*
+ * make attrs look-like-this
+ * converts underscores to dashes
+ */
+string lowercase_dash_http_attr(const string& orig)
+{
+  const char *s = orig.c_str();
+  char buf[orig.size() + 1];
+  buf[orig.size()] = '\0';
+
+  for (size_t i = 0; i < orig.size(); ++i, ++s) {
+    switch (*s) {
+      case '_':
+        buf[i] = '-';
+        break;
+      default:
+        buf[i] = tolower(*s);
     }
   }
   return string(buf);
@@ -122,15 +144,15 @@ string camelcase_dash_http_attr(const string& orig)
   for (size_t i = 0; i < orig.size(); ++i, ++s) {
     switch (*s) {
       case '_':
-	buf[i] = '-';
-	last_sep = true;
-	break;
+        buf[i] = '-';
+        last_sep = true;
+        break;
       default:
-	if (last_sep)
-	  buf[i] = toupper(*s);
-	else
-	  buf[i] = tolower(*s);
-	last_sep = false;
+        if (last_sep)
+          buf[i] = toupper(*s);
+        else
+          buf[i] = tolower(*s);
+        last_sep = false;
     }
   }
   return string(buf);
@@ -272,8 +294,11 @@ void dump_bucket_from_state(struct req_state *s)
 {
   int expose_bucket = g_conf->rgw_expose_bucket;
   if (expose_bucket) {
-    if (!s->bucket_name_str.empty())
-      s->cio->print("Bucket: \"%s\"\r\n", s->bucket_name_str.c_str());
+    if (!s->bucket_name_str.empty()) {
+      string b;
+      url_encode(s->bucket_name_str, b);
+      s->cio->print("Bucket: %s\r\n", b.c_str());
+    }
   }
 }
 
@@ -405,7 +430,8 @@ void dump_start(struct req_state *s)
   }
 }
 
-void end_header(struct req_state *s, RGWOp *op, const char *content_type)
+void end_header(struct req_state *s, RGWOp *op, const char *content_type, const int64_t proposed_content_length,
+		bool force_content_type)
 {
   string ctype;
 
@@ -413,7 +439,13 @@ void end_header(struct req_state *s, RGWOp *op, const char *content_type)
     dump_access_control(s, op);
   }
 
-  if (!content_type || s->err.is_err()) {
+  if (s->prot_flags & RGW_REST_SWIFT && !content_type) {
+    force_content_type = true;
+  }
+
+  /* do not send content type if content length is zero
+     and the content type was not set by the user */
+  if (force_content_type || (!content_type &&  s->formatter->get_len()  != 0) || s->err.is_err()){
     switch (s->format) {
     case RGW_FORMAT_XML:
       ctype = "application/xml";
@@ -438,10 +470,18 @@ void end_header(struct req_state *s, RGWOp *op, const char *content_type)
       s->formatter->dump_string("Message", s->err.message);
     s->formatter->close_section();
     dump_content_length(s, s->formatter->get_len());
+  } else {
+    if (proposed_content_length != NO_CONTENT_LENGTH) {
+      dump_content_length(s, proposed_content_length);
+    }
   }
-  int r = s->cio->print("Content-type: %s\r\n", content_type);
-  if (r < 0) {
-    ldout(s->cct, 0) << "ERROR: s->cio->print() returned err=" << r << dendl;
+
+  int r;
+  if (content_type) {
+      r = s->cio->print("Content-Type: %s\r\n", content_type);
+      if (r < 0) {
+	ldout(s->cct, 0) << "ERROR: s->cio->print() returned err=" << r << dendl;
+      }
   }
   r = s->cio->complete_header();
   if (r < 0) {
@@ -1218,10 +1258,21 @@ int RGWREST::preprocess(struct req_state *s, RGWClientIO *cio)
   url_decode(s->info.request_uri, s->decoded_uri);
   s->length = info.env->get("CONTENT_LENGTH");
   if (s->length) {
-    if (*s->length == '\0')
+    if (*s->length == '\0') {
       s->content_length = 0;
-    else
-      s->content_length = atoll(s->length);
+    } else {
+      string err;
+      s->content_length = strict_strtoll(s->length, 10, &err);
+      if (!err.empty()) {
+        ldout(s->cct, 10) << "bad content length, aborting" << dendl;
+        return -EINVAL;
+      }
+    }
+  }
+
+  if (s->content_length < 0) {
+    ldout(s->cct, 10) << "negative content length, aborting" << dendl;
+    return -EINVAL;
   }
 
   map<string, string>::iterator giter;

@@ -807,6 +807,7 @@ void pg_pool_t::dump(Formatter *f) const
   f->close_section(); // hit_set_params
   f->dump_unsigned("hit_set_period", hit_set_period);
   f->dump_unsigned("hit_set_count", hit_set_count);
+  f->dump_unsigned("min_read_recency_for_promote", min_read_recency_for_promote);
   f->dump_unsigned("stripe_width", get_stripe_width());
 }
 
@@ -1058,8 +1059,56 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
     return;
   }
 
-  __u8 encode_compat = 5;
-  ENCODE_START(15, encode_compat, bl);
+  if ((features & CEPH_FEATURE_OSD_POOLRESEND) == 0) {
+    // we simply added last_force_op_resend here, which is a fully
+    // backward compatible change.  however, encoding the same map
+    // differently between monitors triggers scrub noise (even though
+    // they are decodable without the feature), so let's be pendantic
+    // about it.
+    ENCODE_START(14, 5, bl);
+    ::encode(type, bl);
+    ::encode(size, bl);
+    ::encode(crush_ruleset, bl);
+    ::encode(object_hash, bl);
+    ::encode(pg_num, bl);
+    ::encode(pgp_num, bl);
+    __u32 lpg_num = 0, lpgp_num = 0;  // tell old code that there are no localized pgs.
+    ::encode(lpg_num, bl);
+    ::encode(lpgp_num, bl);
+    ::encode(last_change, bl);
+    ::encode(snap_seq, bl);
+    ::encode(snap_epoch, bl);
+    ::encode(snaps, bl, features);
+    ::encode(removed_snaps, bl);
+    ::encode(auid, bl);
+    ::encode(flags, bl);
+    ::encode(crash_replay_interval, bl);
+    ::encode(min_size, bl);
+    ::encode(quota_max_bytes, bl);
+    ::encode(quota_max_objects, bl);
+    ::encode(tiers, bl);
+    ::encode(tier_of, bl);
+    __u8 c = cache_mode;
+    ::encode(c, bl);
+    ::encode(read_tier, bl);
+    ::encode(write_tier, bl);
+    ::encode(properties, bl);
+    ::encode(hit_set_params, bl);
+    ::encode(hit_set_period, bl);
+    ::encode(hit_set_count, bl);
+    ::encode(stripe_width, bl);
+    ::encode(target_max_bytes, bl);
+    ::encode(target_max_objects, bl);
+    ::encode(cache_target_dirty_ratio_micro, bl);
+    ::encode(cache_target_full_ratio_micro, bl);
+    ::encode(cache_min_flush_age, bl);
+    ::encode(cache_min_evict_age, bl);
+    ::encode(erasure_code_profile, bl);
+    ENCODE_FINISH(bl);
+    return;
+  }
+
+  ENCODE_START(16, 5, bl);
   ::encode(type, bl);
   ::encode(size, bl);
   ::encode(crush_ruleset, bl);
@@ -1099,12 +1148,13 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
   ::encode(cache_min_evict_age, bl);
   ::encode(erasure_code_profile, bl);
   ::encode(last_force_op_resend, bl);
+  ::encode(min_read_recency_for_promote, bl);
   ENCODE_FINISH(bl);
 }
 
 void pg_pool_t::decode(bufferlist::iterator& bl)
 {
-  DECODE_START_LEGACY_COMPAT_LEN(15, 5, 5, bl);
+  DECODE_START_LEGACY_COMPAT_LEN(16, 5, 5, bl);
   ::decode(type, bl);
   ::decode(size, bl);
   ::decode(crush_ruleset, bl);
@@ -1206,6 +1256,12 @@ void pg_pool_t::decode(bufferlist::iterator& bl)
   } else {
     last_force_op_resend = 0;
   }
+  if (struct_v >= 16) {
+    ::decode(min_read_recency_for_promote, bl);
+  } else {
+    pg_pool_t def;
+    min_read_recency_for_promote = def.min_read_recency_for_promote;
+  }
   DECODE_FINISH(bl);
   calc_pg_masks();
 }
@@ -1251,6 +1307,7 @@ void pg_pool_t::generate_test_instances(list<pg_pool_t*>& o)
   a.hit_set_params = HitSet::Params(new BloomHitSet::Params);
   a.hit_set_period = 3600;
   a.hit_set_count = 8;
+  a.min_read_recency_for_promote = 1;
   a.set_stripe_width(12345);
   a.target_max_bytes = 1238132132;
   a.target_max_objects = 1232132;
@@ -1303,6 +1360,8 @@ ostream& operator<<(ostream& out, const pg_pool_t& p)
 	<< " " << p.hit_set_period << "s"
 	<< " x" << p.hit_set_count;
   }
+  if (p.min_read_recency_for_promote)
+    out << " min_read_recency_for_promote " << p.min_read_recency_for_promote;
   out << " stripe_width " << p.get_stripe_width();
   return out;
 }
@@ -2196,6 +2255,62 @@ void pg_interval_t::generate_test_instances(list<pg_interval_t*>& o)
   o.back()->maybe_went_rw = true;
 }
 
+bool pg_interval_t::is_new_interval(
+  int old_acting_primary,
+  int new_acting_primary,
+  const vector<int> &old_acting,
+  const vector<int> &new_acting,
+  int old_up_primary,
+  int new_up_primary,
+  const vector<int> &old_up,
+  const vector<int> &new_up,
+  int old_size,
+  int new_size,
+  int old_min_size,
+  int new_min_size,
+  unsigned old_pg_num,
+  unsigned new_pg_num,
+  pg_t pgid) {
+  return old_acting_primary != new_acting_primary ||
+    new_acting != old_acting ||
+    old_up_primary != new_up_primary ||
+    new_up != old_up ||
+    old_min_size != new_min_size ||
+    old_size != new_size ||
+    pgid.is_split(old_pg_num, new_pg_num, 0);
+}
+
+bool pg_interval_t::is_new_interval(
+  int old_acting_primary,
+  int new_acting_primary,
+  const vector<int> &old_acting,
+  const vector<int> &new_acting,
+  int old_up_primary,
+  int new_up_primary,
+  const vector<int> &old_up,
+  const vector<int> &new_up,
+  OSDMapRef osdmap,
+  OSDMapRef lastmap,
+  int64_t pool_id,
+  pg_t pgid) {
+  return !(lastmap->get_pools().count(pgid.pool())) ||
+    is_new_interval(old_acting_primary,
+		    new_acting_primary,
+		    old_acting,
+		    new_acting,
+		    old_up_primary,
+		    new_up_primary,
+		    old_up,
+		    new_up,
+		    lastmap->get_pools().find(pgid.pool())->second.size,
+		    osdmap->get_pools().find(pgid.pool())->second.size,
+		    lastmap->get_pools().find(pgid.pool())->second.min_size,
+		    osdmap->get_pools().find(pgid.pool())->second.min_size,
+		    lastmap->get_pg_num(pgid.pool()),
+		    osdmap->get_pg_num(pgid.pool()),
+		    pgid);
+}
+
 bool pg_interval_t::check_new_interval(
   int old_acting_primary,
   int new_acting_primary,
@@ -2218,15 +2333,19 @@ bool pg_interval_t::check_new_interval(
   //  NOTE: a change in the up set primary triggers an interval
   //  change, even though the interval members in the pg_interval_t
   //  do not change.
-  if (old_acting_primary != new_acting_primary ||
-      new_acting != old_acting ||
-      old_up_primary != new_up_primary ||
-      new_up != old_up ||
-      (!(lastmap->get_pools().count(pool_id))) ||
-      (lastmap->get_pools().find(pool_id)->second.min_size !=
-       osdmap->get_pools().find(pool_id)->second.min_size)  ||
-      pgid.is_split(lastmap->get_pg_num(pgid.pool()),
-        osdmap->get_pg_num(pgid.pool()), 0)) {
+  if (is_new_interval(
+	old_acting_primary,
+	new_acting_primary,
+	old_acting,
+	new_acting,
+	old_up_primary,
+	new_up_primary,
+	old_up,
+	new_up,
+	osdmap,
+	lastmap,
+	pool_id,
+	pgid)) {
     pg_interval_t& i = (*past_intervals)[same_interval_since];
     i.first = same_interval_since;
     i.last = osdmap->get_epoch() - 1;
@@ -3613,6 +3732,7 @@ void object_info_t::copy_user_bits(const object_info_t& other)
   // these bits are copied from head->clone.
   size = other.size;
   mtime = other.mtime;
+  local_mtime = other.local_mtime;
   last_reqid = other.last_reqid;
   truncate_seq = other.truncate_seq;
   truncate_size = other.truncate_size;
@@ -3644,7 +3764,7 @@ void object_info_t::encode(bufferlist& bl) const
        ++i) {
     old_watchers.insert(make_pair(i->first.second, i->second));
   }
-  ENCODE_START(13, 8, bl);
+  ENCODE_START(14, 8, bl);
   ::encode(soid, bl);
   ::encode(myoloc, bl);	//Retained for compatibility
   ::encode(category, bl);
@@ -3669,6 +3789,7 @@ void object_info_t::encode(bufferlist& bl) const
   ::encode(watchers, bl);
   __u32 _flags = flags;
   ::encode(_flags, bl);
+  ::encode(local_mtime, bl);
   ENCODE_FINISH(bl);
 }
 
@@ -3747,6 +3868,11 @@ void object_info_t::decode(bufferlist::iterator& bl)
     ::decode(_flags, bl);
     flags = (flag_t)_flags;
   }
+  if (struct_v >= 14) {
+    ::decode(local_mtime, bl);
+  } else {
+    local_mtime = utime_t();
+  }
   DECODE_FINISH(bl);
 }
 
@@ -3762,6 +3888,7 @@ void object_info_t::dump(Formatter *f) const
   f->dump_unsigned("user_version", user_version);
   f->dump_unsigned("size", size);
   f->dump_stream("mtime") << mtime;
+  f->dump_stream("local_mtime") << local_mtime;
   f->dump_unsigned("lost", (int)is_lost());
   f->dump_unsigned("flags", (int)flags);
   f->dump_stream("wrlock_by") << wrlock_by;

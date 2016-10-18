@@ -11,13 +11,18 @@ int RGWMongoose::write_data(const char *buf, int len)
 {
   if (!header_done) {
     header_data.append(buf, len);
-    return 0;
+    return len;
   }
   if (!sent_header) {
     data.append(buf, len);
-    return 0;
+    return len;
   }
-  return mg_write(conn, buf, len);
+  int r = mg_write(conn, buf, len);
+  if (r == 0) {
+    /* didn't send anything, error out */
+    return -EIO;
+  }
+  return r;
 }
 
 RGWMongoose::RGWMongoose(mg_connection *_conn, int _port) : conn(_conn), port(_port), header_done(false), sent_header(false), has_content_length(false),
@@ -145,6 +150,20 @@ int RGWMongoose::send_100_continue()
   return mg_write(conn, buf, sizeof(buf) - 1);
 }
 
+static void dump_date_header(bufferlist &out)
+{
+  char timestr[TIME_BUF_SIZE];
+  const time_t gtime = time(NULL);
+  struct tm result;
+  struct tm const * const tmp = gmtime_r(&gtime, &result);
+
+  if (tmp == NULL)
+    return;
+
+  if (strftime(timestr, sizeof(timestr), "Date: %a, %d %b %Y %H:%M:%S %Z\r\n", tmp))
+    out.append(timestr);
+}
+
 int RGWMongoose::complete_header()
 {
   header_done = true;
@@ -152,6 +171,8 @@ int RGWMongoose::complete_header()
   if (!has_content_length) {
     return 0;
   }
+
+  dump_date_header(header_data);
 
   if (explicit_keepalive)
     header_data.append("Connection: Keep-Alive\r\n");

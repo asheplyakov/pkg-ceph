@@ -654,6 +654,11 @@ struct objectstore_perf_stat_t {
   objectstore_perf_stat_t() :
     filestore_commit_latency(0), filestore_apply_latency(0) {}
 
+  bool operator==(const objectstore_perf_stat_t &r) const {
+    return filestore_commit_latency == r.filestore_commit_latency &&
+      filestore_apply_latency == r.filestore_apply_latency;
+  }
+
   void add(const objectstore_perf_stat_t &o) {
     filestore_commit_latency += o.filestore_commit_latency;
     filestore_apply_latency += o.filestore_apply_latency;
@@ -717,7 +722,9 @@ inline bool operator==(const osd_stat_t& l, const osd_stat_t& r) {
     l.snap_trim_queue_len == r.snap_trim_queue_len &&
     l.num_snap_trimming == r.num_snap_trimming &&
     l.hb_in == r.hb_in &&
-    l.hb_out == r.hb_out;
+    l.hb_out == r.hb_out &&
+    l.op_queue_age_hist == r.op_queue_age_hist &&
+    l.fs_perf_stat == r.fs_perf_stat;
 }
 inline bool operator!=(const osd_stat_t& l, const osd_stat_t& r) {
   return !(l == r);
@@ -966,6 +973,7 @@ public:
   HitSet::Params hit_set_params; ///< The HitSet params to use on this pool
   uint32_t hit_set_period;      ///< periodicity of HitSet segments (seconds)
   uint32_t hit_set_count;       ///< number of periods to retain
+  uint32_t min_read_recency_for_promote;   ///< minimum number of HitSet to check before promote
 
   uint32_t stripe_width;        ///< erasure coded stripe size in bytes
 
@@ -990,6 +998,7 @@ public:
       hit_set_params(),
       hit_set_period(0),
       hit_set_count(0),
+      min_read_recency_for_promote(0),
       stripe_width(0)
   { }
 
@@ -1746,12 +1755,51 @@ struct pg_interval_t {
   static void generate_test_instances(list<pg_interval_t*>& o);
 
   /**
+   * Determines whether there is an interval change
+   */
+  static bool is_new_interval(
+    int old_acting_primary,
+    int new_acting_primary,
+    const vector<int> &old_acting,
+    const vector<int> &new_acting,
+    int old_up_primary,
+    int new_up_primary,
+    const vector<int> &old_up,
+    const vector<int> &new_up,
+    int old_size,
+    int new_size,
+    int old_min_size,
+    int new_min_size,
+    unsigned old_pg_num,
+    unsigned new_pg_num,
+    pg_t pgid
+    );
+
+  /**
+   * Determines whether there is an interval change
+   */
+  static bool is_new_interval(
+    int old_acting_primary,                     ///< [in] primary as of lastmap
+    int new_acting_primary,                     ///< [in] primary as of lastmap
+    const vector<int> &old_acting,              ///< [in] acting as of lastmap
+    const vector<int> &new_acting,              ///< [in] acting as of osdmap
+    int old_up_primary,                         ///< [in] up primary of lastmap
+    int new_up_primary,                         ///< [in] up primary of osdmap
+    const vector<int> &old_up,                  ///< [in] up as of lastmap
+    const vector<int> &new_up,                  ///< [in] up as of osdmap
+    ceph::shared_ptr<const OSDMap> osdmap,  ///< [in] current map
+    ceph::shared_ptr<const OSDMap> lastmap, ///< [in] last map
+    int64_t poolid,                             ///< [in] pool for pg
+    pg_t pgid                                   ///< [in] pgid for pg
+    );
+
+  /**
    * Integrates a new map into *past_intervals, returns true
    * if an interval was closed out.
    */
   static bool check_new_interval(
     int old_acting_primary,                     ///< [in] primary as of lastmap
-    int new_acting_primary,                     ///< [in] primary as of lastmap
+    int new_acting_primary,                     ///< [in] primary as of osdmap
     const vector<int> &old_acting,              ///< [in] acting as of lastmap
     const vector<int> &new_acting,              ///< [in] acting as of osdmap
     int old_up_primary,                         ///< [in] up primary of lastmap
@@ -2614,6 +2662,7 @@ struct object_info_t {
 
   uint64_t size;
   utime_t mtime;
+  utime_t local_mtime; // local mtime
 
   // note: these are currently encoded into a total 16 bits; see
   // encode()/decode() for the weirdness.

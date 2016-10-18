@@ -5,9 +5,12 @@
 %{!?python_sitearch: %global python_sitearch %(%{__python} -c "from distutils.sysconfig import get_python_lib; print(get_python_lib(1))")}
 %endif
 
+%{!?_udevrulesdir: %global _udevrulesdir /lib/udev/rules.d}
+
 #################################################################################
 # common
 #################################################################################
+
 Name:		ceph
 Version:	@VERSION@
 Release:	@RPM_RELEASE@%{?dist}
@@ -24,7 +27,6 @@ Requires:	librados2 = %{version}-%{release}
 Requires:	libcephfs1 = %{version}-%{release}
 Requires:	ceph-common = %{version}-%{release}
 Requires:	python
-Requires:	python-argparse
 Requires:	python-ceph
 Requires:	python-requests
 Requires:	python-flask
@@ -44,7 +46,6 @@ BuildRequires:	gdbm
 BuildRequires:	pkgconfig
 BuildRequires:	python
 BuildRequires:	python-nose
-BuildRequires:	python-argparse
 BuildRequires:	libaio-devel
 BuildRequires:	libcurl-devel
 BuildRequires:	libxml2-devel
@@ -77,7 +78,6 @@ BuildRequires:	%insserv_prereq
 BuildRequires:	mozilla-nss-devel
 BuildRequires:	keyutils-devel
 BuildRequires:	libatomic-ops-devel
-BuildRequires:	fdupes
 %else
 Requires:	gdisk
 BuildRequires:	nss-devel
@@ -107,6 +107,11 @@ Requires:	librados2 = %{version}-%{release}
 Requires:	python-ceph = %{version}-%{release}
 Requires:	python-requests
 Requires:	redhat-lsb-core
+# python-argparse is only needed in distros with Python 2.6 or lower
+%if (0%{?rhel} && 0%{?rhel} <= 6) || (0%{?suse_version} && 0%{?suse_version} <= 1110)
+Requires:	python-argparse
+BuildRequires:	python-argparse
+%endif
 %description -n ceph-common
 common utilities to mount and interact with a ceph storage cluster
 
@@ -219,9 +224,6 @@ Group:		System Environment/Libraries
 License:	LGPL-2.0
 Requires:	librados2 = %{version}-%{release}
 Requires:	librbd1 = %{version}-%{release}
-%if 0%{defined suse_version}
-%py_requires
-%endif
 %description -n python-ceph
 This package contains Python libraries for interacting with Cephs RADOS
 object storage.
@@ -262,8 +264,13 @@ License:	LGPL-2.0
 Requires:	java
 Requires:	libcephfs_jni1 = %{version}-%{release}
 BuildRequires:	java-devel
+%if 0%{?el6}
 Requires:	junit4
 BuildRequires:	junit4
+%else
+Requires:       junit
+BuildRequires:  junit
+%endif
 %description -n cephfs-java
 This package contains the Java libraries for the Ceph File System.
 
@@ -352,13 +359,8 @@ chmod 0644 $RPM_BUILD_ROOT%{_docdir}/ceph/sample.ceph.conf
 chmod 0644 $RPM_BUILD_ROOT%{_docdir}/ceph/sample.fetch_config
 
 # udev rules
-%if 0%{?rhel} >= 7 || 0%{?fedora}
-install -m 0644 -D udev/50-rbd.rules $RPM_BUILD_ROOT/usr/lib/udev/rules.d/50-rbd.rules
-install -m 0644 -D udev/60-ceph-partuuid-workaround.rules $RPM_BUILD_ROOT/usr/lib/udev/rules.d/60-ceph-partuuid-workaround.rules
-%else
-install -m 0644 -D udev/50-rbd.rules $RPM_BUILD_ROOT/lib/udev/rules.d/50-rbd.rules
-install -m 0644 -D udev/60-ceph-partuuid-workaround.rules $RPM_BUILD_ROOT/lib/udev/rules.d/60-ceph-partuuid-workaround.rules
-%endif
+install -m 0644 -D udev/50-rbd.rules $RPM_BUILD_ROOT%{_udevrulesdir}/50-rbd.rules
+install -m 0644 -D udev/60-ceph-partuuid-workaround.rules $RPM_BUILD_ROOT%{_udevrulesdir}/60-ceph-partuuid-workaround.rules
 
 %if (0%{?rhel} && 0%{?rhel} < 7)
 install -m 0644 -D udev/95-ceph-osd-alt.rules $RPM_BUILD_ROOT/lib/udev/rules.d/95-ceph-osd.rules
@@ -384,12 +386,6 @@ mkdir -p $RPM_BUILD_ROOT%{_localstatedir}/lib/ceph/mds
 mkdir -p $RPM_BUILD_ROOT%{_localstatedir}/lib/ceph/bootstrap-osd
 mkdir -p $RPM_BUILD_ROOT%{_localstatedir}/lib/ceph/bootstrap-mds
 mkdir -p $RPM_BUILD_ROOT%{_localstatedir}/log/radosgw
-
-%if %{defined suse_version}
-# Fedora seems to have some problems with this macro, use it only on SUSE
-%fdupes -s $RPM_BUILD_ROOT/%{python_sitelib}
-%fdupes %buildroot
-%endif
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -449,8 +445,10 @@ fi
 %{_sbindir}/ceph-create-keys
 %{_sbindir}/rcceph
 %if 0%{?rhel} >= 7 || 0%{?fedora}
+%{_sbindir}/mkcephfs
 %{_sbindir}/mount.ceph
 %else
+/sbin/mkcephfs
 /sbin/mount.ceph
 %endif
 %dir %{_libdir}/ceph
@@ -475,16 +473,12 @@ fi
 %{_libdir}/ceph/erasure-code/libec_jerasure*.so*
 %{_libdir}/ceph/erasure-code/libec_test_jerasure*.so*
 %{_libdir}/ceph/erasure-code/libec_missing_entry_point.so*
-%if 0%{?rhel} >= 7 || 0%{?fedora}
-/usr/lib/udev/rules.d/60-ceph-partuuid-workaround.rules
-/usr/lib/udev/rules.d/95-ceph-osd.rules
-%else
-/lib/udev/rules.d/60-ceph-partuuid-workaround.rules
-/lib/udev/rules.d/95-ceph-osd.rules
-%endif
+%{_udevrulesdir}/60-ceph-partuuid-workaround.rules
+%{_udevrulesdir}/95-ceph-osd.rules
 %config %{_sysconfdir}/bash_completion.d/ceph
 %config(noreplace) %{_sysconfdir}/logrotate.d/ceph
 %config(noreplace) %{_sysconfdir}/logrotate.d/radosgw
+%{_mandir}/man8/ceph-disk.8*
 %{_mandir}/man8/ceph-mon.8*
 %{_mandir}/man8/ceph-mds.8*
 %{_mandir}/man8/ceph-osd.8*
@@ -540,6 +534,7 @@ fi
 %config %{_sysconfdir}/bash_completion.d/rbd
 %config(noreplace) %{_sysconfdir}/ceph/rbdmap
 %{_initrddir}/rbdmap
+%{_udevrulesdir}/50-rbd.rules
 
 %postun -n ceph-common
 # Package removal cleanup
@@ -706,8 +701,7 @@ ln -sf %{_libdir}/librbd.so.1 /usr/lib64/qemu/librbd.so.1
 %{_bindir}/ceph_smalliobenchdumb
 %{_bindir}/ceph_smalliobenchfs
 %{_bindir}/ceph_smalliobenchrbd
-%{_bindir}/ceph_filestore_dump
-%{_bindir}/ceph_filestore_tool
+%{_bindir}/ceph-objectstore-tool
 %{_bindir}/ceph_streamtest
 %{_bindir}/ceph_test_*
 %{_bindir}/ceph_tpbench

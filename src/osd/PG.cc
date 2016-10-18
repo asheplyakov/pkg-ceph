@@ -603,7 +603,7 @@ bool PG::needs_backfill() const
   return ret;
 }
 
-bool PG::_calc_past_interval_range(epoch_t *start, epoch_t *end)
+bool PG::_calc_past_interval_range(epoch_t *start, epoch_t *end, epoch_t oldest_map)
 {
   *end = info.history.same_interval_since;
 
@@ -620,7 +620,7 @@ bool PG::_calc_past_interval_range(epoch_t *start, epoch_t *end)
 
   *start = MAX(MAX(info.history.epoch_created,
 		   info.history.last_epoch_clean),
-	       osd->get_superblock().oldest_map);
+	       oldest_map);
   if (*start >= *end) {
     dout(10) << __func__ << " start epoch " << *start << " >= end epoch " << *end
 	     << ", nothing to do" << dendl;
@@ -634,7 +634,8 @@ bool PG::_calc_past_interval_range(epoch_t *start, epoch_t *end)
 void PG::generate_past_intervals()
 {
   epoch_t cur_epoch, end_epoch;
-  if (!_calc_past_interval_range(&cur_epoch, &end_epoch)) {
+  if (!_calc_past_interval_range(&cur_epoch, &end_epoch,
+      osd->get_superblock().oldest_map)) {
     return;
   }
 
@@ -659,8 +660,8 @@ void PG::generate_past_intervals()
 
     cur_map = osd->get_map(cur_epoch);
     pg_t pgid = get_pgid().pgid;
-    if (cur_map->get_pools().count(pgid.pool()))
-      pgid = pgid.get_ancestor(cur_map->get_pg_num(pgid.pool()));
+    if (last_map->get_pools().count(pgid.pool()))
+      pgid = pgid.get_ancestor(last_map->get_pg_num(pgid.pool()));
     cur_map->pg_to_up_acting_osds(pgid, &up, &up_primary, &acting, &primary);
 
     std::stringstream debug;
@@ -762,6 +763,8 @@ bool PG::all_unfound_are_queried_or_lost(const OSDMapRef osdmap) const
     if (iter != peer_info.end() &&
         (iter->second.is_empty() || iter->second.dne()))
       continue;
+    if (!osdmap->exists(peer->osd))
+      continue;
     const osd_info_t &osd_info(osdmap->get_info(peer->osd));
     if (osd_info.lost_at <= osd_info.up_from) {
       // If there is even one OSD in might_have_unfound that isn't lost, we
@@ -849,8 +852,6 @@ void PG::clear_primary_state()
   osd->snap_trim_wq.dequeue(this);
 
   agent_clear();
-
-  osd->remove_want_pg_temp(info.pgid.pgid);
 }
 
 /**
@@ -1660,7 +1661,7 @@ void PG::activate(ObjectStore::Transaction& t,
     }
 
     // degraded?
-    if (get_osdmap()->get_pg_size(info.pgid.pgid) > acting.size())
+    if (get_osdmap()->get_pg_size(info.pgid.pgid) > actingset.size())
       state_set(PG_STATE_DEGRADED);
 
   }
@@ -1873,7 +1874,7 @@ void PG::mark_clean()
 {
   // only mark CLEAN if we have the desired number of replicas AND we
   // are not remapped.
-  if (acting.size() == get_osdmap()->get_pg_size(info.pgid.pgid) &&
+  if (actingset.size() == get_osdmap()->get_pg_size(info.pgid.pgid) &&
       up == acting)
     state_set(PG_STATE_CLEAN);
 
@@ -2227,7 +2228,7 @@ void PG::_update_calc_stats()
     // the summation, not individual stat categories.
     uint64_t num_objects = info.stats.stats.sum.num_objects;
 
-    uint64_t degraded = 0;
+    int64_t degraded = 0;
 
     // if the actingbackfill set is smaller than we want, add in those missing replicas
     if (actingbackfill.size() < target)
@@ -2249,7 +2250,9 @@ void PG::_update_calc_stats()
       degraded += peer_missing[*i].num_missing();
 
       // not yet backfilled
-      degraded += num_objects - peer_info[*i].stats.stats.sum.num_objects;
+      int64_t diff = num_objects - peer_info[*i].stats.stats.sum.num_objects;
+      if (diff > 0)
+        degraded += diff;
     }
     info.stats.stats.sum.num_objects_degraded = degraded;
     info.stats.stats.sum.num_objects_unfound = get_num_unfound();
@@ -4790,12 +4793,6 @@ void PG::start_peering_interval(
 
   reg_next_scrub();
 
-  // set CREATING bit until we have peered for the first time.
-  if (is_primary() && info.history.last_epoch_started == 0)
-    state_set(PG_STATE_CREATING);
-  else
-    state_clear(PG_STATE_CREATING);
-
   // did acting, up, primary|acker change?
   if (!lastmap) {
     dout(10) << " no lastmap" << dendl;
@@ -4860,8 +4857,10 @@ void PG::start_peering_interval(
   actingbackfill.clear();
 
   // reset primary state?
-  if (was_old_primary || is_primary())
-    clear_primary_state();
+  if (was_old_primary || is_primary()) {
+    osd->remove_want_pg_temp(info.pgid.pgid);
+  }
+  clear_primary_state();
 
     
   // pg->on_*
@@ -5324,12 +5323,12 @@ void PG::handle_advance_map(
 	   << dendl;
   update_osdmap_ref(osdmap);
   pool.update(osdmap);
-  if (pool.info.last_change == osdmap_ref->get_epoch())
-    on_pool_change();
   AdvMap evt(
     osdmap, lastmap, newup, up_primary,
     newacting, acting_primary);
   recovery_state.handle_event(evt, rctx);
+  if (pool.info.last_change == osdmap_ref->get_epoch())
+    on_pool_change();
 }
 
 void PG::handle_activate_map(RecoveryCtx *rctx)
@@ -5637,6 +5636,10 @@ PG::RecoveryState::Primary::Primary(my_context ctx)
   context< RecoveryMachine >().log_enter(state_name);
   PG *pg = context< RecoveryMachine >().pg;
   assert(pg->want_acting.empty());
+
+  // set CREATING bit until we have peered for the first time.
+  if (pg->info.history.last_epoch_started == 0)
+    pg->state_set(PG_STATE_CREATING);
 }
 
 boost::statechart::result PG::RecoveryState::Primary::react(const MNotifyRec& notevt)
@@ -5669,6 +5672,8 @@ void PG::RecoveryState::Primary::exit()
   pg->want_acting.clear();
   utime_t dur = ceph_clock_now(pg->cct) - enter_time;
   pg->osd->recoverystate_perf->tinc(rs_primary_latency, dur);
+  pg->clear_primary_state();
+  pg->state_clear(PG_STATE_CREATING);
 }
 
 /*---------Peering--------*/
@@ -6400,13 +6405,11 @@ boost::statechart::result PG::RecoveryState::Active::react(const AdvMap& advmap)
     pg->dirty_big_info = true;
   }
 
-  for (vector<int>::iterator p = pg->want_acting.begin();
-       p != pg->want_acting.end(); ++p) {
-    if (!advmap.osdmap->is_up(*p)) {
-      assert((std::find(pg->acting.begin(), pg->acting.end(), *p) !=
-	      pg->acting.end()) ||
-	     (std::find(pg->up.begin(), pg->up.end(), *p) !=
-	      pg->up.end()));
+  for (size_t i = 0; i < pg->want_acting.size(); i++) {
+    int osd = pg->want_acting[i];
+    if (!advmap.osdmap->is_up(osd)) {
+      pg_shard_t osd_with_shard(osd, shard_id_t(i));
+      assert(pg->is_acting(osd_with_shard) || pg->is_up(osd_with_shard));
     }
   }
 
@@ -6414,7 +6417,7 @@ boost::statechart::result PG::RecoveryState::Active::react(const AdvMap& advmap)
    * this does not matter) */
   if (advmap.lastmap->get_pg_size(pg->info.pgid.pgid) !=
       pg->get_osdmap()->get_pg_size(pg->info.pgid.pgid)) {
-    if (pg->get_osdmap()->get_pg_size(pg->info.pgid.pgid) <= pg->acting.size())
+    if (pg->get_osdmap()->get_pg_size(pg->info.pgid.pgid) <= pg->actingset.size())
       pg->state_clear(PG_STATE_DEGRADED);
     else
       pg->state_set(PG_STATE_DEGRADED);

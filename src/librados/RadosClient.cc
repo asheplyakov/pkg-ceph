@@ -30,7 +30,7 @@
 
 #include "messages/MWatchNotify.h"
 #include "messages/MLog.h"
-#include "msg/SimpleMessenger.h"
+#include "msg/Messenger.h"
 
 // needed for static_cast
 #include "messages/PaxosServiceMessage.h"
@@ -51,8 +51,6 @@
 #define dout_subsys ceph_subsys_rados
 #undef dout_prefix
 #define dout_prefix *_dout << "librados: "
-
-static atomic_t rados_instance;
 
 bool librados::RadosClient::ms_get_authorizer(int dest_type,
 					      AuthAuthorizer **authorizer,
@@ -206,7 +204,6 @@ int librados::RadosClient::connect()
   common_init_finish(cct);
 
   int err;
-  uint64_t nonce;
 
   // already connected?
   if (state == CONNECTING)
@@ -221,8 +218,7 @@ int librados::RadosClient::connect()
     goto out;
 
   err = -ENOMEM;
-  nonce = getpid() + (1000000 * (uint64_t)rados_instance.inc());
-  messenger = new SimpleMessenger(cct, entity_name_t::CLIENT(-1), "radosclient", nonce);
+  messenger = Messenger::create_client_messenger(cct, "radosclient");
   if (!messenger)
     goto out;
 
@@ -236,7 +232,7 @@ int librados::RadosClient::connect()
   ldout(cct, 1) << "starting objecter" << dendl;
 
   err = -ENOMEM;
-  objecter = new Objecter(cct, messenger, &monclient, &osdmap, lock, timer,
+  objecter = new (std::nothrow) Objecter(cct, messenger, &monclient, &osdmap, lock, timer,
 			  cct->_conf->rados_mon_op_timeout,
 			  cct->_conf->rados_osd_op_timeout);
   if (!objecter)
@@ -287,8 +283,19 @@ int librados::RadosClient::connect()
   err = 0;
 
  out:
-  if (err)
+  if (err) {
     state = DISCONNECTED;
+
+    if (objecter) {
+      delete objecter;
+      objecter = NULL;
+    }
+    if (messenger) {
+      delete messenger;
+      messenger = NULL;
+    }
+  }
+
   return err;
 }
 
@@ -433,6 +440,10 @@ bool librados::RadosClient::_dispatch(Message *m)
 int librados::RadosClient::wait_for_osdmap()
 {
   assert(lock.is_locked());
+
+  if (state != CONNECTED) {
+    return -ENOTCONN;
+  }
 
   utime_t timeout;
   if (cct->_conf->rados_mon_op_timeout > 0)

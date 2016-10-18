@@ -607,7 +607,7 @@ void Objecter::handle_osd_map(MOSDMap *m)
 	  logger->inc(l_osdc_map_full);
 	}
 	else {
-	  if (e && e > m->get_oldest()) {
+	  if (e >= m->get_oldest()) {
 	    ldout(cct, 3) << "handle_osd_map requesting missing epoch " << osdmap->get_epoch()+1 << dendl;
 	    maybe_request_map();
 	    break;
@@ -1220,7 +1220,7 @@ public:
   }
 };
 
-ceph_tid_t Objecter::op_submit(Op *op)
+ceph_tid_t Objecter::op_submit(Op *op, int *ctx_budget)
 {
   assert(client_lock.is_locked());
   assert(initialized);
@@ -1236,7 +1236,14 @@ ceph_tid_t Objecter::op_submit(Op *op)
 
   // throttle.  before we look at any state, because
   // take_op_budget() may drop our lock while it blocks.
-  take_op_budget(op);
+  if (!op->ctx_budgeted || (ctx_budget && (*ctx_budget == -1))) {
+    int op_budget = take_op_budget(op);
+    // take and pass out the budget for the first OP
+    // in the context session
+    if (ctx_budget && (*ctx_budget == -1)) {
+      *ctx_budget = op_budget;
+    }
+  }
 
   return _op_submit(op);
 }
@@ -1439,7 +1446,7 @@ int64_t Objecter::get_object_pg_hash_position(int64_t pool, const string& key,
   return p->raw_hash_to_pg(p->hash_key(key, ns));
 }
 
-int Objecter::calc_target(op_target_t *t, bool any_change)
+int Objecter::calc_target(op_target_t *t, epoch_t *last_force_resend, bool any_change)
 {
   bool is_read = t->flags & CEPH_OSD_FLAG_READ;
   bool is_write = t->flags & CEPH_OSD_FLAG_WRITE;
@@ -1447,9 +1454,15 @@ int Objecter::calc_target(op_target_t *t, bool any_change)
   const pg_pool_t *pi = osdmap->get_pg_pool(t->base_oloc.pool);
   bool force_resend = false;
   bool need_check_tiering = false;
+
   if (pi && osdmap->get_epoch() == pi->last_force_op_resend) {
-    force_resend = true;
+    if (last_force_resend && *last_force_resend < pi->last_force_op_resend) {
+	*last_force_resend = pi->last_force_op_resend;
+        force_resend = true;
+    } else if (last_force_resend == 0)
+      force_resend = true;
   }
+
   if (t->target_oid.name.empty() || force_resend) {
     t->target_oid = t->base_oid;
     need_check_tiering = true;
@@ -1483,9 +1496,33 @@ int Objecter::calc_target(op_target_t *t, bool any_change)
     if (ret == -ENOENT)
       return RECALC_OP_TARGET_POOL_DNE;
   }
-  int primary;
-  vector<int> acting;
-  osdmap->pg_to_acting_osds(pgid, &acting, &primary);
+
+  int size = pi->size;
+  int min_size = pi->min_size;
+  unsigned pg_num = pi->get_pg_num();
+  int up_primary, acting_primary;
+  vector<int> up, acting;
+  osdmap->pg_to_up_acting_osds(pgid, &up, &up_primary,
+			       &acting, &acting_primary);
+  unsigned prev_seed = ceph_stable_mod(pgid.ps(), t->pg_num, t->pg_num_mask);
+  if (any_change && pg_interval_t::is_new_interval(
+          t->acting_primary,
+	  acting_primary,
+	  t->acting,
+	  acting,
+	  t->up_primary,
+	  up_primary,
+	  t->up,
+	  up,
+	  t->size,
+	  size,
+	  t->min_size,
+	  min_size,
+	  t->pg_num,
+	  pg_num,
+	  pg_t(prev_seed, pgid.pool(), pgid.preferred()))) {
+    force_resend = true;
+  }
 
   bool need_resend = false;
 
@@ -1497,15 +1534,22 @@ int Objecter::calc_target(op_target_t *t, bool any_change)
 
   if (t->pgid != pgid ||
       is_pg_changed(
-	t->primary, t->acting, primary, acting, t->used_replica || any_change) ||
+	t->acting_primary, t->acting, acting_primary, acting,
+	t->used_replica || any_change) ||
       force_resend) {
     t->pgid = pgid;
     t->acting = acting;
-    t->primary = primary;
-    ldout(cct, 10) << __func__ << " pgid " << pgid
-		   << " acting " << acting << dendl;
+    t->acting_primary = acting_primary;
+    t->up_primary = up_primary;
+    t->up = up;
+    t->size = size;
+    t->min_size = min_size;
+    t->pg_num = pg_num;
+    t->pg_num_mask = pi->get_pg_num_mask();
+    ldout(cct, 10) << __func__ << " "
+		   << " pgid " << pgid << " acting " << acting << dendl;
     t->used_replica = false;
-    if (primary == -1) {
+    if (acting_primary == -1) {
       t->osd = -1;
     } else {
       int osd;
@@ -1541,7 +1585,7 @@ int Objecter::calc_target(op_target_t *t, bool any_change)
 	assert(best >= 0);
 	osd = acting[best];
       } else {
-	osd = primary;
+	osd = acting_primary;
       }
       t->osd = osd;
     }
@@ -1555,7 +1599,7 @@ int Objecter::calc_target(op_target_t *t, bool any_change)
 
 int Objecter::recalc_op_target(Op *op)
 {
-  int r = calc_target(&op->target);
+  int r = calc_target(&op->target, &op->last_force_resend);
   if (r == RECALC_OP_TARGET_NEED_RESEND) {
     OSDSession *s = NULL;
     if (op->target.osd >= 0)
@@ -1576,7 +1620,7 @@ int Objecter::recalc_op_target(Op *op)
 
 bool Objecter::recalc_linger_op_target(LingerOp *linger_op)
 {
-  int r = calc_target(&linger_op->target, true);
+  int r = calc_target(&linger_op->target, &linger_op->last_force_resend, true);
   if (r == RECALC_OP_TARGET_NEED_RESEND) {
     ldout(cct, 10) << "recalc_linger_op_target tid " << linger_op->linger_id
 		   << " pgid " << linger_op->target.pgid
@@ -1610,7 +1654,7 @@ void Objecter::finish_op(Op *op)
   ldout(cct, 15) << "finish_op " << op->tid << dendl;
 
   op->session_item.remove_myself();
-  if (op->budgeted)
+  if (!op->ctx_budgeted && op->budgeted)
     put_op_budget(op);
 
   ops.erase(op->tid);
@@ -1915,6 +1959,10 @@ void Objecter::list_objects(ListContext *list_context, Context *onfinish)
     }
   }
   if (list_context->at_end_of_pool) {
+    // release the listing context's budget once all
+    // OPs (in the session) are finished
+    put_list_context_budget(list_context);
+
     onfinish->complete(0);
     return;
   }
@@ -1943,7 +1991,7 @@ void Objecter::list_objects(ListContext *list_context, Context *onfinish)
   C_List *onack = new C_List(list_context, onfinish, this);
   object_locator_t oloc(list_context->pool_id, list_context->nspace);
   pg_read(list_context->current_pg, oloc, op,
-	  &list_context->bl, 0, onack, &onack->epoch);
+	  &list_context->bl, 0, onack, &onack->epoch, &list_context->ctx_budget);
 }
 
 void Objecter::_list_reply(ListContext *list_context, int r,
@@ -1989,6 +2037,9 @@ void Objecter::_list_reply(ListContext *list_context, int r,
   }
   if (!list_context->list.empty()) {
     ldout(cct, 20) << " returning results so far" << dendl;
+    // release the listing context's budget once all
+    // OPs (in the session) are finished
+    put_list_context_budget(list_context);
     final_finish->complete(0);
     return;
   }
@@ -1997,6 +2048,13 @@ void Objecter::_list_reply(ListContext *list_context, int r,
   list_objects(list_context, final_finish);
 }
 
+void Objecter::put_list_context_budget(ListContext *list_context) {
+    if (list_context->ctx_budget >= 0) {
+      ldout(cct, 10) << " release listing context's budget " << list_context->ctx_budget << dendl;
+      put_op_budget_bytes(list_context->ctx_budget);
+      list_context->ctx_budget = -1;
+    }
+  }
 
 
 //snapshots

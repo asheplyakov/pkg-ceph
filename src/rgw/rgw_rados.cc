@@ -758,15 +758,24 @@ int RGWObjManifest::append(RGWObjManifest& m)
       next_rule.part_size = m.obj_size - next_rule.start_ofs;
     }
 
-    if (override_prefix != rule.override_prefix) {
-      append_rules(m, miter, &override_prefix);
-      break;
+    string rule_prefix = prefix;
+    if (!rule.override_prefix.empty()) {
+      rule_prefix = rule.override_prefix;
+    }
+
+    string next_rule_prefix = m.prefix;
+    if (!next_rule.override_prefix.empty()) {
+      next_rule_prefix = next_rule.override_prefix;
     }
 
     if (rule.part_size != next_rule.part_size ||
         rule.stripe_max_size != next_rule.stripe_max_size ||
-        rule.override_prefix != next_rule.override_prefix) {
-      append_rules(m, miter, NULL);
+        rule_prefix != next_rule_prefix) {
+      if (next_rule_prefix != prefix) {
+        append_rules(m, miter, &next_rule_prefix);
+      } else {
+        append_rules(m, miter, NULL);
+      }
       break;
     }
 
@@ -2417,6 +2426,7 @@ int RGWRados::create_bucket(RGWUserInfo& owner, rgw_bucket& bucket,
     ret = put_linked_bucket_info(info, exclusive, 0, pep_objv, &attrs, true);
     if (ret == -EEXIST) {
        /* we need to reread the info and return it, caller will have a use for it */
+      RGWObjVersionTracker instance_ver = info.objv_tracker;
       info.objv_tracker.clear();
       r = get_bucket_info(NULL, bucket.name, info, NULL, NULL);
       if (r < 0) {
@@ -2432,7 +2442,7 @@ int RGWRados::create_bucket(RGWUserInfo& owner, rgw_bucket& bucket,
         /* remove bucket meta instance */
         string entry;
         get_bucket_instance_entry(bucket, entry);
-        r = rgw_bucket_instance_remove_entry(this, entry, &info.objv_tracker);
+        r = rgw_bucket_instance_remove_entry(this, entry, &instance_ver);
         if (r < 0)
           return r;
 
@@ -3524,6 +3534,31 @@ int RGWRados::copy_obj_data(void *ctx,
 }
 
 /**
+  * Check to see if the bucket metadata could be synced
+  * bucket: the bucket to check
+  * Returns false is the bucket is not synced
+  */
+bool RGWRados::is_syncing_bucket_meta(rgw_bucket& bucket)
+{
+  /* region is not master region */
+  if (!region.is_master) {
+    return false;
+  }
+
+  /* single region and a single zone */
+  if (region_map.regions.size() == 1 && region.zones.size() == 1) {
+    return false;
+  }
+
+  /* zone is not master */
+  if (region.master_zone.compare(zone_name) != 0) {
+    return false;
+  }
+
+  return true;
+}
+  
+/**
  * Delete a bucket.
  * bucket: the name of the bucket to delete
  * Returns 0 on success, -ERR# otherwise.
@@ -3562,6 +3597,16 @@ int RGWRados::delete_bucket(rgw_bucket& bucket, RGWObjVersionTracker& objv_track
   if (r < 0)
     return r;
 
+  /* if the bucked is not synced we can remove the meta file */
+  if (!is_syncing_bucket_meta(bucket)) {
+    RGWObjVersionTracker objv_tracker;
+    string entry;
+    get_bucket_instance_entry(bucket, entry);
+    r= rgw_bucket_instance_remove_entry(this, entry, &objv_tracker);
+    if (r < 0) {
+      return r;
+    }
+  }
   return 0;
 }
 
@@ -4162,10 +4207,18 @@ int RGWRados::set_attrs(void *ctx, rgw_obj& obj,
     return 0;
 
   string tag;
+  bufferlist bl;
   if (state) {
-    r = prepare_update_index(state, bucket, CLS_RGW_OP_ADD, obj, tag);
+    /* we don't pass state here, because we need to generate a new tag, not reuse the
+     * same tag, otherwise we might race and clobber another operation on the same object
+     */
+    r = prepare_update_index(NULL, bucket, CLS_RGW_OP_ADD, obj, tag);
     if (r < 0)
       return r;
+
+    bl.append(tag.c_str(), tag.size() + 1);
+
+    op.setxattr(RGW_ATTR_ID_TAG,  bl);
   }
 
   r = ref.ioctx.operate(ref.oid, &op);
@@ -4192,6 +4245,7 @@ int RGWRados::set_attrs(void *ctx, rgw_obj& obj,
     return r;
 
   if (state) {
+    state->obj_tag.swap(bl);
     if (rmattrs) {
       for (iter = rmattrs->begin(); iter != rmattrs->end(); ++iter) {
         state->attrset.erase(iter->first);
@@ -5954,7 +6008,7 @@ int RGWRados::cls_obj_complete_cancel(rgw_bucket& bucket, string& tag, string& n
 {
   RGWObjEnt ent;
   ent.name = name;
-  return cls_obj_complete_op(bucket, CLS_RGW_OP_ADD, tag, -1 /* pool id */, 0, ent, RGW_OBJ_CATEGORY_NONE, NULL);
+  return cls_obj_complete_op(bucket, CLS_RGW_OP_CANCEL, tag, -1 /* pool id */, 0, ent, RGW_OBJ_CATEGORY_NONE, NULL);
 }
 
 int RGWRados::cls_obj_set_bucket_tag_timeout(rgw_bucket& bucket, uint64_t timeout)

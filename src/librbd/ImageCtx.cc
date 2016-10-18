@@ -6,6 +6,7 @@
 #include "common/dout.h"
 #include "common/errno.h"
 #include "common/perf_counters.h"
+#include "common/WorkQueue.h"
 
 #include "librbd/internal.h"
 #include "librbd/WatchCtx.h"
@@ -27,6 +28,23 @@ using librados::snap_t;
 using librados::IoCtx;
 
 namespace librbd {
+
+namespace {
+
+class ThreadPoolSingleton : public ThreadPool {
+public:
+  ThreadPoolSingleton(CephContext *cct)
+    : ThreadPool(cct, "librbd::thread_pool", cct->_conf->rbd_op_threads,
+                 "rbd_op_threads") {
+    start();
+  }
+  virtual ~ThreadPoolSingleton() {
+    stop();
+  }
+};
+
+} // anonymous namespace
+
   ImageCtx::ImageCtx(const string &image_name, const string &image_id,
 		     const char *snap, IoCtx& p, bool ro)
     : cct((CephContext*)p.cct()),
@@ -53,7 +71,7 @@ namespace librbd {
       id(image_id), parent(NULL),
       stripe_unit(0), stripe_count(0),
       object_cacher(NULL), writeback_handler(NULL), object_set(NULL),
-      pending_aio(0)
+      pending_aio(0), aio_work_queue(NULL)
   {
     md_ctx.dup(p);
     data_ctx.dup(p);
@@ -98,6 +116,13 @@ namespace librbd {
       object_set->return_enoent = true;
       object_cacher->start();
     }
+
+    ThreadPoolSingleton *thread_pool_singleton;
+    cct->lookup_or_create_singleton_object<ThreadPoolSingleton>(
+      thread_pool_singleton, "librbd::thread_pool");
+    aio_work_queue = new ContextWQ("librbd::aio_work_queue",
+                                   cct->_conf->rbd_op_thread_timeout,
+                                   thread_pool_singleton);
   }
 
   ImageCtx::~ImageCtx() {
@@ -115,6 +140,8 @@ namespace librbd {
       object_set = NULL;
     }
     delete[] format_string;
+
+    delete aio_work_queue;
   }
 
   int ImageCtx::init() {
@@ -189,10 +216,9 @@ namespace librbd {
     if (object_cacher) {
       uint64_t obj = cct->_conf->rbd_cache_max_dirty_object;
       if (!obj) {
-        obj = cct->_conf->rbd_cache_size / (1ull << order);
-        obj = obj * 4 + 10;
+        obj = MIN(2000, MAX(10, cct->_conf->rbd_cache_size / 100 / sizeof(ObjectCacher::Object)));
       }
-      ldout(cct, 10) << " cache bytes " << cct->_conf->rbd_cache_size << " order " << (int)order
+      ldout(cct, 10) << " cache bytes " << cct->_conf->rbd_cache_size
 		     << " -> about " << obj << " objects" << dendl;
       object_cacher->set_max_objects(obj);
     }
@@ -603,9 +629,7 @@ namespace librbd {
   void ImageCtx::clear_nonexistence_cache() {
     if (!object_cacher)
       return;
-    cache_lock.Lock();
     object_cacher->clear_nonexistence(object_set);
-    cache_lock.Unlock();
   }
 
   int ImageCtx::register_watch() {

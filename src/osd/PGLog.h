@@ -212,9 +212,9 @@ protected:
 
   /// Log is clean on [dirty_to, dirty_from)
   bool touched_log;
-  eversion_t dirty_to;         ///< must clear/writeout all keys up to dirty_to
-  eversion_t dirty_from;       ///< must clear/writeout all keys past dirty_from
-  eversion_t writeout_from;    ///< must writout keys past writeout_from
+  eversion_t dirty_to;         ///< must clear/writeout all keys <= dirty_to
+  eversion_t dirty_from;       ///< must clear/writeout all keys >= dirty_from
+  eversion_t writeout_from;    ///< must writout keys >= writeout_from
   set<eversion_t> trimmed;     ///< must clear keys in trimmed
   bool dirty_divergent_priors;
   CephContext *cct;
@@ -267,17 +267,8 @@ protected:
 	 i != log_keys_debug->end() && *i < ub;
 	 log_keys_debug->erase(i++));
   }
-  void check() {
-    if (!pg_log_debug)
-      return;
-    assert(log.log.size() == log_keys_debug.size());
-    for (list<pg_log_entry_t>::iterator i = log.log.begin();
-	 i != log.log.end();
-	 ++i) {
-      assert(log_keys_debug.count(i->get_key_name()));
-    }
-  }
 
+  void check();
   void undirty() {
     dirty_to = eversion_t();
     dirty_from = eversion_t::max();
@@ -406,6 +397,19 @@ public:
     missing.split_into(child_pgid, split_bits, &(opg_log->missing));
     opg_log->mark_dirty_to(eversion_t::max());
     mark_dirty_to(eversion_t::max());
+
+    unsigned mask = ~((~0)<<split_bits);
+    for (map<eversion_t, hobject_t>::iterator i = divergent_priors.begin();
+	 i != divergent_priors.end();
+	 ) {
+      if ((i->second.hash & mask) == child_pgid.m_seed) {
+	opg_log->add_divergent_prior(i->first, i->second);
+	divergent_priors.erase(i++);
+	dirty_divergent_priors = true;
+      } else {
+	++i;
+      }
+    }
   }
 
   void recover_got(hobject_t oid, eversion_t v, pg_info_t &info) {
