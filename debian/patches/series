@@ -21,3 +21,4 @@ vivid-does-systemd.patch
 
 ## MOS
 ceph-disk-fix-symlinks-handling.patch
+ObjectCacher-fix-bh_read_finish-offset-logic.patch
