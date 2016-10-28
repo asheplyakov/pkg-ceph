@@ -18,3 +18,4 @@ skip-setup.py-makefiles.patch
 disable-openssl-linking.patch
 osd-limit-omap-data-in-push-op.patch
 32bit-ftbfs.patch
+rgw_rados-creation_time.patch
