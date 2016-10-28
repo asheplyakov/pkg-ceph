@@ -1,0 +1,34 @@
+From: weiqiaomiao <wei.qiaomiao@zte.com.cn>
+Subject: [PATCH] rgw: for the create_bucket api, if the input creation_time is
+ zero, we should set it to 'now"
+Forwarded: yes
+Origin: upstream, https://github.com/ceph/ceph/commit/16c1a7d03abc8042f92b9f62ae7e228d19f74b2e
+Bug: http://tracker.ceph.com/issues/16597
+Bug-Ubuntu: https://bugs.launchpad.net/bugs/1587261
+
+Fixes: http://tracker.ceph.com/issues/16597
+
+Signed-off-by: weiqiaomiao <wei.qiaomiao@zte.com.cn>
+---
+ src/rgw/rgw_rados.cc | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/src/rgw/rgw_rados.cc b/src/rgw/rgw_rados.cc
+index d356fb8..8e0f0fd 100644
+--- a/src/rgw/rgw_rados.cc
++++ b/src/rgw/rgw_rados.cc
+@@ -5156,10 +5156,11 @@ int RGWRados::create_bucket(RGWUserInfo& owner, rgw_bucket& bucket,
+     info.num_shards = bucket_index_max_shards;
+     info.bucket_index_shard_hash_type = RGWBucketInfo::MOD;
+     info.requester_pays = false;
+-    if (real_clock::is_zero(creation_time))
+-      creation_time = ceph::real_clock::now(cct);
+-    else
++    if (real_clock::is_zero(creation_time)) {
++      info.creation_time = ceph::real_clock::now(cct);
++    } else {
+       info.creation_time = creation_time;
++    }
+     ret = put_linked_bucket_info(info, exclusive, ceph::real_time(), pep_objv, &attrs, true);
+     if (ret == -EEXIST) {
+        /* we need to reread the info and return it, caller will have a use for it */

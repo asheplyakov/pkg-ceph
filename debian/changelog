@@ -1,3 +1,12 @@
+ceph (10.2.3-0ubuntu2.1) yakkety; urgency=medium
+
+  * rgw: Fixes for creation times for buckets (LP: #1587261).
+    - d/p/rgw_rados-creation_time.patch: Backport fix from upstream master.
+      Fix logic error that leads to creation time being 0 instead of current
+      time when creating buckets.
+
+ -- Frode Nordahl <frode.nordahl@canonical.com>  Fri, 28 Oct 2016 07:52:07 +0200
+
 ceph (10.2.3-0ubuntu2) yakkety; urgency=medium
 
   * d/control: Add Pre-Depends on ceph-common to ceph-osd to ensure
