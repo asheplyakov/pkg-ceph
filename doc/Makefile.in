@@ -95,7 +95,7 @@ am__aclocal_m4_deps = $(top_srcdir)/m4/ac_check_classpath.m4 \
 	$(top_srcdir)/m4/ax_intel.m4 $(top_srcdir)/m4/libtool.m4 \
 	$(top_srcdir)/m4/ltoptions.m4 $(top_srcdir)/m4/ltsugar.m4 \
 	$(top_srcdir)/m4/ltversion.m4 $(top_srcdir)/m4/lt~obsolete.m4 \
-	$(top_srcdir)/m4/pkg.m4 $(top_srcdir)/configure.ac
+	$(top_srcdir)/configure.ac
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 mkinstalldirs = $(install_sh) -d
@@ -128,7 +128,6 @@ AMTAR = @AMTAR@
 AM_CXXFLAGS = @AM_CXXFLAGS@
 AM_DEFAULT_VERBOSITY = @AM_DEFAULT_VERBOSITY@
 AR = @AR@
-ARM_CRC_FLAGS = @ARM_CRC_FLAGS@
 ARM_FLAGS = @ARM_FLAGS@
 ARM_NEON_FLAGS = @ARM_NEON_FLAGS@
 AUTOCONF = @AUTOCONF@
@@ -327,42 +326,14 @@ top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 EXTRA_DIST = \
-	man/8/ceph-authtool.rst	\
-	man/8/ceph-clsinfo.rst	\
-	man/8/ceph-conf.rst	\
-	man/8/ceph-create-keys.rst	\
-	man/8/ceph-debugpack.rst	\
-	man/8/ceph-dencoder.rst	\
-	man/8/ceph-deploy.rst	\
-	man/8/ceph-detect-init.rst	\
-	man/8/ceph-disk.rst	\
-	man/8/cephfs.rst	\
-	man/8/ceph-fuse.rst	\
-	man/8/ceph-mds.rst	\
-	man/8/ceph-mon.rst	\
-	man/8/ceph-osd.rst	\
-	man/8/ceph-post-file.rst	\
-	man/8/ceph-rbdnamer.rst	\
-	man/8/ceph-rest-api.rst	\
-	man/8/ceph.rst	\
-	man/8/ceph-run.rst	\
-	man/8/ceph-syn.rst	\
-	man/8/crushtool.rst	\
-	man/8/librados-config.rst	\
-	man/8/monmaptool.rst	\
-	man/8/mount.ceph.rst	\
-	man/8/osdmaptool.rst	\
-	man/8/radosgw-admin.rst	\
-	man/8/radosgw.rst	\
-	man/8/rados.rst	\
-	man/8/rbd-fuse.rst	\
-	man/8/rbd-mirror.rst	\
-	man/8/rbd-nbd.rst	\
-	man/8/rbd-replay-many.rst	\
-	man/8/rbd-replay-prep.rst	\
-	man/8/rbd-replay.rst	\
-	man/8/rbd.rst           \
-	man/8/rbdmap.rst
+	man \
+	api \
+	architecture.rst \
+	cephfs \
+	conf.py \
+	dev \
+	favicon.ico \
+	glossary.rst /
 
 all: all-am
 
@@ -554,6 +525,22 @@ uninstall-am:
 	mostlyclean-generic mostlyclean-libtool pdf pdf-am ps ps-am \
 	tags-am uninstall uninstall-am
 
+	images /
+	index.rst /
+	install /
+	logo.png /
+	Makefile.am /
+	man /
+	mon /
+	rados /
+	radosgw /
+	rbd /
+	release-notes.rst /
+	releases.rst /
+	scripts /
+	start /
+	_templates /
+	_themes
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.

@@ -33,9 +33,11 @@
 %bcond_with selinux
 %endif
 
-# LTTng-UST enabled on Fedora, RHEL 6+, and SLES 12
-%if 0%{?fedora} || 0%{?rhel} >= 6 || 0%{?suse_version} == 1315
+# LTTng-UST enabled on Fedora, RHEL 6+, and SLE (not openSUSE)
+%if 0%{?fedora} || 0%{?rhel} >= 6 || 0%{?suse_version}
+%if ! 0%{?is_opensuse}
 %bcond_without lttng
+%endif
 %endif
 
 %if %{with selinux}
@@ -55,7 +57,7 @@
 #################################################################################
 Name:		ceph
 Version:	10.2.3
-Release:	0%{?dist}
+Release:	337.g5efb6b1%{?dist}
 Epoch:		1
 Summary:	User space components of the Ceph file system
 License:	LGPL-2.1 and CC-BY-SA-1.0 and GPL-2.0 and BSL-1.0 and GPL-2.0-with-autoconf-exception and BSD-3-Clause and MIT
@@ -116,6 +118,7 @@ BuildRequires:	python-requests
 BuildRequires:	python-sphinx
 BuildRequires:	python-virtualenv
 BuildRequires:	snappy-devel
+BuildRequires:	udev
 BuildRequires:	util-linux
 BuildRequires:	valgrind-devel
 BuildRequires:	xfsprogs
@@ -887,6 +890,7 @@ DISABLE_RESTART_ON_UPDATE="yes"
 %{_unitdir}/rbdmap.service
 %{python_sitelib}/ceph_argparse.py*
 %{python_sitelib}/ceph_daemon.py*
+%dir %{_udevrulesdir}
 %{_udevrulesdir}/50-rbd.rules
 %attr(3770,ceph,ceph) %dir %{_localstatedir}/log/ceph/
 %attr(750,ceph,ceph) %dir %{_localstatedir}/lib/ceph/
@@ -1156,6 +1160,7 @@ fi
 %{_sbindir}/ceph-disk
 %{_sbindir}/ceph-disk-udev
 %{_libexecdir}/ceph/ceph-osd-prestart.sh
+%dir %{_udevrulesdir}
 %{_udevrulesdir}/60-ceph-by-parttypeuuid.rules
 %{_udevrulesdir}/95-ceph-osd.rules
 %{_mandir}/man8/ceph-clsinfo.8*
