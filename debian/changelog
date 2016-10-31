@@ -1,6 +1,6 @@
-ceph (10.2.4~20161031+n337+g5efb6b1-1~u16.04+1.gbpabd26a) UNRELEASED; urgency=low
+ceph (10.2.4~20161031+n337+g5efb6b1-1~u16.04+2.gbp9c13d1) UNRELEASED; urgency=low
 
-  ** SNAPSHOT build @abd26a61b0f0edf3b333edee76e8ecf3aaf781c3 **
+  ** SNAPSHOT build @9c13d173ffc1dfc3135a8e6ac33bda18c10d108c **
 
   * Pre-release upstream bugfix only version
   * debian/patches:
@@ -10,6 +10,9 @@ ceph (10.2.4~20161031+n337+g5efb6b1-1~u16.04+1.gbpabd26a) UNRELEASED; urgency=lo
     - "mon: health does not report pgs stuck in more than one state",
       http://tracker.ceph.com/issues/17601
       https://github.com/ceph/ceph/pull/11660
+    - "deployment failure due to a syntax error in ceph-create-keys",
+      http://tracker.ceph.com/issues/17753
+      https://github.com/ceph/ceph/pull/11705
 
  -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Mon, 31 Oct 2016 14:16:00 +0300
 
