@@ -1,0 +1,48 @@
+From: Sage Weil <sage@redhat.com>
+Date: Fri, 30 Sep 2016 18:02:39 -0400
+Subject: mon/OSDMonitor: encode canonical full osdmap based on osdmap flags
+
+If the JEWEL or KRAKEN flags aren't set, encode the full map without
+those features.  This ensure that older OSDs in the cluster will be able
+to correctly encode the full map with a matching CRC.  At least, that is
+true as long as the encoding changes are guarded by those feature bits.
+That appears to be true currently, and we plan to ensure that it is true
+in the future as well.
+
+Signed-off-by: Sage Weil <sage@redhat.com>
+(cherry picked from commit 5e0daf6642011bf1222c4dc20aa284966fa5df9f)
+
+Conflicts:
+   src/mon/OSDMonitor.cc: removed reference to kraken
+
+    if (!tmp.test_flag(CEPH_OSDMAP_REQUIRE_KRAKEN)) {
+      dout(10) << __func__ << " encoding without feature SERVER_KRAKEN" << dendl;
+      features &= ~CEPH_FEATURE_SERVER_KRAKEN;
+    }
+---
+ src/mon/OSDMonitor.cc | 11 ++++++++++-
+ 1 file changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/src/mon/OSDMonitor.cc b/src/mon/OSDMonitor.cc
+index 27c994d..3dc644e 100644
+--- a/src/mon/OSDMonitor.cc
++++ b/src/mon/OSDMonitor.cc
+@@ -1208,8 +1208,17 @@ void OSDMonitor::encode_pending(MonitorDBStore::TransactionRef t)
+   {
+     tmp.deepish_copy_from(osdmap);
+     tmp.apply_incremental(pending_inc);
++
++    // determine appropriate features
++    uint64_t features = mon->quorum_features;
++    if (!tmp.test_flag(CEPH_OSDMAP_REQUIRE_JEWEL)) {
++      dout(10) << __func__ << " encoding without feature SERVER_JEWEL" << dendl;
++      features &= ~CEPH_FEATURE_SERVER_JEWEL;
++    }
++    dout(10) << __func__ << " encoding full map with " << features << dendl;
++
+     bufferlist fullbl;
+-    ::encode(tmp, fullbl, mon->quorum_features | CEPH_FEATURE_RESERVED);
++    ::encode(tmp, fullbl, features | CEPH_FEATURE_RESERVED);
+     pending_inc.full_crc = tmp.get_crc();
+ 
+     // include full map in the txn.  note that old monitors will

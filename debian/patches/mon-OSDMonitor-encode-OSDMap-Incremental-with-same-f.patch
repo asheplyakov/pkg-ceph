@@ -1,0 +1,46 @@
+From: Sage Weil <sage@redhat.com>
+Date: Fri, 21 Oct 2016 12:25:08 -0400
+Subject: mon/OSDMonitor: encode OSDMap::Incremental with same features as
+ OSDMap
+
+The Incremental encode stashes encode_features, which is
+what we use later to reencode the updated OSDMap.  Use
+the same features so that the encoding will match!
+
+Signed-off-by: Sage Weil <sage@redhat.com>
+(cherry picked from commit 916ca6a0aaa32bd9c2b449e0d7fbd312c29f06e5)
+---
+ src/mon/OSDMonitor.cc | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/mon/OSDMonitor.cc b/src/mon/OSDMonitor.cc
+index 0de3acc..d4408ed 100644
+--- a/src/mon/OSDMonitor.cc
++++ b/src/mon/OSDMonitor.cc
+@@ -1203,6 +1203,9 @@ void OSDMonitor::encode_pending(MonitorDBStore::TransactionRef t)
+     }
+   }
+ 
++  // features for osdmap and its incremental
++  uint64_t features = mon->quorum_features;
++
+   // encode full map and determine its crc
+   OSDMap tmp;
+   {
+@@ -1210,7 +1213,6 @@ void OSDMonitor::encode_pending(MonitorDBStore::TransactionRef t)
+     tmp.apply_incremental(pending_inc);
+ 
+     // determine appropriate features
+-    uint64_t features = mon->quorum_features;
+     if (!tmp.test_flag(CEPH_OSDMAP_REQUIRE_JEWEL)) {
+       dout(10) << __func__ << " encoding without feature SERVER_JEWEL" << dendl;
+       features &= ~CEPH_FEATURE_SERVER_JEWEL;
+@@ -1229,7 +1231,7 @@ void OSDMonitor::encode_pending(MonitorDBStore::TransactionRef t)
+ 
+   // encode
+   assert(get_last_committed() + 1 == pending_inc.epoch);
+-  ::encode(pending_inc, bl, mon->quorum_features | CEPH_FEATURE_RESERVED);
++  ::encode(pending_inc, bl, features | CEPH_FEATURE_RESERVED);
+ 
+   dout(20) << " full_crc " << tmp.get_crc()
+ 	   << " inc_crc " << pending_inc.inc_crc << dendl;

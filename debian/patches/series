@@ -16,3 +16,14 @@ fix-argparse-defaults.patch
 fix-cycles-arch.patch
 skip-setup.py-makefiles.patch
 disable-openssl-linking.patch
+
+# Mirantis
+mon-PGMap-PGs-can-be-stuck-more-than-one-thing.patch
+mon-OSDMonitor-encode-canonical-full-osdmap-based-on.patch
+mon-OSDMonitor-health-warn-if-require_-jewel-kraken-.patch
+mon-OSDMonitor-encode-OSDMap-Incremental-with-same-f.patch
+messages-MForward-fix-encoding-features.patch
+messages-MForward-reencode-forwarded-message-if-targ.patch
+msg-Message-fix-set_middle-vs-throttler.patch
+msg-adjust-byte_throttler-from-Message-encode.patch
+all-add-const-to-operator-param.patch

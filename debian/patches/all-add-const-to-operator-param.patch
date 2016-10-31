@@ -1,0 +1,477 @@
+From: Michal Jarzabek <stiopa@gmail.com>
+Date: Sat, 4 Jun 2016 23:24:06 +0100
+Subject: all: add const to operator<< param
+
+Signed-off-by: Michal Jarzabek <stiopa@gmail.com>
+(cherry picked from commit 0a157e088b2e5eb66177421f19f559ca427240eb)
+---
+ src/client/Inode.cc          | 10 +++++-----
+ src/client/Inode.h           |  8 ++++----
+ src/cls/cephfs/cls_cephfs.cc |  2 +-
+ src/common/TextTable.cc      |  2 +-
+ src/common/TextTable.h       |  2 +-
+ src/common/ceph_json.cc      |  2 +-
+ src/common/ceph_json.h       |  3 ++-
+ src/mds/LogEvent.h           |  2 +-
+ src/mds/MDSMap.h             |  2 +-
+ src/mds/Mutation.h           |  4 ++--
+ src/mds/flock.h              |  6 +++---
+ src/mon/AuthMonitor.cc       |  2 +-
+ src/mon/LogMonitor.cc        |  2 +-
+ src/mon/MonMap.h             |  2 +-
+ src/msg/Message.h            |  2 +-
+ src/osdc/Journaler.cc        |  2 +-
+ src/osdc/ObjectCacher.h      | 26 +++++++++++++-------------
+ src/rbd_replay/ios.cc        |  2 +-
+ src/rbd_replay/ios.hpp       |  2 +-
+ src/rgw/rgw_xml.cc           |  2 +-
+ src/rgw/rgw_xml.h            |  2 +-
+ src/test/osd/TestOpStat.cc   |  4 ++--
+ src/test/osd/TestOpStat.h    |  6 +++---
+ 23 files changed, 49 insertions(+), 48 deletions(-)
+
+diff --git a/src/client/Inode.cc b/src/client/Inode.cc
+index 51c9d62..0dca7bd 100644
+--- a/src/client/Inode.cc
++++ b/src/client/Inode.cc
+@@ -9,7 +9,7 @@
+ #include "ClientSnapRealm.h"
+ #include "UserGroups.h"
+ 
+-ostream& operator<<(ostream &out, Inode &in)
++ostream& operator<<(ostream &out, const Inode &in)
+ {
+   out << in.vino() << "("
+       << "faked_ino=" << in.faked_ino
+@@ -23,7 +23,7 @@ ostream& operator<<(ostream &out, Inode &in)
+       << " caps=" << ccap_string(in.caps_issued());
+   if (!in.caps.empty()) {
+     out << "(";
+-    for (map<mds_rank_t,Cap*>::iterator p = in.caps.begin(); p != in.caps.end(); ++p) {
++    for (auto p = in.caps.begin(); p != in.caps.end(); ++p) {
+       if (p != in.caps.begin())
+         out << ',';
+       out << p->first << '=' << ccap_string(p->second->issued);
+@@ -147,7 +147,7 @@ bool Inode::is_any_caps()
+   return !caps.empty() || snap_caps;
+ }
+ 
+-bool Inode::cap_is_valid(Cap* cap)
++bool Inode::cap_is_valid(Cap* cap) const
+ {
+   /*cout << "cap_gen     " << cap->session-> cap_gen << std::endl
+     << "session gen " << cap->gen << std::endl
+@@ -160,11 +160,11 @@ bool Inode::cap_is_valid(Cap* cap)
+   return false;
+ }
+ 
+-int Inode::caps_issued(int *implemented)
++int Inode::caps_issued(int *implemented) const
+ {
+   int c = snap_caps;
+   int i = 0;
+-  for (map<mds_rank_t,Cap*>::iterator it = caps.begin();
++  for (map<mds_rank_t,Cap*>::const_iterator it = caps.begin();
+        it != caps.end();
+        ++it)
+     if (cap_is_valid(it->second)) {
+diff --git a/src/client/Inode.h b/src/client/Inode.h
+index 884443d..c54dcc4 100644
+--- a/src/client/Inode.h
++++ b/src/client/Inode.h
+@@ -244,7 +244,7 @@ struct Inode {
+   }
+   ~Inode() { }
+ 
+-  vinodeno_t vino() { return vinodeno_t(ino, snapid); }
++  vinodeno_t vino() const { return vinodeno_t(ino, snapid); }
+ 
+   struct Compare {
+     bool operator() (Inode* const & left, Inode* const & right) {
+@@ -264,8 +264,8 @@ struct Inode {
+   void get_cap_ref(int cap);
+   int put_cap_ref(int cap);
+   bool is_any_caps();
+-  bool cap_is_valid(Cap* cap);
+-  int caps_issued(int *implemented = 0);
++  bool cap_is_valid(Cap* cap) const;
++  int caps_issued(int *implemented = 0) const;
+   void touch_cap(Cap *cap);
+   void try_touch_cap(mds_rank_t mds);
+   bool caps_issued_mask(unsigned mask);
+@@ -283,6 +283,6 @@ struct Inode {
+   void dump(Formatter *f) const;
+ };
+ 
+-ostream& operator<<(ostream &out, Inode &in);
++ostream& operator<<(ostream &out, const Inode &in);
+ 
+ #endif
+diff --git a/src/cls/cephfs/cls_cephfs.cc b/src/cls/cephfs/cls_cephfs.cc
+index 8f54e3a..6e81a53 100644
+--- a/src/cls/cephfs/cls_cephfs.cc
++++ b/src/cls/cephfs/cls_cephfs.cc
+@@ -29,7 +29,7 @@ cls_method_handle_t h_accumulate_inode_metadata;
+ 
+ 
+ 
+-std::ostream &operator<<(std::ostream &out, ObjCeiling &in)
++std::ostream &operator<<(std::ostream &out, const ObjCeiling &in)
+ {
+   out << "id: " << in.id << " size: " << in.size;
+   return out;
+diff --git a/src/common/TextTable.cc b/src/common/TextTable.cc
+index 4aef2f9..3c09fde 100644
+--- a/src/common/TextTable.cc
++++ b/src/common/TextTable.cc
+@@ -62,7 +62,7 @@ pad(string s, int width, TextTable::Align align)
+   return string(lpad, ' ') + s + string(rpad, ' ');
+ }
+ 
+-std::ostream &operator<<(std::ostream& out, TextTable &t)
++std::ostream &operator<<(std::ostream &out, const TextTable &t)
+ {
+   for (unsigned int i = 0; i < t.col.size(); i++) {
+     TextTable::TextTableColumn col = t.col[i];
+diff --git a/src/common/TextTable.h b/src/common/TextTable.h
+index 4a9825a..102e16f 100644
+--- a/src/common/TextTable.h
++++ b/src/common/TextTable.h
+@@ -149,7 +149,7 @@ public:
+    * Render table to ostream (i.e. cout << table)
+    */
+ 
+-  friend std::ostream &operator<<(std::ostream& out, TextTable &t);
++  friend std::ostream &operator<<(std::ostream &out, const TextTable &t);
+ 
+   /**
+    * clear: Reset everything in a TextTable except column defs
+diff --git a/src/common/ceph_json.cc b/src/common/ceph_json.cc
+index d1d33a9..52be842 100644
+--- a/src/common/ceph_json.cc
++++ b/src/common/ceph_json.cc
+@@ -40,7 +40,7 @@ JSONObj *JSONObjIter::operator*()
+ }
+ 
+ // does not work, FIXME
+-ostream& operator<<(ostream& out, JSONObj& obj) {
++ostream& operator<<(ostream &out, const JSONObj &obj) {
+    out << obj.name << ": " << obj.data_string;
+    return out;
+ }
+diff --git a/src/common/ceph_json.h b/src/common/ceph_json.h
+index a812d7a..6748349 100644
+--- a/src/common/ceph_json.h
++++ b/src/common/ceph_json.h
+@@ -73,7 +73,8 @@ public:
+   JSONObjIter find_first(const string& name);
+   JSONObj *find_obj(const string& name);
+ 
+-  friend ostream& operator<<(ostream& out, JSONObj& obj); // does not work, FIXME
++  friend ostream& operator<<(ostream &out,
++			     const JSONObj &obj); // does not work, FIXME
+ 
+   bool is_array();
+   bool is_object();
+diff --git a/src/mds/LogEvent.h b/src/mds/LogEvent.h
+index 8c1cd1b..ecea57c 100644
+--- a/src/mds/LogEvent.h
++++ b/src/mds/LogEvent.h
+@@ -118,7 +118,7 @@ public:
+   virtual EMetaBlob *get_metablob() { return NULL; }
+ };
+ 
+-inline ostream& operator<<(ostream& out, LogEvent& le) {
++inline ostream& operator<<(ostream& out, const LogEvent &le) {
+   le.print(out);
+   return out;
+ }
+diff --git a/src/mds/MDSMap.h b/src/mds/MDSMap.h
+index 60aaf00..9dc9b58 100644
+--- a/src/mds/MDSMap.h
++++ b/src/mds/MDSMap.h
+@@ -632,7 +632,7 @@ public:
+ WRITE_CLASS_ENCODER_FEATURES(MDSMap::mds_info_t)
+ WRITE_CLASS_ENCODER_FEATURES(MDSMap)
+ 
+-inline ostream& operator<<(ostream& out, MDSMap& m) {
++inline ostream& operator<<(ostream &out, const MDSMap &m) {
+   m.print_summary(NULL, &out);
+   return out;
+ }
+diff --git a/src/mds/Mutation.h b/src/mds/Mutation.h
+index f43d660..91e68db 100644
+--- a/src/mds/Mutation.h
++++ b/src/mds/Mutation.h
+@@ -158,14 +158,14 @@ public:
+   void apply();
+   void cleanup();
+ 
+-  virtual void print(ostream &out) {
++  virtual void print(ostream &out) const {
+     out << "mutation(" << this << ")";
+   }
+ 
+   virtual void dump(Formatter *f) const {}
+ };
+ 
+-inline ostream& operator<<(ostream& out, MutationImpl &mut)
++inline ostream& operator<<(ostream &out, const MutationImpl &mut)
+ {
+   mut.print(out);
+   return out;
+diff --git a/src/mds/flock.h b/src/mds/flock.h
+index fade1a8..2cf9f0a 100644
+--- a/src/mds/flock.h
++++ b/src/mds/flock.h
+@@ -277,18 +277,18 @@ public:
+ WRITE_CLASS_ENCODER(ceph_lock_state_t)
+ 
+ 
+-inline ostream& operator<<(ostream& out, ceph_lock_state_t& l) {
++inline ostream& operator<<(ostream &out, const ceph_lock_state_t &l) {
+   out << "ceph_lock_state_t. held_locks.size()=" << l.held_locks.size()
+       << ", waiting_locks.size()=" << l.waiting_locks.size()
+       << ", client_held_lock_counts -- " << l.client_held_lock_counts
+       << "\n client_waiting_lock_counts -- " << l.client_waiting_lock_counts
+       << "\n held_locks -- ";
+-    for (multimap<uint64_t, ceph_filelock>::iterator iter = l.held_locks.begin();
++    for (auto iter = l.held_locks.begin();
+          iter != l.held_locks.end();
+          ++iter)
+       out << iter->second;
+     out << "\n waiting_locks -- ";
+-    for (multimap<uint64_t, ceph_filelock>::iterator iter =l.waiting_locks.begin();
++    for (auto iter =l.waiting_locks.begin();
+          iter != l.waiting_locks.end();
+          ++iter)
+       out << iter->second << "\n";
+diff --git a/src/mon/AuthMonitor.cc b/src/mon/AuthMonitor.cc
+index 10003a1..fff9f0d 100644
+--- a/src/mon/AuthMonitor.cc
++++ b/src/mon/AuthMonitor.cc
+@@ -44,7 +44,7 @@ static ostream& _prefix(std::ostream *_dout, Monitor *mon, version_t v) {
+ 		<< ").auth v" << v << " ";
+ }
+ 
+-ostream& operator<<(ostream& out, AuthMonitor& pm)
++ostream& operator<<(ostream &out, const AuthMonitor &pm)
+ {
+   return out << "auth";
+ }
+diff --git a/src/mon/LogMonitor.cc b/src/mon/LogMonitor.cc
+index 391a338..aee3e59 100644
+--- a/src/mon/LogMonitor.cc
++++ b/src/mon/LogMonitor.cc
+@@ -46,7 +46,7 @@ static ostream& _prefix(std::ostream *_dout, Monitor *mon, version_t v) {
+ 		<< ").log v" << v << " ";
+ }
+ 
+-ostream& operator<<(ostream& out, LogMonitor& pm)
++ostream& operator<<(ostream &out, const LogMonitor &pm)
+ {
+   /*
+   std::stringstream ss;
+diff --git a/src/mon/MonMap.h b/src/mon/MonMap.h
+index 390d88a..5704ee5 100644
+--- a/src/mon/MonMap.h
++++ b/src/mon/MonMap.h
+@@ -240,7 +240,7 @@ class MonMap {
+ };
+ WRITE_CLASS_ENCODER_FEATURES(MonMap)
+ 
+-inline ostream& operator<<(ostream& out, MonMap& m) {
++inline ostream& operator<<(ostream &out, const MonMap &m) {
+   m.print_summary(out);
+   return out;
+ }
+diff --git a/src/msg/Message.h b/src/msg/Message.h
+index 9274a66..9ea4536 100644
+--- a/src/msg/Message.h
++++ b/src/msg/Message.h
+@@ -471,7 +471,7 @@ extern Message *decode_message(CephContext *cct, int crcflags,
+ 			       ceph_msg_header &header,
+ 			       ceph_msg_footer& footer, bufferlist& front,
+ 			       bufferlist& middle, bufferlist& data);
+-inline ostream& operator<<(ostream& out, Message& m) {
++inline ostream& operator<<(ostream &out, const Message &m) {
+   m.print(out);
+   if (m.get_header().version)
+     out << " v" << m.get_header().version;
+diff --git a/src/osdc/Journaler.cc b/src/osdc/Journaler.cc
+index 3e20aa9..2d6f85e 100644
+--- a/src/osdc/Journaler.cc
++++ b/src/osdc/Journaler.cc
+@@ -89,7 +89,7 @@ void Journaler::_set_layout(file_layout_t const *l)
+ 
+ /***************** HEADER *******************/
+ 
+-ostream& operator<<(ostream& out, Journaler::Header &h)
++ostream& operator<<(ostream &out, const Journaler::Header &h)
+ {
+   return out << "loghead(trim " << h.trimmed_pos
+ 	     << ", expire " << h.expire_pos
+diff --git a/src/osdc/ObjectCacher.h b/src/osdc/ObjectCacher.h
+index d136c39..b34a5de 100644
+--- a/src/osdc/ObjectCacher.h
++++ b/src/osdc/ObjectCacher.h
+@@ -165,13 +165,13 @@ class ObjectCacher {
+       journal_tid = _journal_tid;
+     }
+ 
+-    bool is_missing() { return state == STATE_MISSING; }
+-    bool is_dirty() { return state == STATE_DIRTY; }
+-    bool is_clean() { return state == STATE_CLEAN; }
+-    bool is_zero() { return state == STATE_ZERO; }
+-    bool is_tx() { return state == STATE_TX; }
+-    bool is_rx() { return state == STATE_RX; }
+-    bool is_error() { return state == STATE_ERROR; }
++    bool is_missing() const { return state == STATE_MISSING; }
++    bool is_dirty() const { return state == STATE_DIRTY; }
++    bool is_clean() const { return state == STATE_CLEAN; }
++    bool is_zero() const { return state == STATE_ZERO; }
++    bool is_tx() const { return state == STATE_TX; }
++    bool is_rx() const { return state == STATE_RX; }
++    bool is_error() const { return state == STATE_ERROR; }
+ 
+     // reference counting
+     int get() {
+@@ -275,14 +275,14 @@ class ObjectCacher {
+       set_item.remove_myself();
+     }
+ 
+-    sobject_t get_soid() { return oid; }
++    sobject_t get_soid() const { return oid; }
+     object_t get_oid() { return oid.oid; }
+     snapid_t get_snap() { return oid.snap; }
+-    ObjectSet *get_object_set() { return oset; }
++    ObjectSet *get_object_set() const { return oset; }
+     string get_namespace() { return oloc.nspace; }
+     uint64_t get_object_number() const { return object_no; }
+ 
+-    object_locator_t& get_oloc() { return oloc; }
++    const object_locator_t& get_oloc() const { return oloc; }
+     void set_object_locator(object_locator_t& l) { oloc = l; }
+ 
+     bool can_close() {
+@@ -777,7 +777,7 @@ public:
+ };
+ 
+ 
+-inline ostream& operator<<(ostream& out, ObjectCacher::BufferHead &bh)
++inline ostream& operator<<(ostream &out, const ObjectCacher::BufferHead &bh)
+ {
+   out << "bh[ " << &bh << " "
+       << bh.start() << "~" << bh.length()
+@@ -811,7 +811,7 @@ inline ostream& operator<<(ostream& out, ObjectCacher::BufferHead &bh)
+   return out;
+ }
+ 
+-inline ostream& operator<<(ostream& out, ObjectCacher::ObjectSet &os)
++inline ostream& operator<<(ostream &out, const ObjectCacher::ObjectSet &os)
+ {
+   return out << "objectset[" << os.ino
+ 	     << " ts " << os.truncate_seq << "/" << os.truncate_size
+@@ -820,7 +820,7 @@ inline ostream& operator<<(ostream& out, ObjectCacher::ObjectSet &os)
+ 	     << "]";
+ }
+ 
+-inline ostream& operator<<(ostream& out, ObjectCacher::Object &ob)
++inline ostream& operator<<(ostream &out, const ObjectCacher::Object &ob)
+ {
+   out << "object["
+       << ob.get_soid() << " oset " << ob.oset << dec
+diff --git a/src/rbd_replay/ios.cc b/src/rbd_replay/ios.cc
+index 7bbc9ab..db8470e 100644
+--- a/src/rbd_replay/ios.cc
++++ b/src/rbd_replay/ios.cc
+@@ -62,7 +62,7 @@ void IO::write_debug_base(ostream& out, string type) const {
+ }
+ 
+ 
+-ostream& operator<<(ostream& out, IO::ptr io) {
++ostream& operator<<(ostream &out, const IO::ptr &io) {
+   io->write_debug(out);
+   return out;
+ }
+diff --git a/src/rbd_replay/ios.hpp b/src/rbd_replay/ios.hpp
+index b4ab76d..5f19648 100644
+--- a/src/rbd_replay/ios.hpp
++++ b/src/rbd_replay/ios.hpp
+@@ -106,7 +106,7 @@ private:
+ 
+ /// Used for dumping debug info.
+ /// @related IO
+-std::ostream& operator<<(std::ostream& out, IO::ptr io);
++std::ostream& operator<<(std::ostream &out, const IO::ptr &io);
+ 
+ 
+ class StartThreadIO : public IO {
+diff --git a/src/rgw/rgw_xml.cc b/src/rgw/rgw_xml.cc
+index df555f8..ff067a4 100644
+--- a/src/rgw/rgw_xml.cc
++++ b/src/rgw/rgw_xml.cc
+@@ -45,7 +45,7 @@ get_next()
+   return obj;
+ }
+ 
+-ostream& operator<<(ostream& out, XMLObj& obj) {
++ostream& operator<<(ostream &out, const XMLObj &obj) {
+    out << obj.obj_type << ": " << obj.data;
+    return out;
+ }
+diff --git a/src/rgw/rgw_xml.h b/src/rgw/rgw_xml.h
+index 257a156..49b1fb8 100644
+--- a/src/rgw/rgw_xml.h
++++ b/src/rgw/rgw_xml.h
+@@ -56,7 +56,7 @@ public:
+   XMLObjIter find(string name);
+   XMLObj *find_first(string name);
+ 
+-  friend ostream& operator<<(ostream& out, XMLObj& obj);
++  friend ostream& operator<<(ostream &out, const XMLObj &obj);
+ };
+ 
+ struct XML_ParserStruct;
+diff --git a/src/test/osd/TestOpStat.cc b/src/test/osd/TestOpStat.cc
+index db6a82e..e8045fa 100644
+--- a/src/test/osd/TestOpStat.cc
++++ b/src/test/osd/TestOpStat.cc
+@@ -34,10 +34,10 @@ void TestOpStat::TypeStatus::export_latencies(map<double,uint64_t> &in) const
+   }
+ }
+   
+-std::ostream & operator<<(std::ostream &out, TestOpStat &rhs)
++std::ostream & operator<<(std::ostream &out, const TestOpStat &rhs)
+ {
+   rhs.stat_lock.Lock();
+-  for (map<string,TestOpStat::TypeStatus>::iterator i = rhs.stats.begin();
++  for (auto i = rhs.stats.begin();
+        i != rhs.stats.end();
+        ++i) {
+     map<double,uint64_t> latency;
+diff --git a/src/test/osd/TestOpStat.h b/src/test/osd/TestOpStat.h
+index 3d70ece..5bf4fc9 100644
+--- a/src/test/osd/TestOpStat.h
++++ b/src/test/osd/TestOpStat.h
+@@ -10,7 +10,7 @@ class TestOp;
+ 
+ class TestOpStat {
+ public:
+-  Mutex stat_lock;
++  mutable Mutex stat_lock;
+ 
+   TestOpStat() : stat_lock("TestOpStat lock") {}
+     
+@@ -45,9 +45,9 @@ public:
+ 
+   void begin(TestOp *in);
+   void end(TestOp *in);
+-  friend std::ostream & operator<<(std::ostream &, TestOpStat&);
++  friend std::ostream & operator<<(std::ostream &, const TestOpStat &);
+ };
+ 
+-std::ostream & operator<<(std::ostream &out, TestOpStat &rhs);
++std::ostream & operator<<(std::ostream &out, const TestOpStat &rhs);
+ 
+ #endif
