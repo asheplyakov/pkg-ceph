@@ -1,0 +1,30 @@
+From: Patrick Donnelly <pdonnell@redhat.com>
+Date: Sun, 18 Sep 2016 16:26:29 -0400
+Subject: ceph-create-keys: add missing argument comma
+
+The arguments "get" and "client.admin" were being concatenated into
+"getclient.admin".
+
+Found using ceph-ansible + strace:
+
+    13031 execve("/usr/bin/ceph", ["ceph", "--cluster=ceph", "--name=mon.", "--keyring=/var/lib/ceph/mon/ceph-ceph-mon0/keyring", "auth", "getclient.admin"], ["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin", "LANG=en_US.UTF-8", "CLUSTER=ceph", "TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES=134217728", "CEPH_AUTO_RESTART_ON_UPGRADE=no"] <unfinished ...>
+
+Signed-off-by: Patrick Donnelly <pdonnell@redhat.com>
+(cherry picked from commit 482022233d845b75876b04ca23fb137281a9f6ab)
+---
+ src/ceph-create-keys | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/ceph-create-keys b/src/ceph-create-keys
+index 0e18840..8031b2f 100755
+--- a/src/ceph-create-keys
++++ b/src/ceph-create-keys
+@@ -109,7 +109,7 @@ def get_key(cluster, mon_id):
+                 returncode = subprocess.call(
+                     args=args_prefix + [
+                         'auth',
+-                        'get'
++                        'get',
+                         'client.admin',
+                         ],
+                     stdout=f,
