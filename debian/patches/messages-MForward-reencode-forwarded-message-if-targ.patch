@@ -1,0 +1,31 @@
+From: Sage Weil <sage@redhat.com>
+Date: Sat, 22 Oct 2016 14:01:34 -0400
+Subject: messages/MForward: reencode forwarded message if target has
+ differing features
+
+This ensures we reencode the payload with the
+appropriate set of features if the client, us, or the
+target do not have identical features.  Otherwise we
+may forward an encoding with more features than the
+target can handle.
+
+Signed-off-by: Sage Weil <sage@redhat.com>
+(cherry picked from commit a433455e59067a844c3df4a0d6080db2ceb4ec59)
+---
+ src/messages/MForward.h | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/messages/MForward.h b/src/messages/MForward.h
+index c6804cd..2c00825 100644
+--- a/src/messages/MForward.h
++++ b/src/messages/MForward.h
+@@ -77,6 +77,9 @@ public:
+     // message are changed when reencoding with more features than the
+     // client had originally.  That should never happen, but we may as
+     // well be defensive here.
++    if (con_features != features) {
++      msg->clear_payload();
++    }
+     encode_message(msg, features & con_features, payload);
+     ::encode(con_features, payload);
+     ::encode(entity_name, payload);

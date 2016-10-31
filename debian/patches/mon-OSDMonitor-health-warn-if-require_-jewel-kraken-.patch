@@ -1,0 +1,49 @@
+From: Sage Weil <sage@redhat.com>
+Date: Thu, 13 Oct 2016 12:16:40 -0400
+Subject: mon/OSDMonitor: health warn if require_{jewel,
+ kraken} flags aren't set
+
+We want to prompt users to set these flags as soon as their
+upgrades complete.
+
+Signed-off-by: Sage Weil <sage@redhat.com>
+(cherry picked from commit 12e508313dbd5d1d38c76859cb7de2ce22404e12)
+
+Conflicts:
+   src/mon/OSDMonitor.cc: remove references to kraken
+
+    if ((osdmap.get_up_osd_features() & CEPH_FEATURE_SERVER_KRAKEN) &&
+	!osdmap.test_flag(CEPH_OSDMAP_REQUIRE_KRAKEN)) {
+      string msg = "all OSDs are running kraken or later but the"
+	" 'require_kraken_osds' osdmap flag is not set";
+      summary.push_back(make_pair(HEALTH_WARN, msg));
+      if (detail) {
+	detail->push_back(make_pair(HEALTH_WARN, msg));
+      }
+    } else
+---
+ src/mon/OSDMonitor.cc | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/src/mon/OSDMonitor.cc b/src/mon/OSDMonitor.cc
+index 3dc644e..0de3acc 100644
+--- a/src/mon/OSDMonitor.cc
++++ b/src/mon/OSDMonitor.cc
+@@ -3057,6 +3057,17 @@ void OSDMonitor::get_health(list<pair<health_status_t,string> >& summary,
+       }
+     }
+ 
++    // warn about upgrade flags that can be set but are not.
++    if ((osdmap.get_up_osd_features() & CEPH_FEATURE_SERVER_JEWEL) &&
++	       !osdmap.test_flag(CEPH_OSDMAP_REQUIRE_JEWEL)) {
++      string msg = "all OSDs are running jewel or later but the"
++	" 'require_jewel_osds' osdmap flag is not set";
++      summary.push_back(make_pair(HEALTH_WARN, msg));
++      if (detail) {
++	detail->push_back(make_pair(HEALTH_WARN, msg));
++      }
++    }
++
+     get_pools_health(summary, detail);
+   }
+ }

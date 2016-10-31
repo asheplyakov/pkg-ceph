@@ -1,0 +1,51 @@
+From: Sage Weil <sage@redhat.com>
+Date: Wed, 5 Oct 2016 15:32:34 -0400
+Subject: mon/PGMap: PGs can be stuck more than one thing
+
+This was inadvertantly changed waaay back in
+9c95bb0454dbad781b6655f4c7116620005101f7.
+
+This fixes the health warnings so that they are
+complete and (most importantly) consistent with the
+results of 'pg dump_stuck ...'.
+
+Fixes: http://tracker.ceph.com/issues/17515
+Signed-off-by: Sage Weil <sage@redhat.com>
+(cherry picked from commit cab233d582ebb31e3ceb7d0abdd22c8fb34df831)
+---
+ src/mon/PGMap.cc | 13 ++++++++-----
+ 1 file changed, 8 insertions(+), 5 deletions(-)
+
+diff --git a/src/mon/PGMap.cc b/src/mon/PGMap.cc
+index fbef9ba..861c804 100644
+--- a/src/mon/PGMap.cc
++++ b/src/mon/PGMap.cc
+@@ -964,20 +964,23 @@ bool PGMap::get_stuck_counts(const utime_t cutoff, map<string, int>& note) const
+   for (ceph::unordered_map<pg_t, pg_stat_t>::const_iterator i = pg_stat.begin();
+        i != pg_stat.end();
+        ++i) {
+-
+     if (! (i->second.state & PG_STATE_ACTIVE)) {
+       if (i->second.last_active < cutoff)
+         ++inactive;
+-    } else if (! (i->second.state & PG_STATE_CLEAN)) {
++    }
++    if (! (i->second.state & PG_STATE_CLEAN)) {
+       if (i->second.last_clean < cutoff)
+         ++unclean;
+-    } else if (i->second.state & PG_STATE_DEGRADED) {
++    }
++    if (i->second.state & PG_STATE_DEGRADED) {
+       if (i->second.last_undegraded < cutoff)
+         ++degraded;
+-    } else if (i->second.state & PG_STATE_UNDERSIZED) {
++    }
++    if (i->second.state & PG_STATE_UNDERSIZED) {
+       if (i->second.last_fullsized < cutoff)
+         ++undersized;
+-    } else if (i->second.state & PG_STATE_STALE) {
++    }
++    if (i->second.state & PG_STATE_STALE) {
+       if (i->second.last_unstale < cutoff)
+         ++stale;
+     }
