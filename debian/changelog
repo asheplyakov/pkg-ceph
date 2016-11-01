@@ -1,3 +1,13 @@
+ceph (10.2.4~20161031+n337+g5efb6b1-1~u14.04+1.gbp2eaab3) UNRELEASED; urgency=low
+
+  ** SNAPSHOT build @2eaab368a8af8108ef4abe8b3cdf19c465a79cda **
+
+  * Imported Upstream version 10.2.4~20161031+n337+g5efb6b1
+  * Apply important fixes: upgrade problem and wrong ceph -s output
+  * Fix deployment failure due to a syntax error in ceph-create-keys
+
+ -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Tue, 01 Nov 2016 12:21:34 +0300
+
 ceph (10.2.3-1~u14.04) trusty; urgency=low
 
   * New upstream bugfix-only version
