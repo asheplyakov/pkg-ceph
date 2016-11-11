@@ -964,23 +964,20 @@ bool PGMap::get_stuck_counts(const utime_t cutoff, map<string, int>& note) const
   for (ceph::unordered_map<pg_t, pg_stat_t>::const_iterator i = pg_stat.begin();
        i != pg_stat.end();
        ++i) {
+
     if (! (i->second.state & PG_STATE_ACTIVE)) {
       if (i->second.last_active < cutoff)
         ++inactive;
-    }
-    if (! (i->second.state & PG_STATE_CLEAN)) {
+    } else if (! (i->second.state & PG_STATE_CLEAN)) {
       if (i->second.last_clean < cutoff)
         ++unclean;
-    }
-    if (i->second.state & PG_STATE_DEGRADED) {
+    } else if (i->second.state & PG_STATE_DEGRADED) {
       if (i->second.last_undegraded < cutoff)
         ++degraded;
-    }
-    if (i->second.state & PG_STATE_UNDERSIZED) {
+    } else if (i->second.state & PG_STATE_UNDERSIZED) {
       if (i->second.last_fullsized < cutoff)
         ++undersized;
-    }
-    if (i->second.state & PG_STATE_STALE) {
+    } else if (i->second.state & PG_STATE_STALE) {
       if (i->second.last_unstale < cutoff)
         ++stale;
     }
