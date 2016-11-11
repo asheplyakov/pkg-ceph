@@ -1,20 +1,15 @@
-ceph (10.2.4~20161031+n337+g5efb6b1-1~u16.04+2.gbp9c13d1) UNRELEASED; urgency=low
+ceph (10.2.4~20161111+n358+g427f357-1~u16.04~2.gbp562029) UNRELEASED; urgency=low
 
-  ** SNAPSHOT build @9c13d173ffc1dfc3135a8e6ac33bda18c10d108c **
+  ** SNAPSHOT build @562029a6a6377ee1466f1f6f2a80e83797eb5ebf **
 
-  * Pre-release upstream bugfix only version
+  * Pre-release upstream bugfix only version, upstream commit
+    427f357f0eed32c9ce17590ae9303a94e8b710e7
   * debian/patches:
-    - "Upgrading 0.94.6 -> 0.94.9 saturating mon node networking",
-      http://tracker.ceph.com/issues/17694
-      https://github.com/ceph/ceph/pull/11679
     - "mon: health does not report pgs stuck in more than one state",
       http://tracker.ceph.com/issues/17601
       https://github.com/ceph/ceph/pull/11660
-    - "deployment failure due to a syntax error in ceph-create-keys",
-      http://tracker.ceph.com/issues/17753
-      https://github.com/ceph/ceph/pull/11705
 
- -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Mon, 31 Oct 2016 14:16:00 +0300
+ -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Fri, 11 Nov 2016 17:19:06 +0300
 
 ceph (10.2.3-1~3.gbpc75c14) UNRELEASED; urgency=low
 
