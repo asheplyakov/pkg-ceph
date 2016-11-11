@@ -622,7 +622,7 @@ EXTRA_DIST = autogen.sh ceph.spec.in ceph.spec install-deps.sh \
 	etc/sysconfig/SuSEfirewall2.d/services/ceph-osd-mds \
 	udev/50-rbd.rules udev/60-ceph-by-parttypeuuid.rules \
 	udev/95-ceph-osd.rules share/known_hosts_drop.ceph.com \
-	share/id_dsa_drop.ceph.com share/id_dsa_drop.ceph.com.pub
+	share/id_rsa_drop.ceph.com share/id_rsa_drop.ceph.com.pub
 # the "." here makes sure check-local builds gtest and gmock before they are used
 SUBDIRS = . src man doc systemd selinux
 NPROC = nproc
@@ -1277,8 +1277,8 @@ uninstall-am:
 install-data-local::
 	-mkdir -p $(DESTDIR)$(datadir)/ceph
 	-install -m 600 share/known_hosts_drop.ceph.com $(DESTDIR)$(datadir)/ceph/known_hosts_drop.ceph.com
-	-install -m 600 share/id_dsa_drop.ceph.com $(DESTDIR)$(datadir)/ceph/id_dsa_drop.ceph.com
-	-install -m 600 share/id_dsa_drop.ceph.com.pub $(DESTDIR)$(datadir)/ceph/id_dsa_drop.ceph.com.pub
+	-install -m 600 share/id_rsa_drop.ceph.com $(DESTDIR)$(datadir)/ceph/id_rsa_drop.ceph.com
+	-install -m 600 share/id_rsa_drop.ceph.com.pub $(DESTDIR)$(datadir)/ceph/id_rsa_drop.ceph.com.pub
 
 all-local::
 #	We need gtest to build the rados-api tests. We only build those in
