@@ -1,0 +1,29 @@
+From: weiqiaomiao <wei.qiaomiao@zte.com.cn>
+Date: Mon, 4 Jul 2016 18:16:39 +0800
+Subject: rgw: for the create_bucket api, if the input creation_time is zero,
+ we should set it to 'now"
+
+Fixes: http://tracker.ceph.com/issues/16597
+
+Signed-off-by: weiqiaomiao <wei.qiaomiao@zte.com.cn>
+(cherry picked from commit 499c0e95a58bb7bd2326ea74761ea98449d26d3b)
+
+Conflicts:
+	src/rgw/rgw_rados.cc
+---
+ src/rgw/rgw_rados.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/rgw/rgw_rados.cc b/src/rgw/rgw_rados.cc
+index 3f34850..afff16a 100644
+--- a/src/rgw/rgw_rados.cc
++++ b/src/rgw/rgw_rados.cc
+@@ -5154,7 +5154,7 @@ int RGWRados::create_bucket(RGWUserInfo& owner, rgw_bucket& bucket,
+     info.bucket_index_shard_hash_type = RGWBucketInfo::MOD;
+     info.requester_pays = false;
+     if (real_clock::is_zero(creation_time))
+-      creation_time = ceph::real_clock::now(cct);
++      info.creation_time = ceph::real_clock::now(cct);
+     else
+       info.creation_time = creation_time;
+     ret = put_linked_bucket_info(info, exclusive, ceph::real_time(), pep_objv, &attrs, true);
