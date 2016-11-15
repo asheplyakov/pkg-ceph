@@ -19,3 +19,5 @@ disable-openssl-linking.patch
 
 # Mirantis
 mon-PGMap-PGs-can-be-stuck-more-than-one-thing.patch
+osd-limit-omap-data-in-push-op.patch
+rgw-for-the-create_bucket-api-if-the-input-creation_.patch
