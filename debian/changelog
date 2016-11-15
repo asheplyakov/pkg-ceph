@@ -1,3 +1,11 @@
+ceph (10.2.3-0ubuntu4) UNRELEASED; urgency=medium
+
+  * d/ceph.{postinst,preinst,postrm}: Ensure that ceph logrotate
+    configuration is purged on upgrade from pre-yakkety installs
+    (LP: #1635844).
+
+ -- James Page <james.page@ubuntu.com>  Tue, 15 Nov 2016 13:40:37 +0000
+
 ceph (10.2.3-0ubuntu3) zesty; urgency=medium
 
   * rgw: Fixes for creation times for buckets (LP: #1587261).
