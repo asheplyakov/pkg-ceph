@@ -1,12 +1,23 @@
-ceph (10.2.4~20161031+n337+g5efb6b1-1~u14.04+1.gbp2eaab3) UNRELEASED; urgency=low
+ceph (10.2.4~20161111+n358+g427f357-1~u14.04~4.gbp7c11ad) UNRELEASED; urgency=low
 
-  ** SNAPSHOT build @2eaab368a8af8108ef4abe8b3cdf19c465a79cda **
+  ** SNAPSHOT build @7c11ad0bb60b4832c206124a2783384c3f89f7db **
 
-  * Imported Upstream version 10.2.4~20161031+n337+g5efb6b1
-  * Apply important fixes: upgrade problem and wrong ceph -s output
-  * Fix deployment failure due to a syntax error in ceph-create-keys
+  * Pre-release upstream bugfix only version, upstream commit
+    427f357f0eed32c9ce17590ae9303a94e8b710e7
+  * Switch to jemalloc
+  * debian/patches:
+     - "mon: health does not report pgs stuck in more than one state",
+       http://tracker.ceph.com/issues/17601
+       https://github.com/ceph/ceph/pull/11660
+     - "osd: limit omap data in push op",
+       https://bugs.launchpad.net/ubuntu/+source/ceph/+bug/1628750/comments/0
+       http://tracker.ceph.com/issues/17909
+     - "the response element "X-Timestamp" of swift stat bucket api is zero",
+       http://tracker.ceph.com/issues/16597
+       https://github.com/ceph/ceph/pull/11990
+  * ceph-common.install: upstream switched to rsa keys
 
- -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Tue, 01 Nov 2016 12:21:34 +0300
+ -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Tue, 15 Nov 2016 14:12:40 +0300
 
 ceph (10.2.3-1~u14.04) trusty; urgency=low
 
