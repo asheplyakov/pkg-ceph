@@ -1,4 +1,20 @@
+8b595f5 ceph-create-keys: add missing argument comma
+eea546f (origin/wip-17734-jewel) mon: expose require_jewel_osds flag to user
+f8ee076 mon/OSDMonitor: encode OSDMap::Incremental with same features as OSDMap
+1f629b2 mon/OSDMonitor: health warn if require_{jewel,kraken} flags aren't set
+34555f1 mon/OSDMonitor: encode canonical full osdmap based on osdmap flags
+eb30cc5 (origin/wip-post-file-key-jewel) ceph-post-file: Ignore keys offered by ssh-agent
+43282b0 ceph-post-file: migrate to RSA SSH keys
+d48e603 (origin/wip-17728-jewel) msg: adjust byte_throttler from Message::encode
+1bc6161 msg/Message: fix set_middle vs throttler
+5d5b595 messages/MForward: reencode forwarded message if target has differing features
+e068c92 messages/MForward: fix encoding features
+158b003 all: add const to operator<< param
+3e1edde test/ceph_test_msgr: do not use Message::middle for holding transient data
+8f75bd6 test/ceph_test_msgr: fix circular locking dependency
+f960db4 ceph_test_msgr: use ceph log infrastructure to output
 39b8e78 (origin/wip-jewel-11566) rgw: fix put_acls for objects starting and ending with underscore
+779af22 (origin/wip-librados-upgrade-jewel) qa: remove EnumerateObjects from librados upgrade tests
 4cb83c1 librbd: discard after write can result in assertion failure
 dc2ffda rgw: handle empty POST condition
 cd99a64 (dachary/wip-17707-jewel) ceph-disk: allow using a regular file as a journal
@@ -7293,7 +7309,7 @@ a0ea0df ceph_fuse: Adding CEPH_FUSE_NO_MDS_UP flag
 bb96be0 ceph_fuse: Adding fuse_require_active_mds option
 9b815ed configure.ac: check for libboost_random-mt also
 49bd8a8 mailmap: Jevon Qiao affiliation
-6f562c6 mailmap: Jiaying Ren affiliation
+6f562c67 mailmap: Jiaying Ren affiliation
 8bd1ac0 mailmap: Jean-Rémi Deveaux affiliation
 2f92eba mailmap: Gaël Fenet-Garde affiliation
 45af3da mailmap: Arthur Gorjux affiliation
@@ -8607,7 +8623,7 @@ ecdc8f6 hobject_t: modify operator<<
 afae1c7 hobject_t: adjust sort order (pool position)
 ff99af3 hobject_t: change default pool id to INT64_MIN
 959a7ce os/HashIndex: use ghobject_t::get_max() instead of hobject_t one
-3b1b5a9 osd: eliminate temp collections
+3b1b5a93 osd: eliminate temp collections
 a88c3cc osd/osd_types: remove ancient CEPH_*_NS cruft
 18eb2a5 osd: use per-pool temp poolid for temp objects
 406c8c3 ceph_test_rados: add --balance-reads option
@@ -10533,7 +10549,7 @@ ec26f08 librbd: remove unnecessary md_lock usage
 876f128 librbd: remove object map on rollback if needed
 f4d8d16 librbd: clarify md_lock usage
 01dc05b test_librbd: add simple test for object map snapshot consistency
-8582500 librbd: use snap_lock to protect ImageCtx->size
+85825008 librbd: use snap_lock to protect ImageCtx->size
 7fed0a3 librbd: hold snap_lock while reading parent info in diff_iterate
 df42fd3 test_librbd: close ioctx after imagectx
 06e5a39 rbd: fix --image-feature parsing
@@ -32521,7 +32537,7 @@ fd0290a rgw: listing non existent bucket returns NoSuchBucket
 4082808 osd: check obj name length to avoid ENAMETOOLONG
 2380e70 librbd: don't write to stdout
 1eae9d6 Add test_mutate
-9c731ed mdsmap: initialize standby_for_rank
+9c731edd mdsmap: initialize standby_for_rank
 5e27a07 mon: simplify mds follow checks
 2b59bc6 mon: simplify mds laggy check
 e9afe17 mon: don't take over for a standby-replay

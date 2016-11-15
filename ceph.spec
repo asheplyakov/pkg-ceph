@@ -57,7 +57,7 @@
 #################################################################################
 Name:		ceph
 Version:	10.2.3
-Release:	337.g5efb6b1%{?dist}
+Release:	358.g427f357%{?dist}
 Epoch:		1
 Summary:	User space components of the Ceph file system
 License:	LGPL-2.1 and CC-BY-SA-1.0 and GPL-2.0 and BSL-1.0 and GPL-2.0-with-autoconf-exception and BSD-3-Clause and MIT
@@ -881,8 +881,8 @@ DISABLE_RESTART_ON_UPDATE="yes"
 %{_mandir}/man8/rbd-replay-prep.8*
 %dir %{_datadir}/ceph/
 %{_datadir}/ceph/known_hosts_drop.ceph.com
-%{_datadir}/ceph/id_dsa_drop.ceph.com
-%{_datadir}/ceph/id_dsa_drop.ceph.com.pub
+%{_datadir}/ceph/id_rsa_drop.ceph.com
+%{_datadir}/ceph/id_rsa_drop.ceph.com.pub
 %dir %{_sysconfdir}/ceph/
 %config %{_sysconfdir}/bash_completion.d/rados
 %config %{_sysconfdir}/bash_completion.d/rbd
