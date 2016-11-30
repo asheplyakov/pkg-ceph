@@ -3,7 +3,7 @@
 set -e
 
 dpkg-maintscript-helper rm_conffile \
-	/etc/logrotate.d/ceph 10.2.3-0ubuntu4 -- "$@"
+	/etc/logrotate.d/ceph 10.2.3-0ubuntu4~ -- "$@"
 
 #DEBHELPER#
 
