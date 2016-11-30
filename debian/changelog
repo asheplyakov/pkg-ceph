@@ -7,6 +7,10 @@ ceph (10.2.5-0ubuntu0.16.10.1) yakkety; urgency=medium
   * d/rules: Install upstream provided systemd targets and ensure they
     are enabled and started on install to ensure that integrations aligned
     to upstream packaging work with Ubuntu packages (LP: #1646583).
+  * d/ceph-base.*,d/*.logrotate: Install logrotate configuration
+    in ceph-common, ensuring that all daemons get log rotation on
+    log files, deal with removal of logrotate configuration in
+    ceph-base for upgrades (LP: #1609866).
 
  -- James Page <james.page@ubuntu.com>  Wed, 14 Dec 2016 11:36:08 +0000
 
