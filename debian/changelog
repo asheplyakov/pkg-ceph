@@ -1,4 +1,4 @@
-ceph (10.2.3-0ubuntu5) UNRELEASED; urgency=medium
+ceph (10.2.3-0ubuntu5) zesty; urgency=medium
 
   * d/ceph.{postinst,preinst,postrm}: Ensure that ceph logrotate
     configuration is purged on upgrade from pre-yakkety installs
@@ -8,7 +8,7 @@ ceph (10.2.3-0ubuntu5) UNRELEASED; urgency=medium
     log files, deal with removal of logrotate configuration in
     ceph-base for upgrades (LP: #1609866).
 
- -- James Page <james.page@ubuntu.com>  Tue, 15 Nov 2016 13:40:37 +0000
+ -- James Page <james.page@ubuntu.com>  Thu, 01 Dec 2016 08:54:21 +0000
 
 ceph (10.2.3-0ubuntu4) zesty; urgency=high
 
