@@ -21,3 +21,10 @@ disable-openssl-linking.patch
 mon-PGMap-PGs-can-be-stuck-more-than-one-thing.patch
 osd-limit-omap-data-in-push-op.patch
 rgw-for-the-create_bucket-api-if-the-input-creation_.patch
+ReplicatedPG-do_update_log_missing-take-the-pg-lock-.patch
+OSDMonitor-only-reject-MOSDBoot-based-on-up_from-if-.patch
+msg-simple-Pipe-handle-addr-decode-error.patch
+ceph-disk-systemd-unit-must-run-after-local-fs.targe.patch
+ceph-disk-trigger-must-ensure-device-ownership.patch
+build-ops-restart-ceph-osd-.service-after-20s-instea.patch
+ceph-disk-enable-runtime-ceph-osd-systemd-units.patch
