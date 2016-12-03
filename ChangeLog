@@ -1,3 +1,7 @@
+00de014 mon: MonmapMonitor: drop unnecessary 'goto' statements
+25f1b39 mon: MonmapMonitor: return success when monitor will be removed
+79be070 librados: remove new setxattr overload to avoid breaking the C++ ABI
+3cc29c6 os/filestore/HashIndex: fix list_by_hash_* termination on reaching end
 8b595f5 ceph-create-keys: add missing argument comma
 eea546f (origin/wip-17734-jewel) mon: expose require_jewel_osds flag to user
 f8ee076 mon/OSDMonitor: encode OSDMap::Incremental with same features as OSDMap
@@ -869,7 +873,7 @@ b55514c rgw: RGWHTTPManager, avoid referring to req_data->client when completing
 e5312b1 rgw: RGWHTTPManager, can call stop() more than once
 cbea993 rgw: RGWReadRESTResourceCR, fix refcounting
 93a65f3 rgw: RGWReadRemoteDataLogShardCR fix destructor
-2de1669 rgw: RGWDataSyncStatusManager, cleanup if failing init
+2de16690 rgw: RGWDataSyncStatusManager, cleanup if failing init
 57266e6 rgw: rest crs, explicitly call cleanup
 6b86332 rgw: more leaks fixes
 0fb4854 rgw: drop a reference to http op
@@ -913,7 +917,7 @@ d985135 mon/OSDMonitor: improve reweight_by_utilization() logic
 b0543fd mon/OSDMonitor: avoid potential expensive grace calculation
 53686df mon/OSDMonitor: max_osds must be > 0 for reweight-by-*
 b2d1df1 tests: be more generous with test timeout
-0de6345 (origin/wip-sam-testing-jewel) OSDMonitor: avoid underflow in reweight-by-utilization if max_change=1
+0de6345 OSDMonitor: avoid underflow in reweight-by-utilization if max_change=1
 63738d4 rbd: disk usage now includes all snapshots by default
 895c975 librbd: block RPC requests while updating features
 1f0056a librbd: return -ESHUTDOWN when a refresh is requested on a closed image
@@ -20220,7 +20224,7 @@ d423cf8 qa/workunits/rbd/kernel.sh: move modprobe up
 54aa797 qa/workunits/rbd/kernel.sh: modprobe rbd
 83f3089 qa: move test_o_trunc.sh into fs dir
 507a4ec qa: move fs test binary into workunits dir so teuthology can build it
-a84e6d1 mds/MDSTable: gracefully suicide on EBLACKLIST
+a84e6d18 mds/MDSTable: gracefully suicide on EBLACKLIST
 8b4cb8f rgw: Add explicit messages in radosgw init script
 d09ce3d rgw: fix rgw_remove_bucket()
 972d22e Adding new Wireshark dissector. This is loosely based on the original dissector, it has been re-worked to bring into line with Wireshark coding guidelines that aim to ensure portability. It currently only decodes a handful of messages as test cases, it needs more work to make it useful. See README.txt for a bit more background.
@@ -20772,7 +20776,7 @@ dea8c2d doc: Updated for glossary terms and added indexing.
 a08d620 mds: do not double-queue file recovery in eval_gather
 faa1ae7 MDSMonitor: dead debugging code
 7785fc5 rados.py: make exception with errno string instead of int
-24a5212 ceph, librados, rados.py, librados tests: pass cmd as array
+24a5212d ceph, librados, rados.py, librados tests: pass cmd as array
 37a6102 ceph: -v should mean version, not --verbose
 4446681 ceph: error and verbose message improvement
 b114e11 ceph: refactor -s -> status to common code, pass childargs to old mons
@@ -21468,7 +21472,7 @@ f2a54cc init-ceph: fix osd_data location when checking df utilization
 ea809f7 rgw: bucket index log trim
 546ed91 osd: don't assert if get_omap_iterator() returns NULL
 76b736b rgw: metadata log trim
-36ec6f9 osd: don't assert if get_omap_iterator() returns NULL
+36ec6f9b osd: don't assert if get_omap_iterator() returns NULL
 3846451 rgw: user operation mask
 ef82ad7 rgw: resend data log entry if took too long
 3385c2c rgw: more data changes log implementation
@@ -24452,7 +24456,7 @@ a3aad3c mds: fix anchor table update
 6efe977 mon, osd: adjust msgr requires for CRUSH_TUNABLES2 feature
 0cc47ff crush: introduce CRUSH_TUNABLES2 feature
 88f2181 crush: for chooseleaf rules, retry CRUSH map descent from root if leaf is failed
-0beeb47 rgw: document ops logging setup
+0beeb47c rgw: document ops logging setup
 6bc32b2 rgw: usage REST api handles cateogories
 94423ac perfcounters: fl -> time, use u64 nsec instead of double
 3a0ee8e perfcounters: add 'perf' option to disable perf counters
@@ -25455,7 +25459,7 @@ a1cfe74 client: Mods to fix #3184 for messenger shutdown
 3c1e2e1 manpage-howto.txt: note that man/Makefile.am may need update too
 eb27f9a Add howto for changing man pages
 d37ca79 mon: update 'auth' help/usage
-1d552a4 rados: fix man page
+1d552a4b rados: fix man page
 8740ddf9 doc: fix rpm url (part deux)
 6c5c939 librbd: fix includes for portability
 c9266d6 rgw: check that realloc succeeded
@@ -26342,7 +26346,7 @@ cef8510 msg/Connection: add failed flag for lossy Connections
 5ecc5bc msg/DispatchQueue: cleanup debug prefix
 89b07f4 msg/Pipe: move tcp_* functions into Pipe class
 d034e46 msgr: move Accepter into separate .cc
-3e98617 msg/Pipe: get_state_name()
+3e98617c msg/Pipe: get_state_name()
 f78a401 msgr: rework accept() connect_seq/race handling
 a6735ab OpRequest,OSD: track recent slow ops
 9e207aa test/store_test.cc: verify collection_list_partial results are sorted
@@ -27970,7 +27974,7 @@ de86763 msgr: fix tcp.cc linkage
 fd9935b cephtool: don't prefix log items
 2e21adf Objecter: resend linger_ops on any change
 52aff48 ObjectStore: Add collection_move to generate_instances
-ec52eeb FileStore: remove src on EEXIST during collection_move replay
+ec52eeb2 FileStore: remove src on EEXIST during collection_move replay
 23313ee FileStore: whitelist COLLECTION_MOVE on replay
 b47454b ObjectStore: add COLLECTION_MOVE to dump
 1b2a066 ceph-kdump-copy: add tools for saving kdumps
@@ -35567,7 +35571,7 @@ de66815 osd: document some of the logger stats
 fdcc241 rbdtool: modify usage
 cff705b config: allow optional parameters
 100b677 mds: do not include snapped inodes in EOpen or LogSegment::open_files
-a497c61 mds: print useful error on malformed EOpen event
+a497c616 mds: print useful error on malformed EOpen event
 26b67ff Makefile: drop unnecessary dist-hook for make_version
 2950580 debian: simplify release.sh
 1d45074 Makefile: distribute check_version
@@ -38876,7 +38880,7 @@ cd492b7 uclient: fix test condition
 d8987ee Client: put guards around some dentries[foo] accesses without checking for existence.
 09040d9 kclient: typo
 866d979 paxos: allow wait on newer version
-f49579f kclient: set have_version in MOSDGetMap
+f49579f7 kclient: set have_version in MOSDGetMap
 f16a28d No more VERSION_T; just 0.
 52046d7 mon: remove old asserts conflicting with new readable semantics
 77db2e0 messages: Clean up of PaxosServiceMessages, and some fixes for their users.
