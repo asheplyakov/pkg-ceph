@@ -95,7 +95,7 @@ am__aclocal_m4_deps = $(top_srcdir)/m4/ac_check_classpath.m4 \
 	$(top_srcdir)/m4/ax_intel.m4 $(top_srcdir)/m4/libtool.m4 \
 	$(top_srcdir)/m4/ltoptions.m4 $(top_srcdir)/m4/ltsugar.m4 \
 	$(top_srcdir)/m4/ltversion.m4 $(top_srcdir)/m4/lt~obsolete.m4 \
-	$(top_srcdir)/configure.ac
+	$(top_srcdir)/m4/pkg.m4 $(top_srcdir)/configure.ac
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 mkinstalldirs = $(install_sh) -d
@@ -123,37 +123,37 @@ am__can_run_installinfo = \
   esac
 am__tagged_files = $(HEADERS) $(SOURCES) $(TAGS_FILES) $(LISP)
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
-ACLOCAL = ${SHELL} /home/asheplyakov/work/ceph/ceph/missing aclocal-1.14
+ACLOCAL = ${SHELL} /home/jenkins-build/build/workspace/ceph-setup/missing aclocal-1.14
 AMTAR = $${TAR-tar}
-AM_CXXFLAGS =  -I/usr/include/nss -I/usr/include/nspr  
-AM_DEFAULT_VERBOSITY = 1
+AM_CXXFLAGS =  -I/usr/include/nss -I/usr/include/nspr   
+AM_DEFAULT_VERBOSITY = 0
 AR = ar
 ARM_FLAGS = 
 ARM_NEON_FLAGS = 
-AUTOCONF = ${SHELL} /home/asheplyakov/work/ceph/ceph/missing autoconf
-AUTOHEADER = ${SHELL} /home/asheplyakov/work/ceph/ceph/missing autoheader
-AUTOMAKE = ${SHELL} /home/asheplyakov/work/ceph/ceph/missing automake-1.14
+AUTOCONF = ${SHELL} /home/jenkins-build/build/workspace/ceph-setup/missing autoconf
+AUTOHEADER = ${SHELL} /home/jenkins-build/build/workspace/ceph-setup/missing autoheader
+AUTOMAKE = ${SHELL} /home/jenkins-build/build/workspace/ceph-setup/missing automake-1.14
 AWK = gawk
 BOOST_PROGRAM_OPTIONS_LIBS = -lboost_program_options 
 BOOST_RANDOM_LIBS = -lboost_random 
 BOOST_REGEX_LIBS = -lboost_regex 
 BOOST_THREAD_LIBS = -lboost_thread 
-CC = /usr/lib/ccache/gcc-4.8
-CCAS = /usr/lib/ccache/gcc-4.8
+CC = gcc
+CCAS = gcc
 CCASDEPMODE = depmode=gcc3
-CCASFLAGS = -D_FORTIFY_SOURCE=2 -g -O2 -fPIE -fstack-protector --param=ssp-buffer-size=4 -Wformat -Werror=format-security
+CCASFLAGS =  -Wno-unused-parameter
 CCDEPMODE = depmode=gcc3
-CFLAGS = -D_LARGEFILE64_SOURCE -D_FORTIFY_SOURCE=2 -g -O2 -fPIE -fstack-protector --param=ssp-buffer-size=4 -Wformat -Werror=format-security
-CPP = /usr/lib/ccache/gcc-4.8 -E
-CPPFLAGS = -D_FORTIFY_SOURCE=2
+CFLAGS = -D_LARGEFILE64_SOURCE  -Wno-unused-parameter
+CPP = gcc -E
+CPPFLAGS = 
 CRYPTOPP_CFLAGS = 
-CRYPTOPP_LIBS = no
-CRYPTO_CFLAGS = -I/usr/include/nss -I/usr/include/nspr 
-CRYPTO_LIBS = -lnss3 -lnssutil3 -lsmime3 -lssl3 -lplds4 -lplc4 -lnspr4 
-CXX = /usr/lib/ccache/g++-4.8
-CXXCPP = /usr/lib/ccache/g++-4.8 -E
+CRYPTOPP_LIBS = 
+CRYPTO_CFLAGS = -I/usr/include/nss -I/usr/include/nspr  
+CRYPTO_LIBS = -lnss3 -lnssutil3 -lsmime3 -lssl3 -lplds4 -lplc4 -lnspr4  
+CXX = g++
+CXXCPP = g++ -E
 CXXDEPMODE = depmode=gcc3
-CXXFLAGS = -D_FORTIFY_SOURCE=2 -g -O2 -fPIE -fstack-protector --param=ssp-buffer-size=4 -Wformat -Werror=format-security -std=gnu++11
+CXXFLAGS =   -Wno-unused-parameter -std=gnu++11
 CYGPATH_W = echo
 CYTHON_CHECK = yes
 DEFS = -DHAVE_CONFIG_H
@@ -192,11 +192,11 @@ JAVAH =
 JDK_CPPFLAGS = 
 KEYUTILS_LIB = -lkeyutils
 LD = /usr/bin/ld -m elf_x86_64
-LDFLAGS = -Wl,-Bsymbolic-functions -fPIE -pie -Wl,-z,relro -Wl,-z,now
+LDFLAGS = 
 LIBDPDK_CFLAGS = 
 LIBDPDK_LIBS = 
-LIBFUSE_CFLAGS = -D_FILE_OFFSET_BITS=64 -I/usr/include/fuse 
-LIBFUSE_LIBS = -lfuse -pthread 
+LIBFUSE_CFLAGS = -D_FILE_OFFSET_BITS=64 -I/usr/include/fuse  
+LIBFUSE_LIBS = -pthread -lfuse  
 LIBJEMALLOC = 
 LIBOBJS = 
 LIBPCIACCESS_CFLAGS = 
@@ -213,13 +213,13 @@ LN_S = ln -s
 LTLIBOBJS = 
 LTTNG_GEN_TP_CHECK = 
 LTTNG_GEN_TP_PROG = 
-MAKEINFO = ${SHELL} /home/asheplyakov/work/ceph/ceph/missing makeinfo
+MAKEINFO = ${SHELL} /home/jenkins-build/build/workspace/ceph-setup/missing makeinfo
 MANIFEST_TOOL = :
 MKDIR_P = /bin/mkdir -p
 NM = /usr/bin/nm -B
 NMEDIT = 
-NSS_CFLAGS = -I/usr/include/nss -I/usr/include/nspr 
-NSS_LIBS = -lnss3 -lnssutil3 -lsmime3 -lssl3 -lplds4 -lplc4 -lnspr4 
+NSS_CFLAGS = -I/usr/include/nss -I/usr/include/nspr  
+NSS_LIBS = -lnss3 -lnssutil3 -lsmime3 -lssl3 -lplds4 -lplc4 -lnspr4  
 OBJDUMP = objdump
 OBJEXT = o
 OTOOL = 
@@ -227,15 +227,15 @@ OTOOL64 =
 PACKAGE = ceph
 PACKAGE_BUGREPORT = ceph-devel@vger.kernel.org
 PACKAGE_NAME = ceph
-PACKAGE_STRING = ceph 10.2.3
+PACKAGE_STRING = ceph 10.2.4
 PACKAGE_TARNAME = ceph
 PACKAGE_URL = 
-PACKAGE_VERSION = 10.2.3
+PACKAGE_VERSION = 10.2.4
 PATH_SEPARATOR = :
 PKG_CONFIG = /usr/bin/pkg-config
 PKG_CONFIG_LIBDIR = 
 PKG_CONFIG_PATH = 
-PTHREAD_CC = /usr/lib/ccache/gcc-4.8
+PTHREAD_CC = gcc
 PTHREAD_CFLAGS = -pthread
 PTHREAD_LIBS =  -lpthread
 PYTHON = /usr/bin/python
@@ -249,25 +249,25 @@ PYTHON_VERSION = 2.7
 RANLIB = ranlib
 RDYNAMIC_FLAG = -rdynamic
 RESOLV_LIBS = -lresolv
-RPM_RELEASE = 365.g6d17188
+RPM_RELEASE = 0
 SED = /bin/sed
 SET_MAKE = 
 SHELL = /bin/bash
 SPHINX_BUILD = sphinx-build
 STRIP = strip
-VERSION = 10.2.3
+VERSION = 10.2.4
 WARN_ERROR_FORMAT_SECURITY = -Werror=format-security
 WARN_IGNORED_QUALIFIERS = -Wignored-qualifiers
 WARN_TYPE_LIMITS = -Wtype-limits
 XIO_LIBS = 
 YASM_CHECK = yes
-abs_builddir = /home/asheplyakov/work/ceph/ceph/doc
-abs_srcdir = /home/asheplyakov/work/ceph/ceph/doc
-abs_top_builddir = /home/asheplyakov/work/ceph/ceph
-abs_top_srcdir = /home/asheplyakov/work/ceph/ceph
+abs_builddir = /home/jenkins-build/build/workspace/ceph-setup/doc
+abs_srcdir = /home/jenkins-build/build/workspace/ceph-setup/doc
+abs_top_builddir = /home/jenkins-build/build/workspace/ceph-setup
+abs_top_srcdir = /home/jenkins-build/build/workspace/ceph-setup
 ac_ct_AR = ar
-ac_ct_CC = /usr/lib/ccache/gcc-4.8
-ac_ct_CXX = 
+ac_ct_CC = gcc
+ac_ct_CXX = g++
 ac_ct_DUMPBIN = 
 acx_pthread_config = 
 am__include = include
@@ -295,27 +295,27 @@ host_vendor = unknown
 htmldir = ${docdir}
 includedir = ${prefix}/include
 infodir = ${datarootdir}/info
-install_sh = ${SHELL} /home/asheplyakov/work/ceph/ceph/install-sh
+install_sh = ${SHELL} /home/jenkins-build/build/workspace/ceph-setup/install-sh
 libdir = ${exec_prefix}/lib
 libexecdir = ${exec_prefix}/libexec
 localedir = ${datarootdir}/locale
-localstatedir = ${prefix}/var
+localstatedir = /var
 mandir = ${datarootdir}/man
 mkdir_p = $(MKDIR_P)
 oldincludedir = /usr/include
 pdfdir = ${docdir}
 pkgpyexecdir = ${pyexecdir}/ceph
 pkgpythondir = ${pythondir}/ceph
-prefix = /usr/local
+prefix = /usr
 program_transform_name = s,x,x,
 psdir = ${docdir}
 pyexecdir = ${exec_prefix}/lib/python2.7/dist-packages
 pythondir = ${prefix}/lib/python2.7/dist-packages
-sbindir = ${exec_prefix}/sbin
+sbindir = /sbin
 sharedstatedir = ${prefix}/com
 srcdir = .
 subdirs =  src/gmock
-sysconfdir = ${prefix}/etc
+sysconfdir = /etc
 systemd_unit_dir = 
 target = x86_64-unknown-linux-gnu
 target_alias = 
