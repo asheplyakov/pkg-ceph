@@ -1,11 +1,13 @@
-ceph (10.2.4~20161203+n365+g6d17188-1~u16.04~1.gbpa6ff8d) UNRELEASED; urgency=low
+ceph (10.2.4-1~u16.04~2.gbpd479eb) UNRELEASED; urgency=low
 
-  ** SNAPSHOT build @a6ff8db1d049e78cc18df894c4ed238a553b8814 **
+  ** SNAPSHOT build @d479eb6441115165a568df6d2d6af887b68a87cf **
 
-  * Pre-release upstream bugfix only version, upstream commit
-    6d17188786ef7bd574dd8336d1e97e069db9de74
+  * New upstream release
   * Switch to jemalloc
+  * d/rules: set CCACHE_BASEDIR to help ccache vs sbuild
   * debian/patches:
+    - "msg/simple: avoid busy loop in Pipe::do_recv()",
+      http://tracker.ceph.com/issues/14120
     - "mon: health does not report pgs stuck in more than one state",
       http://tracker.ceph.com/issues/17601
       https://github.com/ceph/ceph/pull/11660
@@ -18,10 +20,6 @@ ceph (10.2.4~20161203+n365+g6d17188-1~u16.04~1.gbpa6ff8d) UNRELEASED; urgency=lo
     - "osd: update_log_missing does not order correctly with osd_ops",
       http://tracker.ceph.com/issues/17789
       https://github.com/ceph/ceph/pull/11754
-    - "restarting an osd twice quickly enough with no other map changes can
-       leave it running, but not up",
-      http://tracker.ceph.com/issues/17899
-      https://github.com/ceph/ceph/pull/12067
     - "msg/simple/Pipe: handle addr decode error",
       http://tracker.ceph.com/issues/18072
       https://github.com/ceph/ceph/pull/12291
@@ -29,7 +27,7 @@ ceph (10.2.4~20161203+n365+g6d17188-1~u16.04~1.gbpa6ff8d) UNRELEASED; urgency=lo
       http://tracker.ceph.com/issues/17889, http://tracker.ceph.com/issues/17813
       https://github.com/ceph/ceph/pull/12136
 
- -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Sat, 03 Dec 2016 08:30:40 +0300
+ -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Thu, 08 Dec 2016 16:47:47 +0400
 
 ceph (10.2.3-1~3.gbpc75c14) UNRELEASED; urgency=low
 
