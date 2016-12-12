@@ -10,7 +10,7 @@ Signed-off-by: Sage Weil <sage@redhat.com>
  1 file changed, 7 insertions(+), 2 deletions(-)
 
 diff --git a/src/msg/simple/Pipe.cc b/src/msg/simple/Pipe.cc
-index 80b948d..9a35d9e 100644
+index cfb1986..e590b7e 100644
 --- a/src/msg/simple/Pipe.cc
 +++ b/src/msg/simple/Pipe.cc
 @@ -967,12 +967,17 @@ int Pipe::connect()
