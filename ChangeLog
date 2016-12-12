@@ -1,4 +1,6 @@
-9411351 (HEAD, tag: v10.2.4, origin/jewel) 10.2.4
+c461ee1 (HEAD, tag: v10.2.5, origin/jewel) 10.2.5
+f7abffe msg/simple/Pipe: avoid returning 0 on poll timeout
+9411351 (tag: v10.2.4) 10.2.4
 d194db8 OSDMonitor: only reject MOSDBoot based on up_from if inst matches
 00de014 mon: MonmapMonitor: drop unnecessary 'goto' statements
 25f1b39 mon: MonmapMonitor: return success when monitor will be removed

@@ -56,7 +56,7 @@
 # common
 #################################################################################
 Name:		ceph
-Version:	10.2.4
+Version:	10.2.5
 Release:	0%{?dist}
 Epoch:		1
 Summary:	User space components of the Ceph file system
