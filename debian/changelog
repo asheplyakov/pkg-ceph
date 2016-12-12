@@ -1,8 +1,6 @@
-ceph (10.2.4-1~u14.04~2.gbped021d) UNRELEASED; urgency=low
+ceph (10.2.5-1~u14.04+1) jewel-trusty; urgency=low
 
-  ** SNAPSHOT build @ed021d08af6b0f40ee66d5d66cdf0ce041450da6 **
-
-  * New upstream release
+  * New upstream release, fixes http://tracker.ceph.com/issues/18184
   * Switch to jemalloc
   * d/rules: set CCACHE_BASEDIR to help ccache vs sbuild
   * debian/patches:
@@ -27,7 +25,7 @@ ceph (10.2.4-1~u14.04~2.gbped021d) UNRELEASED; urgency=low
       http://tracker.ceph.com/issues/17889, http://tracker.ceph.com/issues/17813
       https://github.com/ceph/ceph/pull/12136
 
- -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Thu, 08 Dec 2016 16:47:47 +0400
+ -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Thu, 29 Dec 2016 14:38:55 +0400
 
 ceph (10.2.3-1~3.gbpc75c14) UNRELEASED; urgency=low
 
