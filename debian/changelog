@@ -1,3 +1,11 @@
+ceph (10.2.5-0ubuntu0.16.04.1) UNRELEASED; urgency=medium
+
+  * New upstream stable release (LP: #1649856):
+    - d/p/32bit-ftbfs.patch: Drop, no longer required.
+    - d/p/*: Refresh.
+
+ -- James Page <james.page@ubuntu.com>  Wed, 14 Dec 2016 11:42:36 +0000
+
 ceph (10.2.3-0ubuntu0.16.04.2) xenial; urgency=medium
 
   * rgw: Fixes for creation times for buckets (LP: #1587261):

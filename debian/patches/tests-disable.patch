@@ -5,7 +5,7 @@ Description: disable tests that depend on network...
 
 --- a/src/test/Makefile.am
 +++ b/src/test/Makefile.am
-@@ -63,6 +63,7 @@ bin_DEBUGPROGRAMS += ceph_bench_log
+@@ -100,6 +100,7 @@ bin_DEBUGPROGRAMS += ceph_bench_log
  
  ## Unit tests
  
@@ -13,7 +13,7 @@ Description: disable tests that depend on network...
  check_SCRIPTS += \
  	test/ceph_objectstore_tool.py \
  	test/test-ceph-helpers.sh \
-@@ -96,6 +97,8 @@ check_SCRIPTS += \
+@@ -133,6 +134,8 @@ check_SCRIPTS += \
          test/test_pidfile.sh \
  	test/test_subman.sh
  
