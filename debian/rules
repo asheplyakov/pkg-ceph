@@ -77,6 +77,9 @@ override_dh_install:
 	install -D -m 644 src/etc-rbdmap $(CURDIR)/debian/tmp/etc/ceph/rbdmap
 	dh_install --fail-missing
 
+override_dh_installchangelogs:
+	dh_installchangelogs ChangeLog
+
 override_dh_installinit:
 	dh_installinit --no-start
 	dh_installinit -pceph-common --no-start --name=rbdmap
