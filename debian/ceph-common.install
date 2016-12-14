@@ -18,8 +18,8 @@ usr/bin/rbd-replay*
 usr/bin/rbdmap
 usr/lib/python*/dist-packages/ceph_argparse.py*
 usr/lib/python*/dist-packages/ceph_daemon.py*
-usr/share/ceph/id_dsa_drop.ceph.com
-usr/share/ceph/id_dsa_drop.ceph.com.pub
+usr/share/ceph/id_rsa_drop.ceph.com
+usr/share/ceph/id_rsa_drop.ceph.com.pub
 usr/share/ceph/known_hosts_drop.ceph.com
 usr/share/man/man8/ceph-authtool.8
 usr/share/man/man8/ceph-conf.8
