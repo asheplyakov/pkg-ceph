@@ -13,6 +13,5 @@ tests-disable.patch
 
 ## From Ubuntu
 fix-cycles-arch.patch
-rocksdb-flags.patch
 skip-setup.py-makefiles.patch
 disable-openssl-linking.patch
