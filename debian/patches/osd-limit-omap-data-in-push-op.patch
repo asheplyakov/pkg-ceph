@@ -17,7 +17,7 @@ Signed-off-by: Wanlong Gao <wanlong.gao@easystack.cn>
 
 --- a/src/common/config_opts.h
 +++ b/src/common/config_opts.h
-@@ -749,6 +749,7 @@ OPTION(osd_recovery_delay_start, OPT_FLO
+@@ -748,6 +748,7 @@ OPTION(osd_recovery_delay_start, OPT_FLO
  OPTION(osd_recovery_max_active, OPT_INT, 3)
  OPTION(osd_recovery_max_single_start, OPT_INT, 1)
  OPTION(osd_recovery_max_chunk, OPT_U64, 8<<20)  // max size of push chunk

@@ -1,3 +1,11 @@
+ceph (10.2.5-0ubuntu1) UNRELEASED; urgency=medium
+
+  * New upstream stable release (LP: #1649856).
+    - d/p/32bit-ftbfs.patch: Drop, no longer needed.
+    - d/p/*: Refresh.
+
+ -- James Page <james.page@ubuntu.com>  Wed, 14 Dec 2016 11:21:33 +0000
+
 ceph (10.2.3-0ubuntu5) zesty; urgency=medium
 
   * d/ceph.{postinst,preinst,postrm}: Ensure that ceph logrotate

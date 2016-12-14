@@ -13,11 +13,9 @@ Signed-off-by: weiqiaomiao <wei.qiaomiao@zte.com.cn>
  src/rgw/rgw_rados.cc | 7 ++++---
  1 file changed, 4 insertions(+), 3 deletions(-)
 
-diff --git a/src/rgw/rgw_rados.cc b/src/rgw/rgw_rados.cc
-index d356fb8..8e0f0fd 100644
 --- a/src/rgw/rgw_rados.cc
 +++ b/src/rgw/rgw_rados.cc
-@@ -5156,10 +5156,11 @@ int RGWRados::create_bucket(RGWUserInfo& owner, rgw_bucket& bucket,
+@@ -5153,10 +5153,11 @@ int RGWRados::create_bucket(RGWUserInfo&
      info.num_shards = bucket_index_max_shards;
      info.bucket_index_shard_hash_type = RGWBucketInfo::MOD;
      info.requester_pays = false;
