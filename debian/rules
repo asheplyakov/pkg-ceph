@@ -60,14 +60,6 @@ override_dh_autoreconf:
 override_dh_auto_configure:
 	dh_auto_configure -- $(extraopts)
 
-override_dh_auto_build:
-	dh_auto_build
-	cp -v src/upstart/rbdmap.conf debian/ceph-common.rbdmap.upstart
-
-override_dh_auto_clean:
-	dh_auto_clean
-	rm -fv debian/*.upstart
-
 override_dh_install:
 	# remove .la files, we don't want to install these in Debian,
 	# see Policy 10.2
@@ -88,28 +80,6 @@ override_dh_install:
 override_dh_installinit:
 	dh_installinit --no-start
 	dh_installinit -pceph-common --no-start --name=rbdmap
-	# Install upstart configurations using dh_installinit
-	for conf in `ls -1 src/upstart/ceph*.conf | grep -v mds`; do \
-        name=`basename $$conf | cut -d . -f 1`; \
-        cp -v $$conf debian/ceph.$$name.upstart; \
-        dh_installinit -pceph --no-start --name=$$name; \
-    done
-	for conf in `ls -1 src/upstart/ceph-mds*.conf`; do \
-        name=`basename $$conf | cut -d . -f 1`; \
-        cp -v $$conf debian/ceph-mds.$$name.upstart; \
-        dh_installinit -pceph-mds --no-start --name=$$name; \
-    done
-	for conf in `ls -1 src/upstart/radosgw*.conf`; do \
-        name=`basename $$conf | cut -d . -f 1`; \
-        [ $$name = "radosgw" ] && name="radosgw-instance";\
-        cp -v $$conf debian/radosgw.$$name.upstart; \
-        dh_installinit -pradosgw --no-start --name=$$name; \
-    done
-	for conf in `ls -1 src/upstart/ceph-rbd-mirror*.conf`; do \
-		name=`basename $$conf | cut -d . -f 1`; \
-		cp -v $$conf debian/rbd-mirror.$$name.upstart; \
-		dh_installinit -prbd-mirror --no-start --name=$$name; \
-	done
 	# install the systemd stuff manually since we have funny service names
 	# and need to update the paths in all of the files post install
 	# systemd:ceph-common

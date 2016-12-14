@@ -1,1 +1,10 @@
 rm_conffile /etc/logrotate.d/ceph 10.2.3-0ubuntu5~
+rm_conffile /etc/init/ceph-osd.conf 10.2.5-1~
+rm_conffile /etc/init/ceph-osd-all-starter.conf 10.2.5-1~
+rm_conffile /etc/init/ceph-create-keys.conf 10.2.5-1~
+rm_conffile /etc/init/ceph-osd-all.conf 10.2.5-1~
+rm_conffile /etc/init/rbdmap.conf 10.2.5-1~
+rm_conffile /etc/init/ceph-mon-all-starter.conf 10.2.5-1~
+rm_conffile /etc/init/ceph-all.conf 10.2.5-1~
+rm_conffile /etc/init/ceph-mon.conf 10.2.5-1~
+rm_conffile /etc/init/ceph-mon-all.conf 10.2.5-1~

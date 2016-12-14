@@ -5,14 +5,6 @@ set -e
 
 case "$1" in
 	remove)
-		if [ -x /sbin/stop ]; then
-			invoke-rc.d ceph-all stop || {
-				RESULT=$?
-				if [ $RESULT != 100 ]; then
-					exit $RESULT
-				fi
-			}
-		fi
 		invoke-rc.d ceph stop || {
 			RESULT=$?
 			if [ $RESULT != 100 ]; then
