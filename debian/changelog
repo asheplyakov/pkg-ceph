@@ -1,8 +1,9 @@
-ceph (10.2.5-0ubuntu0.16.10.1) UNRELEASED; urgency=medium
+ceph (10.2.5-0ubuntu0.16.10.1) yakkety; urgency=medium
 
   * New upstream stable release (LP: #1649856):
     - d/p/32bit-ftbfs.patch: Drop, no longer required.
     - d/p/*: Refresh.
+    - d/ceph-common.install: Switch to RSA keys for drop.ceph.com.
 
  -- James Page <james.page@ubuntu.com>  Wed, 14 Dec 2016 11:36:08 +0000
 
