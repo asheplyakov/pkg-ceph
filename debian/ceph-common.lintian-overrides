@@ -1,2 +1,5 @@
 # False-positives:
 spelling-error-in-binary * tEH the
+# this is fixed just a few lines below in the configure script
+# it ensures that also existing user get the correct home directory
+maintainer-script-should-not-use-adduser-system-without-home
