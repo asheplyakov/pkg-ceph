@@ -112,6 +112,8 @@ override_dh_installinit:
 	install -d -m0755 debian/radosgw/lib/systemd/system
 	install -m0644 systemd/ceph-radosgw@.service debian/radosgw/lib/systemd/system
 	sed -i s./etc/sysconfig/./etc/default/.g debian/radosgw/lib/systemd/system/ceph-radosgw@.service
+	# disable SysV init file for systemd
+	ln -s /dev/null debian/radosgw/lib/systemd/system/radosgw.service
 	# systemd:rbd-mirror
 	install -d -m0755 debian/rbd-mirror/lib/systemd/system
 	install -m0644 systemd/ceph-rbd-mirror@.service debian/rbd-mirror/lib/systemd/system
