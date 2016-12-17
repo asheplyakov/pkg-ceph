@@ -44,6 +44,8 @@ endif
 # Setup max parallel builds based on architecture
 ifeq ($(DEB_HOST_ARCH), arm64)
   maxparallel=1
+else ifneq (,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
+  maxparallel=$(patsubst parallel=%,%,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
 else
   maxparallel=2
 endif
