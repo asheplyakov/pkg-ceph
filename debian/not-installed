@@ -26,3 +26,13 @@ debian/tmp/usr/lib/x86_64-linux-gnu/ceph/compressor/libceph_snappy.a
 # ceph-deploy is another source package, not much point
 # in installing this manpage
 debian/tmp/usr/share/man/man8/ceph-deploy.8
+# Don't install python bytecode. This will be generated on installation
+# by dh-python
+debian/tmp/usr/lib/python2.7/dist-packages/ceph_argparse.pyo
+debian/tmp/usr/lib/python2.7/dist-packages/ceph_rest_api.pyc
+debian/tmp/usr/lib/python2.7/dist-packages/ceph_rest_api.pyo
+debian/tmp/usr/lib/python2.7/dist-packages/ceph_daemon.pyc
+debian/tmp/usr/lib/python2.7/dist-packages/ceph_volume_client.pyc
+debian/tmp/usr/lib/python2.7/dist-packages/ceph_daemon.pyo
+debian/tmp/usr/lib/python2.7/dist-packages/ceph_argparse.pyc
+debian/tmp/usr/lib/python2.7/dist-packages/ceph_volume_client.pyo
