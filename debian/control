@@ -66,6 +66,7 @@ Package: ceph
 Architecture: linux-any
 Depends: ceph-mon (= ${binary:Version}),
          ceph-osd (= ${binary:Version}),
+         lsb-base (>= 3.0-6),
          ${misc:Depends}
 Suggests: ceph-mds (= ${binary:Version})
 Description: distributed storage and file system
@@ -138,6 +139,7 @@ Description: NBD-based rbd client for the Ceph distributed file system
 Package: ceph-common
 Architecture: linux-any
 Depends: librbd1 (= ${binary:Version}),
+         lsb-base (>= 3.0-6),
          python-cephfs (= ${binary:Version}),
          python-rados (= ${binary:Version}),
          python-rbd (= ${binary:Version}),
@@ -392,6 +394,7 @@ Package: radosgw
 Architecture: linux-any
 Depends: ceph-common (= ${binary:Version}),
          librgw2 (= ${binary:Version}),
+         lsb-base (>= 3.0-6),
          ${misc:Depends},
          ${shlibs:Depends}
 Suggests: logrotate
