@@ -6,6 +6,7 @@ librados.so.2 librados2 #MINVER#
  rados_aio_flush@Base 0.72.2
  rados_aio_flush_async@Base 0.72.2
  rados_aio_get_return_value@Base 0.72.2
+ rados_aio_get_version@Base 10.2.5
  rados_aio_is_complete@Base 0.72.2
  rados_aio_is_complete_and_cb@Base 0.72.2
  rados_aio_is_safe@Base 0.72.2

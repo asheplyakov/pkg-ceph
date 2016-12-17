@@ -24,6 +24,7 @@ librbd.so.1 librbd1 #MINVER#
  rbd_copy3@Base 10.1.0
  rbd_copy@Base 0.72.2
  rbd_copy_with_progress2@Base 0.72.2
+ rbd_copy_with_progress3@Base 10.2.5
  rbd_copy_with_progress@Base 0.72.2
  rbd_create2@Base 0.72.2
  rbd_create3@Base 0.72.2
@@ -48,6 +49,7 @@ librbd.so.1 librbd1 #MINVER#
  rbd_image_options_get_string@Base 10.1.0
  rbd_image_options_get_uint64@Base 10.1.0
  rbd_image_options_is_empty@Base 10.1.0
+ rbd_image_options_is_set@Base 10.2.5
  rbd_image_options_set_string@Base 10.1.0
  rbd_image_options_set_uint64@Base 10.1.0
  rbd_image_options_unset@Base 10.1.0
@@ -66,8 +68,12 @@ librbd.so.1 librbd1 #MINVER#
  rbd_mirror_image_disable@Base 10.1.0
  rbd_mirror_image_enable@Base 10.1.0
  rbd_mirror_image_get_info@Base 10.1.0
+ rbd_mirror_image_get_status@Base 10.2.5
  rbd_mirror_image_promote@Base 10.1.0
  rbd_mirror_image_resync@Base 10.1.0
+ rbd_mirror_image_status_list@Base 10.2.5
+ rbd_mirror_image_status_list_cleanup@Base 10.2.5
+ rbd_mirror_image_status_summary@Base 10.2.5
  rbd_mirror_mode_get@Base 10.1.0
  rbd_mirror_mode_set@Base 10.1.0
  rbd_mirror_peer_add@Base 10.1.0
@@ -104,6 +110,8 @@ librbd.so.1 librbd1 #MINVER#
  rbd_stat@Base 0.72.2
  rbd_unlock@Base 0.72.2
  rbd_update_features@Base 9.2.0
+ rbd_update_unwatch@Base 10.2.5
+ rbd_update_watch@Base 10.2.5
  rbd_version@Base 0.72.2
  rbd_write2@Base 0.93
  rbd_write@Base 0.72.2
