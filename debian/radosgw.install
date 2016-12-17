@@ -1,4 +1,4 @@
-etc/bash_completion.d/radosgw-admin
+etc/bash_completion.d/radosgw-admin /usr/share/bash-completion/completions/
 usr/bin/radosgw
 usr/bin/radosgw-admin
 usr/bin/radosgw-object-expirer

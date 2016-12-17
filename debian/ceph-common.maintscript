@@ -1,0 +1,2 @@
+rm_conffile /etc/bash_completion.d/rados 10.2.5-1~
+rm_conffile /etc/bash_completion.d/rbd 10.2.5-1~

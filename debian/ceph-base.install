@@ -1,6 +1,6 @@
 ## install from source tree
 debian/etc/pm/sleep.d/*    /etc/pm/sleep.d/
-etc/bash_completion.d/ceph
+etc/bash_completion.d/ceph /usr/share/bash-completion/completions/
 usr/bin/ceph-debugpack
 usr/bin/ceph-run
 usr/bin/crushtool

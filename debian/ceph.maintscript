@@ -8,3 +8,4 @@ rm_conffile /etc/init/ceph-mon-all-starter.conf 10.2.5-1~
 rm_conffile /etc/init/ceph-all.conf 10.2.5-1~
 rm_conffile /etc/init/ceph-mon.conf 10.2.5-1~
 rm_conffile /etc/init/ceph-mon-all.conf 10.2.5-1~
+rm_conffile /etc/bash_completion.d/ceph 10.2.5-1~

@@ -1,5 +1,5 @@
-etc/bash_completion.d/rados
-etc/bash_completion.d/rbd
+etc/bash_completion.d/rados /usr/share/bash-completion/completions/
+etc/bash_completion.d/rbd   /usr/share/bash-completion/completions/
 etc/ceph/rbdmap
 etc/default/ceph
 udev/50-rbd.rules /lib/udev/rules.d
