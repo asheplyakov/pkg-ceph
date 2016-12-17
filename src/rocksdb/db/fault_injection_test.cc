@@ -25,6 +25,7 @@
 #include "util/logging.h"
 #include "util/mock_env.h"
 #include "util/mutexlock.h"
+#include "util/sync_point.h"
 #include "util/testharness.h"
 #include "util/testutil.h"
 
@@ -77,9 +78,12 @@ Status Truncate(Env* env, const std::string& filename, uint64_t length) {
     return s;
   }
 
-  char* scratch = new char[length];
+  std::unique_ptr<char[]> scratch(new char[length]);
   rocksdb::Slice result;
-  s = orig_file->Read(length, &result, scratch);
+  s = orig_file->Read(length, &result, scratch.get());
+#ifdef OS_WIN
+  orig_file.reset();
+#endif
   if (s.ok()) {
     std::string tmp_name = GetDirName(filename) + "/truncate.tmp";
     unique_ptr<WritableFile> tmp_file;
@@ -99,8 +103,6 @@ Status Truncate(Env* env, const std::string& filename, uint64_t length) {
     fprintf(stderr, "Cannot truncate file %s: %s\n", filename.c_str(),
             s.ToString().c_str());
   }
-
-  delete[] scratch;
 
   return s;
 }
@@ -128,7 +130,7 @@ struct FileState {
 
 }  // anonymous namespace
 
-// A wrapper around WritableFile which informs another Env whenever this file
+// A wrapper around WritableFileWriter* file
 // is written to or sync'ed.
 class TestWritableFile : public WritableFile {
  public:
@@ -137,9 +139,11 @@ class TestWritableFile : public WritableFile {
                             FaultInjectionTestEnv* env);
   virtual ~TestWritableFile();
   virtual Status Append(const Slice& data) override;
+  virtual Status Truncate(uint64_t size) override { return target_->Truncate(size); }
   virtual Status Close() override;
   virtual Status Flush() override;
   virtual Status Sync() override;
+  virtual bool IsSyncThreadSafe() const override { return true; }
 
  private:
   FileState state_;
@@ -185,10 +189,21 @@ class FaultInjectionTestEnv : public EnvWrapper {
   Status NewWritableFile(const std::string& fname,
                          unique_ptr<WritableFile>* result,
                          const EnvOptions& soptions) override {
-    Status s = target()->NewWritableFile(fname, result, soptions);
+    if (!IsFilesystemActive()) {
+      return Status::Corruption("Not Active");
+    }
+    // Not allow overwriting files
+    Status s = target()->FileExists(fname);
+    if (s.ok()) {
+      return Status::Corruption("File already exists.");
+    } else if (!s.IsNotFound()) {
+      assert(s.IsIOError());
+      return s;
+    }
+    s = target()->NewWritableFile(fname, result, soptions);
     if (s.ok()) {
       result->reset(new TestWritableFile(fname, std::move(*result), this));
-      // WritableFile doesn't append to files, so if the same file is opened
+      // WritableFileWriter* file is opened
       // again then it will be truncated - so forget our saved state.
       UntrackFile(fname);
       MutexLock l(&mutex_);
@@ -201,6 +216,9 @@ class FaultInjectionTestEnv : public EnvWrapper {
   }
 
   virtual Status DeleteFile(const std::string& f) override {
+    if (!IsFilesystemActive()) {
+      return Status::Corruption("Not Active");
+    }
     Status s = EnvWrapper::DeleteFile(f);
     if (!s.ok()) {
       fprintf(stderr, "Cannot delete file %s: %s\n", f.c_str(),
@@ -215,6 +233,9 @@ class FaultInjectionTestEnv : public EnvWrapper {
 
   virtual Status RenameFile(const std::string& s,
                             const std::string& t) override {
+    if (!IsFilesystemActive()) {
+      return Status::Corruption("Not Active");
+    }
     Status ret = EnvWrapper::RenameFile(s, t);
 
     if (ret.ok()) {
@@ -373,8 +394,11 @@ TestWritableFile::~TestWritableFile() {
 }
 
 Status TestWritableFile::Append(const Slice& data) {
+  if (!env_->IsFilesystemActive()) {
+    return Status::Corruption("Not Active");
+  }
   Status s = target_->Append(data);
-  if (s.ok() && env_->IsFilesystemActive()) {
+  if (s.ok()) {
     state_.pos_ += data.size();
   }
   return s;
@@ -406,7 +430,8 @@ Status TestWritableFile::Sync() {
   return Status::OK();
 }
 
-class FaultInjectionTest : public testing::Test {
+class FaultInjectionTest : public testing::Test,
+                           public testing::WithParamInterface<bool> {
  protected:
   enum OptionConfig {
     kDefault,
@@ -422,6 +447,8 @@ class FaultInjectionTest : public testing::Test {
   bool sync_use_wal_;
   // When need to make sure data is persistent, call DB::CompactRange()
   bool sync_use_compact_;
+
+  bool sequential_order_;
 
  protected:
  public:
@@ -447,6 +474,11 @@ class FaultInjectionTest : public testing::Test {
         base_env_(nullptr),
         env_(NULL),
         db_(NULL) {
+  }
+
+  ~FaultInjectionTest() {
+    rocksdb::SyncPoint::GetInstance()->DisableProcessing();
+    rocksdb::SyncPoint::GetInstance()->ClearAllCallBacks();
   }
 
   bool ChangeOptions() {
@@ -529,7 +561,10 @@ class FaultInjectionTest : public testing::Test {
     return s;
   }
 
-  void SetUp() override { ASSERT_OK(NewDB()); }
+  void SetUp() override {
+    sequential_order_ = GetParam();
+    ASSERT_OK(NewDB());
+  }
 
   void TearDown() override {
     CloseDB();
@@ -591,8 +626,15 @@ class FaultInjectionTest : public testing::Test {
 
   // Return the ith key
   Slice Key(int i, std::string* storage) const {
+    int num = i;
+    if (!sequential_order_) {
+      // random transfer
+      const int m = 0x5bd1e995;
+      num *= m;
+      num ^= num << 24;
+    }
     char buf[100];
-    snprintf(buf, sizeof(buf), "%016d", i);
+    snprintf(buf, sizeof(buf), "%016d", num);
     storage->assign(buf, strlen(buf));
     return Slice(*storage);
   }
@@ -659,7 +701,7 @@ class FaultInjectionTest : public testing::Test {
 
     Build(write_options, 0, num_pre_sync);
     if (sync_use_compact_) {
-      db_->CompactRange(nullptr, nullptr);
+      db_->CompactRange(CompactRangeOptions(), nullptr, nullptr);
     }
     write_options.sync = false;
     Build(write_options, num_pre_sync, num_post_sync);
@@ -675,6 +717,10 @@ class FaultInjectionTest : public testing::Test {
     ASSERT_OK(Verify(0, num_pre_sync, FaultInjectionTest::kValExpectFound));
     ASSERT_OK(Verify(num_pre_sync, num_post_sync,
                      FaultInjectionTest::kValExpectNoError));
+    WaitCompactionFinish();
+    ASSERT_OK(Verify(0, num_pre_sync, FaultInjectionTest::kValExpectFound));
+    ASSERT_OK(Verify(num_pre_sync, num_post_sync,
+                     FaultInjectionTest::kValExpectNoError));
   }
 
   void NoWriteTestPreFault() {
@@ -685,9 +731,14 @@ class FaultInjectionTest : public testing::Test {
     ResetDBState(reset_method);
     ASSERT_OK(OpenDB());
   }
+
+  void WaitCompactionFinish() {
+    static_cast<DBImpl*>(db_)->TEST_WaitForCompact();
+    ASSERT_OK(db_->Put(WriteOptions(), "", ""));
+  }
 };
 
-TEST_F(FaultInjectionTest, FaultTest) {
+TEST_P(FaultInjectionTest, FaultTest) {
   do {
     Random rnd(301);
 
@@ -726,46 +777,12 @@ TEST_F(FaultInjectionTest, FaultTest) {
   } while (ChangeOptions());
 }
 
-class SleepingBackgroundTask {
- public:
-  SleepingBackgroundTask()
-      : bg_cv_(&mutex_), should_sleep_(true), done_with_sleep_(false) {}
-  void DoSleep() {
-    MutexLock l(&mutex_);
-    while (should_sleep_) {
-      bg_cv_.Wait();
-    }
-    done_with_sleep_ = true;
-    bg_cv_.SignalAll();
-  }
-  void WakeUp() {
-    MutexLock l(&mutex_);
-    should_sleep_ = false;
-    bg_cv_.SignalAll();
-    while (!done_with_sleep_) {
-      bg_cv_.Wait();
-    }
-  }
-
-  static void DoSleepTask(void* arg) {
-    reinterpret_cast<SleepingBackgroundTask*>(arg)->DoSleep();
-  }
-
- private:
-  port::Mutex mutex_;
-  port::CondVar bg_cv_;  // Signalled when background work finishes
-  bool should_sleep_;
-  bool done_with_sleep_;
-};
-
-// Disable the test because it is not passing.
 // Previous log file is not fsynced if sync is forced after log rolling.
-// TODO(FB internal task#6730880) Fix the bug
-TEST_F(FaultInjectionTest, DISABLED_WriteOptionSyncTest) {
-  SleepingBackgroundTask sleeping_task_low;
+TEST_P(FaultInjectionTest, WriteOptionSyncTest) {
+  test::SleepingBackgroundTask sleeping_task_low;
   env_->SetBackgroundThreads(1, Env::HIGH);
   // Block the job queue to prevent flush job from running.
-  env_->Schedule(&SleepingBackgroundTask::DoSleepTask, &sleeping_task_low,
+  env_->Schedule(&test::SleepingBackgroundTask::DoSleepTask, &sleeping_task_low,
                  Env::Priority::HIGH);
 
   WriteOptions write_options;
@@ -795,6 +812,91 @@ TEST_F(FaultInjectionTest, DISABLED_WriteOptionSyncTest) {
   ASSERT_OK(ReadValue(1, &val));
   ASSERT_EQ(value_space, val);
 }
+
+TEST_P(FaultInjectionTest, UninstalledCompaction) {
+  options_.target_file_size_base = 32 * 1024;
+  options_.write_buffer_size = 100 << 10;  // 100KB
+  options_.level0_file_num_compaction_trigger = 6;
+  options_.level0_stop_writes_trigger = 1 << 10;
+  options_.level0_slowdown_writes_trigger = 1 << 10;
+  options_.max_background_compactions = 1;
+  OpenDB();
+
+  if (!sequential_order_) {
+    rocksdb::SyncPoint::GetInstance()->LoadDependency({
+        {"FaultInjectionTest::FaultTest:0", "DBImpl::BGWorkCompaction"},
+        {"CompactionJob::Run():End", "FaultInjectionTest::FaultTest:1"},
+        {"FaultInjectionTest::FaultTest:2",
+         "DBImpl::BackgroundCompaction:NonTrivial:AfterRun"},
+    });
+  }
+  rocksdb::SyncPoint::GetInstance()->EnableProcessing();
+
+  int kNumKeys = 1000;
+  Build(WriteOptions(), 0, kNumKeys);
+  FlushOptions flush_options;
+  flush_options.wait = true;
+  db_->Flush(flush_options);
+  ASSERT_OK(db_->Put(WriteOptions(), "", ""));
+  TEST_SYNC_POINT("FaultInjectionTest::FaultTest:0");
+  TEST_SYNC_POINT("FaultInjectionTest::FaultTest:1");
+  env_->SetFilesystemActive(false);
+  TEST_SYNC_POINT("FaultInjectionTest::FaultTest:2");
+  CloseDB();
+  rocksdb::SyncPoint::GetInstance()->DisableProcessing();
+  ResetDBState(kResetDropUnsyncedData);
+
+  std::atomic<bool> opened(false);
+  rocksdb::SyncPoint::GetInstance()->SetCallBack(
+      "DBImpl::Open:Opened", [&](void* arg) { opened.store(true); });
+  rocksdb::SyncPoint::GetInstance()->SetCallBack(
+      "DBImpl::BGWorkCompaction",
+      [&](void* arg) { ASSERT_TRUE(opened.load()); });
+  rocksdb::SyncPoint::GetInstance()->EnableProcessing();
+  ASSERT_OK(OpenDB());
+  ASSERT_OK(Verify(0, kNumKeys, FaultInjectionTest::kValExpectFound));
+  WaitCompactionFinish();
+  ASSERT_OK(Verify(0, kNumKeys, FaultInjectionTest::kValExpectFound));
+  rocksdb::SyncPoint::GetInstance()->DisableProcessing();
+  rocksdb::SyncPoint::GetInstance()->ClearAllCallBacks();
+}
+
+TEST_P(FaultInjectionTest, ManualLogSyncTest) {
+  test::SleepingBackgroundTask sleeping_task_low;
+  env_->SetBackgroundThreads(1, Env::HIGH);
+  // Block the job queue to prevent flush job from running.
+  env_->Schedule(&test::SleepingBackgroundTask::DoSleepTask, &sleeping_task_low,
+                 Env::Priority::HIGH);
+
+  WriteOptions write_options;
+  write_options.sync = false;
+
+  std::string key_space, value_space;
+  ASSERT_OK(
+      db_->Put(write_options, Key(1, &key_space), Value(1, &value_space)));
+  FlushOptions flush_options;
+  flush_options.wait = false;
+  ASSERT_OK(db_->Flush(flush_options));
+  ASSERT_OK(
+      db_->Put(write_options, Key(2, &key_space), Value(2, &value_space)));
+  ASSERT_OK(db_->SyncWAL());
+
+  env_->SetFilesystemActive(false);
+  NoWriteTestReopenWithFault(kResetDropAndDeleteUnsynced);
+  sleeping_task_low.WakeUp();
+
+  ASSERT_OK(OpenDB());
+  std::string val;
+  Value(2, &value_space);
+  ASSERT_OK(ReadValue(2, &val));
+  ASSERT_EQ(value_space, val);
+
+  Value(1, &value_space);
+  ASSERT_OK(ReadValue(1, &val));
+  ASSERT_EQ(value_space, val);
+}
+
+INSTANTIATE_TEST_CASE_P(FaultTest, FaultInjectionTest, ::testing::Bool());
 
 }  // namespace rocksdb
 

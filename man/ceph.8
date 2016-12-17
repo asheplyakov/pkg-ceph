@@ -1,6 +1,6 @@
 .\" Man page generated from reStructuredText.
 .
-.TH "CEPH" "8" "November 03, 2015" "dev" "Ceph"
+.TH "CEPH" "8" "December 09, 2016" "dev" "Ceph"
 .SH NAME
 ceph \- ceph administration tool
 .
@@ -80,7 +80,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .fi
 .sp
 .nf
-\fBceph\fP \fBmds\fP [ \fIadd_data_pool\fP | \fIcluster_down\fP | \fIcluster_up\fP | \fIcompat\fP | \fIdeactivate\fP | \fIdump\fP | \fIfail\fP | \fIgetmap\fP | \fInewfs\fP | \fIremove_data_pool\fP | \fIrm\fP | \fIrmfailed\fP | \fIset\fP | \fIset_max_mds\fP | \fIset_state\fP | \fIsetmap\fP | \fIstat\fP | \fIstop\fP | \fItell\fP ] ...
+\fBceph\fP \fBmds\fP [ \fIadd_data_pool\fP | \fIcluster_down\fP | \fIcluster_up\fP | \fIcompat\fP | \fIdeactivate\fP | \fIdump\fP | \fIfail\fP | \fIgetmap\fP | \fInewfs\fP | \fIremove_data_pool\fP | \fIrm\fP | \fIrmfailed\fP | \fIset\fP | \fIset_max_mds\fP | \fIset_state\fP | \fIstat\fP | \fIstop\fP | \fItell\fP ] ...
 .fi
 .sp
 .nf
@@ -108,7 +108,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .fi
 .sp
 .nf
-\fBceph\fP \fBpg\fP [ \fIdebug\fP | \fIdeep\-scrub\fP | \fIdump\fP | \fIdump_json\fP | \fIdump_pools_json\fP | \fIdump_stuck\fP | \fIforce_create_pg\fP | \fIgetmap\fP | \fIls\fP | \fIls\-by\-osd\fP | \fIls\-by\-pool\fP | \fIls\-by\-primary\fP | \fImap\fP | \fIrepair\fP | \fIscrub\fP | \fIsend_pg_creates\fP | \fIset_full_ratio\fP | \fIset_nearfull_ratio\fP | \fIstat\fP ] ...
+\fBceph\fP \fBpg\fP [ \fIdebug\fP | \fIdeep\-scrub\fP | \fIdump\fP | \fIdump_json\fP | \fIdump_pools_json\fP | \fIdump_stuck\fP | \fIforce_create_pg\fP | \fIgetmap\fP | \fIls\fP | \fIls\-by\-osd\fP | \fIls\-by\-pool\fP | \fIls\-by\-primary\fP | \fImap\fP | \fIrepair\fP | \fIscrub\fP | \fIset_full_ratio\fP | \fIset_nearfull_ratio\fP | \fIstat\fP ] ...
 .fi
 .sp
 .nf
@@ -849,20 +849,6 @@ Usage:
 .nf
 .ft C
 ceph mds set_state <int[0\-]> <int[0\-20]>
-.ft P
-.fi
-.UNINDENT
-.UNINDENT
-.sp
-Subcommand \fBsetmap\fP sets mds map; must supply correct epoch number.
-.sp
-Usage:
-.INDENT 0.0
-.INDENT 3.5
-.sp
-.nf
-.ft C
-ceph mds setmap <int[0\-]>
 .ft P
 .fi
 .UNINDENT
@@ -1831,7 +1817,7 @@ Only for tiered pools:
 ceph osd pool get <poolname> hit_set_type|hit_set_period|hit_set_count|hit_set_fpp|
 target_max_objects|target_max_bytes|cache_target_dirty_ratio|cache_target_dirty_high_ratio|
 cache_target_full_ratio|cache_min_flush_age|cache_min_evict_age|
-min_read_recency_for_promote
+min_read_recency_for_promote|hit_set_grade_decay_rate|hit_set_search_last_n
 .ft P
 .fi
 .UNINDENT
@@ -1945,7 +1931,8 @@ hit_set_type|hit_set_period|hit_set_count|hit_set_fpp|debug_fake_ec_pool|
 target_max_bytes|target_max_objects|cache_target_dirty_ratio|
 cache_target_dirty_high_ratio|
 cache_target_full_ratio|cache_min_flush_age|cache_min_evict_age|auid|
-min_read_recency_for_promote|write_fadvise_dontneed
+min_read_recency_for_promote|write_fadvise_dontneed|hit_set_grade_decay_rate|
+hit_set_search_last_n
 <val> {\-\-yes\-i\-really\-mean\-it}
 .ft P
 .fi
@@ -2048,6 +2035,7 @@ Usage:
 .nf
 .ft C
 ceph osd reweight\-by\-pg {<int[100\-]>} {<poolname> [<poolname...]}
+{\-\-no\-increasing}
 .ft P
 .fi
 .UNINDENT
@@ -2063,6 +2051,7 @@ Usage:
 .nf
 .ft C
 ceph osd reweight\-by\-utilization {<int[100\-]>}
+{\-\-no\-increasing}
 .ft P
 .fi
 .UNINDENT
@@ -2553,20 +2542,6 @@ ceph pg scrub <pgid>
 .UNINDENT
 .UNINDENT
 .sp
-Subcommand \fBsend_pg_creates\fP triggers pg creates to be issued.
-.sp
-Usage:
-.INDENT 0.0
-.INDENT 3.5
-.sp
-.nf
-.ft C
-ceph pg send_pg_creates
-.ft P
-.fi
-.UNINDENT
-.UNINDENT
-.sp
 Subcommand \fBset_full_ratio\fP sets ratio at which pgs are considered full.
 .sp
 Usage:
@@ -2767,7 +2742,7 @@ Name of the Ceph cluster.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B daemon ADMIN_SOCKET, daemon DAEMON_NAME, \-\-admin\-socket ADMIN_SOCKET, \-\-admin\-socket DAEMON_NAME
+.B \-\-admin\-daemon ADMIN_SOCKET, daemon DAEMON_NAME
 Submit admin\-socket commands via admin sockets in /var/run/ceph.
 .UNINDENT
 .INDENT 0.0

@@ -21,6 +21,7 @@
 #include "rocksdb/iterator.h"
 #include "rocksdb/merge_operator.h"
 #include "rocksdb/slice_transform.h"
+#include "table/internal_iterator.h"
 #include "table/merger.h"
 #include "util/arena.h"
 #include "util/coding.h"
@@ -54,7 +55,7 @@ MemTableOptions::MemTableOptions(
 MemTable::MemTable(const InternalKeyComparator& cmp,
                    const ImmutableCFOptions& ioptions,
                    const MutableCFOptions& mutable_cf_options,
-                   WriteBuffer* write_buffer)
+                   WriteBuffer* write_buffer, SequenceNumber earliest_seq)
     : comparator_(cmp),
       moptions_(ioptions, mutable_cf_options),
       refs_(0),
@@ -64,12 +65,14 @@ MemTable::MemTable(const InternalKeyComparator& cmp,
       table_(ioptions.memtable_factory->CreateMemTableRep(
           comparator_, &allocator_, ioptions.prefix_extractor,
           ioptions.info_log)),
+      data_size_(0),
       num_entries_(0),
       num_deletes_(0),
       flush_in_progress_(false),
       flush_completed_(false),
       file_number_(0),
       first_seqno_(0),
+      earliest_seqno_(earliest_seq),
       mem_next_logfile_number_(0),
       locks_(moptions_.inplace_update_support
                  ? moptions_.inplace_update_num_locks
@@ -110,7 +113,7 @@ bool MemTable::ShouldFlushNow() const {
   // In a lot of times, we cannot allocate arena blocks that exactly matches the
   // buffer size. Thus we have to decide if we should over-allocate or
   // under-allocate.
-  // This constant avariable can be interpreted as: if we still have more than
+  // This constant variable can be interpreted as: if we still have more than
   // "kAllowOverAllocationRatio * kArenaBlockSize" space left, we'd try to over
   // allocate one more block.
   const double kAllowOverAllocationRatio = 0.6;
@@ -200,7 +203,7 @@ const char* EncodeKey(std::string* scratch, const Slice& target) {
   return scratch->data();
 }
 
-class MemTableIterator: public Iterator {
+class MemTableIterator : public InternalIterator {
  public:
   MemTableIterator(
       const MemTable& mem, const ReadOptions& read_options, Arena* arena)
@@ -228,10 +231,15 @@ class MemTableIterator: public Iterator {
   virtual void Seek(const Slice& k) override {
     PERF_TIMER_GUARD(seek_on_memtable_time);
     PERF_COUNTER_ADD(seek_on_memtable_count, 1);
-    if (bloom_ != nullptr &&
-        !bloom_->MayContain(prefix_extractor_->Transform(ExtractUserKey(k)))) {
-      valid_ = false;
-      return;
+    if (bloom_ != nullptr) {
+      if (!bloom_->MayContain(
+              prefix_extractor_->Transform(ExtractUserKey(k)))) {
+        PERF_COUNTER_ADD(bloom_memtable_miss_count, 1);
+        valid_ = false;
+        return;
+      } else {
+        PERF_COUNTER_ADD(bloom_memtable_hit_count, 1);
+      }
     }
     iter_->Seek(k, nullptr);
     valid_ = iter_->Valid();
@@ -278,7 +286,8 @@ class MemTableIterator: public Iterator {
   void operator=(const MemTableIterator&);
 };
 
-Iterator* MemTable::NewIterator(const ReadOptions& read_options, Arena* arena) {
+InternalIterator* MemTable::NewIterator(const ReadOptions& read_options,
+                                        Arena* arena) {
   assert(arena != nullptr);
   auto mem = arena->AllocateAligned(sizeof(MemTableIterator));
   return new (mem) MemTableIterator(*this, read_options, arena);
@@ -287,6 +296,26 @@ Iterator* MemTable::NewIterator(const ReadOptions& read_options, Arena* arena) {
 port::RWMutex* MemTable::GetLock(const Slice& key) {
   static murmur_hash hash;
   return &locks_[hash(key) % locks_.size()];
+}
+
+uint64_t MemTable::ApproximateSize(const Slice& start_ikey,
+                                   const Slice& end_ikey) {
+  uint64_t entry_count = table_->ApproximateNumEntries(start_ikey, end_ikey);
+  if (entry_count == 0) {
+    return 0;
+  }
+  uint64_t n = num_entries_.load(std::memory_order_relaxed);
+  if (n == 0) {
+    return 0;
+  }
+  if (entry_count > n) {
+    // table_->ApproximateNumEntries() is just an estimate so it can be larger
+    // than actual entries we have. Cap it to entries we have to limit the
+    // inaccuracy.
+    entry_count = n;
+  }
+  uint64_t data_size = data_size_.load(std::memory_order_relaxed);
+  return entry_count * (data_size / n);
 }
 
 void MemTable::Add(SequenceNumber s, ValueType type,
@@ -309,13 +338,17 @@ void MemTable::Add(SequenceNumber s, ValueType type,
   char* p = EncodeVarint32(buf, internal_key_size);
   memcpy(p, key.data(), key_size);
   p += key_size;
-  EncodeFixed64(p, (s << 8) | type);
+  uint64_t packed = PackSequenceAndType(s, type);
+  EncodeFixed64(p, packed);
   p += 8;
   p = EncodeVarint32(p, val_size);
   memcpy(p, value.data(), val_size);
   assert((unsigned)(p + val_size - buf) == (unsigned)encoded_len);
   table_->Insert(handle);
-  num_entries_++;
+  num_entries_.store(num_entries_.load(std::memory_order_relaxed) + 1,
+                     std::memory_order_relaxed);
+  data_size_.store(data_size_.load(std::memory_order_relaxed) + encoded_len,
+                   std::memory_order_relaxed);
   if (type == kTypeDeletion) {
     num_deletes_++;
   }
@@ -329,6 +362,11 @@ void MemTable::Add(SequenceNumber s, ValueType type,
   assert(first_seqno_ == 0 || s > first_seqno_);
   if (first_seqno_ == 0) {
     first_seqno_ = s;
+
+    if (earliest_seqno_ == kMaxSequenceNumber) {
+      earliest_seqno_ = first_seqno_;
+    }
+    assert(first_seqno_ >= earliest_seqno_);
   }
 
   should_flush_ = ShouldFlushNow();
@@ -343,6 +381,7 @@ struct Saver {
   bool* found_final_value;  // Is value set correctly? Used by KeyMayExist
   bool* merge_in_progress;
   std::string* value;
+  SequenceNumber seq;
   const MergeOperator* merge_operator;
   // the merge operations encountered;
   MergeContext* merge_context;
@@ -372,11 +411,14 @@ static bool SaveValue(void* arg, const char* entry) {
   // all entries with overly large sequence numbers.
   uint32_t key_length;
   const char* key_ptr = GetVarint32Ptr(entry, entry + 5, &key_length);
-  if (s->mem->GetInternalKeyComparator().user_comparator()->Compare(
-          Slice(key_ptr, key_length - 8), s->key->user_key()) == 0) {
+  if (s->mem->GetInternalKeyComparator().user_comparator()->Equal(
+          Slice(key_ptr, key_length - 8), s->key->user_key())) {
     // Correct user key
     const uint64_t tag = DecodeFixed64(key_ptr + key_length - 8);
-    switch (static_cast<ValueType>(tag & 0xff)) {
+    ValueType type;
+    UnPackSequenceAndType(tag, &s->seq, &type);
+
+    switch (type) {
       case kTypeValue: {
         if (s->inplace_update_support) {
           s->mem->GetLock(s->key->user_key())->ReadLock();
@@ -409,9 +451,10 @@ static bool SaveValue(void* arg, const char* entry) {
         *(s->found_final_value) = true;
         return false;
       }
-      case kTypeDeletion: {
+      case kTypeDeletion:
+      case kTypeSingleDeletion: {
         if (*(s->merge_in_progress)) {
-          assert(merge_operator);
+          assert(merge_operator != nullptr);
           *(s->status) = Status::OK();
           bool merge_success = false;
           {
@@ -461,7 +504,7 @@ static bool SaveValue(void* arg, const char* entry) {
 }
 
 bool MemTable::Get(const LookupKey& key, std::string* value, Status* s,
-                   MergeContext* merge_context) {
+                   MergeContext* merge_context, SequenceNumber* seq) {
   // The sequence number is updated synchronously in version_set.h
   if (IsEmpty()) {
     // Avoiding recording stats for speed.
@@ -472,18 +515,25 @@ bool MemTable::Get(const LookupKey& key, std::string* value, Status* s,
   Slice user_key = key.user_key();
   bool found_final_value = false;
   bool merge_in_progress = s->IsMergeInProgress();
-
-  if (prefix_bloom_ &&
-      !prefix_bloom_->MayContain(prefix_extractor_->Transform(user_key))) {
+  bool const may_contain =
+      nullptr == prefix_bloom_
+          ? false
+          : prefix_bloom_->MayContain(prefix_extractor_->Transform(user_key));
+  if (prefix_bloom_ && !may_contain) {
     // iter is null if prefix bloom says the key does not exist
+    PERF_COUNTER_ADD(bloom_memtable_miss_count, 1);
+    *seq = kMaxSequenceNumber;
   } else {
+    if (prefix_bloom_) {
+      PERF_COUNTER_ADD(bloom_memtable_hit_count, 1);
+    }
     Saver saver;
     saver.status = s;
     saver.found_final_value = &found_final_value;
     saver.merge_in_progress = &merge_in_progress;
     saver.key = &key;
     saver.value = value;
-    saver.status = s;
+    saver.seq = kMaxSequenceNumber;
     saver.mem = this;
     saver.merge_context = merge_context;
     saver.merge_operator = moptions_.merge_operator;
@@ -492,11 +542,13 @@ bool MemTable::Get(const LookupKey& key, std::string* value, Status* s,
     saver.statistics = moptions_.statistics;
     saver.env_ = env_;
     table_->Get(key, &saver, SaveValue);
+
+    *seq = saver.seq;
   }
 
   // No change to value, since we have not yet found a Put/Delete
   if (!found_final_value && merge_in_progress) {
-    *s = Status::MergeInProgress("");
+    *s = Status::MergeInProgress();
   }
   PERF_COUNTER_ADD(get_from_memtable_count, 1);
   return found_final_value;
@@ -525,11 +577,14 @@ void MemTable::Update(SequenceNumber seq,
     const char* entry = iter->key();
     uint32_t key_length = 0;
     const char* key_ptr = GetVarint32Ptr(entry, entry + 5, &key_length);
-    if (comparator_.comparator.user_comparator()->Compare(
-        Slice(key_ptr, key_length - 8), lkey.user_key()) == 0) {
+    if (comparator_.comparator.user_comparator()->Equal(
+            Slice(key_ptr, key_length - 8), lkey.user_key())) {
       // Correct user key
       const uint64_t tag = DecodeFixed64(key_ptr + key_length - 8);
-      switch (static_cast<ValueType>(tag & 0xff)) {
+      ValueType type;
+      SequenceNumber unused;
+      UnPackSequenceAndType(tag, &unused, &type);
+      switch (type) {
         case kTypeValue: {
           Slice prev_value = GetLengthPrefixedSlice(key_ptr + key_length);
           uint32_t prev_size = static_cast<uint32_t>(prev_value.size());
@@ -583,11 +638,14 @@ bool MemTable::UpdateCallback(SequenceNumber seq,
     const char* entry = iter->key();
     uint32_t key_length = 0;
     const char* key_ptr = GetVarint32Ptr(entry, entry + 5, &key_length);
-    if (comparator_.comparator.user_comparator()->Compare(
-        Slice(key_ptr, key_length - 8), lkey.user_key()) == 0) {
+    if (comparator_.comparator.user_comparator()->Equal(
+            Slice(key_ptr, key_length - 8), lkey.user_key())) {
       // Correct user key
       const uint64_t tag = DecodeFixed64(key_ptr + key_length - 8);
-      switch (static_cast<ValueType>(tag & 0xff)) {
+      ValueType type;
+      uint64_t unused;
+      UnPackSequenceAndType(tag, &unused, &type);
+      switch (type) {
         case kTypeValue: {
           Slice prev_value = GetLengthPrefixedSlice(key_ptr + key_length);
           uint32_t prev_size = static_cast<uint32_t>(prev_value.size());
@@ -651,13 +709,16 @@ size_t MemTable::CountSuccessiveMergeEntries(const LookupKey& key) {
     const char* entry = iter->key();
     uint32_t key_length = 0;
     const char* iter_key_ptr = GetVarint32Ptr(entry, entry + 5, &key_length);
-    if (comparator_.comparator.user_comparator()->Compare(
-            Slice(iter_key_ptr, key_length - 8), key.user_key()) != 0) {
+    if (!comparator_.comparator.user_comparator()->Equal(
+            Slice(iter_key_ptr, key_length - 8), key.user_key())) {
       break;
     }
 
     const uint64_t tag = DecodeFixed64(iter_key_ptr + key_length - 8);
-    if (static_cast<ValueType>(tag & 0xff) != kTypeMerge) {
+    ValueType type;
+    uint64_t unused;
+    UnPackSequenceAndType(tag, &unused, &type);
+    if (type != kTypeMerge) {
       break;
     }
 

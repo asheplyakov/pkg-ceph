@@ -107,7 +107,7 @@ which are as follows:
 :command:`region get`
   Show region info.
 
-:command:`regions list`
+:command:`region list`
   List all regions set on this cluster.
 
 :command:`region set`
@@ -148,6 +148,7 @@ which are as follows:
 
 :command:`log show`
   Dump a log from specific object or (bucket + date + bucket-id).
+  (NOTE: required to specify formatting of date to "YYYY-MM-DD-hh")
 
 :command:`log rm`
   Remove log object.
@@ -157,10 +158,6 @@ which are as follows:
 
 :command:`usage trim`
   Trim usage information (with optional user and date range).
-
-:command:`temp remove`
-  Remove temporary objects that were created up to specified date
-  (and optional time).
 
 :command:`gc list`
   Dump expired garbage collection objects (specify --include-all to list all
@@ -216,6 +213,12 @@ which are as follows:
 
 :command:`replicalog delete`
   Delete replica metadata log entry.
+
+:command:`orphans find`
+  Init and run search for leaked rados objects
+
+:command:`orphans finish`
+  Clean up search for leaked rados objects
 
 
 Options
@@ -400,6 +403,32 @@ Quota Options
 	Scope of quota (bucket, user).
 
 
+Orphans Search Options
+======================
+
+.. option:: --pool
+
+	Data pool to scan for leaked rados objects
+
+.. option:: --num-shards
+
+	Number of shards to use for keeping the temporary scan info
+
+.. option:: --orphan-stale-secs
+
+        Number of seconds to wait before declaring an object to be an orphan.
+        Default is 86400 (24 hours).
+
+.. option:: --job-id
+
+        Set the job id (for orphans find)
+
+.. option:: --max-concurrent-ios
+
+        Maximum concurrent ios for orphans find.
+        Default is 32.
+
+
 Examples
 ========
 
@@ -432,7 +461,7 @@ Remove a bucket::
 
 Show the logs of a bucket from April 1st, 2012::
 
-        $ radosgw-admin log show --bucket=foo --date=2012-04-01
+        $ radosgw-admin log show --bucket=foo --date=2012-04-01-01 --bucket-id=default.14193.1
 
 Show usage information for user from March 1st to (but not including) April 1st, 2012::
 

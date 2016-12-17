@@ -116,6 +116,8 @@
 
 #define MSG_OSD_REPOP         112
 #define MSG_OSD_REPOPREPLY    113
+#define MSG_OSD_PG_UPDATE_LOG_MISSING  114
+#define MSG_OSD_PG_UPDATE_LOG_MISSING_REPLY  115
 
 
 // *** MDS ***
@@ -231,7 +233,7 @@ public:
     Message *m;
     friend class Message;
   public:
-    CompletionHook(Message *_m) : m(_m) {}
+    explicit CompletionHook(Message *_m) : m(_m) {}
     virtual void set_message(Message *_m) { m = _m; }
   };
 
@@ -294,14 +296,13 @@ protected:
   virtual ~Message() {
     if (byte_throttler)
       byte_throttler->put(payload.length() + middle.length() + data.length());
-    if (msg_throttler)
-      msg_throttler->put();
+    release_message_throttle();
     /* call completion hooks (if any) */
     if (completion_hook)
       completion_hook->complete(0);
   }
 public:
-  inline const ConnectionRef& get_connection() const { return connection; }
+  const ConnectionRef& get_connection() const { return connection; }
   void set_connection(const ConnectionRef& c) {
     connection = c;
   }
@@ -334,8 +335,9 @@ public:
    */
 
   void clear_payload() {
-    if (byte_throttler)
+    if (byte_throttler) {
       byte_throttler->put(payload.length() + middle.length());
+    }
     payload.clear();
     middle.clear();
   }
@@ -346,6 +348,11 @@ public:
       byte_throttler->put(data.length());
     data.clear();
     clear_buffers(); // let subclass drop buffers as well
+  }
+  void release_message_throttle() {
+    if (msg_throttler)
+      msg_throttler->put();
+    msg_throttler = nullptr;
   }
 
   bool empty_payload() const { return payload.length() == 0; }
@@ -360,10 +367,10 @@ public:
 
   void set_middle(bufferlist& bl) {
     if (byte_throttler)
-      byte_throttler->put(payload.length());
+      byte_throttler->put(middle.length());
     middle.claim(bl, buffer::list::CLAIM_ALLOW_NONSHAREABLE);
     if (byte_throttler)
-      byte_throttler->take(payload.length());
+      byte_throttler->take(middle.length());
   }
   bufferlist& get_middle() { return middle; }
 
@@ -464,7 +471,7 @@ extern Message *decode_message(CephContext *cct, int crcflags,
 			       ceph_msg_header &header,
 			       ceph_msg_footer& footer, bufferlist& front,
 			       bufferlist& middle, bufferlist& data);
-inline ostream& operator<<(ostream& out, Message& m) {
+inline ostream& operator<<(ostream &out, const Message &m) {
   m.print(out);
   if (m.get_header().version)
     out << " v" << m.get_header().version;

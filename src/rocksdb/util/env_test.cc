@@ -7,8 +7,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#include <sys/types.h>
+#ifndef OS_WIN
 #include <sys/ioctl.h>
+#endif
+#include <sys/types.h>
 
 #include <iostream>
 #include <unordered_set>
@@ -34,6 +36,7 @@
 #include "util/mutexlock.h"
 #include "util/string_util.h"
 #include "util/testharness.h"
+#include "util/testutil.h"
 
 namespace rocksdb {
 
@@ -54,46 +57,6 @@ static void SetBool(void* ptr) {
       ->store(true, std::memory_order_relaxed);
 }
 
-class SleepingBackgroundTask {
- public:
-  explicit SleepingBackgroundTask()
-      : bg_cv_(&mutex_), should_sleep_(true), sleeping_(false) {}
-  void DoSleep() {
-    MutexLock l(&mutex_);
-    sleeping_ = true;
-    while (should_sleep_) {
-      bg_cv_.Wait();
-    }
-    sleeping_ = false;
-    bg_cv_.SignalAll();
-  }
-
-  void WakeUp() {
-    MutexLock l(&mutex_);
-    should_sleep_ = false;
-    bg_cv_.SignalAll();
-
-    while (sleeping_) {
-      bg_cv_.Wait();
-    }
-  }
-
-  bool IsSleeping() {
-    MutexLock l(&mutex_);
-    return sleeping_;
-  }
-
-  static void DoSleepTask(void* arg) {
-    reinterpret_cast<SleepingBackgroundTask*>(arg)->DoSleep();
-  }
-
- private:
-  port::Mutex mutex_;
-  port::CondVar bg_cv_;  // Signalled when background work finishes
-  bool should_sleep_;
-  bool sleeping_;
-};
-
 TEST_F(EnvPosixTest, RunImmediately) {
   std::atomic<bool> called(false);
   env_->Schedule(&SetBool, &called);
@@ -106,12 +69,12 @@ TEST_F(EnvPosixTest, UnSchedule) {
   env_->SetBackgroundThreads(1, Env::LOW);
 
   /* Block the low priority queue */
-  SleepingBackgroundTask sleeping_task, sleeping_task1;
-  env_->Schedule(&SleepingBackgroundTask::DoSleepTask, &sleeping_task,
+  test::SleepingBackgroundTask sleeping_task, sleeping_task1;
+  env_->Schedule(&test::SleepingBackgroundTask::DoSleepTask, &sleeping_task,
                  Env::Priority::LOW);
 
   /* Schedule another task */
-  env_->Schedule(&SleepingBackgroundTask::DoSleepTask, &sleeping_task1,
+  env_->Schedule(&test::SleepingBackgroundTask::DoSleepTask, &sleeping_task1,
                  Env::Priority::LOW, &sleeping_task1);
 
   /* Remove it with a different tag  */
@@ -319,7 +282,7 @@ TEST_F(EnvPosixTest, TwoPools) {
 }
 
 TEST_F(EnvPosixTest, DecreaseNumBgThreads) {
-  std::vector<SleepingBackgroundTask> tasks(10);
+  std::vector<test::SleepingBackgroundTask> tasks(10);
 
   // Set number of thread to 1 first.
   env_->SetBackgroundThreads(1, Env::Priority::HIGH);
@@ -327,7 +290,7 @@ TEST_F(EnvPosixTest, DecreaseNumBgThreads) {
 
   // Schedule 3 tasks. 0 running; Task 1, 2 waiting.
   for (size_t i = 0; i < 3; i++) {
-    env_->Schedule(&SleepingBackgroundTask::DoSleepTask, &tasks[i],
+    env_->Schedule(&test::SleepingBackgroundTask::DoSleepTask, &tasks[i],
                    Env::Priority::HIGH);
     Env::Default()->SleepForMicroseconds(kDelayMicros);
   }
@@ -391,7 +354,7 @@ TEST_F(EnvPosixTest, DecreaseNumBgThreads) {
   // Enqueue 5 more tasks. Thread pool size now is 4.
   // Task 0, 3, 4, 5 running;6, 7 waiting.
   for (size_t i = 3; i < 8; i++) {
-    env_->Schedule(&SleepingBackgroundTask::DoSleepTask, &tasks[i],
+    env_->Schedule(&test::SleepingBackgroundTask::DoSleepTask, &tasks[i],
                    Env::Priority::HIGH);
   }
   Env::Default()->SleepForMicroseconds(kDelayMicros);
@@ -433,9 +396,9 @@ TEST_F(EnvPosixTest, DecreaseNumBgThreads) {
   ASSERT_TRUE(!tasks[7].IsSleeping());
 
   // Enqueue thread 8 and 9. Task 5 running; one of 8, 9 might be running.
-  env_->Schedule(&SleepingBackgroundTask::DoSleepTask, &tasks[8],
+  env_->Schedule(&test::SleepingBackgroundTask::DoSleepTask, &tasks[8],
                  Env::Priority::HIGH);
-  env_->Schedule(&SleepingBackgroundTask::DoSleepTask, &tasks[9],
+  env_->Schedule(&test::SleepingBackgroundTask::DoSleepTask, &tasks[9],
                  Env::Priority::HIGH);
   Env::Default()->SleepForMicroseconds(kDelayMicros);
   ASSERT_GT(env_->GetThreadPoolQueueLen(Env::Priority::HIGH), (unsigned int)0);
@@ -662,6 +625,7 @@ TEST_F(EnvPosixTest, AllocateTest) {
   size_t kPageSize = 4096;
   std::string data(1024 * 1024, 'a');
   wfile->SetPreallocationBlockSize(kPreallocateSize);
+  wfile->PrepareWrite(wfile->GetFileSize(), data.size());
   ASSERT_OK(wfile->Append(Slice(data)));
   ASSERT_OK(wfile->Flush());
 
@@ -821,28 +785,6 @@ TEST_F(EnvPosixTest, InvalidateCache) {
 #endif  // not TRAVIS
 #endif  // OS_LINUX
 
-TEST_F(EnvPosixTest, PosixRandomRWFileTest) {
-  EnvOptions soptions;
-  soptions.use_mmap_writes = soptions.use_mmap_reads = false;
-  std::string fname = test::TmpDir() + "/" + "testfile";
-
-  unique_ptr<RandomRWFile> file;
-  ASSERT_OK(env_->NewRandomRWFile(fname, &file, soptions));
-  // If you run the unit test on tmpfs, then tmpfs might not
-  // support fallocate. It is still better to trigger that
-  // code-path instead of eliminating it completely.
-  file.get()->Allocate(0, 10*1024*1024);
-  ASSERT_OK(file.get()->Write(100, Slice("Hello world")));
-  ASSERT_OK(file.get()->Write(105, Slice("Hello world")));
-  ASSERT_OK(file.get()->Sync());
-  ASSERT_OK(file.get()->Fsync());
-  char scratch[100];
-  Slice result;
-  ASSERT_OK(file.get()->Read(100, 16, &result, scratch));
-  ASSERT_EQ(result.compare("HelloHello world"), 0);
-  ASSERT_OK(file.get()->Close());
-}
-
 class TestLogger : public Logger {
  public:
   using Logger::Logv;
@@ -856,6 +798,13 @@ class TestLogger : public Logger {
       va_copy(backup_ap, ap);
       int n = vsnprintf(new_format, sizeof(new_format) - 1, format, backup_ap);
       // 48 bytes for extra information + bytes allocated
+
+// When we have n == -1 there is not a terminating zero expected
+#ifdef OS_WIN
+      if (n < 0) {
+        char_0_count++;
+      }
+#endif
 
       if (new_format[0] == '[') {
         // "[DEBUG] "
@@ -965,21 +914,107 @@ TEST_F(EnvPosixTest, Preallocation) {
   ASSERT_EQ(last_allocated_block, 0UL);
 
   // Small write should preallocate one block
-  srcfile->Append("test");
+  std::string str = "test";
+  srcfile->PrepareWrite(srcfile->GetFileSize(), str.size());
+  srcfile->Append(str);
   srcfile->GetPreallocationStatus(&block_size, &last_allocated_block);
   ASSERT_EQ(last_allocated_block, 1UL);
 
   // Write an entire preallocation block, make sure we increased by two.
   std::string buf(block_size, ' ');
+  srcfile->PrepareWrite(srcfile->GetFileSize(), buf.size());
   srcfile->Append(buf);
   srcfile->GetPreallocationStatus(&block_size, &last_allocated_block);
   ASSERT_EQ(last_allocated_block, 2UL);
 
   // Write five more blocks at once, ensure we're where we need to be.
   buf = std::string(block_size * 5, ' ');
+  srcfile->PrepareWrite(srcfile->GetFileSize(), buf.size());
   srcfile->Append(buf);
   srcfile->GetPreallocationStatus(&block_size, &last_allocated_block);
   ASSERT_EQ(last_allocated_block, 7UL);
+}
+
+// Test that all WritableFileWrapper forwards all calls to WritableFile.
+TEST_F(EnvPosixTest, WritableFileWrapper) {
+  class Base : public WritableFile {
+   public:
+    mutable int *step_;
+
+    void inc(int x) const {
+      EXPECT_EQ(x, (*step_)++);
+    }
+
+    explicit Base(int* step) : step_(step) {
+      inc(0);
+    }
+
+    Status Append(const Slice& data) override { inc(1); return Status::OK(); }
+    Status Truncate(uint64_t size) override { return Status::OK(); }
+    Status Close() override { inc(2); return Status::OK(); }
+    Status Flush() override { inc(3); return Status::OK(); }
+    Status Sync() override { inc(4); return Status::OK(); }
+    Status Fsync() override { inc(5); return Status::OK(); }
+    void SetIOPriority(Env::IOPriority pri) override { inc(6); }
+    uint64_t GetFileSize() override { inc(7); return 0; }
+    void GetPreallocationStatus(size_t* block_size,
+                                size_t* last_allocated_block) override {
+      inc(8);
+    }
+    size_t GetUniqueId(char* id, size_t max_size) const override {
+      inc(9);
+      return 0;
+    }
+    Status InvalidateCache(size_t offset, size_t length) override {
+      inc(10);
+      return Status::OK();
+    }
+
+   protected:
+    Status Allocate(uint64_t offset, uint64_t len) override {
+      inc(11);
+      return Status::OK();
+    }
+    Status RangeSync(uint64_t offset, uint64_t nbytes) override {
+      inc(12);
+      return Status::OK();
+    }
+
+   public:
+    ~Base() {
+      inc(13);
+    }
+  };
+
+  class Wrapper : public WritableFileWrapper {
+   public:
+    explicit Wrapper(WritableFile* target) : WritableFileWrapper(target) {}
+
+    void CallProtectedMethods() {
+      Allocate(0, 0);
+      RangeSync(0, 0);
+    }
+  };
+
+  int step = 0;
+
+  {
+    Base b(&step);
+    Wrapper w(&b);
+    w.Append(Slice());
+    w.Close();
+    w.Flush();
+    w.Sync();
+    w.Fsync();
+    w.SetIOPriority(Env::IOPriority::IO_HIGH);
+    w.GetFileSize();
+    w.GetPreallocationStatus(nullptr, nullptr);
+    w.GetUniqueId(nullptr, 0);
+    w.InvalidateCache(0, 0);
+    w.CallProtectedMethods();
+  }
+
+  EXPECT_EQ(14, step);
 }
 
 }  // namespace rocksdb

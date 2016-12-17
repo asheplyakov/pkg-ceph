@@ -5,6 +5,8 @@ EXTRA_DIST = autogen.sh ceph.spec.in ceph.spec install-deps.sh
 SUBDIRS = . src man doc systemd selinux
 
 EXTRA_DIST += \
+	CMakeLists.txt \
+	qa \
 	src/test/run-cli-tests \
 	src/test/run-cli-tests-maybe-unset-ccache \
 	src/test/cli \
@@ -15,19 +17,23 @@ EXTRA_DIST += \
 	etc/sysconfig/SuSEfirewall2.d/services/ceph-mon \
 	etc/sysconfig/SuSEfirewall2.d/services/ceph-osd-mds \
 	udev/50-rbd.rules \
-	udev/60-ceph-partuuid-workaround.rules \
+	udev/60-ceph-by-parttypeuuid.rules \
 	udev/95-ceph-osd.rules \
-	udev/95-ceph-osd-alt.rules \
 	share/known_hosts_drop.ceph.com \
-	share/id_dsa_drop.ceph.com \
-	share/id_dsa_drop.ceph.com.pub
+	share/id_rsa_drop.ceph.com \
+	share/id_rsa_drop.ceph.com.pub
+
+NPROC = nproc
+if FREEBSD
+	NPROC = sysctl -n hw.ncpu
+endif
 
 # why is it so hard to make autotools to this?
 install-data-local::
 	-mkdir -p $(DESTDIR)$(datadir)/ceph
 	-install -m 600 share/known_hosts_drop.ceph.com $(DESTDIR)$(datadir)/ceph/known_hosts_drop.ceph.com
-	-install -m 600 share/id_dsa_drop.ceph.com $(DESTDIR)$(datadir)/ceph/id_dsa_drop.ceph.com
-	-install -m 600 share/id_dsa_drop.ceph.com.pub $(DESTDIR)$(datadir)/ceph/id_dsa_drop.ceph.com.pub
+	-install -m 600 share/id_rsa_drop.ceph.com $(DESTDIR)$(datadir)/ceph/id_rsa_drop.ceph.com
+	-install -m 600 share/id_rsa_drop.ceph.com.pub $(DESTDIR)$(datadir)/ceph/id_rsa_drop.ceph.com.pub
 
 all-local::
 if WITH_DEBUG
@@ -46,7 +52,7 @@ check-local:: all
 	@cd src/gmock && $(MAKE) $(AM_MAKEFLAGS) lib/libgmock.la lib/libgmock_main.la
 #	exercise cli tools
 	u=`ulimit -u` ; \
-	p=`expr $(shell nproc) / 2` ; \
+	p=`expr $(shell ${NPROC}) / 2` ; \
 	n=`expr $$p \* 1024` ; \
 	if ${CHECK_ULIMIT} && echo ${MAKEFLAGS} | grep --quiet -e -j && test $$u -lt $$n ; then \
 		echo "ulimit -u is $$u which is lower than $$n = $$p / 2 * 1024" ; \
@@ -56,6 +62,11 @@ check-local:: all
 		echo "or run make CHECK_ULIMIT=false -j4 check to override this safeguard." ; \
 		exit 1 ; \
 	fi
+
+# display the output of failed check_SCRIPTS after a failed make check
+export VERBOSE = true
+
+TESTS = $(check_SCRIPTS)
 
 check_SCRIPTS = \
 	src/test/run-cli-tests

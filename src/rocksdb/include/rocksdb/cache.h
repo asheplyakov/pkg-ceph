@@ -45,7 +45,9 @@ class Cache {
   Cache() { }
 
   // Destroys all existing entries by calling the "deleter"
-  // function that was passed to the constructor.
+  // function that was passed via the Insert() function.
+  //
+  // @See Insert
   virtual ~Cache();
 
   // Opaque handle to an entry stored in the cache.
@@ -103,6 +105,12 @@ class Cache {
 
   // returns the memory size for the entries residing in the cache.
   virtual size_t GetUsage() const = 0;
+
+  // returns the memory size for a specific entry in the cache.
+  virtual size_t GetUsage(Handle* handle) const = 0;
+
+  // returns the memory size for the entries in use by the system
+  virtual size_t GetPinnedUsage() const = 0;
 
   // Call this on shutdown if you want to speed it up. Cache will disown
   // any underlying data and will not free it on delete. This call will leak

@@ -11,6 +11,13 @@
 
 #pragma once
 
+// size_t printf formatting named in the manner of C99 standard formatting
+// strings such as PRIu64
+// in fact, we could use that one
+#define ROCKSDB_PRIszt "zu"
+
+#define ROCKSDB_NOEXCEPT noexcept
+
 #undef PLATFORM_IS_LITTLE_ENDIAN
 #if defined(OS_MACOSX)
   #include <machine/endian.h>
@@ -25,14 +32,11 @@
   #else
     #define PLATFORM_IS_LITTLE_ENDIAN false
   #endif
-#elif defined(OS_FREEBSD)
+#elif defined(OS_FREEBSD) || defined(OS_OPENBSD) || defined(OS_NETBSD) || \
+    defined(OS_DRAGONFLYBSD) || defined(OS_ANDROID)
   #include <sys/endian.h>
   #include <sys/types.h>
   #define PLATFORM_IS_LITTLE_ENDIAN (_BYTE_ORDER == _LITTLE_ENDIAN)
-#elif defined(OS_OPENBSD) || defined(OS_NETBSD) ||\
-      defined(OS_DRAGONFLYBSD) || defined(OS_ANDROID)
-  #include <sys/types.h>
-  #include <sys/endian.h>
 #else
   #include <endian.h>
 #endif
@@ -48,7 +52,7 @@
 
 #if defined(OS_MACOSX) || defined(OS_SOLARIS) || defined(OS_FREEBSD) ||\
     defined(OS_NETBSD) || defined(OS_OPENBSD) || defined(OS_DRAGONFLYBSD) ||\
-    defined(OS_ANDROID)
+    defined(OS_ANDROID) || defined(CYGWIN)
 // Use fread/fwrite/fflush on platforms without _unlocked variants
 #define fread_unlocked fread
 #define fwrite_unlocked fwrite
@@ -63,12 +67,19 @@
 
 #if defined(OS_ANDROID) && __ANDROID_API__ < 9
 // fdatasync() was only introduced in API level 9 on Android. Use fsync()
-// when targetting older platforms.
+// when targeting older platforms.
 #define fdatasync fsync
 #endif
 
+#include <limits>
+
 namespace rocksdb {
 namespace port {
+
+// For use at db/file_indexer.h kLevelMaxIndex
+const int kMaxInt32 = std::numeric_limits<int32_t>::max();
+const uint64_t kMaxUint64 = std::numeric_limits<uint64_t>::max();
+const size_t kMaxSizet = std::numeric_limits<size_t>::max();
 
 static const bool kLittleEndian = PLATFORM_IS_LITTLE_ENDIAN;
 #undef PLATFORM_IS_LITTLE_ENDIAN
@@ -139,6 +150,9 @@ extern void InitOnce(OnceType* once, void (*initializer)());
 
 #define PREFETCH(addr, rw, locality) __builtin_prefetch(addr, rw, locality)
 
+extern void Crash(const std::string& srcfile, int srcline);
+
+extern int GetMaxOpenFiles();
+
 } // namespace port
 } // namespace rocksdb
-

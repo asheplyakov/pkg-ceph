@@ -156,6 +156,9 @@ public:
     stray_manager.eval_stray(dn);
   }
 
+  void handle_conf_change(const struct md_config_t *conf,
+                          const std::set <std::string> &changed);
+
   void maybe_eval_stray(CInode *in, bool delay=false);
   bool is_readonly() { return readonly; }
   void force_readonly();
@@ -167,11 +170,11 @@ public:
 
   unsigned max_dir_commit_size;
 
-  static ceph_file_layout gen_default_file_layout(const MDSMap &mdsmap);
-  static ceph_file_layout gen_default_log_layout(const MDSMap &mdsmap);
+  static file_layout_t gen_default_file_layout(const MDSMap &mdsmap);
+  static file_layout_t gen_default_log_layout(const MDSMap &mdsmap);
 
-  ceph_file_layout default_file_layout;
-  ceph_file_layout default_log_layout;
+  file_layout_t default_file_layout;
+  file_layout_t default_log_layout;
 
   void register_perfcounters();
 
@@ -487,12 +490,12 @@ protected:
   map<inodeno_t,pair<mds_rank_t,map<client_t,Capability::Export> > > rejoin_slave_exports;
   map<client_t,entity_inst_t> rejoin_client_map;
 
-  map<inodeno_t,map<client_t,ceph_mds_cap_reconnect> > cap_exports; // ino -> client -> capex
+  map<inodeno_t,map<client_t,cap_reconnect_t> > cap_exports; // ino -> client -> capex
   map<inodeno_t,mds_rank_t> cap_export_targets; // ino -> auth mds
 
-  map<inodeno_t,map<client_t,map<mds_rank_t,ceph_mds_cap_reconnect> > > cap_imports;  // ino -> client -> frommds -> capex
-  map<inodeno_t,filepath> cap_import_paths;
+  map<inodeno_t,map<client_t,map<mds_rank_t,cap_reconnect_t> > > cap_imports;  // ino -> client -> frommds -> capex
   set<inodeno_t> cap_imports_missing;
+  map<inodeno_t, list<MDSInternalContextBase*> > cap_reconnect_waiters;
   int cap_imports_num_opening;
   
   set<CInode*> rejoin_undef_inodes;
@@ -526,17 +529,16 @@ public:
   void rejoin_start(MDSInternalContext *rejoin_done_);
   void rejoin_gather_finish();
   void rejoin_send_rejoins();
-  void rejoin_export_caps(inodeno_t ino, client_t client, ceph_mds_cap_reconnect& capinfo,
+  void rejoin_export_caps(inodeno_t ino, client_t client, const cap_reconnect_t& icr,
 			  int target=-1) {
-    cap_exports[ino][client] = capinfo;
+    cap_exports[ino][client] = icr;
     cap_export_targets[ino] = target;
   }
-  void rejoin_recovered_caps(inodeno_t ino, client_t client, cap_reconnect_t& icr, 
+  void rejoin_recovered_caps(inodeno_t ino, client_t client, const cap_reconnect_t& icr, 
 			     mds_rank_t frommds=MDS_RANK_NONE) {
-    cap_imports[ino][client][frommds] = icr.capinfo;
-    cap_import_paths[ino] = filepath(icr.path, (uint64_t)icr.capinfo.pathbase);
+    cap_imports[ino][client][frommds] = icr;
   }
-  ceph_mds_cap_reconnect *get_replay_cap_reconnect(inodeno_t ino, client_t client) {
+  const cap_reconnect_t *get_replay_cap_reconnect(inodeno_t ino, client_t client) {
     if (cap_imports.count(ino) &&
 	cap_imports[ino].count(client) &&
 	cap_imports[ino][client].count(MDS_RANK_NONE)) {
@@ -549,13 +551,29 @@ public:
     assert(cap_imports[ino][client].size() == 1);
     cap_imports.erase(ino);
   }
+  void wait_replay_cap_reconnect(inodeno_t ino, MDSInternalContextBase *c) {
+    cap_reconnect_waiters[ino].push_back(c);
+  }
 
   // [reconnect/rejoin caps]
-  map<CInode*,map<client_t, inodeno_t> >  reconnected_caps;   // inode -> client -> realmino
+  struct reconnected_cap_info_t {
+    inodeno_t realm_ino;
+    snapid_t snap_follows;
+    int dirty_caps;
+    reconnected_cap_info_t() :
+      realm_ino(0), snap_follows(0), dirty_caps(0) {}
+  };
+  map<inodeno_t,map<client_t, reconnected_cap_info_t> >  reconnected_caps;   // inode -> client -> snap_follows,realmino
   map<inodeno_t,map<client_t, snapid_t> > reconnected_snaprealms;  // realmino -> client -> realmseq
 
-  void add_reconnected_cap(CInode *in, client_t client, inodeno_t realm) {
-    reconnected_caps[in][client] = realm;
+  void add_reconnected_cap(client_t client, inodeno_t ino, const cap_reconnect_t& icr) {
+    reconnected_cap_info_t &info = reconnected_caps[ino][client];
+    info.realm_ino = inodeno_t(icr.capinfo.snaprealm);
+    info.snap_follows = icr.snap_follows;
+  }
+  void set_reconnected_dirty_caps(client_t client, inodeno_t ino, int dirty) {
+    reconnected_cap_info_t &info = reconnected_caps[ino][client];
+    info.dirty_caps |= dirty;
   }
   void add_reconnected_snaprealm(client_t client, inodeno_t ino, snapid_t seq) {
     reconnected_snaprealms[ino][client] = seq;
@@ -572,21 +590,23 @@ public:
 			   map<client_t,MClientSnap*>& splits);
   void do_realm_invalidate_and_update_notify(CInode *in, int snapop, bool nosend=false);
   void send_snaps(map<client_t,MClientSnap*>& splits);
-  Capability* rejoin_import_cap(CInode *in, client_t client, ceph_mds_cap_reconnect& icr, mds_rank_t frommds);
+  Capability* rejoin_import_cap(CInode *in, client_t client, const cap_reconnect_t& icr, mds_rank_t frommds);
   void finish_snaprealm_reconnect(client_t client, SnapRealm *realm, snapid_t seq);
   void try_reconnect_cap(CInode *in, Session *session);
   void export_remaining_imported_caps();
 
   // cap imports.  delayed snap parent opens.
   //  realm inode -> client -> cap inodes needing to split to this realm
-  map<CInode*,map<client_t, set<inodeno_t> > > missing_snap_parents; 
+  map<CInode*,set<CInode*> > missing_snap_parents;
   map<client_t,set<CInode*> > delayed_imported_caps;
 
   void do_cap_import(Session *session, CInode *in, Capability *cap,
 		     uint64_t p_cap_id, ceph_seq_t p_seq, ceph_seq_t p_mseq,
 		     int peer, int p_flags);
   void do_delayed_cap_imports();
-  void check_realm_past_parents(SnapRealm *realm);
+  void rebuild_need_snapflush(CInode *head_in, SnapRealm *realm, client_t client,
+			      snapid_t snap_follows);
+  void check_realm_past_parents(SnapRealm *realm, bool reconnect);
   void open_snap_parents();
 
   bool open_undef_inodes_dirfrags();
@@ -609,9 +629,9 @@ public:
   // File size recovery
 private:
   RecoveryQueue recovery_queue;
-  void identify_files_to_recover(vector<CInode*>& recover_q, vector<CInode*>& check_q);
-  void start_files_to_recover(vector<CInode*>& recover_q, vector<CInode*>& check_q);
+  void identify_files_to_recover();
 public:
+  void start_files_to_recover();
   void do_file_recover();
   void queue_file_recover(CInode *in);
   void _queued_file_recover_cow(CInode *in, MutationRef& mut);
@@ -620,7 +640,7 @@ public:
   Migrator *migrator;
 
  public:
-  MDCache(MDSRank *m);
+  explicit MDCache(MDSRank *m);
   ~MDCache();
   
   // debug
@@ -816,6 +836,7 @@ public:
                                   version_t dpv, MDSInternalContextBase *fin);
 
   void open_foreign_mdsdir(inodeno_t ino, MDSInternalContextBase *c);
+  CDir *get_stray_dir(CInode *in);
   CDentry *get_or_create_stray_dentry(CInode *in);
 
   MDSInternalContextBase *_get_waiter(MDRequestRef& mdr, Message *req, MDSInternalContextBase *fin);
@@ -980,10 +1001,11 @@ public:
     ::encode(dn->last, bl);
     dn->encode_replica(to, bl);
   }
-  void replicate_inode(CInode *in, mds_rank_t to, bufferlist& bl) {
+  void replicate_inode(CInode *in, mds_rank_t to, bufferlist& bl,
+		       uint64_t features) {
     ::encode(in->inode.ino, bl);  // bleh, minor assymetry here
     ::encode(in->last, bl);
-    in->encode_replica(to, bl);
+    in->encode_replica(to, bl, features);
   }
   
   CDir* add_replica_dir(bufferlist::iterator& p, CInode *diri, mds_rank_t from, list<MDSInternalContextBase*>& finished);
@@ -1103,6 +1125,9 @@ public:
   void dump_cache(const std::string &filename);
   void dump_cache(Formatter *f);
 
+  void dump_resolve_status(Formatter *f) const;
+  void dump_rejoin_status(Formatter *f) const;
+
   // == crap fns ==
  public:
   void show_cache();
@@ -1115,10 +1140,31 @@ public:
     while (n--) ++p;
     return p->second;
   }
-  void scrub_dentry(const string& path, Formatter *f, Context *fin);
-  void scrub_dentry_work(MDRequestRef& mdr);
-  void flush_dentry(const string& path, Context *fin);
+
+protected:
   void flush_dentry_work(MDRequestRef& mdr);
+  /**
+   * Resolve path to a dentry and pass it onto the ScrubStack.
+   *
+   * TODO: return enough information to the original mdr formatter
+   * and completion that they can subsequeuntly check the progress of
+   * this scrub (we won't block them on a whole scrub as it can take a very
+   * long time)
+   */
+  void enqueue_scrub_work(MDRequestRef& mdr);
+  void repair_inode_stats_work(MDRequestRef& mdr);
+  void repair_dirfrag_stats_work(MDRequestRef& mdr);
+  friend class C_MDC_RepairDirfragStats;
+public:
+  void flush_dentry(const string& path, Context *fin);
+  /**
+   * Create and start an OP_ENQUEUE_SCRUB
+   */
+  void enqueue_scrub(const string& path, const std::string &tag,
+                     bool force, bool recursive, bool repair,
+		     Formatter *f, Context *fin);
+  void repair_inode_stats(CInode *diri);
+  void repair_dirfrag_stats(CDir *dir);
 };
 
 class C_MDS_RetryRequest : public MDSInternalContext {

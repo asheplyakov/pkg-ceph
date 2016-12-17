@@ -17,6 +17,7 @@
 #include <vector>
 #include "rocksdb/iterator.h"
 #include "rocksdb/table.h"
+#include "table/internal_iterator.h"
 #include "table/meta_blocks.h"
 #include "table/cuckoo_table_factory.h"
 #include "table/get_context.h"
@@ -33,8 +34,7 @@ extern const uint64_t kCuckooTableMagicNumber;
 
 CuckooTableReader::CuckooTableReader(
     const ImmutableCFOptions& ioptions,
-    std::unique_ptr<RandomAccessFile>&& file,
-    uint64_t file_size,
+    std::unique_ptr<RandomAccessFileReader>&& file, uint64_t file_size,
     const Comparator* comparator,
     uint64_t (*get_slice_hash)(const Slice&, uint32_t, uint64_t))
     : file_(std::move(file)),
@@ -138,13 +138,13 @@ Status CuckooTableReader::Get(const ReadOptions& readOptions, const Slice& key,
     const char* bucket = &file_data_.data()[offset];
     for (uint32_t block_idx = 0; block_idx < cuckoo_block_size_;
          ++block_idx, bucket += bucket_length_) {
-      if (ucomp_->Compare(Slice(unused_key_.data(), user_key.size()),
-                          Slice(bucket, user_key.size())) == 0) {
+      if (ucomp_->Equal(Slice(unused_key_.data(), user_key.size()),
+                        Slice(bucket, user_key.size()))) {
         return Status::OK();
       }
       // Here, we compare only the user key part as we support only one entry
       // per user key and we don't support sanpshot.
-      if (ucomp_->Compare(user_key, Slice(bucket, user_key.size())) == 0) {
+      if (ucomp_->Equal(user_key, Slice(bucket, user_key.size()))) {
         Slice value(bucket + key_length_, value_length_);
         if (is_last_level_) {
           get_context->SaveValue(value);
@@ -174,7 +174,7 @@ void CuckooTableReader::Prepare(const Slice& key) {
   }
 }
 
-class CuckooTableIterator : public Iterator {
+class CuckooTableIterator : public InternalIterator {
  public:
   explicit CuckooTableIterator(CuckooTableReader* reader);
   ~CuckooTableIterator() {}
@@ -349,16 +349,17 @@ Slice CuckooTableIterator::value() const {
   return curr_value_;
 }
 
-extern Iterator* NewErrorIterator(const Status& status, Arena* arena);
+extern InternalIterator* NewErrorInternalIterator(const Status& status,
+                                                  Arena* arena);
 
-Iterator* CuckooTableReader::NewIterator(
+InternalIterator* CuckooTableReader::NewIterator(
     const ReadOptions& read_options, Arena* arena) {
   if (!status().ok()) {
-    return NewErrorIterator(
+    return NewErrorInternalIterator(
         Status::Corruption("CuckooTableReader status is not okay."), arena);
   }
   if (read_options.total_order_seek) {
-    return NewErrorIterator(
+    return NewErrorInternalIterator(
         Status::InvalidArgument("total_order_seek is not supported."), arena);
   }
   CuckooTableIterator* iter;

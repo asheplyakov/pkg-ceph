@@ -21,6 +21,8 @@ public:
 
   virtual int aio_remove(const std::string& oid, AioCompletionImpl *c);
 
+  virtual int append(const std::string& oid, const bufferlist &bl,
+                     const SnapContext &snapc);
   virtual int assert_exists(const std::string &oid);
 
   virtual int create(const std::string& oid, bool exclusive);
@@ -36,7 +38,7 @@ public:
                        bufferlist> &map);
   virtual int read(const std::string& oid, size_t len, uint64_t off,
                    bufferlist *bl);
-  virtual int remove(const std::string& oid);
+  virtual int remove(const std::string& oid, const SnapContext &snapc);
   virtual int selfmanaged_snap_create(uint64_t *snapid);
   virtual int selfmanaged_snap_remove(uint64_t snapid);
   virtual int selfmanaged_snap_rollback(const std::string& oid,

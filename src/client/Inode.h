@@ -23,6 +23,7 @@ struct SnapRealm;
 struct Inode;
 class ceph_lock_state_t;
 class MetaRequest;
+class UserGroups;
 
 struct Cap {
   MetaSession *session;
@@ -63,95 +64,20 @@ struct CapSnap {
 
   bool writing, dirty_data;
   uint64_t flush_tid;
-  xlist<CapSnap*>::item flushing_item;
 
-  CapSnap(Inode *i)
+  explicit CapSnap(Inode *i)
     : in(i), issued(0), dirty(0),
       size(0), time_warp_seq(0), mode(0), uid(0), gid(0), xattr_version(0),
-      inline_version(0), writing(false), dirty_data(false), flush_tid(0),
-      flushing_item(this)
+      inline_version(0), writing(false), dirty_data(false), flush_tid(0)
   {}
 
   void dump(Formatter *f) const;
 };
 
-class QuotaTree {
-private:
-  Inode *_in;
-
-  int _ancestor_ref;
-  QuotaTree *_ancestor;
-  int _parent_ref;
-  QuotaTree *_parent;
-
-  void _put()
-  {
-    if (!_in && !_ancestor_ref && !_parent_ref) {
-      set_parent(NULL);
-      set_ancestor(NULL);
-      delete this;
-    }
-  }
-  ~QuotaTree() {}
-public:
-  QuotaTree(Inode *i) :
-    _in(i),
-    _ancestor_ref(0),
-    _ancestor(NULL),
-    _parent_ref(0),
-    _parent(NULL)
-  { assert(i); }
-
-  Inode *in() { return _in; }
-
-  int ancestor_ref() { return _ancestor_ref; }
-  int parent_ref() { return _parent_ref; }
-
-  QuotaTree *ancestor() { return _ancestor; }
-  void set_ancestor(QuotaTree *ancestor)
-  {
-    if (ancestor == _ancestor)
-      return;
-
-    if (_ancestor) {
-      --_ancestor->_ancestor_ref;
-      _ancestor->_put();
-    }
-    _ancestor = ancestor;
-    if (_ancestor)
-      ++_ancestor->_ancestor_ref;
-  }
-
-  QuotaTree *parent() { return _parent; }
-  void set_parent(QuotaTree *parent)
-  {
-    if (parent == _parent)
-      return;
-
-    if (_parent) {
-      --_parent->_parent_ref;
-      _parent->_put();
-    }
-    _parent = parent;
-    if (parent)
-      ++_parent->_parent_ref;
-  }
-
-  void invalidate()
-  {
-    if (!_in)
-      return;
-
-    _in = NULL;
-    set_ancestor(NULL);
-    set_parent(NULL);
-    _put();
-  }
-};
-
 // inode flags
-#define I_COMPLETE 1
-#define I_DIR_ORDERED 2
+#define I_COMPLETE	1
+#define I_DIR_ORDERED	2
+#define I_SNAPDIR_OPEN	8
 
 struct Inode {
   Client *client;
@@ -176,7 +102,7 @@ struct Inode {
 
   // file (data access)
   ceph_dir_layout dir_layout;
-  ceph_file_layout layout;
+  file_layout_t layout;
   uint64_t   size;        // on directory, # dentries
   uint32_t   truncate_seq;
   uint64_t   truncate_size;
@@ -204,10 +130,7 @@ struct Inode {
   bool is_file()    const { return (mode & S_IFMT) == S_IFREG; }
 
   bool has_dir_layout() const {
-    for (unsigned c = 0; c < sizeof(layout); c++)
-      if (*((const char *)&layout + c))
-	return true;
-    return false;
+    return layout != file_layout_t();
   }
 
   __u32 hash_dentry_name(const string &dn) {
@@ -220,7 +143,6 @@ struct Inode {
   unsigned flags;
 
   quota_info_t quota;
-  QuotaTree* qtree;
 
   bool is_complete_and_ordered() {
     static const unsigned wants = I_COMPLETE | I_DIR_ORDERED;
@@ -228,12 +150,17 @@ struct Inode {
   }
 
   // about the dir (if this is one!)
+  Dir       *dir;     // if i'm a dir.
+  fragtree_t dirfragtree;
   set<int>  dir_contacts;
-  bool      dir_hashed, dir_replicated;
+  uint64_t dir_release_count, dir_ordered_count;
+  bool dir_hashed, dir_replicated;
 
   // per-mds caps
   map<mds_rank_t, Cap*> caps;            // mds -> Cap
   Cap *auth_cap;
+  int64_t cap_dirtier_uid;
+  int64_t cap_dirtier_gid;
   unsigned dirty_caps, flushing_caps;
   std::map<ceph_tid_t, int> flushing_cap_tids;
   int shared_gen, cache_gen;
@@ -256,10 +183,8 @@ struct Inode {
 
   int       _ref;      // ref count. 1 for each dentry, fh that links to me.
   int       ll_ref;   // separate ref count for ll client
-  Dir       *dir;     // if i'm a dir.
   set<Dentry*> dn_set;      // if i'm linked to a dentry.
   string    symlink;  // symlink content, if it's a symlink
-  fragtree_t dirfragtree;
   map<string,bufferptr> xattrs;
   map<frag_t,int> fragmap;  // known frag -> mds mappings
 
@@ -293,34 +218,33 @@ struct Inode {
   ceph_lock_state_t *fcntl_locks;
   ceph_lock_state_t *flock_locks;
 
-  xlist<MetaRequest*> unsafe_dir_ops;
+  xlist<MetaRequest*> unsafe_ops;
 
-  Inode(Client *c, vinodeno_t vino, ceph_file_layout *newlayout)
+  Inode(Client *c, vinodeno_t vino, file_layout_t *newlayout)
     : client(c), ino(vino.ino), snapid(vino.snapid), faked_ino(0),
       rdev(0), mode(0), uid(0), gid(0), nlink(0),
       size(0), truncate_seq(1), truncate_size(-1),
       time_warp_seq(0), max_size(0), version(0), xattr_version(0),
-      inline_version(0),
-      flags(0),
-      qtree(NULL),
+      inline_version(0), flags(0),
+      dir(0), dir_release_count(1), dir_ordered_count(1),
       dir_hashed(false), dir_replicated(false), auth_cap(NULL),
+      cap_dirtier_uid(-1), cap_dirtier_gid(-1),
       dirty_caps(0), flushing_caps(0), shared_gen(0), cache_gen(0),
       snap_caps(0), snap_cap_refs(0),
       cap_item(this), flushing_cap_item(this),
       snaprealm(0), snaprealm_item(this),
-      oset((void *)this, newlayout->fl_pg_pool, ino),
+      oset((void *)this, newlayout->pool_id, ino),
       reported_size(0), wanted_max_size(0), requested_max_size(0),
-      _ref(0), ll_ref(0), dir(0), dn_set(),
+      _ref(0), ll_ref(0), dn_set(),
       fcntl_locks(NULL), flock_locks(NULL),
       async_err(0)
   {
     memset(&dir_layout, 0, sizeof(dir_layout));
-    memset(&layout, 0, sizeof(layout));
     memset(&quota, 0, sizeof(quota));
   }
   ~Inode() { }
 
-  vinodeno_t vino() { return vinodeno_t(ino, snapid); }
+  vinodeno_t vino() const { return vinodeno_t(ino, snapid); }
 
   struct Compare {
     bool operator() (Inode* const & left, Inode* const & right) {
@@ -331,7 +255,7 @@ struct Inode {
     }
   };
 
-  bool check_mode(uid_t uid, gid_t gid, gid_t *sgids, int sgid_count, uint32_t flags);
+  bool check_mode(uid_t uid, UserGroups& groups, unsigned want);
 
   // CAPS --------
   void get_open_ref(int mode);
@@ -340,8 +264,8 @@ struct Inode {
   void get_cap_ref(int cap);
   int put_cap_ref(int cap);
   bool is_any_caps();
-  bool cap_is_valid(Cap* cap);
-  int caps_issued(int *implemented = 0);
+  bool cap_is_valid(Cap* cap) const;
+  int caps_issued(int *implemented = 0) const;
   void touch_cap(Cap *cap);
   void try_touch_cap(mds_rank_t mds);
   bool caps_issued_mask(unsigned mask);
@@ -359,6 +283,6 @@ struct Inode {
   void dump(Formatter *f) const;
 };
 
-ostream& operator<<(ostream &out, Inode &in);
+ostream& operator<<(ostream &out, const Inode &in);
 
 #endif

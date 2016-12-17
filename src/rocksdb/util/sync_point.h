@@ -4,12 +4,43 @@
 //  of patent rights can be found in the PATENTS file in the same directory.
 #pragma once
 
+#include <assert.h>
 #include <condition_variable>
 #include <mutex>
 #include <string>
 #include <unordered_set>
 #include <unordered_map>
 #include <vector>
+
+// This is only set from db_stress.cc and for testing only.
+// If non-zero, kill at various points in source code with probability 1/this
+extern int rocksdb_kill_odds;
+// If kill point has a prefix on this list, will skip killing.
+extern std::vector<std::string> rocksdb_kill_prefix_blacklist;
+
+#ifdef NDEBUG
+// empty in release build
+#define TEST_KILL_RANDOM(kill_point, rocksdb_kill_odds)
+#else
+
+namespace rocksdb {
+// Kill the process with probablity 1/odds for testing.
+extern void TestKillRandom(std::string kill_point, int odds,
+                           const std::string& srcfile, int srcline);
+
+// To avoid crashing always at some frequently executed codepaths (during
+// kill random test), use this factor to reduce odds
+#define REDUCE_ODDS 2
+#define REDUCE_ODDS2 4
+
+#define TEST_KILL_RANDOM(kill_point, rocksdb_kill_odds)                  \
+  {                                                                      \
+    if (rocksdb_kill_odds > 0) {                                         \
+      TestKillRandom(kill_point, rocksdb_kill_odds, __FILE__, __LINE__); \
+    }                                                                    \
+  }
+}  // namespace rocksdb
+#endif
 
 #ifdef NDEBUG
 #define TEST_SYNC_POINT(x)
@@ -25,7 +56,7 @@ namespace rocksdb {
 // In the unit test, 'Happens After' relationship among sync points could be
 // setup via SyncPoint::LoadDependency, to reproduce a desired interleave of
 // threads execution.
-// Refer to (DBTest,TransactionLogIteratorRace), for an exmaple use case.
+// Refer to (DBTest,TransactionLogIteratorRace), for an example use case.
 
 class SyncPoint {
  public:

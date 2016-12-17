@@ -22,6 +22,7 @@
 #include "table/block_prefix_index.h"
 #include "util/coding.h"
 #include "util/logging.h"
+#include "util/perf_context_imp.h"
 
 namespace rocksdb {
 
@@ -82,6 +83,7 @@ void BlockIter::Prev() {
 }
 
 void BlockIter::Seek(const Slice& target) {
+  PERF_TIMER_GUARD(block_seek_nanos);
   if (data_ == nullptr) {  // Not init yet
     return;
   }
@@ -314,14 +316,14 @@ Block::Block(BlockContents&& contents)
   }
 }
 
-Iterator* Block::NewIterator(
-    const Comparator* cmp, BlockIter* iter, bool total_order_seek) {
+InternalIterator* Block::NewIterator(const Comparator* cmp, BlockIter* iter,
+                                     bool total_order_seek) {
   if (size_ < 2*sizeof(uint32_t)) {
     if (iter != nullptr) {
       iter->SetStatus(Status::Corruption("bad block contents"));
       return iter;
     } else {
-      return NewErrorIterator(Status::Corruption("bad block contents"));
+      return NewErrorInternalIterator(Status::Corruption("bad block contents"));
     }
   }
   const uint32_t num_restarts = NumRestarts();
@@ -330,7 +332,7 @@ Iterator* Block::NewIterator(
       iter->SetStatus(Status::OK());
       return iter;
     } else {
-      return NewEmptyIterator();
+      return NewEmptyInternalIterator();
     }
   } else {
     BlockHashIndex* hash_index_ptr =
@@ -359,7 +361,7 @@ void Block::SetBlockPrefixIndex(BlockPrefixIndex* prefix_index) {
 }
 
 size_t Block::ApproximateMemoryUsage() const {
-  size_t usage = size();
+  size_t usage = usable_size();
   if (hash_index_) {
     usage += hash_index_->ApproximateMemoryUsage();
   }

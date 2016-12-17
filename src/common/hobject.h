@@ -52,6 +52,8 @@ public:
 private:
   string key;
 
+  class hobject_t_max {};
+
 public:
   const string &get_key() const {
     return key;
@@ -92,7 +94,25 @@ public:
     build_hash_cache();
   }
 
-  hobject_t(object_t oid, const string& key, snapid_t snap, uint64_t hash,
+  hobject_t(const hobject_t &rhs) = default;
+  hobject_t(hobject_t &&rhs) = default;
+  hobject_t(hobject_t_max &&singleon) : hobject_t() {
+    max = true;
+  }
+  hobject_t &operator=(const hobject_t &rhs) = default;
+  hobject_t &operator=(hobject_t &&rhs) = default;
+  hobject_t &operator=(hobject_t_max &&singleton) {
+    *this = hobject_t();
+    max = true;
+    return *this;
+  }
+
+  // maximum sorted value.
+  static hobject_t_max get_max() {
+    return hobject_t_max();
+  }
+
+  hobject_t(object_t oid, const string& key, snapid_t snap, uint32_t hash,
 	    int64_t pool, string nspace)
     : oid(oid), snap(snap), hash(hash), max(false),
       pool(pool), nspace(nspace),
@@ -115,6 +135,14 @@ public:
     hobject_t ret;
     ret.set_hash(hash);
     ret.pool = pool;
+    return ret;
+  }
+
+  hobject_t get_object_boundary() const {
+    if (is_max())
+      return *this;
+    hobject_t ret = *this;
+    ret.snap = 0;
     return ret;
   }
 
@@ -142,14 +170,14 @@ public:
     return snap == CEPH_NOSNAP;
   }
 
-  /// @return true if object is neither head nor snapdir
+  /// @return true if object is neither head nor snapdir nor max
   bool is_snap() const {
-    return (snap != CEPH_NOSNAP) && (snap != CEPH_SNAPDIR);
+    return !is_max() && !is_head() && !is_snapdir();
   }
 
   /// @return true iff the object should have a snapset in it's attrs
   bool has_snapset() const {
-    return !is_snap();
+    return is_head() || is_snapdir();
   }
 
   /* Do not use when a particular hash function is needed */
@@ -158,12 +186,6 @@ public:
     set_hash(std::hash<sobject_t>()(o));
   }
 
-  // maximum sorted value.
-  static hobject_t get_max() {
-    hobject_t h;
-    h.max = true;
-    return h;
-  }
   bool is_max() const {
     return max;
   }
@@ -176,6 +198,8 @@ public:
   }
 
   static uint32_t _reverse_bits(uint32_t v) {
+    if (v == 0)
+      return v;
     // reverse bits
     // swap odd and even bits
     v = ((v >> 1) & 0x55555555) | ((v & 0x55555555) << 1);
@@ -256,6 +280,8 @@ public:
     return nspace;
   }
 
+  bool parse(const string& s);
+
   void encode(bufferlist& bl) const;
   void decode(bufferlist::iterator& bl);
   void decode(json_spirit::Value& v);
@@ -281,7 +307,7 @@ public:
 
   struct Comparator {
     bool bitwise;
-    Comparator(bool b) : bitwise(b) {}
+    explicit Comparator(bool b) : bitwise(b) {}
     bool operator()(const hobject_t& l, const hobject_t& r) const {
       if (bitwise)
 	return cmp_bitwise(l, r) < 0;
@@ -291,7 +317,7 @@ public:
   };
   struct ComparatorWithDefault {
     bool bitwise;
-    ComparatorWithDefault(bool b=true) : bitwise(b) {}
+    explicit ComparatorWithDefault(bool b=true) : bitwise(b) {}
     bool operator()(const hobject_t& l, const hobject_t& r) const {
       if (bitwise)
 	return cmp_bitwise(l, r) < 0;
@@ -316,6 +342,32 @@ ostream& operator<<(ostream& out, const hobject_t& o);
 
 WRITE_EQ_OPERATORS_7(hobject_t, hash, oid, get_key(), snap, pool, max, nspace)
 
+template <typename T>
+struct always_false {
+  using value = std::false_type;
+};
+
+template <typename T>
+inline bool operator==(const hobject_t &lhs, const T&) {
+  static_assert(always_false<T>::value::value, "Do not compare to get_max()");
+  return lhs.is_max();
+}
+template <typename T>
+inline bool operator==(const T&, const hobject_t &rhs) {
+  static_assert(always_false<T>::value::value, "Do not compare to get_max()");
+  return rhs.is_max();
+}
+template <typename T>
+inline bool operator!=(const hobject_t &lhs, const T&) {
+  static_assert(always_false<T>::value::value, "Do not compare to get_max()");
+  return !lhs.is_max();
+}
+template <typename T>
+inline bool operator!=(const T&, const hobject_t &rhs) {
+  static_assert(always_false<T>::value::value, "Do not compare to get_max()");
+  return !rhs.is_max();
+}
+
 extern int cmp_nibblewise(const hobject_t& l, const hobject_t& r);
 extern int cmp_bitwise(const hobject_t& l, const hobject_t& r);
 static inline int cmp(const hobject_t& l, const hobject_t& r, bool sort_bitwise) {
@@ -324,6 +376,38 @@ static inline int cmp(const hobject_t& l, const hobject_t& r, bool sort_bitwise)
   else
     return cmp_nibblewise(l, r);
 }
+template <typename T>
+static inline int cmp(const hobject_t &l, const T&, bool sort_bitwise) {
+  static_assert(always_false<T>::value::value, "Do not compare to get_max()");
+  return l.is_max() ? 0 : -1;
+}
+template <typename T>
+static inline int cmp(const T&, const hobject_t&r, bool sort_bitwise) {
+  static_assert(always_false<T>::value::value, "Do not compare to get_max()");
+  return r.is_max() ? 0 : 1;
+}
+template <typename T>
+static inline int cmp_nibblewise(const hobject_t &l, const T&, bool sort_bitwise) {
+  static_assert(always_false<T>::value::value, "Do not compare to get_max()");
+  return l.is_max() ? 0 : -1;
+}
+template <typename T>
+static inline int cmp_nibblewise(const T&, const hobject_t&r, bool sort_bitwise) {
+  static_assert(always_false<T>::value::value, "Do not compare to get_max()");
+  return r.is_max() ? 0 : 1;
+}
+template <typename T>
+static inline int cmp_bitwise(const hobject_t &l, const T&, bool sort_bitwise) {
+  static_assert(always_false<T>::value::value, "Do not compare to get_max()");
+  return l.is_max() ? 0 : -1;
+}
+template <typename T>
+static inline int cmp_bitwise(const T&, const hobject_t&r, bool sort_bitwise) {
+  static_assert(always_false<T>::value::value, "Do not compare to get_max()");
+  return r.is_max() ? 0 : 1;
+}
+
+
 
 // these are convenient
 static inline hobject_t MAX_HOBJ(const hobject_t& l, const hobject_t& r, bool bitwise) {
@@ -413,6 +497,8 @@ public:
     shard_id = s;
   }
 
+  bool parse(const string& s);
+
   // maximum sorted value.
   static ghobject_t get_max() {
     ghobject_t h;
@@ -436,6 +522,7 @@ public:
   void encode(bufferlist& bl) const;
   void decode(bufferlist::iterator& bl);
   void decode(json_spirit::Value& v);
+  size_t encoded_size() const;
   void dump(Formatter *f) const;
   static void generate_test_instances(list<ghobject_t*>& o);
   friend int cmp_nibblewise(const ghobject_t& l, const ghobject_t& r);
@@ -457,7 +544,7 @@ public:
 
   struct Comparator {
     bool bitwise;
-    Comparator(bool b) : bitwise(b) {}
+    explicit Comparator(bool b) : bitwise(b) {}
     bool operator()(const ghobject_t& l, const ghobject_t& r) const {
          if (bitwise)
 	return cmp_bitwise(l, r) < 0;

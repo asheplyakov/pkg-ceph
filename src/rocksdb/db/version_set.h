@@ -48,7 +48,7 @@ class Writer;
 }
 
 class Compaction;
-class Iterator;
+class InternalIterator;
 class LogBuffer;
 class LookupKey;
 class MemTable;
@@ -97,7 +97,7 @@ class VersionStorageInfo {
 
   void Reserve(int level, size_t size) { files_[level].reserve(size); }
 
-  void AddFile(int level, FileMetaData* f);
+  void AddFile(int level, FileMetaData* f, Logger* info_log = nullptr);
 
   void SetFinalized();
 
@@ -111,6 +111,9 @@ class VersionStorageInfo {
   // Update the accumulated stats from a file-meta.
   void UpdateAccumulatedStats(FileMetaData* file_meta);
 
+  // Decrease the current stat form a to-be-delected file-meta
+  void RemoveCurrentStats(FileMetaData* file_meta);
+
   void ComputeCompensatedSizes();
 
   // Updates internal structures that keep track of compaction scores
@@ -121,6 +124,10 @@ class VersionStorageInfo {
       const MutableCFOptions& mutable_cf_options,
       const CompactionOptionsFIFO& compaction_options_fifo);
 
+  // Estimate est_comp_needed_bytes_
+  void EstimateCompactionBytesNeeded(
+      const MutableCFOptions& mutable_cf_options);
+
   // This computes files_marked_for_compaction_ and is called by
   // ComputeCompactionScore()
   void ComputeFilesMarkedForCompaction();
@@ -128,16 +135,16 @@ class VersionStorageInfo {
   // Generate level_files_brief_ from files_
   void GenerateLevelFilesBrief();
   // Sort all files for this version based on their file size and
-  // record results in files_by_size_. The largest files are listed first.
-  void UpdateFilesBySize();
+  // record results in files_by_compaction_pri_. The largest files are listed
+  // first.
+  void UpdateFilesByCompactionPri(const MutableCFOptions& mutable_cf_options);
+
+  void GenerateLevel0NonOverlapping();
+  bool level0_non_overlapping() const {
+    return level0_non_overlapping_;
+  }
 
   int MaxInputLevel() const;
-
-  // Returns the maxmimum compaction score for levels 1 to max
-  double max_compaction_score() const { return max_compaction_score_; }
-
-  // See field declaration
-  int max_compaction_score_level() const { return max_compaction_score_level_; }
 
   // Return level number that has idx'th highest score
   int CompactionScoreLevel(int idx) const { return compaction_level_[idx]; }
@@ -149,23 +156,26 @@ class VersionStorageInfo {
       int level, const InternalKey* begin,  // nullptr means before all keys
       const InternalKey* end,               // nullptr means after all keys
       std::vector<FileMetaData*>* inputs,
-      int hint_index = -1,         // index of overlap file
-      int* file_index = nullptr);  // return index of overlap file
+      int hint_index = -1,        // index of overlap file
+      int* file_index = nullptr,  // return index of overlap file
+      bool expand_range = true)   // if set, returns files which overlap the
+      const;                      // range and overlap each other. If false,
+                                  // then just files intersecting the range
 
   void GetOverlappingInputsBinarySearch(
       int level,
       const Slice& begin,  // nullptr means before all keys
       const Slice& end,    // nullptr means after all keys
       std::vector<FileMetaData*>* inputs,
-      int hint_index,    // index of overlap file
-      int* file_index);  // return index of overlap file
+      int hint_index,          // index of overlap file
+      int* file_index) const;  // return index of overlap file
 
   void ExtendOverlappingInputs(
       int level,
       const Slice& begin,  // nullptr means before all keys
       const Slice& end,    // nullptr means after all keys
       std::vector<FileMetaData*>* inputs,
-      unsigned int index);  // start extending from this index
+      unsigned int index) const;  // start extending from this index
 
   // Returns true iff some file in the specified level overlaps
   // some part of [*smallest_user_key,*largest_user_key].
@@ -180,12 +190,6 @@ class VersionStorageInfo {
   // REQUIRES: "*inputs" is a sorted list of non-overlapping files
   bool HasOverlappingUserKey(const std::vector<FileMetaData*>* inputs,
                              int level);
-
-  // Return the level at which we should place a new memtable compaction
-  // result that covers the range [smallest_user_key,largest_user_key].
-  int PickLevelForMemTableOutput(const MutableCFOptions& mutable_cf_options,
-                                 const Slice& smallest_user_key,
-                                 const Slice& largest_user_key);
 
   int num_levels() const { return num_levels_; }
 
@@ -223,9 +227,9 @@ class VersionStorageInfo {
   }
 
   // REQUIRES: This version has been saved (see VersionSet::SaveTo)
-  const std::vector<int>& FilesBySize(int level) const {
+  const std::vector<int>& FilesByCompactionPri(int level) const {
     assert(finalized_);
-    return files_by_size_[level];
+    return files_by_compaction_pri_[level];
   }
 
   // REQUIRES: This version has been saved (see VersionSet::SaveTo)
@@ -239,7 +243,7 @@ class VersionStorageInfo {
   int base_level() const { return base_level_; }
 
   // REQUIRES: lock is held
-  // Set the index that is used to offset into files_by_size_ to find
+  // Set the index that is used to offset into files_by_compaction_pri_ to find
   // the next compaction candidate file.
   void SetNextCompactionIndex(int level, int index) {
     next_file_to_compact_by_size_[level] = index;
@@ -256,7 +260,7 @@ class VersionStorageInfo {
     return file_indexer_;
   }
 
-  // Only the first few entries of files_by_size_ are sorted.
+  // Only the first few entries of files_by_compaction_pri_ are sorted.
   // There is no need to sort all the files because it is likely
   // that on a running system, we need to look at only the first
   // few largest files because a new version is created every few
@@ -296,7 +300,8 @@ class VersionStorageInfo {
 
   uint64_t GetEstimatedActiveKeys() const;
 
-  // re-initializes the index that is used to offset into files_by_size_
+  // re-initializes the index that is used to offset into
+  // files_by_compaction_pri_
   // to find the next compaction candidate file.
   void ResetNextCompactionIndex(int level) {
     next_file_to_compact_by_size_[level] = 0;
@@ -312,6 +317,13 @@ class VersionStorageInfo {
   // Must be called after any change to MutableCFOptions.
   void CalculateBaseBytes(const ImmutableCFOptions& ioptions,
                           const MutableCFOptions& options);
+
+  // Returns an estimate of the amount of live data in bytes.
+  uint64_t EstimateLiveDataSize() const;
+
+  uint64_t estimated_compaction_needed_bytes() const {
+    return estimated_compaction_needed_bytes_;
+  }
 
  private:
   const InternalKeyComparator* internal_comparator_;
@@ -341,13 +353,16 @@ class VersionStorageInfo {
   // but files in each level are now sorted based on file
   // size. The file with the largest size is at the front.
   // This vector stores the index of the file from files_.
-  std::vector<std::vector<int>> files_by_size_;
+  std::vector<std::vector<int>> files_by_compaction_pri_;
 
-  // An index into files_by_size_ that specifies the first
+  // If true, means that files in L0 have keys with non overlapping ranges
+  bool level0_non_overlapping_;
+
+  // An index into files_by_compaction_pri_ that specifies the first
   // file that is not yet compacted
   std::vector<int> next_file_to_compact_by_size_;
 
-  // Only the first few entries of files_by_size_ are sorted.
+  // Only the first few entries of files_by_compaction_pri_ are sorted.
   // There is no need to sort all the files because it is likely
   // that on a running system, we need to look at only the first
   // few largest files because a new version is created every few
@@ -366,8 +381,6 @@ class VersionStorageInfo {
   // These are used to pick the best compaction level
   std::vector<double> compaction_score_;
   std::vector<int> compaction_level_;
-  double max_compaction_score_ = 0.0;   // max score in l1 to ln-1
-  int max_compaction_score_level_ = 0;  // level on which max score occurs
   int l0_delay_trigger_count_ = 0;  // Count used to trigger slow down and stop
                                     // for number of L0 files.
 
@@ -382,8 +395,15 @@ class VersionStorageInfo {
   uint64_t accumulated_num_non_deletions_;
   // total number of deletion entries
   uint64_t accumulated_num_deletions_;
-  // the number of samples
-  uint64_t num_samples_;
+  // current number of non_deletion entries
+  uint64_t current_num_non_deletions_;
+  // current number of delection entries
+  uint64_t current_num_deletions_;
+  // current number of file samples
+  uint64_t current_num_samples_;
+  // Estimated bytes needed to be compacted until all levels' size is down to
+  // target sizes.
+  uint64_t estimated_compaction_needed_bytes_;
 
   bool finalized_;
 
@@ -412,7 +432,8 @@ class Version {
 
   // Loads some stats information from files. Call without mutex held. It needs
   // to be called before applying the version to the version set.
-  void PrepareApply(const MutableCFOptions& mutable_cf_options);
+  void PrepareApply(const MutableCFOptions& mutable_cf_options,
+                    bool update_stats);
 
   // Reference count management (so Versions do not disappear out from
   // under live iterators)
@@ -437,13 +458,22 @@ class Version {
   // file-name conversion.
   Status GetTableProperties(std::shared_ptr<const TableProperties>* tp,
                             const FileMetaData* file_meta,
-                            const std::string* fname = nullptr);
+                            const std::string* fname = nullptr) const;
 
   // REQUIRES: lock is held
   // On success, *props will be populated with all SSTables' table properties.
   // The keys of `props` are the sst file name, the values of `props` are the
   // tables' propertis, represented as shared_ptr.
   Status GetPropertiesOfAllTables(TablePropertiesCollection* props);
+  Status GetPropertiesOfAllTables(TablePropertiesCollection* props, int level);
+  Status GetPropertiesOfTablesInRange(const Range* range, std::size_t n,
+                                      TablePropertiesCollection* props) const;
+
+  // REQUIRES: lock is held
+  // On success, "tp" will contains the aggregated table property amoug
+  // the table properties of all sst files in this version.
+  Status GetAggregatedTableProperties(
+      std::shared_ptr<const TableProperties>* tp, int level = -1);
 
   uint64_t GetEstimatedActiveKeys() {
     return storage_info_.GetEstimatedActiveKeys();
@@ -475,7 +505,8 @@ class Version {
     return storage_info_.user_comparator_;
   }
 
-  bool PrefixMayMatch(const ReadOptions& read_options, Iterator* level_iter,
+  bool PrefixMayMatch(const ReadOptions& read_options,
+                      InternalIterator* level_iter,
                       const Slice& internal_prefix) const;
 
   // The helper function of UpdateAccumulatedStats, which may fill the missing
@@ -485,11 +516,12 @@ class Version {
 
   // Update the accumulated stats associated with the current version.
   // This accumulated stats will be used in compaction.
-  void UpdateAccumulatedStats();
+  void UpdateAccumulatedStats(bool update_stats);
 
   // Sort all files for this version based on their file size and
-  // record results in files_by_size_. The largest files are listed first.
-  void UpdateFilesBySize();
+  // record results in files_by_compaction_pri_. The largest files are listed
+  // first.
+  void UpdateFilesByCompactionPri();
 
   ColumnFamilyData* cfd_;  // ColumnFamilyData to which this Version belongs
   Logger* info_log_;
@@ -564,7 +596,7 @@ class VersionSet {
 
   // printf contents (for debugging)
   Status DumpManifest(Options& options, std::string& manifestFileName,
-                      bool verbose, bool hex = false);
+                      bool verbose, bool hex = false, bool json = false);
 
 #endif  // ROCKSDB_LITE
 
@@ -604,7 +636,9 @@ class VersionSet {
   uint64_t MinLogNumber() const {
     uint64_t min_log_num = std::numeric_limits<uint64_t>::max();
     for (auto cfd : *column_family_set_) {
-      if (min_log_num > cfd->GetLogNumber()) {
+      // It's safe to ignore dropped column families here:
+      // cfd->IsDropped() becomes true after the drop is persisted in MANIFEST.
+      if (min_log_num > cfd->GetLogNumber() && !cfd->IsDropped()) {
         min_log_num = cfd->GetLogNumber();
       }
     }
@@ -613,13 +647,16 @@ class VersionSet {
 
   // Create an iterator that reads over the compaction inputs for "*c".
   // The caller should delete the iterator when no longer needed.
-  Iterator* MakeInputIterator(Compaction* c);
+  InternalIterator* MakeInputIterator(Compaction* c);
 
   // Add all files listed in any live version to *live.
   void AddLiveFiles(std::vector<FileDescriptor>* live_list);
 
   // Return the approximate size of data to be scanned for range [start, end)
-  uint64_t ApproximateSize(Version* v, const Slice& start, const Slice& end);
+  // in levels [start_level, end_level). If end_level == 0 it will search
+  // through all non-empty levels
+  uint64_t ApproximateSize(Version* v, const Slice& start, const Slice& end,
+                           int start_level = 0, int end_level = -1);
 
   // Return the size of the current manifest file
   uint64_t manifest_file_size() const { return manifest_file_size_; }
@@ -633,6 +670,7 @@ class VersionSet {
   Status GetMetadataForFile(uint64_t number, int* filelevel,
                             FileMetaData** metadata, ColumnFamilyData** cfd);
 
+  // This function doesn't support leveldb SST filenames
   void GetLiveFilesMetaData(std::vector<LiveFileMetaData> *metadata);
 
   void GetObsoleteFiles(std::vector<FileMetaData*>* files,
@@ -642,6 +680,8 @@ class VersionSet {
   const EnvOptions& env_options() { return env_options_; }
 
   static uint64_t GetNumLiveVersions(Version* dummy_versions);
+
+  static uint64_t GetTotalSstFilesSize(Version* dummy_versions);
 
  private:
   struct ManifestWriter;

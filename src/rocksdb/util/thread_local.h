@@ -15,8 +15,12 @@
 #include <vector>
 
 #include "util/autovector.h"
-#include "port/port_posix.h"
-#include "util/thread_local.h"
+#include "port/port.h"
+
+#ifndef ROCKSDB_SUPPORT_THREAD_LOCAL
+#define ROCKSDB_SUPPORT_THREAD_LOCAL \
+  !defined(OS_WIN) && !defined(OS_MACOSX) && !defined(IOS_CROSS_COMPILE)
+#endif
 
 namespace rocksdb {
 
@@ -50,7 +54,7 @@ class ThreadLocalPtr {
   void* Swap(void* ptr);
 
   // Atomically compare the stored value with expected. Set the new
-  // pointer value to thread local only if the comparision is true.
+  // pointer value to thread local only if the comparison is true.
   // Otherwise, expected returns the stored value.
   // Return true on success, false on failure
   bool CompareAndSwap(void* ptr, void*& expected);
@@ -58,6 +62,15 @@ class ThreadLocalPtr {
   // Reset all thread local data to replacement, and return non-nullptr
   // data for all existing threads
   void Scrape(autovector<void*>* ptrs, void* const replacement);
+
+  // Initialize the static singletons of the ThreadLocalPtr.
+  //
+  // If this function is not called, then the singletons will be
+  // automatically initialized when they are used.
+  //
+  // Calling this function twice or after the singletons have been
+  // initialized will be no-op.
+  static void InitSingletons();
 
  protected:
   struct Entry {
@@ -94,7 +107,7 @@ class ThreadLocalPtr {
 
     // Return the next available Id
     uint32_t GetId();
-    // Return the next availabe Id without claiming it
+    // Return the next available Id without claiming it
     uint32_t PeekId() const;
     // Return the given Id back to the free pool. This also triggers
     // UnrefHandler for associated pointer value (if not NULL) for all threads.
@@ -116,6 +129,15 @@ class ThreadLocalPtr {
 
     // Register the UnrefHandler for id
     void SetHandler(uint32_t id, UnrefHandler handler);
+
+    // Initialize all the singletons associated with StaticMeta.
+    //
+    // If this function is not called, then the singletons will be
+    // automatically initialized when they are used.
+    //
+    // Calling this function twice or after the singletons have been
+    // initialized will be no-op.
+    static void InitSingletons();
 
    private:
     // Get UnrefHandler for id with acquiring mutex
@@ -149,11 +171,27 @@ class ThreadLocalPtr {
 
     // protect inst, next_instance_id_, free_instance_ids_, head_,
     // ThreadData.entries
-    static port::Mutex mutex_;
-#if !defined(OS_MACOSX)
+    //
+    // Note that here we prefer function static variable instead of the usual
+    // global static variable.  The reason is that c++ destruction order of
+    // static variables in the reverse order of their construction order.
+    // However, C++ does not guarantee any construction order when global
+    // static variables are defined in different files, while the function
+    // static variables are initialized when their function are first called.
+    // As a result, the construction order of the function static variables
+    // can be controlled by properly invoke their first function calls in
+    // the right order.
+    //
+    // For instance, the following function contains a function static
+    // variable.  We place a dummy function call of this inside
+    // Env::Default() to ensure the construction order of the construction
+    // order.
+    static port::Mutex* Mutex();
+#if ROCKSDB_SUPPORT_THREAD_LOCAL
     // Thread local storage
     static __thread ThreadData* tls_;
 #endif
+
     // Used to make thread exit trigger possible if !defined(OS_MACOSX).
     // Otherwise, used to retrieve thread data.
     pthread_key_t pthread_key_;

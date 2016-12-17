@@ -8,9 +8,13 @@
 #include "rocksdb/iterator.h"
 #include "rocksdb/env.h"
 #include "port/port.h"
+#include "table/internal_iterator.h"
 #include "util/string_util.h"
 
 namespace rocksdb {
+
+const uint32_t TablePropertiesCollectorFactory::Context::kUnknownColumnFamily =
+    port::kMaxInt32;
 
 namespace {
   void AppendProperty(
@@ -74,6 +78,16 @@ std::string TableProperties::ToString(
   return result;
 }
 
+void TableProperties::Add(const TableProperties& tp) {
+  data_size += tp.data_size;
+  index_size += tp.index_size;
+  filter_size += tp.filter_size;
+  raw_key_size += tp.raw_key_size;
+  raw_value_size += tp.raw_value_size;
+  num_data_blocks += tp.num_data_blocks;
+  num_entries += tp.num_entries;
+}
+
 const std::string TablePropertiesNames::kDataSize  =
     "rocksdb.data.size";
 const std::string TablePropertiesNames::kIndexSize =
@@ -101,7 +115,7 @@ extern const std::string kPropertiesBlockOldName = "rocksdb.stats";
 
 // Seek to the properties block.
 // Return true if it successfully seeks to the properties block.
-Status SeekToPropertiesBlock(Iterator* meta_iter, bool* is_found) {
+Status SeekToPropertiesBlock(InternalIterator* meta_iter, bool* is_found) {
   *is_found = true;
   meta_iter->Seek(kPropertiesBlock);
   if (meta_iter->status().ok() &&

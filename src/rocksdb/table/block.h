@@ -10,12 +10,16 @@
 #pragma once
 #include <stddef.h>
 #include <stdint.h>
+#ifdef ROCKSDB_MALLOC_USABLE_SIZE
+#include <malloc.h>
+#endif
 
 #include "rocksdb/iterator.h"
 #include "rocksdb/options.h"
 #include "db/dbformat.h"
 #include "table/block_prefix_index.h"
 #include "table/block_hash_index.h"
+#include "table/internal_iterator.h"
 
 #include "format.h"
 
@@ -37,6 +41,14 @@ class Block {
   size_t size() const { return size_; }
   const char* data() const { return data_; }
   bool cachable() const { return contents_.cachable; }
+  size_t usable_size() const {
+#ifdef ROCKSDB_MALLOC_USABLE_SIZE
+    if (contents_.allocation.get() != nullptr) {
+      return malloc_usable_size(contents_.allocation.get());
+    }
+#endif  // ROCKSDB_MALLOC_USABLE_SIZE
+    return size_;
+  }
   uint32_t NumRestarts() const;
   CompressionType compression_type() const {
     return contents_.compression_type;
@@ -55,8 +67,9 @@ class Block {
   // If total_order_seek is true, hash_index_ and prefix_index_ are ignored.
   // This option only applies for index block. For data block, hash_index_
   // and prefix_index_ are null, so this option does not matter.
-  Iterator* NewIterator(const Comparator* comparator,
-      BlockIter* iter = nullptr, bool total_order_seek = true);
+  InternalIterator* NewIterator(const Comparator* comparator,
+                                BlockIter* iter = nullptr,
+                                bool total_order_seek = true);
   void SetBlockHashIndex(BlockHashIndex* hash_index);
   void SetBlockPrefixIndex(BlockPrefixIndex* prefix_index);
 
@@ -76,7 +89,7 @@ class Block {
   void operator=(const Block&);
 };
 
-class BlockIter : public Iterator {
+class BlockIter : public InternalIterator {
  public:
   BlockIter()
       : comparator_(nullptr),

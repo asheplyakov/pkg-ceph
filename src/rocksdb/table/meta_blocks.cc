@@ -8,10 +8,11 @@
 #include <string>
 
 #include "db/table_properties_collector.h"
-#include "table/block.h"
 #include "rocksdb/table.h"
 #include "rocksdb/table_properties.h"
+#include "table/block.h"
 #include "table/format.h"
+#include "table/internal_iterator.h"
 #include "table/table_properties_internal.h"
 #include "util/coding.h"
 
@@ -129,9 +130,9 @@ bool NotifyCollectTableCollectorsOnFinish(
   return all_succeeded;
 }
 
-Status ReadProperties(const Slice &handle_value, RandomAccessFile *file,
-                      const Footer &footer, Env *env, Logger *logger,
-                      TableProperties **table_properties) {
+Status ReadProperties(const Slice& handle_value, RandomAccessFileReader* file,
+                      const Footer& footer, Env* env, Logger* logger,
+                      TableProperties** table_properties) {
   assert(table_properties);
 
   Slice v = handle_value;
@@ -152,7 +153,7 @@ Status ReadProperties(const Slice &handle_value, RandomAccessFile *file,
   }
 
   Block properties_block(std::move(block_contents));
-  std::unique_ptr<Iterator> iter(
+  std::unique_ptr<InternalIterator> iter(
       properties_block.NewIterator(BytewiseComparator()));
 
   auto new_table_properties = new TableProperties();
@@ -217,7 +218,7 @@ Status ReadProperties(const Slice &handle_value, RandomAccessFile *file,
   return s;
 }
 
-Status ReadTableProperties(RandomAccessFile* file, uint64_t file_size,
+Status ReadTableProperties(RandomAccessFileReader* file, uint64_t file_size,
                            uint64_t table_magic_number, Env* env,
                            Logger* info_log, TableProperties** properties) {
   // -- Read metaindex block
@@ -237,7 +238,7 @@ Status ReadTableProperties(RandomAccessFile* file, uint64_t file_size,
     return s;
   }
   Block metaindex_block(std::move(metaindex_contents));
-  std::unique_ptr<Iterator> meta_iter(
+  std::unique_ptr<InternalIterator> meta_iter(
       metaindex_block.NewIterator(BytewiseComparator()));
 
   // -- Read property block
@@ -258,7 +259,7 @@ Status ReadTableProperties(RandomAccessFile* file, uint64_t file_size,
   return s;
 }
 
-Status FindMetaBlock(Iterator* meta_index_iter,
+Status FindMetaBlock(InternalIterator* meta_index_iter,
                      const std::string& meta_block_name,
                      BlockHandle* block_handle) {
   meta_index_iter->Seek(meta_block_name);
@@ -271,7 +272,7 @@ Status FindMetaBlock(Iterator* meta_index_iter,
   }
 }
 
-Status FindMetaBlock(RandomAccessFile* file, uint64_t file_size,
+Status FindMetaBlock(RandomAccessFileReader* file, uint64_t file_size,
                      uint64_t table_magic_number, Env* env,
                      const std::string& meta_block_name,
                      BlockHandle* block_handle) {
@@ -292,13 +293,13 @@ Status FindMetaBlock(RandomAccessFile* file, uint64_t file_size,
   }
   Block metaindex_block(std::move(metaindex_contents));
 
-  std::unique_ptr<Iterator> meta_iter;
+  std::unique_ptr<InternalIterator> meta_iter;
   meta_iter.reset(metaindex_block.NewIterator(BytewiseComparator()));
 
   return FindMetaBlock(meta_iter.get(), meta_block_name, block_handle);
 }
 
-Status ReadMetaBlock(RandomAccessFile* file, uint64_t file_size,
+Status ReadMetaBlock(RandomAccessFileReader* file, uint64_t file_size,
                      uint64_t table_magic_number, Env* env,
                      const std::string& meta_block_name,
                      BlockContents* contents) {
@@ -323,7 +324,7 @@ Status ReadMetaBlock(RandomAccessFile* file, uint64_t file_size,
   // Finding metablock
   Block metaindex_block(std::move(metaindex_contents));
 
-  std::unique_ptr<Iterator> meta_iter;
+  std::unique_ptr<InternalIterator> meta_iter;
   meta_iter.reset(metaindex_block.NewIterator(BytewiseComparator()));
 
   BlockHandle block_handle;

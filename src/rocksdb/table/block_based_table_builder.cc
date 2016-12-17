@@ -360,6 +360,13 @@ Slice CompressBlock(const Slice& raw,
         return *compressed_output;
       }
       break;     // fall back to no compression.
+    case kZSTDNotFinalCompression:
+      if (ZSTD_Compress(compression_options, raw.data(), raw.size(),
+                        compressed_output) &&
+          GoodCompressionRatio(compressed_output->size(), raw.size())) {
+        return *compressed_output;
+      }
+      break;     // fall back to no compression.
     default: {}  // Do not recognize this compression type
   }
 
@@ -374,12 +381,15 @@ Slice CompressBlock(const Slice& raw,
 // kBlockBasedTableMagicNumber was picked by running
 //    echo rocksdb.table.block_based | sha1sum
 // and taking the leading 64 bits.
-// Please note that kBlockBasedTableMagicNumber may also be accessed by
-// other .cc files so it have to be explicitly declared with "extern".
-extern const uint64_t kBlockBasedTableMagicNumber = 0x88e241b785f4cff7ull;
+// Please note that kBlockBasedTableMagicNumber may also be accessed by other
+// .cc files
+// for that reason we declare it extern in the header but to get the space
+// allocated
+// it must be not extern in one place.
+const uint64_t kBlockBasedTableMagicNumber = 0x88e241b785f4cff7ull;
 // We also support reading and writing legacy block based table format (for
 // backwards compatibility)
-extern const uint64_t kLegacyBlockBasedTableMagicNumber = 0xdb4775248b80fb57ull;
+const uint64_t kLegacyBlockBasedTableMagicNumber = 0xdb4775248b80fb57ull;
 
 // A collector that collects properties of interest to block-based table.
 // For now this class looks heavy-weight since we only write one additional
@@ -434,7 +444,7 @@ struct BlockBasedTableBuilder::Rep {
   const ImmutableCFOptions ioptions;
   const BlockBasedTableOptions table_options;
   const InternalKeyComparator& internal_comparator;
-  WritableFile* file;
+  WritableFileWriter* file;
   uint64_t offset = 0;
   Status status;
   BlockBuilder data_block;
@@ -464,7 +474,8 @@ struct BlockBasedTableBuilder::Rep {
       const InternalKeyComparator& icomparator,
       const std::vector<std::unique_ptr<IntTblPropCollectorFactory>>*
           int_tbl_prop_collector_factories,
-      WritableFile* f, const CompressionType _compression_type,
+      uint32_t column_family_id, WritableFileWriter* f,
+      const CompressionType _compression_type,
       const CompressionOptions& _compression_opts, const bool skip_filters)
       : ioptions(_ioptions),
         table_options(table_opt),
@@ -484,7 +495,7 @@ struct BlockBasedTableBuilder::Rep {
                 table_options, data_block)) {
     for (auto& collector_factories : *int_tbl_prop_collector_factories) {
       table_properties_collectors.emplace_back(
-          collector_factories->CreateIntTblPropCollector());
+          collector_factories->CreateIntTblPropCollector(column_family_id));
     }
     table_properties_collectors.emplace_back(
         new BlockBasedTablePropertiesCollector(
@@ -499,7 +510,8 @@ BlockBasedTableBuilder::BlockBasedTableBuilder(
     const InternalKeyComparator& internal_comparator,
     const std::vector<std::unique_ptr<IntTblPropCollectorFactory>>*
         int_tbl_prop_collector_factories,
-    WritableFile* file, const CompressionType compression_type,
+    uint32_t column_family_id, WritableFileWriter* file,
+    const CompressionType compression_type,
     const CompressionOptions& compression_opts, const bool skip_filters) {
   BlockBasedTableOptions sanitized_table_options(table_options);
   if (sanitized_table_options.format_version == 0 &&
@@ -513,15 +525,15 @@ BlockBasedTableBuilder::BlockBasedTableBuilder(
   }
 
   rep_ = new Rep(ioptions, sanitized_table_options, internal_comparator,
-                 int_tbl_prop_collector_factories, file, compression_type,
-                 compression_opts, skip_filters);
+                 int_tbl_prop_collector_factories, column_family_id, file,
+                 compression_type, compression_opts, skip_filters);
 
   if (rep_->filter_block != nullptr) {
     rep_->filter_block->StartBlock(0);
   }
   if (table_options.block_cache_compressed.get() != nullptr) {
     BlockBasedTable::GenerateCachePrefix(
-        table_options.block_cache_compressed.get(), file,
+        table_options.block_cache_compressed.get(), file->writable_file(),
         &rep_->compressed_cache_key_prefix[0],
         &rep_->compressed_cache_key_prefix_size);
   }
@@ -580,7 +592,7 @@ void BlockBasedTableBuilder::Flush() {
   if (!ok()) return;
   if (r->data_block.empty()) return;
   WriteBlock(&r->data_block, &r->pending_handle);
-  if (ok()) {
+  if (ok() && !r->table_options.skip_table_builder_flush) {
     r->status = r->file->Flush();
   }
   if (r->filter_block != nullptr) {
@@ -703,8 +715,8 @@ Status BlockBasedTableBuilder::InsertBlockInCache(const Slice& block_contents,
               (end - r->compressed_cache_key_prefix));
 
     // Insert into compressed block cache.
-    cache_handle = block_cache_compressed->Insert(key, block, block->size(),
-                                                  &DeleteCachedBlock);
+    cache_handle = block_cache_compressed->Insert(
+        key, block, block->usable_size(), &DeleteCachedBlock);
     block_cache_compressed->Release(cache_handle);
 
     // Invalidate OS cache.
@@ -848,12 +860,22 @@ uint64_t BlockBasedTableBuilder::FileSize() const {
   return rep_->offset;
 }
 
+bool BlockBasedTableBuilder::NeedCompact() const {
+  for (const auto& collector : rep_->table_properties_collectors) {
+    if (collector->NeedCompact()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 TableProperties BlockBasedTableBuilder::GetTableProperties() const {
   TableProperties ret = rep_->props;
   for (const auto& collector : rep_->table_properties_collectors) {
     for (const auto& prop : collector->GetReadableProperties()) {
-      ret.user_collected_properties.insert(prop);
+      ret.readable_properties.insert(prop);
     }
+    collector->Finish(&ret.user_collected_properties);
   }
   return ret;
 }

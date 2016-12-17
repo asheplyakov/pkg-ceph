@@ -10,6 +10,7 @@
 #include "rocksdb/comparator.h"
 #include "rocksdb/iterator.h"
 #include "rocksdb/slice_transform.h"
+#include "table/internal_iterator.h"
 #include "util/coding.h"
 
 namespace rocksdb {
@@ -53,8 +54,9 @@ Status CreateBlockHashIndex(const SliceTransform* hash_key_extractor,
 }
 
 BlockHashIndex* CreateBlockHashIndexOnTheFly(
-    Iterator* index_iter, Iterator* data_iter, const uint32_t num_restarts,
-    const Comparator* comparator, const SliceTransform* hash_key_extractor) {
+    InternalIterator* index_iter, InternalIterator* data_iter,
+    const uint32_t num_restarts, const Comparator* comparator,
+    const SliceTransform* hash_key_extractor) {
   assert(hash_key_extractor);
   auto hash_index = new BlockHashIndex(
       hash_key_extractor,
@@ -132,9 +134,9 @@ bool BlockHashIndex::Add(const Slice& prefix, uint32_t restart_index,
   auto prefix_to_insert = prefix;
   if (kOwnPrefixes) {
     auto prefix_ptr = arena_.Allocate(prefix.size());
-    std::copy(prefix.data() /* begin */,
-              prefix.data() + prefix.size() /* end */,
-              prefix_ptr /* destination */);
+    // MSVC reports C4996 Function call with parameters that may be
+    // unsafe when using std::copy with a output iterator - pointer
+    memcpy(prefix_ptr, prefix.data(), prefix.size());
     prefix_to_insert = Slice(prefix_ptr, prefix.size());
   }
   auto result = restart_indices_.insert(

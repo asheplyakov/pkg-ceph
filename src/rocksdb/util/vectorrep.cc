@@ -14,9 +14,9 @@
 
 #include "util/arena.h"
 #include "db/memtable.h"
+#include "memtable/stl_wrappers.h"
 #include "port/port.h"
 #include "util/mutexlock.h"
-#include "util/stl_wrappers.h"
 
 namespace rocksdb {
 namespace {
@@ -50,7 +50,7 @@ class VectorRep : public MemTableRep {
   class Iterator : public MemTableRep::Iterator {
     class VectorRep* vrep_;
     std::shared_ptr<std::vector<const char*>> bucket_;
-    typename std::vector<const char*>::const_iterator mutable cit_;
+    std::vector<const char*>::const_iterator mutable cit_;
     const KeyComparator& compare_;
     std::string tmp_;       // For passing to EncodeKey
     bool mutable sorted_;

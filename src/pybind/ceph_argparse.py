@@ -10,6 +10,7 @@ Copyright (C) 2013 Inktank Storage, Inc.
 LGPL2.  See file COPYING.
 """
 import copy
+import errno
 import json
 import os
 import pprint
@@ -17,8 +18,14 @@ import re
 import socket
 import stat
 import sys
-import types
+import threading
 import uuid
+
+
+try:
+    basestring
+except NameError:
+    basestring = str
 
 
 class ArgumentError(Exception):
@@ -118,6 +125,9 @@ class CephArgtype(object):
         """
         return '<{0}>'.format(self.__class__.__name__)
 
+    def complete(self, s):
+        return []
+
 
 class CephInt(CephArgtype):
     """
@@ -129,11 +139,11 @@ class CephInt(CephArgtype):
             self.range = list()
         else:
             self.range = list(range.split('|'))
-            self.range = map(long, self.range)
+            self.range = [int(x) for x in self.range]
 
     def valid(self, s, partial=False):
         try:
-            val = long(s)
+            val = int(s)
         except ValueError:
             raise ArgumentValid("{0} doesn't represent an int".format(s))
         if len(self.range) == 2:
@@ -164,7 +174,7 @@ class CephFloat(CephArgtype):
             self.range = list()
         else:
             self.range = list(range.split('|'))
-            self.range = map(float, self.range)
+            self.range = [float(x) for x in self.range]
 
     def valid(self, s, partial=False):
         try:
@@ -216,6 +226,12 @@ class CephString(CephArgtype):
         if self.goodchars:
             b += '(goodchars {0})'.format(self.goodchars)
         return '<string{0}>'.format(b)
+
+    def complete(self, s):
+        if s == '':
+            return []
+        else:
+            return [s]
 
 
 class CephSocketpath(CephArgtype):
@@ -276,7 +292,7 @@ class CephIPAddr(CephArgtype):
                 socket.inet_pton(socket.AF_INET6, a)
             except:
                 raise ArgumentValid('{0} not valid IPv6 address'.format(s))
-        if p is not None and long(p) > 65535:
+        if p is not None and int(p) > 65535:
             raise ArgumentValid("{0} not a valid port number".format(p))
         self.val = s
         self.addr = a
@@ -298,12 +314,12 @@ class CephEntityAddr(CephIPAddr):
             ip = s
         super(self.__class__, self).valid(ip)
         if nonce:
-            nonce_long = None
+            nonce_int = None
             try:
-                nonce_long = long(nonce)
+                nonce_int = int(nonce)
             except ValueError:
                 pass
-            if nonce_long is None or nonce_long < 0:
+            if nonce_int is None or nonce_int < 0:
                 raise ArgumentValid(
                     '{0}: invalid entity, nonce {1} not integer > 0'.
                     format(s, nonce)
@@ -448,6 +464,10 @@ class CephChoices(CephArgtype):
         else:
             return '{0}'.format('|'.join(self.strings))
 
+    def complete(self, s):
+        all_elems = [token for token in self.strings if token.startswith(s)]
+        return all_elems
+
 
 class CephFilepath(CephArgtype):
     """
@@ -477,11 +497,11 @@ class CephFragment(CephArgtype):
         if not val.startswith('0x'):
             raise ArgumentFormat("{0} not a hex integer".format(val))
         try:
-            long(val)
+            int(val)
         except:
             raise ArgumentFormat('can\'t convert {0} to integer'.format(val))
         try:
-            long(bits)
+            int(bits)
         except:
             raise ArgumentFormat('can\'t convert {0} to integer'.format(bits))
         self.val = s
@@ -514,9 +534,13 @@ class CephPrefix(CephArgtype):
 
     def valid(self, s, partial=False):
         try:
-            # `prefix` can always be converted into unicode when being compared,
-            # but `s` could be anything passed by user.
-            s = unicode(s)
+            s = str(s)
+            if isinstance(s, bytes):
+                # `prefix` can always be converted into unicode when being compared,
+                # but `s` could be anything passed by user.
+                s = s.decode('ascii')
+        except UnicodeEncodeError:
+            raise ArgumentPrefix(u"no match for {0}".format(s))
         except UnicodeDecodeError:
             raise ArgumentPrefix("no match for {0}".format(s))
 
@@ -533,6 +557,12 @@ class CephPrefix(CephArgtype):
 
     def __str__(self):
         return self.prefix
+
+    def complete(self, s):
+        if self.prefix.startswith(s):
+            return [self.prefix.rstrip(' ')]
+        else:
+            return []
 
 
 class argdesc(object):
@@ -556,7 +586,7 @@ class argdesc(object):
     and will store the validated value in self.instance.val for extraction.
     """
     def __init__(self, t, name=None, n=1, req=True, **kwargs):
-        if isinstance(t, types.StringTypes):
+        if isinstance(t, basestring):
             self.t = CephPrefix
             self.typeargs = {'prefix': t}
             self.req = True
@@ -576,7 +606,7 @@ class argdesc(object):
     def __repr__(self):
         r = 'argdesc(' + str(self.t) + ', '
         internals = ['N', 'typeargs', 'instance', 't']
-        for (k, v) in self.__dict__.iteritems():
+        for (k, v) in self.__dict__.items():
             if k.startswith('__') or k in internals:
                 pass
             else:
@@ -584,7 +614,7 @@ class argdesc(object):
                 if k == 'n' and self.N:
                     v = 'N'
                 r += '{0}={1}, '.format(k, v)
-        for (k, v) in self.typeargs.iteritems():
+        for (k, v) in self.typeargs.items():
             r += '{0}={1}, '.format(k, v)
         return r[:-2] + ')'
 
@@ -616,6 +646,9 @@ class argdesc(object):
             s = '{' + s + '}'
         return s
 
+    def complete(self, s):
+        return self.instance.complete(s)
+
 
 def concise_sig(sig):
     """
@@ -641,7 +674,7 @@ def parse_funcsig(sig):
     argnum = 0
     for desc in sig:
         argnum += 1
-        if isinstance(desc, types.StringTypes):
+        if isinstance(desc, basestring):
             t = CephPrefix
             desc = {'type': t, 'name': 'prefix', 'prefix': desc}
         else:
@@ -650,11 +683,11 @@ def parse_funcsig(sig):
                 s = 'JSON descriptor {0} has no type'.format(sig)
                 raise JsonFormat(s)
             # look up type string in our globals() dict; if it's an
-            # object of type types.TypeType, it must be a
+            # object of type `type`, it must be a
             # locally-defined class. otherwise, we haven't a clue.
             if desc['type'] in globals():
                 t = globals()[desc['type']]
-                if not isinstance(t, types.TypeType):
+                if not isinstance(t, type):
                     s = 'unknown type {0}'.format(desc['type'])
                     raise JsonFormat(s)
             else:
@@ -710,7 +743,7 @@ def parse_json_funcsigs(s, consumer):
         print >> sys.stderr, "Couldn't parse JSON {0}: {1}".format(s, e)
         raise e
     sigdict = {}
-    for cmdtag, cmd in overall.iteritems():
+    for cmdtag, cmd in overall.items():
         if 'sig' not in cmd:
             s = "JSON descriptor {0} has no 'sig'".format(cmdtag)
             raise JsonFormat(s)
@@ -935,7 +968,8 @@ def validate(args, signature, partial=False):
 def cmdsiglen(sig):
     sigdict = sig.values()
     assert len(sigdict) == 1
-    return len(sig.values()[0]['sig'])
+    some_value = next(iter(sig.values()))
+    return len(some_value['sig'])
 
 
 def validate_command(sigdict, args, verbose=False):
@@ -953,7 +987,7 @@ def validate_command(sigdict, args, verbose=False):
         # (so we can maybe give a more-useful error message)
         best_match_cnt = 0
         bestcmds = []
-        for cmdtag, cmd in sigdict.iteritems():
+        for cmdtag, cmd in sigdict.items():
             sig = cmd['sig']
             matched = matchnum(args, sig, partial=True)
             if (matched > best_match_cnt):
@@ -974,8 +1008,7 @@ def validate_command(sigdict, args, verbose=False):
 
         # Sort bestcmds by number of args so we can try shortest first
         # (relies on a cmdsig being key,val where val is a list of len 1)
-        bestcmds_sorted = sorted(bestcmds,
-                                 cmp=lambda x, y: cmp(cmdsiglen(x), cmdsiglen(y)))
+        bestcmds_sorted = sorted(bestcmds, key=cmdsiglen)
 
         if verbose:
             print >> sys.stderr, "bestcmds_sorted: "
@@ -983,7 +1016,7 @@ def validate_command(sigdict, args, verbose=False):
 
         # for everything in bestcmds, look for a true match
         for cmdsig in bestcmds_sorted:
-            for cmd in cmdsig.itervalues():
+            for cmd in cmdsig.values():
                 sig = cmd['sig']
                 try:
                     valid_dict = validate(args, sig)
@@ -1089,6 +1122,63 @@ def find_cmd_target(childargs):
     return 'mon', ''
 
 
+class RadosThread(threading.Thread):
+    def __init__(self, target, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
+        self.target = target
+        self.exception = None
+        threading.Thread.__init__(self)
+
+    def run(self):
+        try:
+            self.retval = self.target(*self.args, **self.kwargs)
+        except Exception as e:
+            self.exception = e
+
+
+# time in seconds between each call to t.join() for child thread
+POLL_TIME_INCR = 0.5
+
+
+def run_in_thread(target, *args, **kwargs):
+    interrupt = False
+    timeout = kwargs.pop('timeout', 0)
+    countdown = timeout
+    t = RadosThread(target, *args, **kwargs)
+
+    # allow the main thread to exit (presumably, avoid a join() on this
+    # subthread) before this thread terminates.  This allows SIGINT
+    # exit of a blocked call.  See below.
+    t.daemon = True
+
+    t.start()
+    try:
+        # poll for thread exit
+        while t.is_alive():
+            t.join(POLL_TIME_INCR)
+            if timeout and t.is_alive():
+                countdown = countdown - POLL_TIME_INCR
+                if countdown <= 0:
+                    raise KeyboardInterrupt
+
+        t.join()        # in case t exits before reaching the join() above
+    except KeyboardInterrupt:
+        # ..but allow SIGINT to terminate the waiting.  Note: this
+        # relies on the Linux kernel behavior of delivering the signal
+        # to the main thread in preference to any subthread (all that's
+        # strictly guaranteed is that *some* thread that has the signal
+        # unblocked will receive it).  But there doesn't seem to be
+        # any interface to create t with SIGINT blocked.
+        interrupt = True
+
+    if interrupt:
+        t.retval = -errno.EINTR
+    if t.exception:
+        raise t.exception
+    return t.retval
+
+
 def send_command(cluster, target=('mon', ''), cmd=None, inbuf='', timeout=0,
                  verbose=False):
     """
@@ -1110,8 +1200,8 @@ def send_command(cluster, target=('mon', ''), cmd=None, inbuf='', timeout=0,
             if verbose:
                 print >> sys.stderr, 'submit {0} to osd.{1}'.\
                     format(cmd, osdid)
-            ret, outbuf, outs = \
-                cluster.osd_command(osdid, cmd, inbuf, timeout)
+            ret, outbuf, outs = run_in_thread(
+                cluster.osd_command, osdid, cmd, inbuf, timeout)
 
         elif target[0] == 'pg':
             pgid = target[1]
@@ -1126,17 +1216,19 @@ def send_command(cluster, target=('mon', ''), cmd=None, inbuf='', timeout=0,
             if verbose:
                 print >> sys.stderr, 'submit {0} for pgid {1}'.\
                     format(cmd, pgid)
-            ret, outbuf, outs = \
-                cluster.pg_command(pgid, cmd, inbuf, timeout)
+            ret, outbuf, outs = run_in_thread(
+                cluster.pg_command, pgid, cmd, inbuf, timeout)
 
         elif target[0] == 'mon':
             if verbose:
                 print >> sys.stderr, '{0} to {1}'.\
                     format(cmd, target[0])
             if target[1] == '':
-                ret, outbuf, outs = cluster.mon_command(cmd, inbuf, timeout)
+                ret, outbuf, outs = run_in_thread(
+                    cluster.mon_command, cmd, inbuf, timeout)
             else:
-                ret, outbuf, outs = cluster.mon_command(cmd, inbuf, timeout, target[1])
+                ret, outbuf, outs = run_in_thread(
+                    cluster.mon_command, cmd, inbuf, timeout, target[1])
         elif target[0] == 'mds':
             mds_spec = target[1]
 

@@ -147,7 +147,7 @@ void LogSegment::try_to_expire(MDSRank *mds, MDSGatherBuilder &gather_bld, int o
 
   assert(g_conf->mds_kill_journal_expire_at != 2);
 
-  // open files
+  // open files and snap inodes 
   if (!open_files.empty()) {
     assert(!mds->mdlog->is_capped()); // hmm FIXME
     EOpen *le = 0;
@@ -156,9 +156,9 @@ void LogSegment::try_to_expire(MDSRank *mds, MDSGatherBuilder &gather_bld, int o
     elist<CInode*>::iterator p = open_files.begin(member_offset(CInode, item_open_file));
     while (!p.end()) {
       CInode *in = *p;
-      assert(in->last == CEPH_NOSNAP);
       ++p;
-      if (in->is_auth() && !in->is_ambiguous_auth() && in->is_any_caps()) {
+      if (in->last == CEPH_NOSNAP && in->is_auth() &&
+	  !in->is_ambiguous_auth() && in->is_any_caps()) {
 	if (in->is_any_caps_wanted()) {
 	  dout(20) << "try_to_expire requeueing open file " << *in << dendl;
 	  if (!le) {
@@ -172,6 +172,15 @@ void LogSegment::try_to_expire(MDSRank *mds, MDSGatherBuilder &gather_bld, int o
 	  dout(20) << "try_to_expire not requeueing and delisting unwanted file " << *in << dendl;
 	  in->item_open_file.remove_myself();
 	}
+      } else if (in->last != CEPH_NOSNAP && !in->client_snap_caps.empty()) {
+	// journal snap inodes that need flush. This simplify the mds failover hanlding
+	dout(20) << "try_to_expire requeueing snap needflush inode " << *in << dendl;
+	if (!le) {
+	  le = new EOpen(mds->mdlog);
+	  mds->mdlog->start_entry(le);
+	}
+	le->add_clean_inode(in);
+	ls->open_files.push_back(&in->item_open_file);
       } else {
 	/*
 	 * we can get a capless inode here if we replay an open file, the client fails to
@@ -400,13 +409,13 @@ void EMetaBlob::update_segment(LogSegment *ls)
 
 // EMetaBlob::fullbit
 
-void EMetaBlob::fullbit::encode(bufferlist& bl) const {
+void EMetaBlob::fullbit::encode(bufferlist& bl, uint64_t features) const {
   ENCODE_START(8, 5, bl);
   ::encode(dn, bl);
   ::encode(dnfirst, bl);
   ::encode(dnlast, bl);
   ::encode(dnv, bl);
-  ::encode(inode, bl);
+  ::encode(inode, bl, features);
   ::encode(xattrs, bl);
   if (inode.is_symlink())
     ::encode(symlink, bl);
@@ -419,7 +428,7 @@ void EMetaBlob::fullbit::encode(bufferlist& bl) const {
     ::encode(false, bl);
   } else {
     ::encode(true, bl);
-    ::encode(old_inodes, bl);
+    ::encode(old_inodes, bl, features);
   }
   if (!inode.is_dir())
     ::encode(snapbl, bl);
@@ -559,6 +568,12 @@ void EMetaBlob::fullbit::update_inode(MDSRank *mds, CInode *in)
     in->symlink = symlink;
   }
   in->old_inodes = old_inodes;
+  if (!in->old_inodes.empty()) {
+    snapid_t min_first = in->old_inodes.rbegin()->first + 1;
+    if (min_first > in->first)
+      in->first = min_first;
+  }
+
   /*
    * we can do this before linking hte inode bc the split_at would
    * be a no-op.. we have no children (namely open snaprealms) to
@@ -566,6 +581,25 @@ void EMetaBlob::fullbit::update_inode(MDSRank *mds, CInode *in)
    */
   in->oldest_snap = oldest_snap;
   in->decode_snap_blob(snapbl);
+
+  /*
+   * In case there was anything malformed in the journal that we are
+   * replaying, do sanity checks on the inodes we're replaying and
+   * go damaged instead of letting any trash into a live cache
+   */
+  if (in->is_file()) {
+    // Files must have valid layouts with a pool set
+    if (in->inode.layout.pool_id == -1 || !in->inode.layout.is_valid()) {
+      dout(0) << "EMetaBlob.replay invalid layout on ino " << *in
+              << ": " << in->inode.layout << dendl;
+      std::ostringstream oss;
+      oss << "Invalid layout for inode 0x" << std::hex << in->inode.ino
+          << std::dec << " in journal";
+      mds->clog->error() << oss.str();
+      mds->damaged();
+      assert(0);  // Should be unreachable because damaged() calls respawn()
+    }
+  }
 }
 
 // EMetaBlob::remotebit
@@ -677,7 +711,7 @@ void EMetaBlob::nullbit::generate_test_instances(list<nullbit*>& ls)
 
 // EMetaBlob::dirlump
 
-void EMetaBlob::dirlump::encode(bufferlist& bl) const
+void EMetaBlob::dirlump::encode(bufferlist& bl, uint64_t features) const
 {
   ENCODE_START(2, 2, bl);
   ::encode(fnode, bl);
@@ -685,7 +719,7 @@ void EMetaBlob::dirlump::encode(bufferlist& bl) const
   ::encode(nfull, bl);
   ::encode(nremote, bl);
   ::encode(nnull, bl);
-  _encode_bits();
+  _encode_bits(features);
   ::encode(dnbl, bl);
   ENCODE_FINISH(bl);
 }
@@ -751,12 +785,12 @@ void EMetaBlob::dirlump::generate_test_instances(list<dirlump*>& ls)
 /**
  * EMetaBlob proper
  */
-void EMetaBlob::encode(bufferlist& bl) const
+void EMetaBlob::encode(bufferlist& bl, uint64_t features) const
 {
   ENCODE_START(8, 5, bl);
   ::encode(lump_order, bl);
-  ::encode(lump_map, bl);
-  ::encode(roots, bl);
+  ::encode(lump_map, bl, features);
+  ::encode(roots, bl, features);
   ::encode(table_tids, bl);
   ::encode(opened_ino, bl);
   ::encode(allocated_ino, bl);
@@ -1274,8 +1308,8 @@ void EMetaBlob::replay(MDSRank *mds, LogSegment *logseg, MDSlaveUpdate *slaveup)
 	dir->link_primary_inode(dn, in);
 	dout(10) << "EMetaBlob.replay added " << *in << dendl;
       } else {
-	p->update_inode(mds, in);
 	in->first = p->dnfirst;
+	p->update_inode(mds, in);
 	if (dn->get_linkage()->get_inode() != in && in->get_parent_dn()) {
 	  dout(10) << "EMetaBlob.replay unlinking " << *in << dendl;
 	  unlinked[in] = in->get_parent_dir();
@@ -1307,6 +1341,8 @@ void EMetaBlob::replay(MDSRank *mds, LogSegment *logseg, MDSlaveUpdate *slaveup)
 	in->_mark_dirty(logseg);
       if (p->is_dirty_parent())
 	in->_mark_dirty_parent(logseg, p->is_dirty_pool());
+      if (p->need_snapflush())
+	logseg->open_files.push_back(&in->item_open_file);
       if (dn->is_auth())
 	in->state_set(CInode::STATE_AUTH);
       else
@@ -1696,7 +1732,7 @@ void ESession::replay(MDSRank *mds)
   update_segment();
 }
 
-void ESession::encode(bufferlist &bl) const
+void ESession::encode(bufferlist &bl, uint64_t features) const
 {
   ENCODE_START(4, 3, bl);
   ::encode(stamp, bl);
@@ -1748,7 +1784,7 @@ void ESession::generate_test_instances(list<ESession*>& ls)
 // -----------------------
 // ESessions
 
-void ESessions::encode(bufferlist &bl) const
+void ESessions::encode(bufferlist &bl, uint64_t features) const
 {
   ENCODE_START(1, 1, bl);
   ::encode(client_map, bl);
@@ -1819,7 +1855,7 @@ void ESessions::replay(MDSRank *mds)
 // -----------------------
 // ETableServer
 
-void ETableServer::encode(bufferlist& bl) const
+void ETableServer::encode(bufferlist& bl, uint64_t features) const
 {
   ENCODE_START(3, 3, bl);
   ::encode(stamp, bl);
@@ -1918,7 +1954,7 @@ void ETableServer::replay(MDSRank *mds)
 // ---------------------
 // ETableClient
 
-void ETableClient::encode(bufferlist& bl) const
+void ETableClient::encode(bufferlist& bl, uint64_t features) const
 {
   ENCODE_START(3, 3, bl);
   ::encode(stamp, bl);
@@ -2003,12 +2039,12 @@ void ESnap::replay(MDSRank *mds)
 // -----------------------
 // EUpdate
 
-void EUpdate::encode(bufferlist &bl) const
+void EUpdate::encode(bufferlist &bl, uint64_t features) const
 {
   ENCODE_START(4, 4, bl);
   ::encode(stamp, bl);
   ::encode(type, bl);
-  ::encode(metablob, bl);
+  ::encode(metablob, bl, features);
   ::encode(client_map, bl);
   ::encode(cmapv, bl);
   ::encode(reqid, bl);
@@ -2094,11 +2130,12 @@ void EUpdate::replay(MDSRank *mds)
 // ------------------------
 // EOpen
 
-void EOpen::encode(bufferlist &bl) const {
-  ENCODE_START(3, 3, bl);
+void EOpen::encode(bufferlist &bl, uint64_t features) const {
+  ENCODE_START(4, 3, bl);
   ::encode(stamp, bl);
-  ::encode(metablob, bl);
+  ::encode(metablob, bl, features);
   ::encode(inos, bl);
+  ::encode(snap_inos, bl);
   ENCODE_FINISH(bl);
 } 
 
@@ -2108,6 +2145,8 @@ void EOpen::decode(bufferlist::iterator &bl) {
     ::decode(stamp, bl);
   ::decode(metablob, bl);
   ::decode(inos, bl);
+  if (struct_v >= 4)
+    ::decode(snap_inos, bl);
   DECODE_FINISH(bl);
 }
 
@@ -2142,12 +2181,18 @@ void EOpen::replay(MDSRank *mds)
   metablob.replay(mds, _segment);
 
   // note which segments inodes belong to, so we don't have to start rejournaling them
-  for (vector<inodeno_t>::iterator p = inos.begin();
-       p != inos.end();
-       ++p) {
-    CInode *in = mds->mdcache->get_inode(*p);
+  for (const auto &ino : inos) {
+    CInode *in = mds->mdcache->get_inode(ino);
     if (!in) {
-      dout(0) << "EOpen.replay ino " << *p << " not in metablob" << dendl;
+      dout(0) << "EOpen.replay ino " << ino << " not in metablob" << dendl;
+      assert(in);
+    }
+    _segment->open_files.push_back(&in->item_open_file);
+  }
+  for (const auto &vino : snap_inos) {
+    CInode *in = mds->mdcache->get_inode(vino);
+    if (!in) {
+      dout(0) << "EOpen.replay ino " << vino << " not in metablob" << dendl;
       assert(in);
     }
     _segment->open_files.push_back(&in->item_open_file);
@@ -2169,7 +2214,7 @@ void ECommitted::replay(MDSRank *mds)
   }
 }
 
-void ECommitted::encode(bufferlist& bl) const
+void ECommitted::encode(bufferlist& bl, uint64_t features) const
 {
   ENCODE_START(3, 3, bl);
   ::encode(stamp, bl);
@@ -2380,7 +2425,7 @@ void rename_rollback::generate_test_instances(list<rename_rollback*>& ls)
   ls.back()->stray.remote_d_type = IFTODT(S_IFREG);
 }
 
-void ESlaveUpdate::encode(bufferlist &bl) const
+void ESlaveUpdate::encode(bufferlist &bl, uint64_t features) const
 {
   ENCODE_START(3, 3, bl);
   ::encode(stamp, bl);
@@ -2389,7 +2434,7 @@ void ESlaveUpdate::encode(bufferlist &bl) const
   ::encode(master, bl);
   ::encode(op, bl);
   ::encode(origop, bl);
-  ::encode(commit, bl);
+  ::encode(commit, bl, features);
   ::encode(rollback, bl);
   ENCODE_FINISH(bl);
 } 
@@ -2472,11 +2517,11 @@ void ESlaveUpdate::replay(MDSRank *mds)
 // -----------------------
 // ESubtreeMap
 
-void ESubtreeMap::encode(bufferlist& bl) const
+void ESubtreeMap::encode(bufferlist& bl, uint64_t features) const
 {
   ENCODE_START(6, 5, bl);
   ::encode(stamp, bl);
-  ::encode(metablob, bl);
+  ::encode(metablob, bl, features);
   ::encode(subtrees, bl);
   ::encode(ambiguous_subtrees, bl);
   ::encode(expire_pos, bl);
@@ -2716,14 +2761,14 @@ void EFragment::replay(MDSRank *mds)
     in->verify_dirfrags();
 }
 
-void EFragment::encode(bufferlist &bl) const {
+void EFragment::encode(bufferlist &bl, uint64_t features) const {
   ENCODE_START(5, 4, bl);
   ::encode(stamp, bl);
   ::encode(op, bl);
   ::encode(ino, bl);
   ::encode(basefrag, bl);
   ::encode(bits, bl);
-  ::encode(metablob, bl);
+  ::encode(metablob, bl, features);
   ::encode(orig_frags, bl);
   ::encode(rollback, bl);
   ENCODE_FINISH(bl);
@@ -2812,11 +2857,11 @@ void EExport::replay(MDSRank *mds)
   mds->mdcache->try_trim_non_auth_subtree(dir);
 }
 
-void EExport::encode(bufferlist& bl) const
+void EExport::encode(bufferlist& bl, uint64_t features) const
 {
   ENCODE_START(3, 3, bl);
   ::encode(stamp, bl);
-  ::encode(metablob, bl);
+  ::encode(metablob, bl, features);
   ::encode(base, bl);
   ::encode(bounds, bl);
   ENCODE_FINISH(bl);
@@ -2907,11 +2952,11 @@ void EImportStart::replay(MDSRank *mds)
   update_segment();
 }
 
-void EImportStart::encode(bufferlist &bl) const {
+void EImportStart::encode(bufferlist &bl, uint64_t features) const {
   ENCODE_START(3, 3, bl);
   ::encode(stamp, bl);
   ::encode(base, bl);
-  ::encode(metablob, bl);
+  ::encode(metablob, bl, features);
   ::encode(bounds, bl);
   ::encode(cmapv, bl);
   ::encode(client_map, bl);
@@ -2975,7 +3020,7 @@ void EImportFinish::replay(MDSRank *mds)
   }
 }
 
-void EImportFinish::encode(bufferlist& bl) const
+void EImportFinish::encode(bufferlist& bl, uint64_t features) const
 {
   ENCODE_START(3, 3, bl);
   ::encode(stamp, bl);
@@ -3010,7 +3055,7 @@ void EImportFinish::generate_test_instances(list<EImportFinish*>& ls)
 // ------------------------
 // EResetJournal
 
-void EResetJournal::encode(bufferlist& bl) const
+void EResetJournal::encode(bufferlist& bl, uint64_t features) const
 {
   ENCODE_START(2, 2, bl);
   ::encode(stamp, bl);
@@ -3055,7 +3100,7 @@ void EResetJournal::replay(MDSRank *mds)
 }
 
 
-void ENoOp::encode(bufferlist &bl) const
+void ENoOp::encode(bufferlist &bl, uint64_t features) const
 {
   ENCODE_START(2, 2, bl);
   ::encode(pad_size, bl);

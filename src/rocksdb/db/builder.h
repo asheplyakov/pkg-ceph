@@ -29,14 +29,17 @@ class Iterator;
 class TableCache;
 class VersionEdit;
 class TableBuilder;
-class WritableFile;
+class WritableFileWriter;
+class InternalStats;
+class InternalIterator;
 
 TableBuilder* NewTableBuilder(
     const ImmutableCFOptions& options,
     const InternalKeyComparator& internal_comparator,
     const std::vector<std::unique_ptr<IntTblPropCollectorFactory>>*
         int_tbl_prop_collector_factories,
-    WritableFile* file, const CompressionType compression_type,
+    uint32_t column_family_id, WritableFileWriter* file,
+    const CompressionType compression_type,
     const CompressionOptions& compression_opts,
     const bool skip_filters = false);
 
@@ -47,14 +50,15 @@ TableBuilder* NewTableBuilder(
 // zero, and no Table file will be produced.
 extern Status BuildTable(
     const std::string& dbname, Env* env, const ImmutableCFOptions& options,
-    const EnvOptions& env_options, TableCache* table_cache, Iterator* iter,
-    FileMetaData* meta, const InternalKeyComparator& internal_comparator,
+    const EnvOptions& env_options, TableCache* table_cache,
+    InternalIterator* iter, FileMetaData* meta,
+    const InternalKeyComparator& internal_comparator,
     const std::vector<std::unique_ptr<IntTblPropCollectorFactory>>*
         int_tbl_prop_collector_factories,
-    const SequenceNumber newest_snapshot,
-    const SequenceNumber earliest_seqno_in_memtable,
+    uint32_t column_family_id, std::vector<SequenceNumber> snapshots,
     const CompressionType compression,
     const CompressionOptions& compression_opts, bool paranoid_file_checks,
+    InternalStats* internal_stats,
     const Env::IOPriority io_priority = Env::IO_HIGH,
     TableProperties* table_properties = nullptr);
 

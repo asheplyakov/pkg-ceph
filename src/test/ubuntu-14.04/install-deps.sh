@@ -24,11 +24,11 @@ if test -f /etc/redhat-release ; then
 fi
 
 if type apt-get > /dev/null 2>&1 ; then
-    $SUDO apt-get install -y lsb-release
+    $SUDO apt-get install -y lsb-release devscripts equivs
 fi
 
 if type zypper > /dev/null 2>&1 ; then
-    $SUDO zypper --gpg-auto-import-keys --non-interactive install lsb-release
+    $SUDO zypper --gpg-auto-import-keys --non-interactive install lsb-release systemd-rpm-macros
 fi
 
 case $(lsb_release -si) in
@@ -39,20 +39,23 @@ Ubuntu|Debian|Devuan)
             exit 1
         fi
         touch $DIR/status
-        packages=$(dpkg-checkbuilddeps --admindir=$DIR debian/control 2>&1 | \
-            perl -p -e 's/.*Unmet build dependencies: *//;' \
-            -e 's/build-essential:native/build-essential/;' \
-            -e 's/\s*\|\s*/\|/g;' \
-            -e 's/\(.*?\)//g;' \
-            -e 's/ +/\n/g;' | sort)
+
+	backports=""
+	control="debian/control"
         case $(lsb_release -sc) in
             squeeze|wheezy)
-                packages=$(echo $packages | perl -pe 's/[-\w]*babeltrace[-\w]*//g')
+		control="/tmp/control.$$"
+		grep -v babeltrace debian/control > $control
                 backports="-t $(lsb_release -sc)-backports"
                 ;;
         esac
-        packages=$(echo $packages) # change newlines into spaces
-        $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install $backports -y $packages || exit 1
+
+	# make a metapackage that expresses the build dependencies,
+	# install it, rm the .deb; then uninstall the package as its
+	# work is done
+	$SUDO env DEBIAN_FRONTEND=noninteractive mk-build-deps --install --remove --tool="apt-get -y --no-install-recommends $backports" $control || exit 1
+	$SUDO env DEBIAN_FRONTEND=noninteractive apt-get -y remove ceph-build-deps
+	if [ -n "$backports" ] ; then rm $control; fi
         ;;
 CentOS|Fedora|RedHatEnterpriseServer)
         case $(lsb_release -si) in
@@ -62,14 +65,17 @@ CentOS|Fedora|RedHatEnterpriseServer)
             CentOS|RedHatEnterpriseServer)
                 $SUDO yum install -y yum-utils
                 MAJOR_VERSION=$(lsb_release -rs | cut -f1 -d.)
-                if test $(lsb_release -si) == RedHatEnterpriseServer ; then
+                if test $(lsb_release -si) = RedHatEnterpriseServer ; then
                     $SUDO yum install subscription-manager
                     $SUDO subscription-manager repos --enable=rhel-$MAJOR_VERSION-server-optional-rpms
                 fi
-                $SUDO yum-config-manager --add-repo https://dl.fedoraproject.org/pub/epel/$MAJOR_VERSION/x86_64/ 
+                $SUDO yum-config-manager --add-repo https://dl.fedoraproject.org/pub/epel/$MAJOR_VERSION/x86_64/
                 $SUDO yum install --nogpgcheck -y epel-release
                 $SUDO rpm --import /etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-$MAJOR_VERSION
                 $SUDO rm -f /etc/yum.repos.d/dl.fedoraproject.org*
+                if test $(lsb_release -si) = CentOS -a $MAJOR_VERSION = 7 ; then
+                    $SUDO yum-config-manager --enable cr
+                fi
                 ;;
         esac
         sed -e 's/@//g' < ceph.spec.in > $DIR/ceph.spec
@@ -89,8 +95,6 @@ function populate_wheelhouse() {
     local install=$1
     shift
 
-    # Ubuntu-12.04 and Python 2.7.3 require this line
-    pip --timeout 300 $install 'distribute >= 0.7.3' || return 1
     # although pip comes with virtualenv, having a recent version
     # of pip matters when it comes to using wheel packages
     pip --timeout 300 $install 'setuptools >= 0.8' 'pip >= 7.0' 'wheel >= 0.24' || return 1
@@ -105,7 +109,14 @@ function activate_virtualenv() {
     local env_dir=$top_srcdir/install-deps-$interpreter
 
     if ! test -d $env_dir ; then
-        virtualenv --python $interpreter $env_dir
+        # Make a temporary virtualenv to get a fresh version of virtualenv
+        # because CentOS 7 has a buggy old version (v1.10.1)
+        # https://github.com/pypa/virtualenv/issues/463
+        virtualenv ${env_dir}_tmp
+        ${env_dir}_tmp/bin/pip install --upgrade virtualenv
+        ${env_dir}_tmp/bin/virtualenv --python $interpreter $env_dir
+        rm -rf ${env_dir}_tmp
+
         . $env_dir/bin/activate
         if ! populate_wheelhouse install ; then
             rm -rf $env_dir

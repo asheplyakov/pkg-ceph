@@ -7,7 +7,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef ROCKSDB_LITE
+#ifndef NDEBUG
 
 #include "db/db_impl.h"
 #include "util/thread_status_updater.h"
@@ -17,23 +17,6 @@ namespace rocksdb {
 uint64_t DBImpl::TEST_GetLevel0TotalSize() {
   InstrumentedMutexLock l(&mutex_);
   return default_cf_handle_->cfd()->current()->storage_info()->NumLevelBytes(0);
-}
-
-Iterator* DBImpl::TEST_NewInternalIterator(Arena* arena,
-                                           ColumnFamilyHandle* column_family) {
-  ColumnFamilyData* cfd;
-  if (column_family == nullptr) {
-    cfd = default_cf_handle_->cfd();
-  } else {
-    auto cfh = reinterpret_cast<ColumnFamilyHandleImpl*>(column_family);
-    cfd = cfh->cfd();
-  }
-
-  mutex_.Lock();
-  SuperVersion* super_version = cfd->GetSuperVersion()->Ref();
-  mutex_.Unlock();
-  ReadOptions roptions;
-  return NewInternalIterator(roptions, cfd, super_version, arena);
 }
 
 int64_t DBImpl::TEST_MaxNextLevelOverlappingBytes(
@@ -73,7 +56,8 @@ uint64_t DBImpl::TEST_Current_Manifest_FileNo() {
 
 Status DBImpl::TEST_CompactRange(int level, const Slice* begin,
                                  const Slice* end,
-                                 ColumnFamilyHandle* column_family) {
+                                 ColumnFamilyHandle* column_family,
+                                 bool disallow_trivial_move) {
   ColumnFamilyData* cfd;
   if (column_family == nullptr) {
     cfd = default_cf_handle_->cfd();
@@ -86,7 +70,8 @@ Status DBImpl::TEST_CompactRange(int level, const Slice* begin,
        cfd->ioptions()->compaction_style == kCompactionStyleFIFO)
           ? level
           : level + 1;
-  return RunManualCompaction(cfd, level, output_level, 0, begin, end);
+  return RunManualCompaction(cfd, level, output_level, 0, begin, end,
+                             disallow_trivial_move);
 }
 
 Status DBImpl::TEST_FlushMemTable(bool wait) {
@@ -129,15 +114,14 @@ void DBImpl::TEST_UnlockMutex() {
 }
 
 void* DBImpl::TEST_BeginWrite() {
-  auto w = new WriteThread::Writer(&mutex_);
-  Status s = write_thread_.EnterWriteThread(w, 0);
-  assert(s.ok() && !w->done);  // No timeout and nobody should do our job
+  auto w = new WriteThread::Writer();
+  write_thread_.EnterUnbatched(w, &mutex_);
   return reinterpret_cast<void*>(w);
 }
 
 void DBImpl::TEST_EndWrite(void* w) {
   auto writer = reinterpret_cast<WriteThread::Writer*>(w);
-  write_thread_.ExitWriteThread(writer, writer, Status::OK());
+  write_thread_.ExitUnbatched(writer);
   delete writer;
 }
 
@@ -146,5 +130,29 @@ size_t DBImpl::TEST_LogsToFreeSize() {
   return logs_to_free_.size();
 }
 
+uint64_t DBImpl::TEST_LogfileNumber() {
+  InstrumentedMutexLock l(&mutex_);
+  return logfile_number_;
+}
+
+Status DBImpl::TEST_GetAllImmutableCFOptions(
+    std::unordered_map<std::string, const ImmutableCFOptions*>* iopts_map) {
+  std::vector<std::string> cf_names;
+  std::vector<const ImmutableCFOptions*> iopts;
+  {
+    InstrumentedMutexLock l(&mutex_);
+    for (auto cfd : *versions_->GetColumnFamilySet()) {
+      cf_names.push_back(cfd->GetName());
+      iopts.push_back(cfd->ioptions());
+    }
+  }
+  iopts_map->clear();
+  for (size_t i = 0; i < cf_names.size(); ++i) {
+    iopts_map->insert({cf_names[i], iopts[i]});
+  }
+
+  return Status::OK();
+}
+
 }  // namespace rocksdb
-#endif  // ROCKSDB_LITE
+#endif  // NDEBUG

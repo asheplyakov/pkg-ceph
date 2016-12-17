@@ -15,13 +15,13 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Library Public License for more details.
 #
-source ../qa/workunits/ceph-helpers.sh
+source $CEPH_ROOT/qa/workunits/ceph-helpers.sh
 
 function run() {
     local dir=$1
     shift
 
-    export CEPH_MON="127.0.0.1:7120"
+    export CEPH_MON="127.0.0.1:7120" # git grep '\<7120\>' : there must be only one
     export CEPH_ARGS
     CEPH_ARGS+="--fsid=$(uuidgen) --auth-supported=none "
     CEPH_ARGS+="--mon-host=$CEPH_MON "
@@ -39,7 +39,7 @@ function TEST_mon_scrub() {
 
     run_mon $dir a || return 1
 
-    ./ceph mon scrub || return 1
+    ceph mon scrub || return 1
 }
 
 main mon-scrub "$@"

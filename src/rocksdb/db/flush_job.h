@@ -17,22 +17,22 @@
 #include <string>
 
 #include "db/dbformat.h"
-#include "db/log_writer.h"
-#include "db/snapshot.h"
 #include "db/column_family.h"
-#include "db/version_edit.h"
+#include "db/log_writer.h"
 #include "db/memtable_list.h"
+#include "db/snapshot_impl.h"
+#include "db/version_edit.h"
 #include "port/port.h"
 #include "rocksdb/db.h"
 #include "rocksdb/env.h"
 #include "rocksdb/memtablerep.h"
 #include "rocksdb/transaction_log.h"
+#include "table/scoped_arena_iterator.h"
 #include "util/autovector.h"
 #include "util/event_logger.h"
 #include "util/instrumented_mutex.h"
 #include "util/stop_watch.h"
 #include "util/thread_local.h"
-#include "util/scoped_arena_iterator.h"
 #include "db/internal_stats.h"
 #include "db/write_controller.h"
 #include "db/flush_scheduler.h"
@@ -57,21 +57,23 @@ class FlushJob {
            const MutableCFOptions& mutable_cf_options,
            const EnvOptions& env_options, VersionSet* versions,
            InstrumentedMutex* db_mutex, std::atomic<bool>* shutting_down,
-           SequenceNumber newest_snapshot, JobContext* job_context,
-           LogBuffer* log_buffer, Directory* db_directory,
-           Directory* output_file_directory, CompressionType output_compression,
-           Statistics* stats, EventLogger* event_logger);
+           std::vector<SequenceNumber> existing_snapshots,
+           JobContext* job_context, LogBuffer* log_buffer,
+           Directory* db_directory, Directory* output_file_directory,
+           CompressionType output_compression, Statistics* stats,
+           EventLogger* event_logger);
 
   ~FlushJob();
 
-  Status Run(uint64_t* file_number = nullptr);
+  Status Run(FileMetaData* file_meta = nullptr);
+  TableProperties GetTableProperties() const { return table_properties_; }
 
  private:
   void ReportStartedFlush();
   void ReportFlushInputSize(const autovector<MemTable*>& mems);
   void RecordFlushIOStats();
   Status WriteLevel0Table(const autovector<MemTable*>& mems, VersionEdit* edit,
-                          uint64_t* filenumber);
+                          FileMetaData* meta);
   const std::string& dbname_;
   ColumnFamilyData* cfd_;
   const DBOptions& db_options_;
@@ -80,7 +82,7 @@ class FlushJob {
   VersionSet* versions_;
   InstrumentedMutex* db_mutex_;
   std::atomic<bool>* shutting_down_;
-  SequenceNumber newest_snapshot_;
+  std::vector<SequenceNumber> existing_snapshots_;
   JobContext* job_context_;
   LogBuffer* log_buffer_;
   Directory* db_directory_;
@@ -88,6 +90,7 @@ class FlushJob {
   CompressionType output_compression_;
   Statistics* stats_;
   EventLogger* event_logger_;
+  TableProperties table_properties_;
 };
 
 }  // namespace rocksdb

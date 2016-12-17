@@ -43,7 +43,7 @@ public:
   // cons
   entity_name_t() : _type(0), _num(0) { }
   entity_name_t(int t, int64_t n) : _type(t), _num(n) { }
-  entity_name_t(const ceph_entity_name &n) : 
+  explicit entity_name_t(const ceph_entity_name &n) : 
     _type(n.type), _num(n.num) { }
 
   // static cons
@@ -151,8 +151,9 @@ namespace std {
  * ipv4 for now.
  */
 
+#if defined(__linux__) || defined(DARWIN) || defined(__FreeBSD__)
 /*
- * encode sockaddr.ss_family in big endian
+ * encode sockaddr.ss_family as network byte order 
  */
 static inline void encode(const sockaddr_storage& a, bufferlist& bl) {
   struct sockaddr_storage ss = a;
@@ -174,6 +175,28 @@ static inline void decode(sockaddr_storage& a, bufferlist::iterator& bl) {
   a.ss_family = ntohs(a.ss_family);
 #endif
 }
+#endif
+
+// define a wire format for sockaddr that matches Linux's.
+struct ceph_sockaddr_storage {
+  __le16 ss_family;
+  __u8 __ss_padding[128 - sizeof(__le16)];
+
+  void encode(bufferlist& bl) const {
+    struct ceph_sockaddr_storage ss = *this;
+    ss.ss_family = htons(ss.ss_family);
+    ::encode_raw(ss, bl);
+  }
+
+  void decode(bufferlist::iterator& bl) {
+    struct ceph_sockaddr_storage ss;
+    ::decode_raw(ss, bl);
+    ss.ss_family = ntohs(ss.ss_family);
+    *this = ss;
+  }
+} __attribute__ ((__packed__));
+
+WRITE_CLASS_ENCODER(ceph_sockaddr_storage)
 
 struct entity_addr_t {
   __u32 type;
@@ -199,7 +222,7 @@ struct entity_addr_t {
   entity_addr_t() : type(0), nonce(0) { 
     memset(&addr, 0, sizeof(addr));
   }
-  entity_addr_t(const ceph_entity_addr &o) {
+  explicit entity_addr_t(const ceph_entity_addr &o) {
     type = o.type;
     nonce = o.nonce;
     addr = o.in_addr;
@@ -228,7 +251,21 @@ struct entity_addr_t {
     return addr6;
   }
 
-  bool set_sockaddr(struct sockaddr *sa)
+  const sockaddr *get_sockaddr() const {
+    return (const sockaddr *)&addr4;
+  }
+  size_t get_sockaddr_len() const {
+    switch (addr.ss_family) {
+    case AF_INET:
+      return sizeof(addr4);
+      break;
+    case AF_INET6:
+      return sizeof(addr6);
+      break;
+    }
+    return sizeof(addr);
+  }
+  bool set_sockaddr(const struct sockaddr *sa)
   {
     switch (sa->sa_family) {
     case AF_INET:
@@ -241,6 +278,10 @@ struct entity_addr_t {
       return false;
     }
     return true;
+  }
+
+  sockaddr_storage get_sockaddr_storage() const {
+    return addr;
   }
 
   void set_in4_quad(int pos, int val) {
@@ -330,15 +371,37 @@ struct entity_addr_t {
 
   bool parse(const char *s, const char **end = 0);
 
+  // Right now, these only deal with sockaddr_storage that have only family and content.
+  // Apparently on BSD there is also an ss_len that we need to handle; this requires
+  // broader study
+
+
   void encode(bufferlist& bl) const {
     ::encode(type, bl);
     ::encode(nonce, bl);
+#if defined(__linux__) || defined(DARWIN) || defined(__FreeBSD__)
     ::encode(addr, bl);
+#else
+    ceph_sockaddr_storage wireaddr;
+    ::memset(&wireaddr, '\0', sizeof(wireaddr));
+    unsigned copysize = MIN(sizeof(wireaddr), sizeof(addr));
+    // ceph_sockaddr_storage is in host byte order
+    ::memcpy(&wireaddr, &addr, copysize);
+    ::encode(wireaddr, bl);
+#endif
   }
   void decode(bufferlist::iterator& bl) {
     ::decode(type, bl);
     ::decode(nonce, bl);
+#if defined(__linux__) || defined(DARWIN) || defined(__FreeBSD__)
     ::decode(addr, bl);
+#else
+    ceph_sockaddr_storage wireaddr;
+    ::memset(&wireaddr, '\0', sizeof(wireaddr));
+    ::decode(wireaddr, bl);
+    unsigned copysize = MIN(sizeof(wireaddr), sizeof(addr));
+    ::memcpy(&addr, &wireaddr, copysize);
+#endif
   }
 
   void dump(Formatter *f) const;
@@ -379,6 +442,7 @@ struct entity_inst_t {
   entity_addr_t addr;
   entity_inst_t() {}
   entity_inst_t(entity_name_t n, const entity_addr_t& a) : name(n), addr(a) {}
+  // cppcheck-suppress noExplicitConstructor
   entity_inst_t(const ceph_entity_inst& i) : name(i.name), addr(i.addr) { }
   entity_inst_t(const ceph_entity_name& n, const ceph_entity_addr &a) : name(n), addr(a) {}
   operator ceph_entity_inst() {

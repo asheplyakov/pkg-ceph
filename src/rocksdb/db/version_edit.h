@@ -93,6 +93,8 @@ struct FileMetaData {
   FileMetaData()
       : refs(0),
         being_compacted(false),
+        smallest_seqno(kMaxSequenceNumber),
+        largest_seqno(0),
         table_reader_handle(nullptr),
         compensated_file_size(0),
         num_entries(0),
@@ -101,6 +103,17 @@ struct FileMetaData {
         raw_value_size(0),
         init_stats_from_file(false),
         marked_for_compaction(false) {}
+
+  // REQUIRED: Keys must be given to the function in sorted order (it expects
+  // the last key to be the largest).
+  void UpdateBoundaries(const Slice& key, SequenceNumber seqno) {
+    if (smallest.size() == 0) {
+      smallest.DecodeFrom(key);
+    }
+    largest.DecodeFrom(key);
+    smallest_seqno = std::min(smallest_seqno, seqno);
+    largest_seqno = std::max(largest_seqno, seqno);
+  }
 };
 
 // A compressed copy of file meta data that just contain
@@ -169,7 +182,8 @@ class VersionEdit {
   void AddFile(int level, uint64_t file, uint32_t file_path_id,
                uint64_t file_size, const InternalKey& smallest,
                const InternalKey& largest, const SequenceNumber& smallest_seqno,
-               const SequenceNumber& largest_seqno) {
+               const SequenceNumber& largest_seqno,
+               bool marked_for_compaction) {
     assert(smallest_seqno <= largest_seqno);
     FileMetaData f;
     f.fd = FileDescriptor(file, file_path_id, file_size);
@@ -177,7 +191,13 @@ class VersionEdit {
     f.largest = largest;
     f.smallest_seqno = smallest_seqno;
     f.largest_seqno = largest_seqno;
-    new_files_.push_back(std::make_pair(level, f));
+    f.marked_for_compaction = marked_for_compaction;
+    new_files_.emplace_back(level, f);
+  }
+
+  void AddFile(int level, const FileMetaData& f) {
+    assert(f.smallest_seqno <= f.largest_seqno);
+    new_files_.emplace_back(level, f);
   }
 
   // Delete the specified "file" from the specified "level".
@@ -217,6 +237,8 @@ class VersionEdit {
   bool EncodeTo(std::string* dst) const;
   Status DecodeFrom(const Slice& src);
 
+  const char* DecodeNewFile4From(Slice* input);
+
   typedef std::set<std::pair<int, uint64_t>> DeletedFileSet;
 
   const DeletedFileSet& GetDeletedFiles() { return deleted_files_; }
@@ -225,6 +247,7 @@ class VersionEdit {
   }
 
   std::string DebugString(bool hex_key = false) const;
+  std::string DebugJSON(int edit_num, bool hex_key = false) const;
 
  private:
   friend class VersionSet;

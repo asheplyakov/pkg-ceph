@@ -1,6 +1,6 @@
 .\" Man page generated from reStructuredText.
 .
-.TH "RADOSGW-ADMIN" "8" "November 03, 2015" "dev" "Ceph"
+.TH "RADOSGW-ADMIN" "8" "December 09, 2016" "dev" "Ceph"
 .SH NAME
 radosgw-admin \- rados REST gateway user administration utility
 .
@@ -127,7 +127,7 @@ Disable quota.
 .B \fBregion get\fP
 Show region info.
 .TP
-.B \fBregions list\fP
+.B \fBregion list\fP
 List all regions set on this cluster.
 .TP
 .B \fBregion set\fP
@@ -168,6 +168,7 @@ List log objects.
 .TP
 .B \fBlog show\fP
 Dump a log from specific object or (bucket + date + bucket\-id).
+(NOTE: required to specify formatting of date to "YYYY\-MM\-DD\-hh")
 .TP
 .B \fBlog rm\fP
 Remove log object.
@@ -177,10 +178,6 @@ Show the usage information (with optional user and date range).
 .TP
 .B \fBusage trim\fP
 Trim usage information (with optional user and date range).
-.TP
-.B \fBtemp remove\fP
-Remove temporary objects that were created up to specified date
-(and optional time).
 .TP
 .B \fBgc list\fP
 Dump expired garbage collection objects (specify \-\-include\-all to list all
@@ -236,6 +233,12 @@ Get replica metadata log entry.
 .TP
 .B \fBreplicalog delete\fP
 Delete replica metadata log entry.
+.TP
+.B \fBorphans find\fP
+Init and run search for leaked rados objects
+.TP
+.B \fBorphans finish\fP
+Clean up search for leaked rados objects
 .UNINDENT
 .SH OPTIONS
 .INDENT 0.0
@@ -455,6 +458,34 @@ Specify max size (in bytes, negative value to disable).
 .B \-\-quota\-scope
 Scope of quota (bucket, user).
 .UNINDENT
+.SH ORPHANS SEARCH OPTIONS
+.INDENT 0.0
+.TP
+.B \-\-pool
+Data pool to scan for leaked rados objects
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-num\-shards
+Number of shards to use for keeping the temporary scan info
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-orphan\-stale\-secs
+Number of seconds to wait before declaring an object to be an orphan.
+Default is 86400 (24 hours).
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-job\-id
+Set the job id (for orphans find)
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-max\-concurrent\-ios
+Maximum concurrent ios for orphans find.
+Default is 32.
+.UNINDENT
 .SH EXAMPLES
 .sp
 Generate a new user:
@@ -522,7 +553,7 @@ Show the logs of a bucket from April 1st, 2012:
 .sp
 .nf
 .ft C
-$ radosgw\-admin log show \-\-bucket=foo \-\-date=2012\-04\-01
+$ radosgw\-admin log show \-\-bucket=foo \-\-date=2012\-04\-01\-01 \-\-bucket\-id=default.14193.1
 .ft P
 .fi
 .UNINDENT

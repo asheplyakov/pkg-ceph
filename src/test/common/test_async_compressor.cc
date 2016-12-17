@@ -102,7 +102,7 @@ class SyntheticWorkload {
   static const uint64_t MAX_INFLIGHT = 128;
 
  public:
-  SyntheticWorkload(AsyncCompressor *ac): async_compressor(ac), rng(time(NULL)) {
+  explicit SyntheticWorkload(AsyncCompressor *ac): async_compressor(ac), rng(time(NULL)) {
     for (int i = 0; i < 100; i++) {
       bufferlist bl;
       boost::uniform_int<> u(4096, 1<<24);
@@ -209,6 +209,10 @@ int main(int argc, char **argv) {
 
   global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT, CODE_ENVIRONMENT_UTILITY, 0);
   common_init_finish(g_ceph_context);
+
+  const char* env = getenv("CEPH_LIB");
+  string directory(env ? env : "lib");
+  g_conf->set_val("plugin_dir", directory, false, false);
 
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

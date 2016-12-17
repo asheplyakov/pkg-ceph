@@ -310,9 +310,10 @@ class ReadBenchmarkThread : public BenchmarkThread {
     assert(callback_args != nullptr);
     uint32_t key_length;
     const char* key_ptr = GetVarint32Ptr(entry, entry + 5, &key_length);
-    if ((callback_args->comparator)->user_comparator()->Compare(
-            Slice(key_ptr, key_length - 8), callback_args->key->user_key()) ==
-        0) {
+    if ((callback_args->comparator)
+            ->user_comparator()
+            ->Equal(Slice(key_ptr, key_length - 8),
+                    callback_args->key->user_key())) {
       callback_args->found = true;
     }
     return false;
@@ -589,6 +590,7 @@ int main(int argc, char** argv) {
   std::unique_ptr<rocksdb::MemTableRepFactory> factory;
   if (FLAGS_memtablerep == "skiplist") {
     factory.reset(new rocksdb::SkipListFactory);
+#ifndef ROCKSDB_LITE
   } else if (FLAGS_memtablerep == "vector") {
     factory.reset(new rocksdb::VectorRepFactory);
   } else if (FLAGS_memtablerep == "hashskiplist") {
@@ -610,6 +612,7 @@ int main(int argc, char** argv) {
         static_cast<uint32_t>(FLAGS_hash_function_count)));
     options.prefix_extractor.reset(
         rocksdb::NewFixedPrefixTransform(FLAGS_prefix_length));
+#endif  // ROCKSDB_LITE
   } else {
     fprintf(stdout, "Unknown memtablerep: %s\n", FLAGS_memtablerep.c_str());
     exit(1);

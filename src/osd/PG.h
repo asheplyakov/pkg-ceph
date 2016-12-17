@@ -31,7 +31,7 @@
 #include "include/types.h"
 #include "include/stringify.h"
 #include "osd_types.h"
-#include "include/buffer.h"
+#include "include/buffer_fwd.h"
 #include "include/xlist.h"
 #include "include/atomic.h"
 #include "SnapMapper.h"
@@ -71,6 +71,10 @@ class MOSDPGBackfill;
 class MOSDPGInfo;
 
 class PG;
+
+namespace Scrub {
+  class Store;
+}
 
 void intrusive_ptr_add_ref(PG *pg);
 void intrusive_ptr_release(PG *pg);
@@ -161,6 +165,7 @@ struct PGRecoveryStats {
 };
 
 struct PGPool {
+  epoch_t cached_epoch;
   int64_t id;
   string name;
   uint64_t auid;
@@ -171,8 +176,17 @@ struct PGPool {
   interval_set<snapid_t> cached_removed_snaps;      // current removed_snaps set
   interval_set<snapid_t> newly_removed_snaps;  // newly removed in the last epoch
 
-  PGPool(int64_t i, const string& _name, uint64_t au)
-    : id(i), name(_name), auid(au) { }
+  PGPool(OSDMapRef map, int64_t i)
+    : cached_epoch(map->get_epoch()),
+      id(i),
+      name(map->get_pool_name(id)),
+      auid(map->get_pg_pool(id)->auid) {
+    const pg_pool_t *pi = map->get_pg_pool(id);
+    assert(pi);
+    info = *pi;
+    snapc = pi->get_snap_context();
+    pi->build_removed_snaps(cached_removed_snaps);
+  }
 
   void update(OSDMapRef map);
 };
@@ -181,11 +195,7 @@ struct PGPool {
  *
  */
 
-class PG {
-public:
-  std::string gen_prefix() const;
-
-  /*** PG ****/
+class PG : DoutPrefixProvider {
 protected:
   OSDService *osd;
   CephContext *cct;
@@ -194,6 +204,11 @@ protected:
 
   virtual PGBackend *get_pgbackend() = 0;
 public:
+  std::string gen_prefix() const;
+  CephContext *get_cct() const { return cct; }
+  unsigned get_subsys() const { return ceph_subsys_osd; }
+
+  /*** PG ****/
   void update_snap_mapper_bits(uint32_t bits) {
     snap_mapper.update_bits(bits);
   }
@@ -262,9 +277,6 @@ public:
     _lock.Unlock();
   }
 
-  void assert_locked() {
-    assert(_lock.is_locked());
-  }
   bool is_locked() const {
     return _lock.is_locked();
   }
@@ -274,8 +286,8 @@ public:
   void put_with_id(uint64_t);
   void dump_live_ids();
 #endif
-  void get(const string &tag);
-  void put(const string &tag);
+  void get(const char* tag);
+  void put(const char* tag);
 
   bool dirty_info, dirty_big_info;
 
@@ -299,6 +311,7 @@ public:
   void upgrade(ObjectStore *store);
 
   const coll_t coll;
+  ObjectStore::CollectionHandle ch;
   PGLog  pg_log;
   static string get_info_key(spg_t pgid) {
     return stringify(pgid) + "_info";
@@ -320,7 +333,7 @@ public:
   public:
     boost::scoped_ptr<IsPGReadablePredicate> is_readable;
     boost::scoped_ptr<IsPGRecoverablePredicate> is_recoverable;
-    MissingLoc(PG *pg)
+    explicit MissingLoc(PG *pg)
       : pg(pg) {}
     void set_backend_predicates(
       IsPGReadablePredicate *_is_readable,
@@ -406,7 +419,8 @@ public:
 
     /// Adds recovery sources in batch
     void add_batch_sources_info(
-      const set<pg_shard_t> &sources  ///< [in] a set of resources which can be used for all objects
+      const set<pg_shard_t> &sources,  ///< [in] a set of resources which can be used for all objects
+      ThreadPool::TPHandle* handle  ///< [in] ThreadPool handle
       );
 
     /// Uses osdmap to update structures for now down sources
@@ -416,6 +430,55 @@ public:
     void recovered(const hobject_t &hoid) {
       needs_recovery_map.erase(hoid);
       missing_loc.erase(hoid);
+    }
+
+    /// Call to update structures for hoid after a change
+    void rebuild(
+      const hobject_t &hoid,
+      bool sort_bitwise,
+      pg_shard_t self,
+      const set<pg_shard_t> to_recover,
+      const pg_info_t &info,
+      const pg_missing_t &missing,
+      const map<pg_shard_t, pg_missing_t> &pmissing,
+      const map<pg_shard_t, pg_info_t> &pinfo) {
+      recovered(hoid);
+      boost::optional<pg_missing_t::item> item;
+      set<pg_shard_t> have;
+      auto miter = missing.missing.find(hoid);
+      if (miter != missing.missing.end()) {
+	item = miter->second;
+      } else {
+	for (auto &&i: to_recover) {
+	  if (i == self)
+	    continue;
+	  auto pmiter = pmissing.find(i);
+	  assert(pmiter != pmissing.end());
+	  miter = pmiter->second.missing.find(hoid);
+	  if (miter != pmiter->second.missing.end()) {
+	    item = miter->second;
+	    break;
+	  }
+	}
+      }
+      if (!item)
+	return; // recovered!
+
+      needs_recovery_map[hoid] = *item;
+      auto mliter =
+	missing_loc.insert(make_pair(hoid, set<pg_shard_t>())).first;
+      assert(info.last_backfill.is_max());
+      assert(info.last_update >= item->need);
+      if (!missing.is_missing(hoid))
+	mliter->second.insert(self);
+      for (auto &&i: pmissing) {
+	auto pinfoiter = pinfo.find(i.first);
+	assert(pinfoiter != pinfo.end());
+	if (item->need <= pinfoiter->second.last_update &&
+	    cmp(hoid, pinfoiter->second.last_backfill, sort_bitwise) <= 0 &&
+	    !i.second.is_missing(hoid))
+	  mliter->second.insert(i.first);
+      }
     }
 
     const set<pg_shard_t> &get_locations(const hobject_t &hoid) const {
@@ -484,7 +547,7 @@ public:
   pg_shard_t pg_whoami;
   pg_shard_t up_primary;
   vector<int> up, acting, want_acting;
-  set<pg_shard_t> actingbackfill, actingset;
+  set<pg_shard_t> actingbackfill, actingset, upset;
   map<pg_shard_t,eversion_t> peer_last_complete_ondisk;
   eversion_t  min_last_complete_ondisk;  // up: min over last_complete_ondisk, peer_last_complete_ondisk
   eversion_t  pg_trim_to;
@@ -531,6 +594,7 @@ public:
     map<int, map<spg_t, pg_query_t> > *query_map;
     map<int, vector<pair<pg_notify_t, pg_interval_map_t> > > *info_map;
     map<int, vector<pair<pg_notify_t, pg_interval_map_t> > > *notify_list;
+    set<PGRef> created_pgs;
     C_Contexts *on_applied;
     C_Contexts *on_safe;
     ObjectStore::Transaction *transaction;
@@ -623,7 +687,6 @@ protected:
   set<pg_shard_t> peer_missing_requested;
 
   // i deleted these strays; ignore racing PGInfo from them
-  set<pg_shard_t> stray_purged;
   set<pg_shard_t> peer_activated;
 
   // primary-only, recovery-only state
@@ -657,7 +720,7 @@ public:
     hobject_t begin;
     hobject_t end;
 
-    BackfillInterval(bool bitwise=true)
+    explicit BackfillInterval(bool bitwise=true)
       : objects(hobject_t::Comparator(bitwise)),
 	sort_bitwise(bitwise)
     {}
@@ -848,7 +911,6 @@ public:
   bool adjust_need_up_thru(const OSDMapRef osdmap);
 
   bool all_unfound_are_queried_or_lost(const OSDMapRef osdmap) const;
-  virtual void mark_all_unfound_lost(int how) = 0;
   virtual void dump_recovery_info(Formatter *f) const = 0;
 
   bool calc_min_last_complete_ondisk() {
@@ -914,10 +976,14 @@ public:
     list<pg_log_entry_t> to_rollback;
     set<hobject_t, hobject_t::BitwiseComparator> to_remove;
     list<pg_log_entry_t> to_trim;
+    list<pair<hobject_t, version_t> > to_stash;
     
     // LogEntryHandler
     void remove(const hobject_t &hoid) {
       to_remove.insert(hoid);
+    }
+    void try_stash(const hobject_t &hoid, version_t v) {
+      to_stash.push_back(make_pair(hoid, v));
     }
     void rollback(const pg_log_entry_t &entry) {
       to_rollback.push_back(entry);
@@ -934,6 +1000,11 @@ public:
 	pg->get_pgbackend()->rollback(j->soid, j->mod_desc, t);
 	SnapRollBacker rollbacker(j->soid, pg, t);
 	j->mod_desc.visit(&rollbacker);
+      }
+      for (list<pair<hobject_t, version_t> >::iterator i = to_stash.begin();
+	   i != to_stash.end();
+	   ++i) {
+	pg->get_pgbackend()->try_stash(i->first, i->second, t);
       }
       for (set<hobject_t, hobject_t::BitwiseComparator>::iterator i = to_remove.begin();
 	   i != to_remove.end();
@@ -977,7 +1048,8 @@ public:
   void trim_write_ahead();
 
   map<pg_shard_t, pg_info_t>::const_iterator find_best_info(
-    const map<pg_shard_t, pg_info_t> &infos) const;
+    const map<pg_shard_t, pg_info_t> &infos,
+    bool *history_les_bound) const;
   static void calc_ec_acting(
     map<pg_shard_t, pg_info_t>::const_iterator auth_log_shard,
     unsigned size,
@@ -1006,7 +1078,8 @@ public:
     set<pg_shard_t> *acting_backfill,
     pg_shard_t *want_primary,
     ostream &ss);
-  bool choose_acting(pg_shard_t &auth_log_shard);
+  bool choose_acting(pg_shard_t &auth_log_shard,
+		     bool *history_les_bound);
   void build_might_have_unfound();
   void replay_queued_ops();
   void activate(
@@ -1023,7 +1096,7 @@ public:
   void proc_primary_info(ObjectStore::Transaction &t, const pg_info_t &info);
 
   bool have_unfound() const { 
-    return missing_loc.num_unfound();
+    return missing_loc.num_unfound() > 0;
   }
   int get_num_unfound() const {
     return missing_loc.num_unfound();
@@ -1057,27 +1130,13 @@ public:
   void split_into(pg_t child_pgid, PG *child, unsigned split_bits);
   virtual void _split_into(pg_t child_pgid, PG *child, unsigned split_bits) = 0;
 
-  loff_t get_log_write_pos() {
-    return 0;
-  }
-
   friend class C_OSD_RepModify_Commit;
 
 
   // -- scrub --
   struct Scrubber {
-    Scrubber() :
-      reserved(false), reserve_failed(false),
-      epoch_start(0),
-      active(false), queue_snap_trim(false),
-      waiting_on(0), shallow_errors(0), deep_errors(0), fixed(0),
-      must_scrub(false), must_deep_scrub(false), must_repair(false),
-      num_digest_updates_pending(0),
-      state(INACTIVE),
-      deep(false),
-      seed(0)
-    {
-    }
+    Scrubber();
+    ~Scrubber();
 
     // metadata
     set<pg_shard_t> reserved_peers;
@@ -1100,12 +1159,18 @@ public:
     // flags to indicate explicitly requested scrubs (by admin)
     bool must_scrub, must_deep_scrub, must_repair;
 
+    // this flag indicates whether we would like to do auto-repair of the PG or not
+    bool auto_repair;
+
     // Maps from objects with errors to missing/inconsistent peers
     map<hobject_t, set<pg_shard_t>, hobject_t::BitwiseComparator> missing;
     map<hobject_t, set<pg_shard_t>, hobject_t::BitwiseComparator> inconsistent;
 
     // Map from object with errors to good peers
     map<hobject_t, list<pair<ScrubMap::object, pg_shard_t> >, hobject_t::BitwiseComparator> authoritative;
+
+    // Cleaned map pending snap metadata scrub
+    ScrubMap cleaned_meta_map;
 
     // digest updates which we are waiting on
     int num_digest_updates_pending;
@@ -1127,6 +1192,7 @@ public:
       FINISH,
     } state;
 
+    std::unique_ptr<Scrub::Store> store;
     // deep scrub
     bool deep;
     uint32_t seed;
@@ -1164,11 +1230,28 @@ public:
 
     bool is_chunky_scrub_active() const { return state != INACTIVE; }
 
-    // classic (non chunk) scrubs block all writes
-    // chunky scrubs only block writes to a range
+    /* We use an inclusive upper bound here because the replicas scan .end
+     * as well in hammer (see http://tracker.ceph.com/issues/17491).
+     *
+     * The boundary can only be
+     * 1) Not an object (object boundary) or
+     * 2) A clone
+     * In case 1), it doesn't matter.  In case 2), we might fail to
+     * wait for an un-applied snap trim to complete, or fail to block an
+     * eviction on a tail object.  In such a case the replica might
+     * erroneously detect a snap_mapper/attr mismatch and "fix" the
+     * snap_mapper to the old value.
+     *
+     * @see _range_available_for_scrub
+     * @see chunk_scrub (the part where it determines the last relelvant log
+     *      entry)
+     *
+     * TODO: switch this logic back to an exclusive upper bound once the
+     * replicas don't scan the upper boundary
+     */
     bool write_blocked_by_scrub(const hobject_t &soid, bool sort_bitwise) {
       if (cmp(soid, start, sort_bitwise) >= 0 &&
-	  cmp(soid, end, sort_bitwise) < 0)
+	  cmp(soid, end, sort_bitwise) <= 0)
 	return true;
 
       return false;
@@ -1188,6 +1271,7 @@ public:
       must_scrub = false;
       must_deep_scrub = false;
       must_repair = false;
+      auto_repair = false;
 
       state = PG::Scrubber::INACTIVE;
       start = hobject_t();
@@ -1203,8 +1287,11 @@ public:
       missing.clear();
       authoritative.clear();
       num_digest_updates_pending = 0;
+      cleaned_meta_map = ScrubMap();
     }
 
+    void create_results(const hobject_t& obj);
+    void cleanup_store(ObjectStore::Transaction *t);
   } scrubber;
 
   bool scrub_after_recovery;
@@ -1218,7 +1305,10 @@ public:
   void scrub(epoch_t queued, ThreadPool::TPHandle &handle);
   void chunky_scrub(ThreadPool::TPHandle &handle);
   void scrub_compare_maps();
-  void scrub_process_inconsistent();
+  /**
+   * return true if any inconsistency/missing is repaired, false otherwise
+   */
+  bool scrub_process_inconsistent();
   void scrub_finish();
   void scrub_clear_state();
   void _scan_snaps(ScrubMap &map);
@@ -1250,11 +1340,6 @@ public:
     int seed,
     const pg_pool_t *pool,
     ObjectStore::Transaction *t) = 0;
-  virtual bool _report_snap_collection_errors(
-    const hobject_t &hoid,
-    const map<string, bufferptr> &attrs,
-    pg_shard_t osd,
-    ostream &out) { return false; }
   void clear_scrub_reserved();
   void scrub_reserve_replicas();
   void scrub_unreserve_replicas();
@@ -1324,7 +1409,7 @@ public:
 
   struct QueryState : boost::statechart::event< QueryState > {
     Formatter *f;
-    QueryState(Formatter *f) : f(f) {}
+    explicit QueryState(Formatter *f) : f(f) {}
     void print(std::ostream *out) const {
       *out << "Query";
     }
@@ -1403,7 +1488,7 @@ public:
   };
   struct Activate : boost::statechart::event< Activate > {
     epoch_t activation_epoch;
-    Activate(epoch_t q) : boost::statechart::event< Activate >(),
+    explicit Activate(epoch_t q) : boost::statechart::event< Activate >(),
 			  activation_epoch(q) {}
     void print(std::ostream *out) const {
       *out << "Activate from " << activation_epoch;
@@ -1411,7 +1496,7 @@ public:
   };
   struct RequestBackfillPrio : boost::statechart::event< RequestBackfillPrio > {
     unsigned priority;
-    RequestBackfillPrio(unsigned prio) :
+    explicit RequestBackfillPrio(unsigned prio) :
               boost::statechart::event< RequestBackfillPrio >(),
 			  priority(prio) {}
     void print(std::ostream *out) const {
@@ -1535,14 +1620,14 @@ public:
     /* States */
 
     struct Crashed : boost::statechart::state< Crashed, RecoveryMachine >, NamedState {
-      Crashed(my_context ctx);
+      explicit Crashed(my_context ctx);
     };
 
     struct Started;
     struct Reset;
 
     struct Initial : boost::statechart::state< Initial, RecoveryMachine >, NamedState {
-      Initial(my_context ctx);
+      explicit Initial(my_context ctx);
       void exit();
 
       typedef boost::mpl::list <
@@ -1562,7 +1647,7 @@ public:
     };
 
     struct Reset : boost::statechart::state< Reset, RecoveryMachine >, NamedState {
-      Reset(my_context ctx);
+      explicit Reset(my_context ctx);
       void exit();
 
       typedef boost::mpl::list <
@@ -1587,7 +1672,7 @@ public:
     struct Start;
 
     struct Started : boost::statechart::state< Started, RecoveryMachine, Start >, NamedState {
-      Started(my_context ctx);
+      explicit Started(my_context ctx);
       void exit();
 
       typedef boost::mpl::list <
@@ -1617,7 +1702,7 @@ public:
     struct Stray;
 
     struct Start : boost::statechart::state< Start, Started >, NamedState {
-      Start(my_context ctx);
+      explicit Start(my_context ctx);
       void exit();
 
       typedef boost::mpl::list <
@@ -1637,7 +1722,7 @@ public:
     };
 
     struct Primary : boost::statechart::state< Primary, Started, Peering >, NamedState {
-      Primary(my_context ctx);
+      explicit Primary(my_context ctx);
       void exit();
 
       typedef boost::mpl::list <
@@ -1658,7 +1743,7 @@ public:
 	boost::statechart::custom_reaction< MInfoRec >,
 	boost::statechart::custom_reaction< MNotifyRec >
 	> reactions;
-      WaitActingChange(my_context ctx);
+      explicit WaitActingChange(my_context ctx);
       boost::statechart::result react(const QueryState& q);
       boost::statechart::result react(const AdvMap&);
       boost::statechart::result react(const MLogRec&);
@@ -1672,8 +1757,9 @@ public:
 
     struct Peering : boost::statechart::state< Peering, Primary, GetInfo >, NamedState {
       std::unique_ptr< PriorSet > prior_set;
+      bool history_les_bound;  //< need osd_find_best_info_ignore_history_les
 
-      Peering(my_context ctx);
+      explicit Peering(my_context ctx);
       void exit();
 
       typedef boost::mpl::list <
@@ -1688,7 +1774,7 @@ public:
     struct WaitLocalRecoveryReserved;
     struct Activating;
     struct Active : boost::statechart::state< Active, Primary, Activating >, NamedState {
-      Active(my_context ctx);
+      explicit Active(my_context ctx);
       void exit();
 
       const set<pg_shard_t> remote_shards_to_reserve_recovery;
@@ -1721,7 +1807,7 @@ public:
       typedef boost::mpl::list<
 	boost::statechart::transition< DoRecovery, WaitLocalRecoveryReserved >
       > reactions;
-      Clean(my_context ctx);
+      explicit Clean(my_context ctx);
       void exit();
     };
 
@@ -1730,7 +1816,7 @@ public:
 	boost::statechart::transition< GoClean, Clean >,
 	boost::statechart::custom_reaction< AllReplicasActivated >
       > reactions;
-      Recovered(my_context ctx);
+      explicit Recovered(my_context ctx);
       void exit();
       boost::statechart::result react(const AllReplicasActivated&) {
 	post_event(GoClean());
@@ -1743,7 +1829,7 @@ public:
 	boost::statechart::transition< Backfilled, Recovered >,
 	boost::statechart::custom_reaction< RemoteReservationRejected >
 	> reactions;
-      Backfilling(my_context ctx);
+      explicit Backfilling(my_context ctx);
       boost::statechart::result react(const RemoteReservationRejected& evt);
       void exit();
     };
@@ -1755,7 +1841,7 @@ public:
 	boost::statechart::transition< AllBackfillsReserved, Backfilling >
 	> reactions;
       set<pg_shard_t>::const_iterator backfill_osd_it;
-      WaitRemoteBackfillReserved(my_context ctx);
+      explicit WaitRemoteBackfillReserved(my_context ctx);
       void exit();
       boost::statechart::result react(const RemoteBackfillReserved& evt);
       boost::statechart::result react(const RemoteReservationRejected& evt);
@@ -1765,7 +1851,7 @@ public:
       typedef boost::mpl::list<
 	boost::statechart::transition< LocalBackfillReserved, WaitRemoteBackfillReserved >
 	> reactions;
-      WaitLocalBackfillReserved(my_context ctx);
+      explicit WaitLocalBackfillReserved(my_context ctx);
       void exit();
     };
 
@@ -1775,7 +1861,7 @@ public:
 	boost::statechart::custom_reaction< RemoteBackfillReserved >,
 	boost::statechart::custom_reaction< RemoteReservationRejected >
 	> reactions;
-      NotBackfilling(my_context ctx);
+      explicit NotBackfilling(my_context ctx);
       void exit();
       boost::statechart::result react(const RemoteBackfillReserved& evt);
       boost::statechart::result react(const RemoteReservationRejected& evt);
@@ -1783,7 +1869,7 @@ public:
 
     struct RepNotRecovering;
     struct ReplicaActive : boost::statechart::state< ReplicaActive, Started, RepNotRecovering >, NamedState {
-      ReplicaActive(my_context ctx);
+      explicit ReplicaActive(my_context ctx);
       void exit();
 
       typedef boost::mpl::list <
@@ -1808,7 +1894,7 @@ public:
 	boost::statechart::transition< RemoteReservationRejected, RepNotRecovering >,
 	boost::statechart::custom_reaction< BackfillTooFull >
 	> reactions;
-      RepRecovering(my_context ctx);
+      explicit RepRecovering(my_context ctx);
       boost::statechart::result react(const BackfillTooFull &evt);
       void exit();
     };
@@ -1818,7 +1904,7 @@ public:
 	boost::statechart::custom_reaction< RemoteBackfillReserved >,
 	boost::statechart::custom_reaction< RemoteReservationRejected >
 	> reactions;
-      RepWaitBackfillReserved(my_context ctx);
+      explicit RepWaitBackfillReserved(my_context ctx);
       void exit();
       boost::statechart::result react(const RemoteBackfillReserved &evt);
       boost::statechart::result react(const RemoteReservationRejected &evt);
@@ -1828,7 +1914,7 @@ public:
       typedef boost::mpl::list<
 	boost::statechart::custom_reaction< RemoteRecoveryReserved >
 	> reactions;
-      RepWaitRecoveryReserved(my_context ctx);
+      explicit RepWaitRecoveryReserved(my_context ctx);
       void exit();
       boost::statechart::result react(const RemoteRecoveryReserved &evt);
     };
@@ -1839,7 +1925,7 @@ public:
         boost::statechart::transition< RequestRecovery, RepWaitRecoveryReserved >,
 	boost::statechart::transition< RecoveryDone, RepNotRecovering >  // for compat with pre-reservation peers
 	> reactions;
-      RepNotRecovering(my_context ctx);
+      explicit RepNotRecovering(my_context ctx);
       boost::statechart::result react(const RequestBackfillPrio &evt);
       void exit();
     };
@@ -1849,7 +1935,7 @@ public:
 	boost::statechart::custom_reaction< AllReplicasRecovered >,
 	boost::statechart::custom_reaction< RequestBackfill >
 	> reactions;
-      Recovering(my_context ctx);
+      explicit Recovering(my_context ctx);
       void exit();
       void release_reservations();
       boost::statechart::result react(const AllReplicasRecovered &evt);
@@ -1862,7 +1948,7 @@ public:
 	boost::statechart::transition< AllRemotesReserved, Recovering >
 	> reactions;
       set<pg_shard_t>::const_iterator remote_recovery_reservation_it;
-      WaitRemoteRecoveryReserved(my_context ctx);
+      explicit WaitRemoteRecoveryReserved(my_context ctx);
       boost::statechart::result react(const RemoteRecoveryReserved &evt);
       void exit();
     };
@@ -1871,7 +1957,7 @@ public:
       typedef boost::mpl::list <
 	boost::statechart::transition< LocalRecoveryReserved, WaitRemoteRecoveryReserved >
 	> reactions;
-      WaitLocalRecoveryReserved(my_context ctx);
+      explicit WaitLocalRecoveryReserved(my_context ctx);
       void exit();
     };
 
@@ -1881,14 +1967,14 @@ public:
 	boost::statechart::transition< DoRecovery, WaitLocalRecoveryReserved >,
 	boost::statechart::transition< RequestBackfill, WaitLocalBackfillReserved >
 	> reactions;
-      Activating(my_context ctx);
+      explicit Activating(my_context ctx);
       void exit();
     };
 
     struct Stray : boost::statechart::state< Stray, Started >, NamedState {
       map<int, pair<pg_query_t, epoch_t> > pending_queries;
 
-      Stray(my_context ctx);
+      explicit Stray(my_context ctx);
       void exit();
 
       typedef boost::mpl::list <
@@ -1912,7 +1998,7 @@ public:
     struct GetInfo : boost::statechart::state< GetInfo, Peering >, NamedState {
       set<pg_shard_t> peer_info_requested;
 
-      GetInfo(my_context ctx);
+      explicit GetInfo(my_context ctx);
       void exit();
       void get_infos();
 
@@ -1934,7 +2020,7 @@ public:
       pg_shard_t auth_log_shard;
       boost::intrusive_ptr<MOSDPGLog> msg;
 
-      GetLog(my_context ctx);
+      explicit GetLog(my_context ctx);
       void exit();
 
       typedef boost::mpl::list <
@@ -1955,7 +2041,7 @@ public:
     struct GetMissing : boost::statechart::state< GetMissing, Peering >, NamedState {
       set<pg_shard_t> peer_missing_requested;
 
-      GetMissing(my_context ctx);
+      explicit GetMissing(my_context ctx);
       void exit();
 
       typedef boost::mpl::list <
@@ -1968,7 +2054,7 @@ public:
     };
 
     struct WaitUpThru : boost::statechart::state< WaitUpThru, Peering >, NamedState {
-      WaitUpThru(my_context ctx);
+      explicit WaitUpThru(my_context ctx);
       void exit();
 
       typedef boost::mpl::list <
@@ -1986,7 +2072,7 @@ public:
 	boost::statechart::custom_reaction< AdvMap >,
 	boost::statechart::custom_reaction< MNotifyRec >
 	> reactions;
-      Incomplete(my_context ctx);
+      explicit Incomplete(my_context ctx);
       boost::statechart::result react(const AdvMap &advmap);
       boost::statechart::result react(const MNotifyRec& infoevt);
       void exit();
@@ -2010,7 +2096,7 @@ public:
     boost::optional<RecoveryCtx> rctx;
 
   public:
-    RecoveryState(PG *pg)
+    explicit RecoveryState(PG *pg)
       : machine(this, pg), pg(pg), orig_ctx(0) {
       machine.initiate();
     }
@@ -2047,10 +2133,10 @@ public:
   uint64_t upacting_features;
 
   bool do_sort_bitwise;
+  epoch_t last_epoch;
 
  public:
   const spg_t&      get_pgid() const { return pg_id; }
-  int        get_nrep() const { return acting.size(); }
 
   void reset_min_peer_features() {
     peer_features = CEPH_FEATURES_SUPPORTED_DEFAULT;
@@ -2080,7 +2166,15 @@ public:
 	    acting[i],
 	    pool.info.ec_pool() ? shard_id_t(i) : shard_id_t::NO_SHARD));
     }
+    upset.clear();
     up = newup;
+    for (uint8_t i = 0; i < up.size(); ++i) {
+      if (up[i] != CRUSH_ITEM_NONE)
+	upset.insert(
+	  pg_shard_t(
+	    up[i],
+	    pool.info.ec_pool() ? shard_id_t(i) : shard_id_t::NO_SHARD));
+    }
     if (!pool.info.ec_pool()) {
       up_primary = pg_shard_t(new_up_primary, shard_id_t::NO_SHARD);
       primary = pg_shard_t(new_acting_primary, shard_id_t::NO_SHARD);
@@ -2165,7 +2259,8 @@ public:
     pg_info_t &info, coll_t coll,
     map<epoch_t,pg_interval_t> &past_intervals,
     ghobject_t &pgmeta_oid,
-    bool dirty_big_info);
+    bool dirty_big_info,
+    bool dirty_epoch);
   void write_if_dirty(ObjectStore::Transaction& t);
 
   eversion_t get_next_version() const {
@@ -2206,11 +2301,23 @@ public:
   void queue_snap_trim();
   bool requeue_scrub();
   bool queue_scrub();
+  unsigned get_scrub_priority();
 
   /// share pg info after a pg is active
   void share_pg_info();
-  /// share new pg log entries after a pg is active
-  void share_pg_log();
+
+
+  void append_log_entries_update_missing(
+    const list<pg_log_entry_t> &entries,
+    ObjectStore::Transaction &t);
+
+  /**
+   * Merge entries updating missing as necessary on all
+   * actingbackfill logs and missings (also missing_loc)
+   */
+  void merge_new_log_entries(
+    const list<pg_log_entry_t> &entries,
+    ObjectStore::Transaction &t);
 
   void reset_interval_flush();
   void start_peering_interval(
@@ -2306,8 +2413,13 @@ public:
   virtual void do_backfill(OpRequestRef op) = 0;
   virtual void snap_trimmer(epoch_t epoch_queued) = 0;
 
-  virtual int do_command(cmdmap_t cmdmap, ostream& ss,
-			 bufferlist& idata, bufferlist& odata) = 0;
+  virtual int do_command(
+    cmdmap_t cmdmap,
+    ostream& ss,
+    bufferlist& idata,
+    bufferlist& odata,
+    ConnectionRef conn,
+    ceph_tid_t tid) = 0;
 
   virtual void on_role_change() = 0;
   virtual void on_pool_change() = 0;

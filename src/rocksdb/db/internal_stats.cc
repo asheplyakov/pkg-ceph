@@ -13,6 +13,7 @@
 #endif
 
 #include <inttypes.h>
+#include <string>
 #include <algorithm>
 #include <vector>
 #include "db/column_family.h"
@@ -26,6 +27,7 @@ namespace rocksdb {
 namespace {
 const double kMB = 1048576.0;
 const double kGB = kMB * 1024;
+const double kMicrosInSec = 1000000.0;
 
 void PrintLevelStatsHeader(char* buf, size_t len, const std::string& cf_name) {
   snprintf(
@@ -33,8 +35,7 @@ void PrintLevelStatsHeader(char* buf, size_t len, const std::string& cf_name) {
       "\n** Compaction Stats [%s] **\n"
       "Level    Files   Size(MB) Score Read(GB)  Rn(GB) Rnp1(GB) "
       "Write(GB) Wnew(GB) Moved(GB) W-Amp Rd(MB/s) Wr(MB/s) "
-      "Comp(sec) Comp(cnt) Avg(sec) "
-      "Stall(cnt)  KeyIn KeyDrop\n"
+      "Comp(sec) Comp(cnt) Avg(sec) KeyIn KeyDrop\n"
       "--------------------------------------------------------------------"
       "-----------------------------------------------------------"
       "--------------------------------------\n",
@@ -42,18 +43,20 @@ void PrintLevelStatsHeader(char* buf, size_t len, const std::string& cf_name) {
 }
 
 void PrintLevelStats(char* buf, size_t len, const std::string& name,
-    int num_files, int being_compacted, double total_file_size, double score,
-    double w_amp, uint64_t stalls,
-    const InternalStats::CompactionStats& stats) {
-  uint64_t bytes_read = stats.bytes_readn + stats.bytes_readnp1;
-  int64_t bytes_new = stats.bytes_written - stats.bytes_readnp1;
-  double elapsed = (stats.micros + 1) / 1000000.0;
+                     int num_files, int being_compacted, double total_file_size,
+                     double score, double w_amp,
+                     const InternalStats::CompactionStats& stats) {
+  uint64_t bytes_read =
+      stats.bytes_read_non_output_levels + stats.bytes_read_output_level;
+  int64_t bytes_new =
+      stats.bytes_written - stats.bytes_read_output_level;
+  double elapsed = (stats.micros + 1) / kMicrosInSec;
   std::string num_input_records = NumberToHumanString(stats.num_input_records);
   std::string num_dropped_records =
       NumberToHumanString(stats.num_dropped_records);
 
   snprintf(buf, len,
-           "%4s %6d/%-3d %8.0f %5.1f " /* Level, Files, Size(MB), Score */
+           "%4s %6d/%-3d %8.2f %5.1f " /* Level, Files, Size(MB), Score */
            "%8.1f "                    /* Read(GB) */
            "%7.1f "                    /* Rn(GB) */
            "%8.1f "                    /* Rnp1(GB) */
@@ -66,19 +69,16 @@ void PrintLevelStats(char* buf, size_t len, const std::string& name,
            "%9.0f "                    /* Comp(sec) */
            "%9d "                      /* Comp(cnt) */
            "%8.3f "                    /* Avg(sec) */
-           "%10" PRIu64
-           " "      /* Stall(cnt) */
-           "%7s "   /* KeyIn */
-           "%6s\n", /* KeyDrop */
-           name.c_str(), num_files, being_compacted, total_file_size / kMB,
-           score, bytes_read / kGB, stats.bytes_readn / kGB,
-           stats.bytes_readnp1 / kGB, stats.bytes_written / kGB,
-           bytes_new / kGB, stats.bytes_moved / kGB,
-           w_amp, bytes_read / kMB / elapsed,
-           stats.bytes_written / kMB / elapsed, stats.micros / 1000000.0,
-           stats.count,
-           stats.count == 0 ? 0 : stats.micros / 1000000.0 / stats.count,
-           stalls,
+           "%7s "                      /* KeyIn */
+           "%6s\n",                    /* KeyDrop */
+           name.c_str(),
+           num_files, being_compacted, total_file_size / kMB, score,
+           bytes_read / kGB, stats.bytes_read_non_output_levels / kGB,
+           stats.bytes_read_output_level / kGB, stats.bytes_written / kGB,
+           bytes_new / kGB, stats.bytes_moved / kGB, w_amp,
+           bytes_read / kMB / elapsed, stats.bytes_written / kMB / elapsed,
+           stats.micros / kMicrosInSec, stats.count,
+           stats.count == 0 ? 0 : stats.micros / kMicrosInSec / stats.count,
            num_input_records.c_str(), num_dropped_records.c_str());
 }
 }
@@ -92,12 +92,16 @@ static const std::string cfstats = "cfstats";
 static const std::string dbstats = "dbstats";
 static const std::string levelstats = "levelstats";
 static const std::string num_immutable_mem_table = "num-immutable-mem-table";
+static const std::string num_immutable_mem_table_flushed =
+    "num-immutable-mem-table-flushed";
 static const std::string mem_table_flush_pending = "mem-table-flush-pending";
 static const std::string compaction_pending = "compaction-pending";
 static const std::string background_errors = "background-errors";
 static const std::string cur_size_active_mem_table =
                           "cur-size-active-mem-table";
-static const std::string cur_size_all_mem_tables = "cur-size-all-mem-tables";
+static const std::string cur_size_unflushed_mem_tables =
+    "cur-size-all-mem-tables";
+static const std::string cur_size_all_mem_tables = "size-all-mem-tables";
 static const std::string num_entries_active_mem_table =
                           "num-entries-active-mem-table";
 static const std::string num_entries_imm_mem_tables =
@@ -114,7 +118,17 @@ static const std::string is_file_deletions_enabled =
 static const std::string num_snapshots = "num-snapshots";
 static const std::string oldest_snapshot_time = "oldest-snapshot-time";
 static const std::string num_live_versions = "num-live-versions";
+static const std::string estimate_live_data_size = "estimate-live-data-size";
 static const std::string base_level = "base-level";
+static const std::string total_sst_files_size = "total-sst-files-size";
+static const std::string estimate_pending_comp_bytes =
+    "estimate-pending-compaction-bytes";
+static const std::string aggregated_table_properties =
+    "aggregated-table-properties";
+static const std::string aggregated_table_properties_at_level =
+    aggregated_table_properties + "-at-level";
+static const std::string num_running_compactions = "num-running-compactions";
+static const std::string num_running_flushes = "num-running-flushes";
 
 const std::string DB::Properties::kNumFilesAtLevelPrefix =
                       rocksdb_prefix + num_files_at_level_prefix;
@@ -128,12 +142,18 @@ const std::string DB::Properties::kMemTableFlushPending =
                       rocksdb_prefix + mem_table_flush_pending;
 const std::string DB::Properties::kCompactionPending =
                       rocksdb_prefix + compaction_pending;
+const std::string DB::Properties::kNumRunningCompactions =
+    rocksdb_prefix + num_running_compactions;
+const std::string DB::Properties::kNumRunningFlushes =
+    rocksdb_prefix + num_running_flushes;
 const std::string DB::Properties::kBackgroundErrors =
                       rocksdb_prefix + background_errors;
 const std::string DB::Properties::kCurSizeActiveMemTable =
                       rocksdb_prefix + cur_size_active_mem_table;
 const std::string DB::Properties::kCurSizeAllMemTables =
-                      rocksdb_prefix + cur_size_all_mem_tables;
+    rocksdb_prefix + cur_size_unflushed_mem_tables;
+const std::string DB::Properties::kSizeAllMemTables =
+    rocksdb_prefix + cur_size_all_mem_tables;
 const std::string DB::Properties::kNumEntriesActiveMemTable =
                       rocksdb_prefix + num_entries_active_mem_table;
 const std::string DB::Properties::kNumEntriesImmMemTables =
@@ -154,6 +174,16 @@ const std::string DB::Properties::kOldestSnapshotTime =
                       rocksdb_prefix + oldest_snapshot_time;
 const std::string DB::Properties::kNumLiveVersions =
                       rocksdb_prefix + num_live_versions;
+const std::string DB::Properties::kEstimateLiveDataSize =
+                      rocksdb_prefix + estimate_live_data_size;
+const std::string DB::Properties::kTotalSstFilesSize =
+                      rocksdb_prefix + total_sst_files_size;
+const std::string DB::Properties::kEstimatePendingCompactionBytes =
+    rocksdb_prefix + estimate_pending_comp_bytes;
+const std::string DB::Properties::kAggregatedTableProperties =
+    rocksdb_prefix + aggregated_table_properties;
+const std::string DB::Properties::kAggregatedTablePropertiesAtLevel =
+    rocksdb_prefix + aggregated_table_properties_at_level;
 
 DBPropertyType GetPropertyType(const Slice& property, bool* is_int_property,
                                bool* need_out_of_mutex) {
@@ -180,11 +210,17 @@ DBPropertyType GetPropertyType(const Slice& property, bool* is_int_property,
     return kDBStats;
   } else if (in == sstables) {
     return kSsTables;
+  } else if (in == aggregated_table_properties) {
+    return kAggregatedTableProperties;
+  } else if (in.starts_with(aggregated_table_properties_at_level)) {
+    return kAggregatedTablePropertiesAtLevel;
   }
 
   *is_int_property = true;
   if (in == num_immutable_mem_table) {
     return kNumImmutableMemTable;
+  } else if (in == num_immutable_mem_table_flushed) {
+    return kNumImmutableMemTableFlushed;
   } else if (in == mem_table_flush_pending) {
     return kMemtableFlushPending;
   } else if (in == compaction_pending) {
@@ -193,8 +229,10 @@ DBPropertyType GetPropertyType(const Slice& property, bool* is_int_property,
     return kBackgroundErrors;
   } else if (in == cur_size_active_mem_table) {
     return kCurSizeActiveMemTable;
-  } else if (in == cur_size_all_mem_tables) {
+  } else if (in == cur_size_unflushed_mem_tables) {
     return kCurSizeAllMemTables;
+  } else if (in == cur_size_all_mem_tables) {
+    return kSizeAllMemTables;
   } else if (in == num_entries_active_mem_table) {
     return kNumEntriesInMutableMemtable;
   } else if (in == num_entries_imm_mem_tables) {
@@ -216,8 +254,19 @@ DBPropertyType GetPropertyType(const Slice& property, bool* is_int_property,
     return kOldestSnapshotTime;
   } else if (in == num_live_versions) {
     return kNumLiveVersions;
+  } else if (in == estimate_live_data_size) {
+    *need_out_of_mutex = true;
+    return kEstimateLiveDataSize;
   } else if (in == base_level) {
     return kBaseLevel;
+  } else if (in == total_sst_files_size) {
+    return kTotalSstFilesSize;
+  } else if (in == estimate_pending_comp_bytes) {
+    return kEstimatePendingCompactionBytes;
+  } else if (in == num_running_flushes) {
+    return kNumRunningFlushes;
+  } else if (in == num_running_compactions) {
+    return kNumRunningCompactions;
   }
   return kUnknown;
 }
@@ -226,15 +275,19 @@ bool InternalStats::GetIntPropertyOutOfMutex(DBPropertyType property_type,
                                              Version* version,
                                              uint64_t* value) const {
   assert(value != nullptr);
-  if (property_type != kEstimatedUsageByTableReaders) {
-    return false;
+  const auto* vstorage = cfd_->current()->storage_info();
+
+  switch (property_type) {
+    case kEstimatedUsageByTableReaders:
+      *value = (version == nullptr) ?
+        0 : version->GetMemoryUsageByTableReaders();
+      return true;
+    case kEstimateLiveDataSize:
+      *value = vstorage->EstimateLiveDataSize();
+      return true;
+    default:
+      return false;
   }
-  if (version == nullptr) {
-    *value = 0;
-  } else {
-    *value = version->GetMemoryUsageByTableReaders();
-  }
-  return true;
 }
 
 bool InternalStats::GetStringProperty(DBPropertyType property_type,
@@ -295,6 +348,32 @@ bool InternalStats::GetStringProperty(DBPropertyType property_type,
     case kSsTables:
       *value = current->DebugString();
       return true;
+    case kAggregatedTableProperties: {
+      std::shared_ptr<const TableProperties> tp;
+      auto s = cfd_->current()->GetAggregatedTableProperties(&tp);
+      if (!s.ok()) {
+        return false;
+      }
+      *value = tp->ToString();
+      return true;
+    }
+    case kAggregatedTablePropertiesAtLevel: {
+      in.remove_prefix(
+          DB::Properties::kAggregatedTablePropertiesAtLevel.length());
+      uint64_t level;
+      bool ok = ConsumeDecimalNumber(&in, &level) && in.empty();
+      if (!ok || static_cast<int>(level) >= number_levels_) {
+        return false;
+      }
+      std::shared_ptr<const TableProperties> tp;
+      auto s = cfd_->current()->GetAggregatedTableProperties(
+          &tp, static_cast<int>(level));
+      if (!s.ok()) {
+        return false;
+      }
+      *value = tp->ToString();
+      return true;
+    }
     default:
       return false;
   }
@@ -307,16 +386,25 @@ bool InternalStats::GetIntProperty(DBPropertyType property_type,
 
   switch (property_type) {
     case kNumImmutableMemTable:
-      *value = cfd_->imm()->size();
+      *value = cfd_->imm()->NumNotFlushed();
+      return true;
+    case kNumImmutableMemTableFlushed:
+      *value = cfd_->imm()->NumFlushed();
       return true;
     case kMemtableFlushPending:
       // Return number of mem tables that are ready to flush (made immutable)
       *value = (cfd_->imm()->IsFlushPending() ? 1 : 0);
       return true;
+    case kNumRunningFlushes:
+      *value = db->num_running_flushes();
+      return true;
     case kCompactionPending:
-      // 1 if the system already determines at least one compacdtion is needed.
+      // 1 if the system already determines at least one compaction is needed.
       // 0 otherwise,
       *value = (cfd_->compaction_picker()->NeedsCompaction(vstorage) ? 1 : 0);
+      return true;
+    case kNumRunningCompactions:
+      *value = db->num_running_compactions_;
       return true;
     case kBackgroundErrors:
       // Accumulated number of  errors in background flushes or compactions.
@@ -328,6 +416,10 @@ bool InternalStats::GetIntProperty(DBPropertyType property_type,
       return true;
     case kCurSizeAllMemTables:
       // Current size of the active memtable + immutable memtables
+      *value = cfd_->mem()->ApproximateMemoryUsage() +
+               cfd_->imm()->ApproximateUnflushedMemTablesMemoryUsage();
+      return true;
+    case kSizeAllMemTables:
       *value = cfd_->mem()->ApproximateMemoryUsage() +
                cfd_->imm()->ApproximateMemoryUsage();
       return true;
@@ -366,13 +458,17 @@ bool InternalStats::GetIntProperty(DBPropertyType property_type,
     case kNumLiveVersions:
       *value = cfd_->GetNumLiveVersions();
       return true;
-#ifndef ROCKSDB_LITE
     case kIsFileDeletionEnabled:
       *value = db->IsFileDeletionsEnabled();
       return true;
-#endif
     case kBaseLevel:
       *value = vstorage->base_level();
+      return true;
+    case kTotalSstFilesSize:
+      *value = cfd_->GetTotalSstFilesSize();
+      return true;
+    case kEstimatePendingCompactionBytes:
+      *value = vstorage->estimated_compaction_needed_bytes();
       return true;
     default:
       return false;
@@ -382,7 +478,7 @@ bool InternalStats::GetIntProperty(DBPropertyType property_type,
 void InternalStats::DumpDBStats(std::string* value) {
   char buf[1000];
   // DB-level stats, only available from default column family
-  double seconds_up = (env_->NowMicros() - started_at_ + 1) / 1000000.0;
+  double seconds_up = (env_->NowMicros() - started_at_ + 1) / kMicrosInSec;
   double interval_seconds_up = seconds_up - db_stats_snapshot_.seconds_up;
   snprintf(buf, sizeof(buf),
            "\n** DB Stats **\nUptime(secs): %.1f total, %.1f interval\n",
@@ -433,19 +529,17 @@ void InternalStats::DumpDBStats(std::string* value) {
   value->append(buf);
   // Compact
   for (int level = 0; level < number_levels_; level++) {
-    compact_bytes_read += comp_stats_[level].bytes_readnp1 +
-                          comp_stats_[level].bytes_readn;
+    compact_bytes_read += comp_stats_[level].bytes_read_output_level +
+                          comp_stats_[level].bytes_read_non_output_levels;
     compact_bytes_write += comp_stats_[level].bytes_written;
     compact_micros += comp_stats_[level].micros;
   }
   snprintf(buf, sizeof(buf),
            "Cumulative compaction: %.2f GB write, %.2f MB/s write, "
            "%.2f GB read, %.2f MB/s read, %.1f seconds\n",
-           compact_bytes_write / kGB,
-           compact_bytes_write / kMB / seconds_up,
-           compact_bytes_read / kGB,
-           compact_bytes_read / kMB / seconds_up,
-           compact_micros / 1000000.0);
+           compact_bytes_write / kGB, compact_bytes_write / kMB / seconds_up,
+           compact_bytes_read / kGB, compact_bytes_read / kMB / seconds_up,
+           compact_micros / kMicrosInSec);
   value->append(buf);
   // Stall
   AppendHumanMicros(write_stall_micros, human_micros, kHumanMicrosLen, true);
@@ -499,16 +593,15 @@ void InternalStats::DumpDBStats(std::string* value) {
   uint64_t interval_compact_micros =
       compact_micros - db_stats_snapshot_.compact_micros;
 
-  snprintf(buf, sizeof(buf),
-           "Interval compaction: %.2f GB write, %.2f MB/s write, "
-           "%.2f GB read, %.2f MB/s read, %.1f seconds\n",
-           interval_compact_bytes_write / kGB,
-           interval_compact_bytes_write / kMB /
-               std::max(interval_seconds_up, 0.001),
-           interval_compact_bytes_read / kGB,
-           interval_compact_bytes_read / kMB /
-               std::max(interval_seconds_up, 0.001),
-           interval_compact_micros / 1000000.0);
+  snprintf(
+      buf, sizeof(buf),
+      "Interval compaction: %.2f GB write, %.2f MB/s write, "
+      "%.2f GB read, %.2f MB/s read, %.1f seconds\n",
+      interval_compact_bytes_write / kGB,
+      interval_compact_bytes_write / kMB / std::max(interval_seconds_up, 0.001),
+      interval_compact_bytes_read / kGB,
+      interval_compact_bytes_read / kMB / std::max(interval_seconds_up, 0.001),
+      interval_compact_micros / kMicrosInSec);
   value->append(buf);
 
   // Stall
@@ -522,6 +615,16 @@ void InternalStats::DumpDBStats(std::string* value) {
            (write_stall_micros - db_stats_snapshot_.write_stall_micros) /
                10000.0 / std::max(interval_seconds_up, 0.001));
   value->append(buf);
+
+  for (int level = 0; level < number_levels_; level++) {
+    if (!file_read_latency_[level].Empty()) {
+      char buf2[5000];
+      snprintf(buf2, sizeof(buf2),
+               "** Level %d read latency histogram (micros):\n%s\n", level,
+               file_read_latency_[level].ToString().c_str());
+      value->append(buf2);
+    }
+  }
 
   db_stats_snapshot_.seconds_up = seconds_up;
   db_stats_snapshot_.ingest_bytes = user_bytes_written;
@@ -541,8 +644,7 @@ void InternalStats::DumpCFStats(std::string* value) {
   const VersionStorageInfo* vstorage = cfd_->current()->storage_info();
 
   int num_levels_to_check =
-      (cfd_->ioptions()->compaction_style != kCompactionStyleUniversal &&
-       cfd_->ioptions()->compaction_style != kCompactionStyleFIFO)
+      (cfd_->ioptions()->compaction_style != kCompactionStyleFIFO)
           ? vstorage->num_levels() - 1
           : 1;
 
@@ -555,7 +657,7 @@ void InternalStats::DumpCFStats(std::string* value) {
   }
   // Count # of files being compacted for each level
   std::vector<int> files_being_compacted(number_levels_, 0);
-  for (int level = 0; level < num_levels_to_check; ++level) {
+  for (int level = 0; level < number_levels_; ++level) {
     for (auto* f : vstorage->LevelFiles(level)) {
       if (f->being_compacted) {
         ++files_being_compacted[level];
@@ -572,43 +674,37 @@ void InternalStats::DumpCFStats(std::string* value) {
   int total_files = 0;
   int total_files_being_compacted = 0;
   double total_file_size = 0;
-  uint64_t total_slowdown_count_soft = 0;
-  uint64_t total_slowdown_count_hard = 0;
-  uint64_t total_stall_count = 0;
   for (int level = 0; level < number_levels_; level++) {
     int files = vstorage->NumLevelFiles(level);
     total_files += files;
     total_files_being_compacted += files_being_compacted[level];
     if (comp_stats_[level].micros > 0 || files > 0) {
-      uint64_t stalls = level == 0 ?
-        (cf_stats_count_[LEVEL0_SLOWDOWN] +
-         cf_stats_count_[LEVEL0_NUM_FILES] +
-         cf_stats_count_[MEMTABLE_COMPACTION])
-        : (stall_leveln_slowdown_count_soft_[level] +
-           stall_leveln_slowdown_count_hard_[level]);
-
       stats_sum.Add(comp_stats_[level]);
       total_file_size += vstorage->NumLevelBytes(level);
-      total_stall_count += stalls;
-      total_slowdown_count_soft += stall_leveln_slowdown_count_soft_[level];
-      total_slowdown_count_hard += stall_leveln_slowdown_count_hard_[level];
-      double w_amp = (comp_stats_[level].bytes_readn == 0) ? 0.0
-          : comp_stats_[level].bytes_written /
-            static_cast<double>(comp_stats_[level].bytes_readn);
+      double w_amp =
+          (comp_stats_[level].bytes_read_non_output_levels == 0) ? 0.0
+          : static_cast<double>(comp_stats_[level].bytes_written) /
+            comp_stats_[level].bytes_read_non_output_levels;
       PrintLevelStats(buf, sizeof(buf), "L" + ToString(level), files,
                       files_being_compacted[level],
                       vstorage->NumLevelBytes(level), compaction_score[level],
-                      w_amp, stalls, comp_stats_[level]);
+                      w_amp, comp_stats_[level]);
       value->append(buf);
     }
   }
   uint64_t curr_ingest = cf_stats_value_[BYTES_FLUSHED];
   // Cumulative summary
   double w_amp = stats_sum.bytes_written / static_cast<double>(curr_ingest + 1);
+  uint64_t total_stall_count =
+      cf_stats_count_[LEVEL0_SLOWDOWN_TOTAL] +
+      cf_stats_count_[LEVEL0_NUM_FILES_TOTAL] +
+      cf_stats_count_[SOFT_PENDING_COMPACTION_BYTES_LIMIT] +
+      cf_stats_count_[HARD_PENDING_COMPACTION_BYTES_LIMIT] +
+      cf_stats_count_[MEMTABLE_COMPACTION];
   // Stats summary across levels
   PrintLevelStats(buf, sizeof(buf), "Sum", total_files,
-      total_files_being_compacted, total_file_size, 0, w_amp,
-      total_stall_count, stats_sum);
+                  total_files_being_compacted, total_file_size, 0, w_amp,
+                  stats_sum);
   value->append(buf);
   // Interval summary
   uint64_t interval_ingest =
@@ -616,9 +712,7 @@ void InternalStats::DumpCFStats(std::string* value) {
   CompactionStats interval_stats(stats_sum);
   interval_stats.Subtract(cf_stats_snapshot_.comp_stats);
   w_amp = interval_stats.bytes_written / static_cast<double>(interval_ingest);
-  PrintLevelStats(buf, sizeof(buf), "Int", 0, 0, 0, 0,
-      w_amp, total_stall_count - cf_stats_snapshot_.stall_count,
-      interval_stats);
+  PrintLevelStats(buf, sizeof(buf), "Int", 0, 0, 0, 0, w_amp, interval_stats);
   value->append(buf);
 
   snprintf(buf, sizeof(buf),
@@ -626,15 +720,29 @@ void InternalStats::DumpCFStats(std::string* value) {
            curr_ingest / kGB, interval_ingest / kGB);
   value->append(buf);
 
-  snprintf(buf, sizeof(buf),
-           "Stalls(count): %" PRIu64 " level0_slowdown, "
-           "%" PRIu64 " level0_numfiles, %" PRIu64 " memtable_compaction, "
-           "%" PRIu64 " leveln_slowdown_soft, "
-           "%" PRIu64 " leveln_slowdown_hard\n",
-           cf_stats_count_[LEVEL0_SLOWDOWN],
-           cf_stats_count_[LEVEL0_NUM_FILES],
+  snprintf(buf, sizeof(buf), "Stalls(count): %" PRIu64
+                             " level0_slowdown, "
+                             "%" PRIu64
+                             " level0_slowdown_with_compaction, "
+                             "%" PRIu64
+                             " level0_numfiles, "
+                             "%" PRIu64
+                             " level0_numfiles_with_compaction, "
+                             "%" PRIu64
+                             " stop for pending_compaction_bytes, "
+                             "%" PRIu64
+                             " slowdown for pending_compaction_bytes, "
+                             "%" PRIu64
+                             " memtable_compaction, "
+                             "interval %" PRIu64 " total count\n",
+           cf_stats_count_[LEVEL0_SLOWDOWN_TOTAL],
+           cf_stats_count_[LEVEL0_SLOWDOWN_WITH_COMPACTION],
+           cf_stats_count_[LEVEL0_NUM_FILES_TOTAL],
+           cf_stats_count_[LEVEL0_NUM_FILES_WITH_COMPACTION],
+           cf_stats_count_[HARD_PENDING_COMPACTION_BYTES_LIMIT],
+           cf_stats_count_[SOFT_PENDING_COMPACTION_BYTES_LIMIT],
            cf_stats_count_[MEMTABLE_COMPACTION],
-           total_slowdown_count_soft, total_slowdown_count_hard);
+           total_stall_count - cf_stats_snapshot_.stall_count);
   value->append(buf);
 
   cf_stats_snapshot_.ingest_bytes = curr_ingest;
