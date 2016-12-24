@@ -16,6 +16,9 @@ rbdmap1-mount.patch
 rbdmap2-hooks.patch
 CVE-2015-5245.patch
 
+## Security
+cve-2016-9579_short_cors_request.patch
+
 ## Debian
 rbdmap3-lazyumount.patch
 arch.patch
