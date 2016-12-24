@@ -1,3 +1,13 @@
+ceph (10.2.5-2) unstable; urgency=medium
+
+  * [3859ca] Only list missing files instead of failing (Closes: #849031)
+  * [47aef7] Remove chrony from recommends (provides time-daemon)
+    (Closes: #827673)
+  * [3e96e6] Upstream fix for CVE-2016-9579 (short CORS request)
+    (Closes: #849048)
+
+ -- Gaudenz Steinlin <gaudenz@debian.org>  Sat, 24 Dec 2016 13:14:28 +0100
+
 ceph (10.2.5-1) unstable; urgency=medium
 
   [ James Page ]
