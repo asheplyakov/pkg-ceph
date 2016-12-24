@@ -1,6 +1,6 @@
-ceph (0.94.9-1~2.gbp3e69f0) UNRELEASED; urgency=medium
+ceph (0.94.9-1~u12.04~2.gbpa67404) UNRELEASED; urgency=low
 
-  ** SNAPSHOT build @3e69f074ffd5970e8008aa3dbe662f8fa234db2d **
+  ** SNAPSHOT build @a67404db5505fe77fcc70a15b4d8765bc178641c **
 
   * Package 0.94.9 upstream release, most notable bugfixes:
     - monitor crashes on a command without a prefix,
@@ -24,8 +24,10 @@ ceph (0.94.9-1~2.gbp3e69f0) UNRELEASED; urgency=medium
       included upstream
     - drop patches/rgw-handle-errors-properly-during-GET-on-Swift-s-DLO.patch,
       included upstream
+  * Adjust packaging for Ubuntu 12.04
+  * d/rules: set CCACHE_BASEDIR to help ccache vs sbuild
 
- -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Thu, 06 Oct 2016 19:50:27 +0300
+ -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Sat, 24 Dec 2016 16:25:54 +0400
 
 ceph (0.94.7-1) experimental; urgency=low
 
