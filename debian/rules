@@ -20,7 +20,8 @@ extraopts += --disable-silent-rules
 extraopts += --with-ocf --with-rest-bench --with-nss
 extraopts += --with-debug
 extraopts += --enable-cephfs-java
-extraopts += --with-babeltrace
+## babeltrace in Ubuntu 12.04 is too old
+extraopts += --without-babeltrace
 ## do not build with lttng just yet, see #765842.
 extraopts += --without-lttng
 
@@ -38,11 +39,11 @@ else
   extraopts += --without-tcmalloc
 endif
 
-# Use system provided libs3
-extraopts += --with-system-libs3
+# Use bundled libs3, libs3 hasn't been packaged for Ubuntu 12.04
+# extraopts += --with-system-libs3
 
 %:
-	dh $@ --with javahelper,python2,autoreconf,systemd --parallel
+	dh $@ --with javahelper,python2,autoreconf --parallel
 
 # use --as-needed only if supported by dh-autoreconf (to simplify backporting)
 DH_AS_NEEDED=$(shell dpkg --compare-versions $$(dpkg --status dh-autoreconf | grep Version | cut -d' ' -f2) ge 6 && echo --as-needed)
