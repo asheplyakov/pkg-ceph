@@ -77,7 +77,7 @@ override_dh_install:
 	rm -f $(CURDIR)/debian/tmp/usr/lib/*/ceph/erasure-code/libec_*.so.*
 	find $(CURDIR)/debian/tmp/usr/lib/*/ceph/erasure-code -type l -delete || :
 	install -D -m 644 src/etc-rbdmap $(CURDIR)/debian/tmp/etc/ceph/rbdmap
-	dh_install --fail-missing
+	dh_install --list-missing
 
 override_dh_installchangelogs:
 	dh_installchangelogs ChangeLog
