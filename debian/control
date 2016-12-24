@@ -100,7 +100,7 @@ Recommends: libcephfs1,
             librados2,
             libradosstriper1,
             librbd1,
-            ntp | time-daemon | chrony
+            ntp | time-daemon
 Suggests: logrotate
 Description: common ceph daemon libraries and management tools
  Ceph is a distributed storage system designed to provide excellent
