@@ -1,6 +1,9 @@
 ## Backported / Upstream
 sleep-recover.patch
 
+## Security
+cve-2016-9579_short_cors_request.patch
+
 ## Debian
 #rbdmap3-lazyumount.patch
 arch.patch
