@@ -1,5 +1,6 @@
-ceph (9.2.0-1) UNRELEASED; urgency=medium
+ceph (10.2.5-1) unstable; urgency=medium
 
+  [ James Page ]
   * [754935] Imported Upstream version 9.2.0
     - [df85c3] Resync relevant packaging changes with upstream.
     - [be5f82] Refresh patches.
@@ -13,8 +14,122 @@ ceph (9.2.0-1) UNRELEASED; urgency=medium
   * [4c45629] Update NEWS file for infernalis changes.
   * [940491e] Limit number of parallel builds to 2 to reduce memory footprint
               on builders.
+  * [a2bed4] New upstream version 10.2.5
+  * [cbfb6b] Sync upstream changes around rbdmap install and conf files.
+  * [5c52b2] Drop patches include upstream, refresh remaining patches
+  * [8f9820] Resync further packaging changes from upstream.
+  * [27d010] Re-add bz2-dev BD.
+  * [e94aa2] Add python-dev to BD's.
+  * [e201c1] d/p/pybind-flags.patch: Ensure that cython *FLAGS are correctly
+             set.
+  * [14cd12] d/p/fix-systemd-escaping.patch: Ensure that leading '/' is stripped
+             from block device paths when escaping for use in systemd unit
+             names.
+  * [33b3aa] Add pull request for systemd fixes
+  * [d781a2] d/ceph-mds.postinst: Fix syntax error.
+  * [ce55ec] Ensure that python flags are correct set for cython rbd build.
+  * [f9e35b] Switch rbd python binding to cython
+  * [8ccae0] Drop ceph_volume_client until its actually in the codebase.
+  * [0a11cc] Install to relative, not absolute /etc/ceph.
+  * [e2415a] Drop ceph-bluefs-tool from ceph package.
+  * [b16966] d/ceph-mds.dirs: Actually create /var/lib/ceph/mds prior to
+             changing permissions (LP: #1544647).
+  * [0c1201] d/ceph.init: Restore link to init-ceph, resolving un-install
+             failures due to missing init script (LP: #1546112).
 
- -- James Page <james.page@ubuntu.com>  Mon, 09 Nov 2015 12:38:52 +0000
+  [ Gaudenz Steinlin ]
+  * [e3cb86] Remove no longer needed check for dh-autoreconf>=6
+  * [9157b3] Install ceph-brag tool into ceph-common
+  * [74e9f3] Install ceph-client-debug into ceph-test
+  * [476449] Use jh_installlib to install Java libraries
+  * [643f6e] Don't remove configure script on dh_clean
+  * [4bb203] Remove *.la files to binary packages
+  * [b76c6a] Add build dependency on libboost-iostreams-dev
+  * [b0506f] Add build dependency on libldap2-dev
+  * [526ce1] Refresh patches for upstream version 10.2.2
+  * [cf539b] Remove patches applied upstream in 10.2.2
+
+  [ James Page ]
+  * [646b48] Add librgw2 binary packages.
+  * [ae3cda] Drop virtualenv from BD's.
+  * [7ebd7c] Re-enable rocksdb build for bluestore support
+  * [e393e5] Add rbd-mirror package
+  * [00d06d] Add patch to set g++ flags correctly for rocksdb
+  * [3b029a] Enable gperftools on arm64 architecture.
+  * [e88620] Add ceph-bluefs-tool to install.
+  * [4f40a1] Add s390x to list of rocksdb flags
+  * [858334] d/p/skip-setup.py-makefiles.patch,rules: Avoid use of virtualenv to
+             install ceph-disk and ceph-detect-init python modules.
+  * [40c3b7] Update watch file to scan for gz files.
+  * [49b716] Install librgw_file* as part of ceph-test package.
+
+  [ Gaudenz Steinlin ]
+  * [2e156d] d/rules: Install upstart and systemd configurations for rbd-mirror.
+
+  [ James Page ]
+  * [ca0b07] d/copyright: Ensure that jerasure and gf-complete are not stripped
+             from the upstream release tarball.
+  * [eee861] d/p/disable-openssl-linking.patch: Disable build time linking with
+             OpenSSL due to licensing incompatibilities.
+  * [07d7a6] d/*.symbols: Add new symbols for RC.
+  * [2416f1] Fix multiarch paths for librgw
+  * [2da01d] d/rules: Ensure that dh_systemd_start does not insert maintainer
+             script snippets for ceph-mon and ceph-create-keys - service restart
+             should be handled outside of the packaging as it is under upstart
+             and for all other systemd unit files installed (LP: #1563330).
+  * [76ec3b] d/ceph-common.postinst: Silence output of usermod call
+             (LP: #1569249).
+  * [63d60f] d/rules,ceph-common.install: Ensure that /etc/default/ceph is a
+             file and not a directory (LP: #1587516).
+  * [a866ca] d/control: Bumped Standards-Version to 3.9.8, no changes.
+  * [e0811e] d/ceph.install: Drop install of 60-ceph-partuuid-workaround.rules
+             as no longer part of upstream codebase.
+  * [25954f] * d/*: Split ceph-osd and ceph-mon into separate binary packages
+             and add new ceph-base binary package inline with upstream packaging
+             changes (LP: #1596063).
+  * [f1287b] Add missing misc depends
+  * [afeb18] d/rules,control: Drop -dbg packages and let Ubuntu builds take care
+             of ddeb generation instead.
+
+  [ Gaudenz Steinlin ]
+  * [e133b2] Install rbdmap manpage into ceph-common
+  * [b5ed64] Install radosgw-token command into radosgw package
+  * [0a27e1] Adapt installation of Python files to latest Jewel release
+  * [ef2544] Drop rocksdb-flags patch applied upstream
+  * [07aef4] Add patch osd-limit-omap-data-in-push-op
+  * [32f14d] Refresh patches
+
+  [ James Page ]
+  * [f4e95c] Fix install location for mount.ceph
+  * [6a9efc] Update install location for mount.ceph.fuse
+  * [7624f0] d/control: Add Pre-Depends on ceph-common to ceph-osd to ensure
+             that ceph user and group are created prior to unpacking of udev
+             rules (LP: #1631328).
+
+  [ Frode Nordahl ]
+  * [022ee3] Add rgw_rados-creation_time patch
+
+  [ Gaudenz Steinlin ]
+  * [05225f] Remove old ceph logrotate configuration
+
+  [ James Page ]
+  * [cfa82f] Refresh patches
+
+  [ Gaudenz Steinlin ]
+  * [fdec5d] Remove upstart support
+  * [5966f0] Use new RSA key for ceph-post-file
+  * [3748b6] Only install ChangeLog as upstream changelog
+  * [aa1393] Install bash-completions to /usr
+  * [ab0a88] Dependency on lsb-base for initscripts
+  * [4d78b0] Disable radosgw SysV init script on systemd
+  * [ff4c87] Don't install python bytecode
+  * [3cbf5e] Add missing dependencies on python (ceph-osd, ceph-mon)
+  * [8c70df] Update symbols files (librados2 and librbd1)
+  * [e4f0c5] Add ${shlibs:Depends} on Python C extensions
+  * [936838] Allow setting the number of parallel jobs
+  * [e5aa0f] Remove Laszlo and add myself to uploaders
+
+ -- Gaudenz Steinlin <gaudenz@debian.org>  Sat, 17 Dec 2016 22:40:22 +0100
 
 ceph (0.94.5-1) experimental; urgency=medium
 
