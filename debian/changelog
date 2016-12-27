@@ -1,6 +1,4 @@
-ceph (0.94.9-1~u12.04~2.gbpa67404) UNRELEASED; urgency=low
-
-  ** SNAPSHOT build @a67404db5505fe77fcc70a15b4d8765bc178641c **
+ceph (0.94.9-1~u12.04+1) hammer-precise; urgency=low
 
   * Package 0.94.9 upstream release, most notable bugfixes:
     - monitor crashes on a command without a prefix,
@@ -27,7 +25,7 @@ ceph (0.94.9-1~u12.04~2.gbpa67404) UNRELEASED; urgency=low
   * Adjust packaging for Ubuntu 12.04
   * d/rules: set CCACHE_BASEDIR to help ccache vs sbuild
 
- -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Sat, 24 Dec 2016 16:25:54 +0400
+ -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Tue, 27 Dec 2016 12:56:43 +0400
 
 ceph (0.94.7-1) experimental; urgency=low
 
