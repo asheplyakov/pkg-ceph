@@ -19,6 +19,7 @@ CVE-2015-5245.patch
 ## Security
 cve-2016-5009_mon_dos.patch
 cve-2016-7031_rgw_anonymous_read.patch
+cve-2016-8626_rgw_dos.patch
 cve-2016-9579_short_cors_request.patch
 
 ## Debian
