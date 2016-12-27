@@ -13,6 +13,8 @@ sample.ceph.conf.patch
 virtualenv-never-download.patch
 # Testing patches
 tests-disable.patch
+# Use correct compiler flags on armel
+softfp-armel.patch
 
 ## From Ubuntu
 fix-cycles-arch.patch
