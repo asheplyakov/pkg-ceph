@@ -1,6 +1,4 @@
-ceph (0.94.9-1~2.gbp3e69f0) UNRELEASED; urgency=medium
-
-  ** SNAPSHOT build @3e69f074ffd5970e8008aa3dbe662f8fa234db2d **
+ceph (0.94.9-1~u14.04+1) hammer-trusty; urgency=low
 
   * Package 0.94.9 upstream release, most notable bugfixes:
     - monitor crashes on a command without a prefix,
@@ -24,8 +22,10 @@ ceph (0.94.9-1~2.gbp3e69f0) UNRELEASED; urgency=medium
       included upstream
     - drop patches/rgw-handle-errors-properly-during-GET-on-Swift-s-DLO.patch,
       included upstream
+  * d/rules: set CCACHE_BASEDIR to help ccache vs sbuild
+  * gbp.conf: use signed tags
 
- -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Thu, 06 Oct 2016 19:50:27 +0300
+ -- Alexey Sheplyakov <asheplyakov@as-ubuntu>  Tue, 27 Dec 2016 13:53:16 +0400
 
 ceph (0.94.7-1) experimental; urgency=low
 
