@@ -1,3 +1,14 @@
+ceph (0.80.7-2+deb8u2) jessie; urgency=medium
+
+  * [78329e] Upstream fix for CVE-2016-9579 (short CORS request)
+    (Closes: #849048)
+  * [514d48] Upstream fix for CVE-2016-5009 (mon DoS) (Closes: #829661)
+  * [7ae81b] Upstream fix for CVE-2016-7031 (anonymous read on ACL)
+    (Closes: #838026)
+  * [86ac46] Upstream fix for CVE-2016-8626 (RGW DoS) (Closes: #844200)
+
+ -- Gaudenz Steinlin <gaudenz@debian.org>  Wed, 28 Dec 2016 10:47:36 +0100
+
 ceph (0.80.7-2+deb8u1) jessie; urgency=medium
 
   * [61b5e0] Patch to fix CVE-2015-5245 applied from upstream (Closes: #798567)
