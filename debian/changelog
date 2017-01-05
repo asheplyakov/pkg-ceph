@@ -1,3 +1,9 @@
+ceph (10.2.5-3) unstable; urgency=medium
+
+  * [eeff8d] Use -mfloat-abi=softfp on armel for NEON plugin (Closes: #849660)
+
+ -- Gaudenz Steinlin <gaudenz@debian.org>  Thu, 05 Jan 2017 09:18:41 +0100
+
 ceph (10.2.5-2) unstable; urgency=medium
 
   * [3859ca] Only list missing files instead of failing (Closes: #849031)
