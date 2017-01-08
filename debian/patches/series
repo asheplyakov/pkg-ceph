@@ -15,6 +15,7 @@ virtualenv-never-download.patch
 tests-disable.patch
 # Use correct compiler flags on armel
 softfp-armel.patch
+mips_mipsel_libatomic.patch
 
 ## From Ubuntu
 fix-cycles-arch.patch
