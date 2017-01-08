@@ -53,6 +53,14 @@ endif
 # Use system provided libs3
 extraopts += --with-system-libs3
 
+# Build fix for mips/mipsel
+# This works around a compiler bug which leads to virtual memory exhaustion while compiling
+# the testsuite. See Debian bug #849657.
+ifneq (,$(filter $(DEB_HOST_ARCH), mips mipsel))
+  export DEB_CFLAGS_MAINT_APPEND= --param ggc-min-expand=5
+  export DEB_CXXFLAGS_MAINT_APPEND= --param ggc-min-expand=5
+endif
+
 %:
 	dh $@ --with javahelper,python2,autoreconf,systemd --parallel --max-parallel=$(maxparallel)
 
