@@ -1,3 +1,18 @@
+ceph (10.2.5-1) unstable; urgency=medium
+
+  ## Upgrades from Debian Jessie
+
+  Online upgrades from Ceph versions prior to Hammer (0.94.x) are not
+  supported by upstream. As Debian Jessie has Ceph Firefly (0.80.x) an
+  online upgrade from Jessie to Stretch is not possible. You have to first
+  shutdown all Ceph daemons on all nodes, upgrade everything to the new
+  version and start all daemons again.
+
+  Ceph daemons are not automatically restarted on upgrade to minimize
+  disruption. You have to manually restart them after the upgrade.
+
+ -- Gaudenz Steinlin <gaudenz@debian.org>  Sun, 08 Jan 2017 14:57:35 +0100
+
 ceph (9.2.0-1) experimental; urgency=medium
 
   ## systemd Enablement
