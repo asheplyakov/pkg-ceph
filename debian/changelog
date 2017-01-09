@@ -1,3 +1,11 @@
+ceph (10.2.5-4) unstable; urgency=medium
+
+  * [88034c] Build with ggc-min-expand=5 on mips/el (Closes: #849657)
+  * [c31e79] Add patch to build rocksdb with -latomic on mips/el
+  * [182dd8] NEWS entry about upgrades from Debian Jessie
+
+ -- Gaudenz Steinlin <gaudenz@debian.org>  Sun, 08 Jan 2017 21:34:21 +0100
+
 ceph (10.2.5-3) unstable; urgency=medium
 
   * [eeff8d] Use -mfloat-abi=softfp on armel for NEON plugin (Closes: #849660)
