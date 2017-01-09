@@ -53,6 +53,11 @@ endif
 # Use system provided libs3
 extraopts += --with-system-libs3
 
+# Set _FILE_OFFSET_BITS=64 globally. While this is set by the build system
+# through an automake variable, configure does not know about this and thus
+# fails when testing xfs.h on 32bit systems.
+export DEB_CPPFLAGS_MAINT_APPEND=-D_FILE_OFFSET_BITS=64
+
 # Build fix for mips/mipsel
 # This works around a compiler bug which leads to virtual memory exhaustion while compiling
 # the testsuite. See Debian bug #849657.
