@@ -1,3 +1,24 @@
+ceph (10.2.5-2~u16.04+1) jewel-xenial; urgency=low
+
+  * debian/patches:
+    - Fix issue with upgrade from 0.94.9 to 10.2.5,
+      http://tracker.ceph.com/issues/18582
+      https://github.com/ceph/ceph/pull/13131
+    - Fix timeout during ceph-disk trigger due to flock contention,
+      http://tracker.ceph.com/issues/18049
+      https://github.com/ceph/ceph/pull/12210
+    - systemd/ceph-disk: make it possible to customize timeout,
+      http://tracker.ceph.com/issues/18740
+      https://github.com/ceph/ceph/pull/13197
+    - ceph-disk: fix printing error messages,
+      http://tracker.ceph.com/issues/18371
+      https://github.com/ceph/ceph/pull/12760
+    - osd_recovery_incomplete: failed assert not manager.is_recovered(),
+      http://tracker.ceph.com/issues/18369
+      https://github.com/ceph/ceph/pull/12875
+
+ -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Tue, 31 Jan 2017 19:16:23 +0400
+
 ceph (10.2.5-1~u16.04+1) jewel-xenial; urgency=low
 
   * New upstream release, fixes http://tracker.ceph.com/issues/18184
