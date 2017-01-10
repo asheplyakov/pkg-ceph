@@ -58,12 +58,15 @@ extraopts += --with-system-libs3
 # fails when testing xfs.h on 32bit systems.
 export DEB_CPPFLAGS_MAINT_APPEND=-D_FILE_OFFSET_BITS=64
 
-# Build fix for mips/mipsel
-# This works around a compiler bug which leads to virtual memory exhaustion while compiling
-# the testsuite. See Debian bug #849657.
+# Build fixes for mips/mipsel
+# The first two variables work around a compiler bug which leads to virtual
+# memory exhaustion while compiling the testsuite. See Debian bug #849657.
+# The last is needed because long long atomic operations are not directly
+# supported by the processor.
 ifneq (,$(filter $(DEB_HOST_ARCH), mips mipsel))
   export DEB_CFLAGS_MAINT_APPEND= --param ggc-min-expand=5
   export DEB_CXXFLAGS_MAINT_APPEND= --param ggc-min-expand=5
+  export DEB_LDFLAGS_MAINT_APPEND= -latomic
 endif
 
 %:
