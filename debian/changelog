@@ -1,3 +1,11 @@
+ceph (10.2.5-5) unstable; urgency=medium
+
+  * [f4675d] Set _FILE_OFFSET_BITS=64 via DEB_CPPFLAGS_MAINT_APPEND
+  * [f60392] Install systemd targets for ceph services (Closes: #850509)
+  * [d3baba] Link with -latomic on mips/mipsel
+
+ -- Gaudenz Steinlin <gaudenz@debian.org>  Tue, 10 Jan 2017 09:04:48 +0100
+
 ceph (10.2.5-4) unstable; urgency=medium
 
   * [88034c] Build with ggc-min-expand=5 on mips/el (Closes: #849657)
