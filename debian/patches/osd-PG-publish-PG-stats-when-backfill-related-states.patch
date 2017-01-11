@@ -1,0 +1,84 @@
+From: Sage Weil <sage@redhat.com>
+Date: Fri, 30 Dec 2016 17:28:59 -0500
+Subject: osd/PG: publish PG stats when backfill-related states change
+
+These frequently get flushed because other updates
+happen, but we should explicitly ensure that the mon
+sees these state changes.
+
+Fixes: http://tracker.ceph.com/issues/18369
+Signed-off-by: Sage Weil <sage@redhat.com>
+(cherry picked from commit d4adeb7500a113097fdd717ada0231f68badafbb)
+
+Conflicts:
+	src/osd/PG.cc: trivial - PG::RecoveryState::Recovering::Recovering()
+	hunk fails to apply since there's no PG::queue_recovery(),
+	it's pg->osd->queue_for_recovery(pg) in jewel
+
+Fixes: http://tracker.ceph.com/issues/18485
+Signed-off-by: Alexey Sheplyakov <asheplyakov@mirantis.com>
+---
+ src/osd/PG.cc | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/src/osd/PG.cc b/src/osd/PG.cc
+index 39b5bf8..316a65d 100644
+--- a/src/osd/PG.cc
++++ b/src/osd/PG.cc
+@@ -6072,6 +6072,7 @@ PG::RecoveryState::Backfilling::Backfilling(my_context ctx)
+   pg->state_clear(PG_STATE_BACKFILL_TOOFULL);
+   pg->state_clear(PG_STATE_BACKFILL_WAIT);
+   pg->state_set(PG_STATE_BACKFILL);
++  pg->publish_stats_to_osd();
+ }
+ 
+ boost::statechart::result
+@@ -6127,6 +6128,7 @@ PG::RecoveryState::WaitRemoteBackfillReserved::WaitRemoteBackfillReserved(my_con
+   context< RecoveryMachine >().log_enter(state_name);
+   PG *pg = context< RecoveryMachine >().pg;
+   pg->state_set(PG_STATE_BACKFILL_WAIT);
++  pg->publish_stats_to_osd();
+   post_event(RemoteBackfillReserved());
+ }
+ 
+@@ -6192,6 +6194,7 @@ PG::RecoveryState::WaitRemoteBackfillReserved::react(const RemoteReservationReje
+ 
+   pg->state_clear(PG_STATE_BACKFILL_WAIT);
+   pg->state_set(PG_STATE_BACKFILL_TOOFULL);
++  pg->publish_stats_to_osd();
+ 
+   pg->schedule_backfill_full_retry();
+ 
+@@ -6212,6 +6215,7 @@ PG::RecoveryState::WaitLocalBackfillReserved::WaitLocalBackfillReserved(my_conte
+       pg, pg->get_osdmap()->get_epoch(),
+       LocalBackfillReserved()),
+     pg->get_backfill_priority());
++  pg->publish_stats_to_osd();
+ }
+ 
+ void PG::RecoveryState::WaitLocalBackfillReserved::exit()
+@@ -6228,6 +6232,8 @@ PG::RecoveryState::NotBackfilling::NotBackfilling(my_context ctx)
+     NamedState(context< RecoveryMachine >().pg->cct, "Started/Primary/Active/NotBackfilling")
+ {
+   context< RecoveryMachine >().log_enter(state_name);
++  PG *pg = context< RecoveryMachine >().pg;
++  pg->publish_stats_to_osd();
+ }
+ 
+ boost::statechart::result
+@@ -6441,6 +6447,7 @@ PG::RecoveryState::WaitLocalRecoveryReserved::WaitLocalRecoveryReserved(my_conte
+       pg, pg->get_osdmap()->get_epoch(),
+       LocalRecoveryReserved()),
+     pg->get_recovery_priority());
++  pg->publish_stats_to_osd();
+ }
+ 
+ void PG::RecoveryState::WaitLocalRecoveryReserved::exit()
+@@ -6500,6 +6507,7 @@ PG::RecoveryState::Recovering::Recovering(my_context ctx)
+   PG *pg = context< RecoveryMachine >().pg;
+   pg->state_clear(PG_STATE_RECOVERY_WAIT);
+   pg->state_set(PG_STATE_RECOVERING);
++  pg->publish_stats_to_osd();
+   pg->osd->queue_for_recovery(pg);
+ }
+ 
