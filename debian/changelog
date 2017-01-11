@@ -1,3 +1,11 @@
+ceph (10.2.5-6) unstable; urgency=medium
+
+  * [e44a30] Disable running dh_auto_install with parallel jobs
+    (Closes: #850906)
+  * [b7e926] Link with libatomic and --as-needed on all archs (Closes: #850831)
+
+ -- Gaudenz Steinlin <gaudenz@debian.org>  Wed, 11 Jan 2017 12:02:24 +0100
+
 ceph (10.2.5-5) unstable; urgency=medium
 
   * [f4675d] Set _FILE_OFFSET_BITS=64 via DEB_CPPFLAGS_MAINT_APPEND
