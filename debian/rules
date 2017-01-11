@@ -4,8 +4,10 @@
 
 # Limit parallel builds to 2 for now
 
-# minimise needless linking
-export DEB_LDFLAGS_MAINT_APPEND= -Wl,--as-needed
+# minimise needless linking and link to libatomic
+# The last is needed because long long atomic operations are not directly
+# supported by all processor architectures
+export DEB_LDFLAGS_MAINT_APPEND= -Wl,--as-needed -latomic
 
 # Enable hardening
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
