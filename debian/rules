@@ -78,6 +78,13 @@ override_dh_autoreconf:
 override_dh_auto_configure:
 	dh_auto_configure -- $(extraopts)
 
+override_dh_auto_install:
+	# At least on armel installation of the Python modules fails in weird ways
+	# when run in parallel. As this is probably not specific to armel but just only
+	# triggered there because the architecture is too slow, run without parallelism
+	# everywhere.
+	dh_auto_install --no-parallel
+
 override_dh_install:
 	# remove .la files, we don't want to install these in Debian,
 	# see Policy 10.2
