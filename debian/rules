@@ -123,18 +123,17 @@ override_dh_installinit:
 	install -m0644 systemd/ceph-rbd-mirror@.service debian/rbd-mirror/lib/systemd/system
 	sed -i s./etc/sysconfig/./etc/default/.g debian/rbd-mirror/lib/systemd/system/ceph-rbd-mirror@.service
 	install -m0644 systemd/ceph-rbd-mirror.target debian/rbd-mirror/lib/systemd/system
+	# Ensure Debian/Ubuntu specific systemd units are NOT automatically enabled and started
+	# Enable systemd targets only
+	dh_systemd_enable -Xceph-mon.service -Xceph-osd.service -X ceph-mds.service
+	# Start systemd targets only
+	dh_systemd_start --no-restart-on-upgrade -Xceph-mon.service -Xceph-osd.service -X ceph-mds.service
 
 override_dh_systemd_enable:
-	## Do not enable services to match `dh_installinit --no-start`
-	## behaviour.
-	## Users are expected to "systemctl enable" services once their
-	## configuration is correct.
+	# systemd enable done as part of dh_installinit
 
 override_dh_systemd_start:
-	## Do not start services to match `dh_installinit --no-start`
-	## behaviour.
-	## Users are expected to "systemctl start" services once their
-	## configuration is correct or after package updates.
+	# systemd start done as part of dh_installinit
 
 override_dh_makeshlibs:
 	# exclude jni libraries in libcephfs-jni to avoid pointless ldconfig
