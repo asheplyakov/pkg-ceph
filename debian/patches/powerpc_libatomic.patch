@@ -1,0 +1,18 @@
+Description: Enforce linking with -latomic for powerpc
+  Resolves build failures on this arch
+Author: James Page <james.page@ubuntu.com>
+Fowarded: no
+
+--- a/src/rocksdb/build_tools/build_detect_platform
++++ b/src/rocksdb/build_tools/build_detect_platform
+@@ -362,6 +362,10 @@ elif test -z "$PORTABLE"; then
+   COMMON_FLAGS="$COMMON_FLAGS -march=native "
+ fi
+ 
++if [ "$TARGET_ARCHITECTURE" = "powerpc" ] ; then
++  PLATFORM_LDFLAGS="$PLATFORM_LDFLAGS -latomic"
++fi
++
+ PLATFORM_CCFLAGS="$PLATFORM_CCFLAGS $COMMON_FLAGS"
+ PLATFORM_CXXFLAGS="$PLATFORM_CXXFLAGS $COMMON_FLAGS"
+ 
