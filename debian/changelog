@@ -1,8 +1,10 @@
 ceph (10.2.5-0ubuntu2) UNRELEASED; urgency=medium
 
-  * d/rules: Install upstream provided systemd targets to ensure that
-    integrations aligned to upstream packaging work with Ubuntu
-    packages (LP: #1646583).
+  * d/rules: Install upstream provided systemd targets and ensure they
+    are enabled and started on install to ensure that integrations aligned
+    to upstream packaging work with Ubuntu packages (LP: #1646583).
+  * d/rules,d/p/powerpc_libatomic.patch: Ensure linking with -latomic,
+    resolving FTBFS on powerpc architecture.
 
  -- James Page <james.page@ubuntu.com>  Fri, 06 Jan 2017 09:39:02 +0000
 
