@@ -15,7 +15,7 @@ ceph (10.2.5-0ubuntu0.16.10.1) yakkety; urgency=medium
     log files, deal with removal of logrotate configuration in
     ceph-base for upgrades (LP: #1609866).
 
- -- James Page <james.page@ubuntu.com>  Wed, 14 Dec 2016 11:36:08 +0000
+ -- James Page <james.page@ubuntu.com>  Wed, 18 Jan 2017 11:39:04 +0000
 
 ceph (10.2.3-0ubuntu2.1) yakkety; urgency=medium
 
