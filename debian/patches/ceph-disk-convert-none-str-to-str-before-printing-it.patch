@@ -1,0 +1,35 @@
+From: Kefu Chai <kchai@redhat.com>
+Date: Tue, 3 Jan 2017 20:40:00 +0800
+Subject: ceph-disk: convert none str to str before printing it
+
+Error('somethings goes wrong', e) is thrown if exception `e` is caught
+in ceph-disk, where e is not a string. so we can not just concat it in
+Error's __str__(). so cast it to str before doing so.
+
+introduced by d0e29c7
+
+Fixes: http://tracker.ceph.com/issues/18371
+Signed-off-by: Kefu Chai <kchai@redhat.com>
+(cherry picked from commit 5e0dd1e7df43a3be589d17878714756a22052d8e)
+---
+ src/ceph-disk/ceph_disk/main.py | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/src/ceph-disk/ceph_disk/main.py b/src/ceph-disk/ceph_disk/main.py
+index 770c48c..d86d21e 100755
+--- a/src/ceph-disk/ceph_disk/main.py
++++ b/src/ceph-disk/ceph_disk/main.py
+@@ -267,7 +267,12 @@ class Error(Exception):
+ 
+     def __str__(self):
+         doc = _bytes2str(self.__doc__.strip())
+-        return ': '.join([doc] + [_bytes2str(a) for a in self.args])
++        try:
++            str_type = basestring
++        except NameError:
++            str_type = str
++        args = [a if isinstance(a, str_type) else str(a) for a in self.args]
++        return ': '.join([doc] + [_bytes2str(a) for a in args])
+ 
+ 
+ class MountError(Error):
