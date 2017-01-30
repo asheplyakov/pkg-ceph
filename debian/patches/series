@@ -31,3 +31,4 @@ msg-simple-Pipe-avoid-infinite-loop-in-Pipe-do_recv.patch
 systemd-ceph-disk-reduce-ceph-disk-flock-contention.patch
 osd-PG-publish-PG-stats-when-backfill-related-states.patch
 OSDMonitor-clear-jewel-feature-bits-when-talking-to-.patch
+ceph-disk-convert-none-str-to-str-before-printing-it.patch
