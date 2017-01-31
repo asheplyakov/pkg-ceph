@@ -1,0 +1,27 @@
+From: Alexey Sheplyakov <asheplyakov@mirantis.com>
+Date: Tue, 31 Jan 2017 13:54:38 +0400
+Subject: systemd/ceph-disk: make it possible to customize timeout
+
+When booting a server with 20+ HDDs udev has to process a *lot* of
+events (especially if dm-crypt is used), and 2 minutes might be not
+enough for that. Make it possible to override the timeout (via systemd
+drop-in files), and use a longer timeout (5 minutes) by default.
+
+Fixes: http://tracker.ceph.com/issues/18740
+Signed-off-by: Alexey Sheplyakov <asheplyakov@mirantis.com>
+---
+ systemd/ceph-disk@.service | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/systemd/ceph-disk@.service b/systemd/ceph-disk@.service
+index e85f0df..833bcec 100644
+--- a/systemd/ceph-disk@.service
++++ b/systemd/ceph-disk@.service
+@@ -6,5 +6,6 @@ Wants=local-fs.target
+ [Service]
+ Type=oneshot
+ KillMode=none
+-ExecStart=/bin/sh -c 'timeout 120 flock /var/lock/ceph-disk-$(basename %f) /usr/sbin/ceph-disk --verbose --log-stdout trigger --sync %f'
++Environment=CEPH_DISK_TIMEOUT=300
++ExecStart=/bin/sh -c 'timeout $${CEPH_DISK_TIMEOUT} flock /var/lock/ceph-disk-$(basename %f) /usr/sbin/ceph-disk --verbose --log-stdout trigger --sync %f'
+ TimeoutSec=0
