@@ -33,3 +33,4 @@ osd-PG-publish-PG-stats-when-backfill-related-states.patch
 OSDMonitor-clear-jewel-feature-bits-when-talking-to-.patch
 ceph-disk-convert-none-str-to-str-before-printing-it.patch
 systemd-ceph-disk-make-it-possible-to-customize-time.patch
+osd-Increase-priority-for-inactive-PGs-backfill.patch
