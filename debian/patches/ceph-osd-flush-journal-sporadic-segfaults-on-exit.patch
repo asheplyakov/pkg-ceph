@@ -1,0 +1,44 @@
+From: Alexey Sheplyakov <asheplyakov@mirantis.com>
+Date: Tue, 7 Feb 2017 16:47:45 +0400
+Subject: ceph-osd: --flush-journal: sporadic segfaults on exit
+
+FileStore holds a number of recources like op thread pool and work
+queue, key/value DB threads, etc. These should be properly stopped
+(released) before exiting to avoid segfaults on exit.
+
+Note: more code paths (mkfs, dump_journal, etc) need similar fixes,
+these will be submitted as separate patches.
+
+Fixes: http://tracker.ceph.com/issues/18820
+Signed-off-by: Alexey Sheplyakov <asheplyakov@mirantis.com>
+(cherry picked from commit 00184814c156f6194a6ba4b696073ca1c18a3f8f)
+
+Adjustments:
+ - release g_ceph_context in the same way as the main code path does
+---
+ src/ceph_osd.cc | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/src/ceph_osd.cc b/src/ceph_osd.cc
+index 7deb5a1..3ae3165 100644
+--- a/src/ceph_osd.cc
++++ b/src/ceph_osd.cc
+@@ -360,13 +360,16 @@ int main(int argc, const char **argv)
+       derr << TEXT_RED << " ** ERROR: error flushing journal " << g_conf->osd_journal
+ 	   << " for object store " << g_conf->osd_data
+ 	   << ": " << cpp_strerror(-err) << TEXT_NORMAL << dendl;
+-      exit(1);
++      goto flushjournal_out;
+     }
+     store->umount();
+     derr << "flushed journal " << g_conf->osd_journal
+ 	 << " for object store " << g_conf->osd_data
+ 	 << dendl;
+-    exit(0);
++flushjournal_out:
++    delete store;
++    g_ceph_context->put();
++    exit(err < 0 ? 1 : 0);
+   }
+   if (dump_journal) {
+     common_init_finish(g_ceph_context);
