@@ -34,13 +34,8 @@ ifeq ($(DEB_HOST_ARCH), armel)
   extraopts += --without-libatomic-ops
 endif
 
-# Only selected architectures support gperftools
-gperftools_archs = i386 amd64 powerpc armhf ppc64el
-ifneq (,$(filter $(DEB_HOST_ARCH), $(gperftools_archs)))
-  extraopts += --with-tcmalloc
-else
-  extraopts += --without-tcmalloc
-endif
+# Use jemalloc
+extraopts += --without-tcmalloc --with-jemalloc
 
 # Use bundled libs3, libs3 hasn't been packaged for Ubuntu 12.04
 # extraopts += --with-system-libs3
