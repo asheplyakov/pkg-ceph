@@ -1,3 +1,10 @@
+ceph (0.94.9-2~u12.04+1) hammer-precise; urgency=low
+
+  * d/pkgbuild.sh: set ceph version string to match the package version
+  * Make it possible to switch between tcmalloc and jemalloc
+
+ -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Thu, 16 Feb 2017 18:54:11 +0400
+
 ceph (0.94.9-1~u12.04+1) hammer-precise; urgency=low
 
   * Package 0.94.9 upstream release, most notable bugfixes:
