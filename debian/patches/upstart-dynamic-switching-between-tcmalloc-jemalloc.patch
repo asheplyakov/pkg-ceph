@@ -1,0 +1,51 @@
+From: Alexey Sheplyakov <asheplyakov@mirantis.com>
+Date: Mon, 13 Feb 2017 11:01:25 +0400
+Subject: upstart: dynamic switching between tcmalloc/jemalloc
+
+Make it possible to switch between jemalloc and tcmalloc without
+recompilation (using LD_PRELOAD).
+
+The default is jemalloc. In order to switch to tcmalloc
+- Uncomment the 'LD_PRELOAD=' stanza in /etc/default/ceph
+- Restart OSDs (usual precautions apply)
+---
+ etc/default/ceph          | 16 ++++++++++++++++
+ src/upstart/ceph-osd.conf |  3 +++
+ 2 files changed, 19 insertions(+)
+ create mode 100644 etc/default/ceph
+
+diff --git a/etc/default/ceph b/etc/default/ceph
+new file mode 100644
+index 0000000..40a338a
+--- /dev/null
++++ b/etc/default/ceph
+@@ -0,0 +1,16 @@
++# /etc/default/ceph
++#
++# Environment file for ceph daemon systemd unit files and upstart jobs.
++#
++
++# Increase tcmalloc cache size
++TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES=134217728
++
++## use tcmalloc instead of jemalloc
++#
++# jemalloc is generally faster for small IO workloads and when
++# ceph-osd is backed by SSDs.  However, memory usage is usually
++# higher by 200-300mb.
++#
++#LD_PRELOAD=/usr/lib/libtcmalloc.so.4
++CLUSTER=ceph
+diff --git a/src/upstart/ceph-osd.conf b/src/upstart/ceph-osd.conf
+index eaab97b..57f08ba 100644
+--- a/src/upstart/ceph-osd.conf
++++ b/src/upstart/ceph-osd.conf
+@@ -25,5 +25,8 @@ export id
+ script
+     test -f /etc/default/ceph && . /etc/default/ceph
+     export TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES
++    if [ -n "$LD_PRELOAD" ]; then
++       export LD_PRELOAD
++    fi
+     exec /usr/bin/ceph-osd --cluster="${cluster:-ceph}" -i "$id" -f
+ end script
