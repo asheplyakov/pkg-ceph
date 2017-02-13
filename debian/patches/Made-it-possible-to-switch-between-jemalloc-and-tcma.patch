@@ -1,0 +1,40 @@
+From: Alexey Sheplyakov <asheplyakov@mirantis.com>
+Date: Thu, 16 Feb 2017 13:39:46 +0400
+Subject: Made it possible to switch between jemalloc and tcmalloc without
+ recompilation
+
+---
+ etc/default/ceph          | 4 ++--
+ src/upstart/ceph-osd.conf | 3 +++
+ 2 files changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/etc/default/ceph b/etc/default/ceph
+index f272207..9467d5f 100644
+--- a/etc/default/ceph
++++ b/etc/default/ceph
+@@ -6,10 +6,10 @@
+ # Increase tcmalloc cache size
+ TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES=134217728
+ 
+-## use jemalloc instead of tcmalloc
++## use tcmalloc instead of jemalloc
+ #
+ # jemalloc is generally faster for small IO workloads and when
+ # ceph-osd is backed by SSDs.  However, memory usage is usually
+ # higher by 200-300mb.
+ #
+-#LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.1
++#LD_PRELOAD=/usr/lib/libtcmalloc.so.4
+diff --git a/src/upstart/ceph-osd.conf b/src/upstart/ceph-osd.conf
+index 60b7b82..fe177d8 100644
+--- a/src/upstart/ceph-osd.conf
++++ b/src/upstart/ceph-osd.conf
+@@ -25,5 +25,8 @@ export id
+ script
+     test -f /etc/default/ceph && . /etc/default/ceph
+     export TCMALLOC_MAX_TOTAL_THREAD_CACHE_BYTES
++    if [ -n "$LD_PRELOAD" ]; then
++       export LD_PRELOAD
++    fi
+     exec /usr/bin/ceph-osd --cluster="${cluster:-ceph}" -i "$id" -f --setuser ceph --setgroup ceph
+ end script
