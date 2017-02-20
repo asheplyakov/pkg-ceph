@@ -1,3 +1,17 @@
+ceph (10.2.5-3~u14.04+1) jewel-trusty; urgency=low
+
+  * debian/patches:
+    - osd: Increase priority for inactive PGs backfill,
+      http://tracker.ceph.com/issues/18350
+      https://github.com/ceph/ceph/pull/13232
+    - Fix the segfault with --flush-journal,
+      http://tracker.ceph.com/issues/18820
+      https://github.com/ceph/ceph/pull/13477
+  * d/pkgbuild.sh: set ceph version string to match the package version
+  * Made it possible to switch between jemalloc and tcmalloc without recompilation
+
+ -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Mon, 20 Feb 2017 12:20:39 +0400
+
 ceph (10.2.5-2~u14.04+1) jewel-trusty; urgency=low
 
   * debian/patches:
