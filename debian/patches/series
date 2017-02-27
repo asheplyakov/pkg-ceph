@@ -40,3 +40,4 @@ osd-PG-restrict-want_acting-to-up-acting-on-recovery.patch
 librbd-don-t-remove-an-image-w-incompatible-features.patch
 os-ObjectStore-properly-clear-object-map-when-replay.patch
 os-ObjectStore-properly-clone-object-map-when-replay.patch
+osdc-cache-should-ignore-error-bhs-during-trim.patch
