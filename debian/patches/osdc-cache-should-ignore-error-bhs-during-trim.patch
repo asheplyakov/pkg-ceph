@@ -1,0 +1,31 @@
+From: Jason Dillaman <dillaman@redhat.com>
+Date: Tue, 17 Jan 2017 11:55:00 -0500
+Subject: osdc: cache should ignore error bhs during trim
+
+A read error (such as injecting a timeout into an OSD op) might result
+in a bh in an error state. These should be trimable by the cache.
+
+Fixes: http://tracker.ceph.com/issues/18436
+Signed-off-by: Jason Dillaman <dillaman@redhat.com>
+(cherry picked from commit 5910ed9de9856b5821488a1836487bbbd3d6460e)
+
+X-short-title: qemu crash triggered by network issues
+X-tracker-ref: http://tracker.ceph.com/issues/18436
+X-github-pr: https://github.com/ceph/ceph/pull/13244
+---
+ src/osdc/ObjectCacher.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/osdc/ObjectCacher.cc b/src/osdc/ObjectCacher.cc
+index 2a1e76e..6408d31 100644
+--- a/src/osdc/ObjectCacher.cc
++++ b/src/osdc/ObjectCacher.cc
+@@ -1160,7 +1160,7 @@ void ObjectCacher::trim()
+       break;
+ 
+     ldout(cct, 10) << "trim trimming " << *bh << dendl;
+-    assert(bh->is_clean() || bh->is_zero());
++    assert(bh->is_clean() || bh->is_zero() || bh->is_error());
+ 
+     Object *ob = bh->ob;
+     bh_remove(ob, bh);
