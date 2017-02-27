@@ -1,3 +1,26 @@
+ceph (10.2.5-4~u16.04+1~4.gbp8cf175) UNRELEASED; urgency=low
+
+  ** SNAPSHOT build @8cf175d81e7db3bdf27d161d2e9575800398cc4d **
+
+  * debian/patches:
+    - Qemu crash triggered by network issues
+      http://tracker.ceph.com/issues/18436
+      https://github.com/ceph/ceph/pull/13244
+    - Attempting to remove an image w/ incompatible features results in partial removal
+      http://tracker.ceph.com/issues/18315
+      https://github.com/ceph/ceph/pull/13156
+    - AWS S3 Version 4 signatures fail sometimes
+      http://tracker.ceph.com/issues/17076
+      https://github.com/ceph/ceph/pull/12542
+    - deep-scrub error "omap_digest != best guess omap_digest"
+      http://tracker.ceph.com/issues/17177
+      https://github.com/ceph/ceph/pull/12380
+    - osd/PG.cc: 6896: FAILED assert(pg->is_acting(osd_with_shard) || pg->is_up(osd_with_shard))
+      http://tracker.ceph.com/issues/18929
+      https://github.com/ceph/ceph/pull/13541
+
+ -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Mon, 27 Feb 2017 11:21:51 +0400
+
 ceph (10.2.5-3~u16.04+1) jewel-xenial; urgency=low
 
   * debian/patches:
