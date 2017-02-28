@@ -14,7 +14,7 @@
 %{!?_udevrulesdir: %global _udevrulesdir /lib/udev/rules.d}
 
 Name:		ceph
-Version:	0.94.9
+Version:	0.94.10
 Release:	0%{?dist}
 Epoch:		1
 Summary:	User space components of the Ceph file system
