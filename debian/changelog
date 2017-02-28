@@ -1,3 +1,38 @@
+ceph (0.94.10-1~u14.04+1) hammer-trusty; urgency=low
+
+  * New upstream bugfix only release, the most prominent changes:
+    - In radosgw it's possible to reshard an existing bucket's index using
+      an offline tool (radosgw-admin)
+    - It's possible to rebuild the monitor database from OSDs using
+      ceph-objectstore-tool and ceph-monstore-tool
+    - rbd: fix possible rbd data corruption (tracker #17545)
+    - rgw: do not abort when accept a CORS request with short origin
+      (tracker #18187)
+    - ceph status gives segmentation fault (tracker #16266)
+    - diff calculate can hide parent extents when examining first snapshot
+      in clone (tracker #18068)
+    - rgw: fix crash when client posts object with null condition
+      (tracker #17635)
+    and many others, see http://ceph.com/releases/v0-94-10-hammer-released
+    for more details
+  * Additional patches:
+    - dropped ObjectCacher-fix-bh_read_finish-offset-logic.patch, merged
+      upstream
+    - Adjusted offsets in Remove-HITSET_GMT-related-code-so-0.94.-6-9-OSDs-mon.patch
+      so the patch applies without a fuzz
+    - rbd: qemu crash triggered by network issues,
+      http://tracker.ceph.com/issues/18436
+      https://github.com/ceph/ceph/pull/13243
+    - rbd: attempting to remove an image w/ incompatible features results in
+      partial removal,
+      http://tracker.ceph.com/issues/18590
+      https://github.com/ceph/ceph/pull/13198
+    - rgw: TempURL verification broken for URI encoded object names,
+      http://tracker.ceph.com/issues/18590
+      https://github.com/ceph/ceph/pull/13198
+
+ -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Thu, 02 Mar 2017 13:57:00 +0400
+
 ceph (0.94.9-2~u14.04+1) hammer-trusty; urgency=low
 
   * d/pkgbuild.sh: set ceph version string to match the package version
