@@ -21,6 +21,5 @@ vivid-does-systemd.patch
 
 ## MOS
 ceph-disk-fix-symlinks-handling.patch
-ObjectCacher-fix-bh_read_finish-offset-logic.patch
 Remove-HITSET_GMT-related-code-so-0.94.-6-9-OSDs-mon.patch
 upstart-dynamic-switching-between-tcmalloc-jemalloc.patch

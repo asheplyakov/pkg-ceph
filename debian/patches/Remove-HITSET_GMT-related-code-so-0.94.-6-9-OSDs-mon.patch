@@ -41,7 +41,7 @@ can work properly.
  8 files changed, 20 insertions(+), 150 deletions(-)
 
 diff --git a/src/common/config_opts.h b/src/common/config_opts.h
-index c55694e..e773300 100644
+index b20920c..5f5beb9 100644
 --- a/src/common/config_opts.h
 +++ b/src/common/config_opts.h
 @@ -500,7 +500,6 @@ OPTION(osd_client_message_cap, OPT_U64, 100)              // num client messages
@@ -86,7 +86,7 @@ index 3f0dae8..a66cc55 100644
  	"name=force,type=CephChoices,strings=--yes-i-really-mean-it,req=false", \
  	"set pool parameter <var> to <val>", "osd", "rw", "cli,rest")
 diff --git a/src/mon/OSDMonitor.cc b/src/mon/OSDMonitor.cc
-index a006dbd..afaea9f 100644
+index c43474c..97e04cd 100644
 --- a/src/mon/OSDMonitor.cc
 +++ b/src/mon/OSDMonitor.cc
 @@ -16,7 +16,6 @@
@@ -97,7 +97,7 @@ index a006dbd..afaea9f 100644
  #include <sstream>
  
  #include "OSDMonitor.h"
-@@ -1648,9 +1647,6 @@ void OSDMonitor::take_all_failures(list<MOSDFailure*>& ls)
+@@ -1655,9 +1654,6 @@ void OSDMonitor::take_all_failures(list<MOSDFailure*>& ls)
    failure_info.clear();
  }
  
@@ -107,7 +107,7 @@ index a006dbd..afaea9f 100644
  
  // boot --
  
-@@ -1720,19 +1716,6 @@ bool OSDMonitor::preprocess_boot(MOSDBoot *m)
+@@ -1727,19 +1723,6 @@ bool OSDMonitor::preprocess_boot(MOSDBoot *m)
      }
    }
  
@@ -127,7 +127,7 @@ index a006dbd..afaea9f 100644
    // already booted?
    if (osdmap.is_up(from) &&
        osdmap.get_inst(from) == m->get_orig_source_inst()) {
-@@ -3174,7 +3157,6 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
+@@ -3212,7 +3195,6 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
      if (!p->is_tier() &&
          (var == "hit_set_type" || var == "hit_set_period" ||
           var == "hit_set_count" || var == "hit_set_fpp" ||
@@ -135,7 +135,7 @@ index a006dbd..afaea9f 100644
           var == "target_max_objects" || var == "target_max_bytes" ||
           var == "cache_target_full_ratio" ||
           var == "cache_target_dirty_ratio" ||
-@@ -3227,8 +3209,6 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
+@@ -3265,8 +3247,6 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
  	  BloomHitSet::Params *bloomp = static_cast<BloomHitSet::Params*>(p->hit_set_params.impl.get());
  	  f->dump_float("hit_set_fpp", bloomp->get_fpp());
  	}
@@ -144,7 +144,7 @@ index a006dbd..afaea9f 100644
        } else if (var == "target_max_objects") {
          f->dump_unsigned("target_max_objects", p->target_max_objects);
        } else if (var == "target_max_bytes") {
-@@ -3286,8 +3266,6 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
+@@ -3324,8 +3304,6 @@ bool OSDMonitor::preprocess_command(MMonCommand *m)
  	}
  	BloomHitSet::Params *bloomp = static_cast<BloomHitSet::Params*>(p->hit_set_params.impl.get());
  	ss << "hit_set_fpp: " << bloomp->get_fpp();
@@ -153,7 +153,7 @@ index a006dbd..afaea9f 100644
        } else if (var == "target_max_objects") {
          ss << "target_max_objects: " << p->target_max_objects;
        } else if (var == "target_max_bytes") {
-@@ -4170,11 +4148,6 @@ int OSDMonitor::prepare_new_pool(string& name, uint64_t auid,
+@@ -4208,11 +4186,6 @@ int OSDMonitor::prepare_new_pool(string& name, uint64_t auid,
      pi->set_flag(pg_pool_t::FLAG_NOPGCHANGE);
    if (g_conf->osd_pool_default_flag_nosizechange)
      pi->set_flag(pg_pool_t::FLAG_NOSIZECHANGE);
@@ -165,7 +165,7 @@ index a006dbd..afaea9f 100644
  
    pi->size = size;
    pi->min_size = min_size;
-@@ -4518,17 +4491,6 @@ int OSDMonitor::prepare_command_pool_set(map<string,cmd_vartype> &cmdmap,
+@@ -4556,17 +4529,6 @@ int OSDMonitor::prepare_command_pool_set(map<string,cmd_vartype> &cmdmap,
      }
      BloomHitSet::Params *bloomp = static_cast<BloomHitSet::Params*>(p.hit_set_params.impl.get());
      bloomp->set_fpp(f);
@@ -184,7 +184,7 @@ index a006dbd..afaea9f 100644
      if (val == "true" || (interr.empty() && n == 1)) {
        p.flags |= pg_pool_t::FLAG_DEBUG_FAKE_EC_POOL;
 diff --git a/src/osd/ReplicatedPG.cc b/src/osd/ReplicatedPG.cc
-index 1676a3e..429f9de 100644
+index 24e80dc..97d3e8f 100644
 --- a/src/osd/ReplicatedPG.cc
 +++ b/src/osd/ReplicatedPG.cc
 @@ -1135,7 +1135,7 @@ void ReplicatedPG::do_pg_op(OpRequestRef op)
@@ -196,7 +196,7 @@ index 1676a3e..429f9de 100644
  	      break;
  	    }
  	  }
-@@ -10177,19 +10177,10 @@ hobject_t ReplicatedPG::get_hit_set_current_object(utime_t stamp)
+@@ -10178,19 +10178,10 @@ hobject_t ReplicatedPG::get_hit_set_current_object(utime_t stamp)
    return hoid;
  }
  
@@ -218,7 +218,7 @@ index 1676a3e..429f9de 100644
    hobject_t hoid(sobject_t(ss.str(), CEPH_NOSNAP), "",
  		 info.pgid.ps(), info.pgid.pool(),
  		 cct->_conf->osd_hit_set_namespace);
-@@ -10326,7 +10317,7 @@ void ReplicatedPG::hit_set_persist()
+@@ -10327,7 +10318,7 @@ void ReplicatedPG::hit_set_persist()
    for (list<pg_hit_set_info_t>::iterator p = info.hit_set.history.begin();
         p != info.hit_set.history.end();
         ++p) {
@@ -227,7 +227,7 @@ index 1676a3e..429f9de 100644
  
      // Once we hit a degraded object just skip further trim
      if (is_degraded_or_backfilling_object(aoid))
-@@ -10335,8 +10326,10 @@ void ReplicatedPG::hit_set_persist()
+@@ -10336,8 +10327,10 @@ void ReplicatedPG::hit_set_persist()
        return;
    }
  
@@ -239,7 +239,7 @@ index 1676a3e..429f9de 100644
    if (scrubber.write_blocked_by_scrub(oid))
      return;
  
-@@ -10427,7 +10420,7 @@ void ReplicatedPG::hit_set_persist()
+@@ -10428,7 +10421,7 @@ void ReplicatedPG::hit_set_persist()
  
    updated_hit_set_hist.history.push_back(updated_hit_set_hist.current_info);
    hit_set_create();
@@ -248,7 +248,7 @@ index 1676a3e..429f9de 100644
    updated_hit_set_hist.current_last_stamp = utime_t();
  
    // fabricate an object_info_t and SnapSet
-@@ -10490,7 +10483,7 @@ void ReplicatedPG::hit_set_trim(RepGather *repop, unsigned max)
+@@ -10491,7 +10484,7 @@ void ReplicatedPG::hit_set_trim(RepGather *repop, unsigned max)
    for (unsigned num = updated_hit_set_hist.history.size(); num > max; --num) {
      list<pg_hit_set_info_t>::iterator p = updated_hit_set_hist.history.begin();
      assert(p != updated_hit_set_hist.history.end());
@@ -257,7 +257,7 @@ index 1676a3e..429f9de 100644
  
      assert(!is_degraded_or_backfilling_object(oid));
  
-@@ -10775,7 +10768,7 @@ void ReplicatedPG::agent_load_hit_sets()
+@@ -10776,7 +10769,7 @@ void ReplicatedPG::agent_load_hit_sets()
  	  continue;
  	}
  
@@ -429,7 +429,7 @@ index b13925c..f0126bc 100644
  
  void pg_hit_set_info_t::generate_test_instances(list<pg_hit_set_info_t*>& ls)
 diff --git a/src/osd/osd_types.h b/src/osd/osd_types.h
-index 92f6163..7557494 100644
+index d1547e6..f9d9e81 100644
 --- a/src/osd/osd_types.h
 +++ b/src/osd/osd_types.h
 @@ -1035,7 +1035,6 @@ public:
