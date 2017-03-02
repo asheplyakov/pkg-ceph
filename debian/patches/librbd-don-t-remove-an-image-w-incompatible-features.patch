@@ -1,0 +1,34 @@
+From: Dongsheng Yang <dongsheng.yang@easystack.cn>
+Date: Thu, 22 Dec 2016 21:00:41 -0500
+Subject: librbd: don't remove an image w/ incompatible features
+
+Fixes: http://tracker.ceph.com/issues/18315
+Signed-off-by: Dongsheng Yang <dongsheng.yang@easystack.cn>
+(cherry picked from commit f76127b5e617923d14adb62bfb836a635c14f209)
+
+Conflicts:
+	src/librbd/internal.cc - trivial conflict with
+            3df756c371723795ecf9e4d9e18c31adfa1cc04a which is not needed in
+            hammer
+
+X-short-title: Attempting to remove an image w/ incompatible features results in partial removal
+X-tracker-ref: http://tracker.ceph.com/issues/18315
+X-github-pr: https://github.com/ceph/ceph/pull/13246
+---
+ src/librbd/internal.cc | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/librbd/internal.cc b/src/librbd/internal.cc
+index 62f606e..096d5e8 100644
+--- a/src/librbd/internal.cc
++++ b/src/librbd/internal.cc
+@@ -1722,6 +1722,9 @@ reprotect_and_return_err:
+     int r = open_image(ictx);
+     if (r < 0) {
+       ldout(cct, 2) << "error opening image: " << cpp_strerror(-r) << dendl;
++      if (r != -ENOENT) {
++	return r;
++      }
+     } else {
+       string header_oid = ictx->header_oid;
+       old_format = ictx->old_format;

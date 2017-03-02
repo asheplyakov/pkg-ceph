@@ -24,3 +24,4 @@ ceph-disk-fix-symlinks-handling.patch
 Remove-HITSET_GMT-related-code-so-0.94.-6-9-OSDs-mon.patch
 upstart-dynamic-switching-between-tcmalloc-jemalloc.patch
 osdc-cache-should-ignore-error-bhs-during-trim.patch
+librbd-don-t-remove-an-image-w-incompatible-features.patch
