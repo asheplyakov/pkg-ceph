@@ -1,0 +1,39 @@
+From: =?utf-8?q?Michal_Koutn=C3=BD?= <mkoutny@suse.com>
+Date: Wed, 18 Jan 2017 20:15:29 +0100
+Subject: rgw: Use decoded URI when verifying TempURL
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+Instead of calliing url_decode directly, we reuse s->decoded_uri that is
+initialized in RGWREST::preprocess().
+
+Fixes: http://tracker.ceph.com/issues/18590
+Signed-off-by: Michal Koutný <mkoutny@suse.com>
+(cherry picked from commit 4e1318f4dcbfd64c3ec94f4addf6e38ddd6c013a)
+
+Conflicts:
+	src/rgw/rgw_swift_auth.cc: patched function is in src/rgw/rgw_swift.cc
+
+X-short-title: TempURL verification broken for URI encoded object names
+X-tracker-ref: http://tracker.ceph.com/issues/18590
+X-github-pr: https://github.com/ceph/ceph/pull/13198
+---
+ src/rgw/rgw_swift.cc | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/rgw/rgw_swift.cc b/src/rgw/rgw_swift.cc
+index 3bebcb5..cf18c39 100644
+--- a/src/rgw/rgw_swift.cc
++++ b/src/rgw/rgw_swift.cc
+@@ -613,8 +613,8 @@ int authenticate_temp_url(RGWRados *store, req_state *s)
+    * of Swift API entry point removed. */
+   const size_t pos = g_conf->rgw_swift_url_prefix.find_last_not_of('/') + 1;
+   vector<string> allowed_paths;
+-  allowed_paths.push_back(s->info.request_uri);
+-  allowed_paths.push_back(s->info.request_uri.substr(pos + 1));
++  allowed_paths.push_back(s->decoded_uri);
++  allowed_paths.push_back(s->decoded_uri.substr(pos + 1));
+ 
+   vector<string> allowed_methods;
+   allowed_methods.push_back(s->info.method);
