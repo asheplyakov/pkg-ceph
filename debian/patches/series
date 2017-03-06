@@ -41,3 +41,4 @@ librbd-don-t-remove-an-image-w-incompatible-features.patch
 os-ObjectStore-properly-clear-object-map-when-replay.patch
 os-ObjectStore-properly-clone-object-map-when-replay.patch
 osdc-cache-should-ignore-error-bhs-during-trim.patch
+rgw-Replacing-with-20-in-canonical-uri-for-s3-v4-aut.patch
