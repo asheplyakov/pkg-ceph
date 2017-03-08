@@ -1,3 +1,4 @@
 version=3
+pgpmode=auto
 opts="uversionmangle=s/-/~/" \
- http://ceph.com/download/ceph-(\d.*)\.tar\.gz
+ http://download.ceph.com/tarballs/ceph-(\d.*)\.tar\.gz
