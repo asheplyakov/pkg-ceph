@@ -4,7 +4,6 @@ ceph (10.2.6-0ubuntu1) UNRELEASED; urgency=medium
     - d/p/osd-limit-omap-data-in-push-op.patch,rgw_rados-creation_time.patch:
       Dropped, included upstream.
     - d/p/*: Refresh.
-    - d/control: Drop lsb-release from BD's.
 
  -- James Page <james.page@ubuntu.com>  Wed, 08 Mar 2017 14:33:56 +0000
 
