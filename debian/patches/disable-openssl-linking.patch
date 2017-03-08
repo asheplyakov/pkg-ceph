@@ -7,7 +7,7 @@ Forwarded: not-needed
 
 --- a/src/rgw/Makefile.am
 +++ b/src/rgw/Makefile.am
-@@ -133,8 +133,7 @@ libcivetweb_la_SOURCES =  \
+@@ -136,8 +136,7 @@ libcivetweb_la_SOURCES =  \
  
  libcivetweb_la_CXXFLAGS = ${CIVETWEB_INCLUDE} -fPIC -Woverloaded-virtual \
  	${AM_CXXFLAGS}

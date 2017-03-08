@@ -16,6 +16,4 @@ fix-argparse-defaults.patch
 fix-cycles-arch.patch
 skip-setup.py-makefiles.patch
 disable-openssl-linking.patch
-osd-limit-omap-data-in-push-op.patch
-rgw_rados-creation_time.patch
 powerpc_libatomic.patch
