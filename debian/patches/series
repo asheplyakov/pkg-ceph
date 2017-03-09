@@ -18,27 +18,10 @@ skip-setup.py-makefiles.patch
 disable-openssl-linking.patch
 
 # Mirantis
-mon-PGMap-PGs-can-be-stuck-more-than-one-thing.patch
-osd-limit-omap-data-in-push-op.patch
-rgw-for-the-create_bucket-api-if-the-input-creation_.patch
-ReplicatedPG-do_update_log_missing-take-the-pg-lock-.patch
-msg-simple-Pipe-handle-addr-decode-error.patch
-ceph-disk-systemd-unit-must-run-after-local-fs.targe.patch
-ceph-disk-trigger-must-ensure-device-ownership.patch
-build-ops-restart-ceph-osd-.service-after-20s-instea.patch
-ceph-disk-enable-runtime-ceph-osd-systemd-units.patch
 msg-simple-Pipe-avoid-infinite-loop-in-Pipe-do_recv.patch
-systemd-ceph-disk-reduce-ceph-disk-flock-contention.patch
-osd-PG-publish-PG-stats-when-backfill-related-states.patch
-OSDMonitor-clear-jewel-feature-bits-when-talking-to-.patch
-ceph-disk-convert-none-str-to-str-before-printing-it.patch
 systemd-ceph-disk-make-it-possible-to-customize-time.patch
 osd-Increase-priority-for-inactive-PGs-backfill.patch
 ceph-osd-flush-journal-sporadic-segfaults-on-exit.patch
 Made-it-possible-to-switch-between-jemalloc-and-tcma.patch
 osd-PG-restrict-want_acting-to-up-acting-on-recovery.patch
-librbd-don-t-remove-an-image-w-incompatible-features.patch
-os-ObjectStore-properly-clear-object-map-when-replay.patch
-os-ObjectStore-properly-clone-object-map-when-replay.patch
 osdc-cache-should-ignore-error-bhs-during-trim.patch
-rgw-Replacing-with-20-in-canonical-uri-for-s3-v4-aut.patch
