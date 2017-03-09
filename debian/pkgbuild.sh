@@ -4,7 +4,16 @@ repo=/srv/data/Public/repos/ceph
 dist=trusty
 ceph_release=jewel
 export_dir="../build-pkg-ceph-${ceph_release}-${dist}"
+gpg_info_file="$HOME/.cache/gpg-agent-info"
 if [ ! -d "$export_dir" ]; then mkdir -p "$export_dir"; fi
+
+if [ -f "$gpg_info_file" ]; then
+	. "$gpg_info_file"
+	# so reprepro can use gpg-agent when signing Release file
+	export GPG_AGENT_INFO
+	export GPG_TTY=$(tty)
+
+fi
 
 gbp buildpackage \
         --git-ignore-new \
