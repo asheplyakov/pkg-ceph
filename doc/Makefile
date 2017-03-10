@@ -239,10 +239,10 @@ OTOOL64 =
 PACKAGE = ceph
 PACKAGE_BUGREPORT = ceph-devel@vger.kernel.org
 PACKAGE_NAME = ceph
-PACKAGE_STRING = ceph 10.2.5
+PACKAGE_STRING = ceph 10.2.6
 PACKAGE_TARNAME = ceph
 PACKAGE_URL = 
-PACKAGE_VERSION = 10.2.5
+PACKAGE_VERSION = 10.2.6
 PATH_SEPARATOR = :
 PKG_CONFIG = /usr/bin/pkg-config
 PKG_CONFIG_LIBDIR = 
@@ -267,7 +267,7 @@ SET_MAKE =
 SHELL = /bin/bash
 SPHINX_BUILD = sphinx-build
 STRIP = strip
-VERSION = 10.2.5
+VERSION = 10.2.6
 WARN_ERROR_FORMAT_SECURITY = -Werror=format-security
 WARN_IGNORED_QUALIFIERS = -Wignored-qualifiers
 WARN_TYPE_LIMITS = -Wtype-limits
@@ -285,7 +285,7 @@ acx_pthread_config =
 am__include = include
 am__leading_dot = .
 am__quote = 
-am__tar = tar --format=ustar -chf - "$$tardir"
+am__tar = tar --format=posix -chf - "$$tardir"
 am__untar = tar -xf -
 bindir = ${exec_prefix}/bin
 build = x86_64-pc-linux-gnu
