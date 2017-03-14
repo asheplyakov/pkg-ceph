@@ -1,0 +1,250 @@
+From: Sage Weil <sage@redhat.com>
+Date: Tue, 14 Feb 2017 15:00:09 -0500
+Subject: osd/PG: restrict want_acting to up+acting on recovery completion
+
+On recovery completion we recalculate want_acting to see if we
+should add recently backfilled osds into acting.  However, at
+this point we may have gotten infos from others OSDs outside
+of up/acting that could be used for want_acting.  We currently
+assert that only up/acting osds are used in
+PG::RecoveryState::Active::react(const AdvMap&), so we must
+restrict want_acting to up/acting here.
+
+We could remove this restriction, but it would mean
+
+1) checking on every map change that want_acting hasn't been
+invalidated, and if so, recalculating want_acting and requesting
+a new pg_temp.  Also, presumably
+
+2) on each new info, checking whether we can construct a better
+want_acting, and if so, doing it.
+
+That would be a good thing, but is a more complicated change.  In
+reality this case comes up very rarely, so simply make our
+post-recovery want_acting calculation limit itself to up+acting.
+
+See 1db67c443d84dc5d1ff53cc820fdfd4a2128b680 for the assertion.
+
+Signed-off-by: Sage Weil <sage@redhat.com>
+(cherry picked from commit 0f2dee9aa48a00a7f2f809cd4d20e98df771da81)
+
+X-tracker-ref: http://tracker.ceph.com/issues/18929
+X-github-pr: https://github.com/ceph/ceph/pull/13541
+X-short-title: osd/PG.cc: 6896: FAILED assert(pg->is_acting(osd_with_shard) || pg->is_up(osd_with_shard))
+---
+ src/osd/PG.cc | 49 +++++++++++++++++++++++++++++++++++++------------
+ src/osd/PG.h  | 19 +++++++++++--------
+ 2 files changed, 48 insertions(+), 20 deletions(-)
+
+diff --git a/src/osd/PG.cc b/src/osd/PG.cc
+index d7292b3..5c669e8 100644
+--- a/src/osd/PG.cc
++++ b/src/osd/PG.cc
+@@ -981,7 +981,9 @@ PG::Scrubber::~Scrubber() {}
+  *  3) Prefer current primary
+  */
+ map<pg_shard_t, pg_info_t>::const_iterator PG::find_best_info(
+-  const map<pg_shard_t, pg_info_t> &infos, bool *history_les_bound) const
++  const map<pg_shard_t, pg_info_t> &infos,
++  bool restrict_to_up_acting,
++  bool *history_les_bound) const
+ {
+   assert(history_les_bound);
+   /* See doc/dev/osd_internals/last_epoch_started.rst before attempting
+@@ -1021,6 +1023,9 @@ map<pg_shard_t, pg_info_t>::const_iterator PG::find_best_info(
+   for (map<pg_shard_t, pg_info_t>::const_iterator p = infos.begin();
+        p != infos.end();
+        ++p) {
++    if (restrict_to_up_acting && !is_up(p->first) &&
++	!is_acting(p->first))
++      continue;
+     // Only consider peers with last_update >= min_last_update_acceptable
+     if (p->second.last_update < min_last_update_acceptable)
+       continue;
+@@ -1079,17 +1084,19 @@ void PG::calc_ec_acting(
+   pg_shard_t up_primary,
+   const map<pg_shard_t, pg_info_t> &all_info,
+   bool compat_mode,
++  bool restrict_to_up_acting,
+   vector<int> *_want,
+   set<pg_shard_t> *backfill,
+   set<pg_shard_t> *acting_backfill,
+   pg_shard_t *want_primary,
+-  ostream &ss) {
++  ostream &ss)
++{
+   vector<int> want(size, CRUSH_ITEM_NONE);
+   map<shard_id_t, set<pg_shard_t> > all_info_by_shard;
+   unsigned usable = 0;
+-  for(map<pg_shard_t, pg_info_t>::const_iterator i = all_info.begin();
+-      i != all_info.end();
+-      ++i) {
++  for (map<pg_shard_t, pg_info_t>::const_iterator i = all_info.begin();
++       i != all_info.end();
++       ++i) {
+     all_info_by_shard[i->first.shard].insert(i->first);
+   }
+   for (uint8_t i = 0; i < want.size(); ++i) {
+@@ -1116,7 +1123,7 @@ void PG::calc_ec_acting(
+       ss << " selecting acting[i]: " << pg_shard_t(acting[i], shard_id_t(i)) << std::endl;
+       want[i] = acting[i];
+       ++usable;
+-    } else {
++    } else if (!restrict_to_up_acting) {
+       for (set<pg_shard_t>::iterator j = all_info_by_shard[shard_id_t(i)].begin();
+ 	   j != all_info_by_shard[shard_id_t(i)].end();
+ 	   ++j) {
+@@ -1165,6 +1172,7 @@ void PG::calc_replicated_acting(
+   pg_shard_t up_primary,
+   const map<pg_shard_t, pg_info_t> &all_info,
+   bool compat_mode,
++  bool restrict_to_up_acting,
+   vector<int> *want,
+   set<pg_shard_t> *backfill,
+   set<pg_shard_t> *acting_backfill,
+@@ -1172,7 +1180,8 @@ void PG::calc_replicated_acting(
+   ostream &ss)
+ {
+   ss << "calc_acting newest update on osd." << auth_log_shard->first
+-     << " with " << auth_log_shard->second << std::endl;
++     << " with " << auth_log_shard->second
++     << (restrict_to_up_acting ? " restrict_to_up_acting" : "") << std::endl;
+   pg_shard_t auth_log_shard_id = auth_log_shard->first;
+   
+   // select primary
+@@ -1263,6 +1272,9 @@ void PG::calc_replicated_acting(
+     }
+   }
+ 
++  if (restrict_to_up_acting) {
++    return;
++  }
+   for (map<pg_shard_t,pg_info_t>::const_iterator i = all_info.begin();
+        i != all_info.end();
+        ++i) {
+@@ -1299,8 +1311,19 @@ void PG::calc_replicated_acting(
+  *
+  * calculate the desired acting, and request a change with the monitor
+  * if it differs from the current acting.
++ *
++ * if restrict_to_up_acting=true, we filter out anything that's not in
++ * up/acting.  in order to lift this restriction, we need to
++ *  1) check whether it's worth switching the acting set any time we get
++ *     a new pg info (not just here, when recovery finishes)
++ *  2) check whether anything in want_acting went down on each new map
++ *     (and, if so, calculate a new want_acting)
++ *  3) remove the assertion in PG::RecoveryState::Active::react(const AdvMap)
++ * TODO!
+  */
+-bool PG::choose_acting(pg_shard_t &auth_log_shard_id, bool *history_les_bound)
++bool PG::choose_acting(pg_shard_t &auth_log_shard_id,
++		       bool restrict_to_up_acting,
++		       bool *history_les_bound)
+ {
+   map<pg_shard_t, pg_info_t> all_info(peer_info.begin(), peer_info.end());
+   all_info[pg_whoami] = info;
+@@ -1312,7 +1335,7 @@ bool PG::choose_acting(pg_shard_t &auth_log_shard_id, bool *history_les_bound)
+   }
+ 
+   map<pg_shard_t, pg_info_t>::const_iterator auth_log_shard =
+-    find_best_info(all_info, history_les_bound);
++    find_best_info(all_info, restrict_to_up_acting, history_les_bound);
+ 
+   if (auth_log_shard == all_info.end()) {
+     if (up != acting) {
+@@ -1366,6 +1389,7 @@ bool PG::choose_acting(pg_shard_t &auth_log_shard_id, bool *history_les_bound)
+       up_primary,
+       all_info,
+       compat_mode,
++      restrict_to_up_acting,
+       &want,
+       &want_backfill,
+       &want_acting_backfill,
+@@ -1381,6 +1405,7 @@ bool PG::choose_acting(pg_shard_t &auth_log_shard_id, bool *history_les_bound)
+       up_primary,
+       all_info,
+       compat_mode,
++      restrict_to_up_acting,
+       &want,
+       &want_backfill,
+       &want_acting_backfill,
+@@ -6611,7 +6636,7 @@ PG::RecoveryState::Recovered::Recovered(my_context ctx)
+   // adjust acting set?  (e.g. because backfill completed...)
+   bool history_les_bound = false;
+   if (pg->acting != pg->up && !pg->choose_acting(auth_log_shard,
+-						 &history_les_bound))
++						 true, &history_les_bound))
+     assert(pg->want_acting.size());
+ 
+   if (context< Active >().all_replicas_activated)
+@@ -7400,8 +7425,8 @@ PG::RecoveryState::GetLog::GetLog(my_context ctx)
+   PG *pg = context< RecoveryMachine >().pg;
+ 
+   // adjust acting?
+-  if (!pg->choose_acting(auth_log_shard,
+-      &context< Peering >().history_les_bound)) {
++  if (!pg->choose_acting(auth_log_shard, false,
++			 &context< Peering >().history_les_bound)) {
+     if (!pg->want_acting.empty()) {
+       post_event(NeedActingChange());
+     } else {
+diff --git a/src/osd/PG.h b/src/osd/PG.h
+index f24554a..5c7f5bf 100644
+--- a/src/osd/PG.h
++++ b/src/osd/PG.h
+@@ -877,17 +877,16 @@ public:
+     return actingbackfill.count(osd);
+   }
+   bool is_acting(pg_shard_t osd) const {
+-    if (pool.info.ec_pool()) {
+-      return acting.size() > (unsigned)osd.shard && acting[osd.shard] == osd.osd;
+-    } else {
+-      return std::find(acting.begin(), acting.end(), osd.osd) != acting.end();
+-    }
++    return has_shard(pool.info.ec_pool(), acting, osd);
+   }
+   bool is_up(pg_shard_t osd) const {
+-    if (pool.info.ec_pool()) {
+-      return up.size() > (unsigned)osd.shard && up[osd.shard] == osd.osd;
++    return has_shard(pool.info.ec_pool(), up, osd);
++  }
++  static bool has_shard(bool ec, const vector<int>& v, pg_shard_t osd) {
++    if (ec) {
++      return v.size() > (unsigned)osd.shard && v[osd.shard] == osd.osd;
+     } else {
+-      return std::find(up.begin(), up.end(), osd.osd) != up.end();
++      return std::find(v.begin(), v.end(), osd.osd) != v.end();
+     }
+   }
+   
+@@ -1049,6 +1048,7 @@ public:
+ 
+   map<pg_shard_t, pg_info_t>::const_iterator find_best_info(
+     const map<pg_shard_t, pg_info_t> &infos,
++    bool restrict_to_up_acting,
+     bool *history_les_bound) const;
+   static void calc_ec_acting(
+     map<pg_shard_t, pg_info_t>::const_iterator auth_log_shard,
+@@ -1059,6 +1059,7 @@ public:
+     pg_shard_t up_primary,
+     const map<pg_shard_t, pg_info_t> &all_info,
+     bool compat_mode,
++    bool restrict_to_up_acting,
+     vector<int> *want,
+     set<pg_shard_t> *backfill,
+     set<pg_shard_t> *acting_backfill,
+@@ -1073,12 +1074,14 @@ public:
+     pg_shard_t up_primary,
+     const map<pg_shard_t, pg_info_t> &all_info,
+     bool compat_mode,
++    bool restrict_to_up_acting,
+     vector<int> *want,
+     set<pg_shard_t> *backfill,
+     set<pg_shard_t> *acting_backfill,
+     pg_shard_t *want_primary,
+     ostream &ss);
+   bool choose_acting(pg_shard_t &auth_log_shard,
++		     bool restrict_to_up_acting,
+ 		     bool *history_les_bound);
+   void build_might_have_unfound();
+   void replay_queued_ops();
