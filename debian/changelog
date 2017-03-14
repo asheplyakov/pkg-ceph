@@ -1,3 +1,71 @@
+ceph (10.2.6-1~u14.04+1) jewel-trusty; urgency=low
+
+  * New upstream bugfix only release. The most prominent fixes/changes:
+    - Issue with upgrade from Hammer (0.94.9) to Jewel (10.2.5), 
+      http://tracker.ceph.com/issues/18582
+    - rgw: support offline bucket resharding
+      http://tracker.ceph.com/issues/17549, http://tracker.ceph.com/issues/17550
+      [indices of buckets with >~ 10^6 of objects can be made reasonably fast]
+    - Objectmap does not show object existence correctly,
+      http://tracker.ceph.com/issues/16176
+      [possible data loss]
+    - rbd: diff calculate can hide parent extents when examining first snapshot in clone
+      http://tracker.ceph.com/issues/18068
+      [possible data loss]
+    - osd: do not send ENXIO on misdirected op by default,
+      http://tracker.ceph.com/issues/18751
+      [possible OSD assert during upgrade from Hammer to Jewel]
+    - Monitors report PGs stuck in more than one state,
+      http://tracker.ceph.com/issues/17515
+      [monitoring tools might display incomplete data]
+    - osd: limit omap data in push op,
+      http://tracker.ceph.com/issues/16128
+      [limits load on OSD during the recovery]
+    see http://ceph.com/releases/v10-2-6-jewel-released for more details
+  * Downstream patches:
+    - Qemu crash triggered by network issues
+      http://tracker.ceph.com/issues/18436
+      https://github.com/ceph/ceph/pull/13244
+    - systemd/ceph-disk: make it possible to customize timeout,
+      http://tracker.ceph.com/issues/18740
+      https://github.com/ceph/ceph/pull/13197
+    - msg/simple: avoid busy loop in Pipe::do_recv(),
+      http://tracker.ceph.com/issues/14120
+    - osd: Increase priority for inactive PGs backfill,
+      http://tracker.ceph.com/issues/18350
+      https://github.com/ceph/ceph/pull/13232
+    - ceph-osd: --flush-journal: sporadic segfaults on exit,
+      http://tracker.ceph.com/issues/18820
+      https://github.com/ceph/ceph/pull/13477
+    - fixed "osd/PG.cc: 6896: FAILED assert(pg->is_acting(osd_with_shard) ||
+      pg->is_up(osd_with_shard))",
+      http://tracker.ceph.com/issues/18929
+      https://github.com/ceph/ceph/pull/13541
+    - rgw: fix swift cannot disable object versioning with empty X-Versions-Location,
+      http://tracker.ceph.com/issues/18852
+      https://github.com/ceph/ceph/pull/13823
+  * Dropped fixes which have been merged upstream:
+    - debian/patches/OSDMonitor-clear-jewel-feature-bits-when-talking-to-.patch
+    - debian/patches/ReplicatedPG-do_update_log_missing-take-the-pg-lock-.patch
+    - debian/patches/build-ops-restart-ceph-osd-.service-after-20s-instea.patch
+    - debian/patches/ceph-disk-convert-none-str-to-str-before-printing-it.patch
+    - debian/patches/ceph-disk-enable-runtime-ceph-osd-systemd-units.patch
+    - debian/patches/ceph-disk-systemd-unit-must-run-after-local-fs.targe.patch
+    - debian/patches/ceph-disk-trigger-must-ensure-device-ownership.patch
+    - debian/patches/mon-PGMap-PGs-can-be-stuck-more-than-one-thing.patch
+    - debian/patches/msg-simple-Pipe-handle-addr-decode-error.patch
+    - debian/patches/osd-PG-publish-PG-stats-when-backfill-related-states.patch
+    - debian/patches/osd-limit-omap-data-in-push-op.patch
+    - debian/patches/rgw-for-the-create_bucket-api-if-the-input-creation_.patch
+  * Other changes:
+    - Use jemalloc memory allocator by default. One can switch to tcmalloc
+      by editing /etc/default/ceph and restarting daemons
+    - The output of `ceph version` command matches the package version
+      (including the revision part)
+  * d/pkgbuild.sh: use GPG agent when signing dsc
+
+ -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Tue, 14 Mar 2017 14:02:21 +0400
+
 ceph (10.2.5-3~u14.04+1) jewel-trusty; urgency=low
 
   * debian/patches:
