@@ -1,0 +1,35 @@
+From: Jing Wenjun <jingwenjun@cmss.chinamobile.com>
+Date: Wed, 11 Jan 2017 05:28:43 +0800
+Subject: rgw: the swift container acl should support field .ref
+
+On the openstack-swift. The container acl supports .ref, which is ignored on ceph swift.
+
+Fixes: http://tracker.ceph.com/issues/18484
+Signed-off-by: Jing Wenjun <jingwenjun@cmss.chinamobile.com>
+(cherry picked from commit b06f9cd9f0900db7b0d0fbcaea69cdd0d4b10132)
+
+Conflicts:
+	src/rgw/rgw_acl_swift.cc - no extract_referer_urlspec() in jewel
+            see https://github.com/ceph/ceph/pull/8657
+
+(cherry picked from commit 4c1f302f7d71bedb0dead220f17eeb84e7e3f737)
+
+X-short-title: rgw: the swift container acl should support field .ref
+X-tracker-ref: http://tracker.ceph.com/issues/18484
+X-github-pr: https://github.com/ceph/ceph/pull/13833
+---
+ src/rgw/rgw_acl_swift.cc | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/rgw/rgw_acl_swift.cc b/src/rgw/rgw_acl_swift.cc
+index a9729e3..ab015cd 100644
+--- a/src/rgw/rgw_acl_swift.cc
++++ b/src/rgw/rgw_acl_swift.cc
+@@ -54,6 +54,7 @@ static bool uid_is_public(string& uid)
+     return false;
+ 
+   return sub.compare(".r") == 0 ||
++         sub.compare(".ref") == 0 ||
+          sub.compare(".referer") == 0 ||
+          sub.compare(".referrer") == 0;
+ }
