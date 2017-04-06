@@ -1,3 +1,12 @@
+ceph (10.2.6-2~u14.04+1~2.gbp8cea3e) UNRELEASED; urgency=low
+
+  ** SNAPSHOT build @8cea3e77f438fed03553b63f08b0c297b7bc22a4 **
+
+  * [debug] osd: dump the successfully encoded OSD map too
+  * jewel: osd: pg_pool_t::encode(): be compatible with Hammer <= 0.94.6
+
+ -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Thu, 06 Apr 2017 18:57:22 +0400
+
 ceph (10.2.6-1~u14.04+1) jewel-trusty; urgency=low
 
   * New upstream bugfix only release. The most prominent fixes/changes:
