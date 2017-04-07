@@ -26,3 +26,4 @@ Made-it-possible-to-switch-between-jemalloc-and-tcma.patch
 osd-PG-restrict-want_acting-to-up-acting-on-recovery.patch
 osdc-cache-should-ignore-error-bhs-during-trim.patch
 rgw-fix-swift-cannot-disable-object-versioning-with-.patch
+jewel-osd-pg_pool_t-encode-be-compatible-with-Hammer.patch

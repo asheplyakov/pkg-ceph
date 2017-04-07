@@ -1,0 +1,31 @@
+From: Alexey Sheplyakov <asheplyakov@mirantis.com>
+Date: Fri, 7 Apr 2017 12:34:20 +0400
+Subject: jewel: osd: pg_pool_t::encode(): be compatible with Hammer <= 0.94.6
+
+This patch is necessary for Jewel only since direct upgrades from Hammer
+to Kraken and newer are not supported.
+
+Fixes: http://tracker.ceph.com/issues/19508
+
+Signed-off-by: Alexey Sheplyakov <asheplyakov@mirantis.com>
+---
+ src/osd/osd_types.cc | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/osd/osd_types.cc b/src/osd/osd_types.cc
+index 171b3f1..85d43ba 100644
+--- a/src/osd/osd_types.cc
++++ b/src/osd/osd_types.cc
+@@ -1498,6 +1498,12 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
+     // this was the first post-hammer thing we added; if it's missing, encode
+     // like hammer.
+     v = 21;
++    if (!(features & CEPH_FEATURE_OSD_HITSET_GMT)) {
++      // CEPH_FEATURE_OSD_HITSET_GMT requires pg_pool_t v21 which has
++      // use_gmt_hitset, and two fields added before v21.
++      // See http://tracker.ceph.com/issues/19508
++      v = 17;
++    }
+   }
+ 
+   ENCODE_START(v, 5, bl);
