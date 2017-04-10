@@ -1,3 +1,14 @@
+ceph (10.2.6-2~u16.04+1~1.gbp9eae08) UNRELEASED; urgency=medium
+
+  ** SNAPSHOT build @9eae0843d716eeab0110f30367f91e99adc7b214 **
+
+  * rgw: the swift container acl should support field .ref
+  * Upgrading from 0.94.6 to 10.2.6 can overload monitors
+    http://tracker.ceph.com/issues/19508
+    https://github.com/ceph/ceph/pull/14392
+
+ -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Mon, 10 Apr 2017 11:26:01 +0400
+
 ceph (10.2.6-1~u16.04+1) jewel-xenial; urgency=low
 
   * New upstream bugfix only release. The most prominent fixes/changes:
