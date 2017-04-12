@@ -37,10 +37,10 @@ X-short-title: osd/PG.cc: 6896: FAILED assert(pg->is_acting(osd_with_shard) || p
  2 files changed, 48 insertions(+), 20 deletions(-)
 
 diff --git a/src/osd/PG.cc b/src/osd/PG.cc
-index d7292b3..5c669e8 100644
+index 6e6699c..9186517 100644
 --- a/src/osd/PG.cc
 +++ b/src/osd/PG.cc
-@@ -981,7 +981,9 @@ PG::Scrubber::~Scrubber() {}
+@@ -991,7 +991,9 @@ PG::Scrubber::~Scrubber() {}
   *  3) Prefer current primary
   */
  map<pg_shard_t, pg_info_t>::const_iterator PG::find_best_info(
@@ -51,7 +51,7 @@ index d7292b3..5c669e8 100644
  {
    assert(history_les_bound);
    /* See doc/dev/osd_internals/last_epoch_started.rst before attempting
-@@ -1021,6 +1023,9 @@ map<pg_shard_t, pg_info_t>::const_iterator PG::find_best_info(
+@@ -1031,6 +1033,9 @@ map<pg_shard_t, pg_info_t>::const_iterator PG::find_best_info(
    for (map<pg_shard_t, pg_info_t>::const_iterator p = infos.begin();
         p != infos.end();
         ++p) {
@@ -61,7 +61,7 @@ index d7292b3..5c669e8 100644
      // Only consider peers with last_update >= min_last_update_acceptable
      if (p->second.last_update < min_last_update_acceptable)
        continue;
-@@ -1079,17 +1084,19 @@ void PG::calc_ec_acting(
+@@ -1089,17 +1094,19 @@ void PG::calc_ec_acting(
    pg_shard_t up_primary,
    const map<pg_shard_t, pg_info_t> &all_info,
    bool compat_mode,
@@ -85,7 +85,7 @@ index d7292b3..5c669e8 100644
      all_info_by_shard[i->first.shard].insert(i->first);
    }
    for (uint8_t i = 0; i < want.size(); ++i) {
-@@ -1116,7 +1123,7 @@ void PG::calc_ec_acting(
+@@ -1126,7 +1133,7 @@ void PG::calc_ec_acting(
        ss << " selecting acting[i]: " << pg_shard_t(acting[i], shard_id_t(i)) << std::endl;
        want[i] = acting[i];
        ++usable;
@@ -94,7 +94,7 @@ index d7292b3..5c669e8 100644
        for (set<pg_shard_t>::iterator j = all_info_by_shard[shard_id_t(i)].begin();
  	   j != all_info_by_shard[shard_id_t(i)].end();
  	   ++j) {
-@@ -1165,6 +1172,7 @@ void PG::calc_replicated_acting(
+@@ -1175,6 +1182,7 @@ void PG::calc_replicated_acting(
    pg_shard_t up_primary,
    const map<pg_shard_t, pg_info_t> &all_info,
    bool compat_mode,
@@ -102,7 +102,7 @@ index d7292b3..5c669e8 100644
    vector<int> *want,
    set<pg_shard_t> *backfill,
    set<pg_shard_t> *acting_backfill,
-@@ -1172,7 +1180,8 @@ void PG::calc_replicated_acting(
+@@ -1182,7 +1190,8 @@ void PG::calc_replicated_acting(
    ostream &ss)
  {
    ss << "calc_acting newest update on osd." << auth_log_shard->first
@@ -112,7 +112,7 @@ index d7292b3..5c669e8 100644
    pg_shard_t auth_log_shard_id = auth_log_shard->first;
    
    // select primary
-@@ -1263,6 +1272,9 @@ void PG::calc_replicated_acting(
+@@ -1273,6 +1282,9 @@ void PG::calc_replicated_acting(
      }
    }
  
@@ -122,7 +122,7 @@ index d7292b3..5c669e8 100644
    for (map<pg_shard_t,pg_info_t>::const_iterator i = all_info.begin();
         i != all_info.end();
         ++i) {
-@@ -1299,8 +1311,19 @@ void PG::calc_replicated_acting(
+@@ -1309,8 +1321,19 @@ void PG::calc_replicated_acting(
   *
   * calculate the desired acting, and request a change with the monitor
   * if it differs from the current acting.
@@ -143,7 +143,7 @@ index d7292b3..5c669e8 100644
  {
    map<pg_shard_t, pg_info_t> all_info(peer_info.begin(), peer_info.end());
    all_info[pg_whoami] = info;
-@@ -1312,7 +1335,7 @@ bool PG::choose_acting(pg_shard_t &auth_log_shard_id, bool *history_les_bound)
+@@ -1322,7 +1345,7 @@ bool PG::choose_acting(pg_shard_t &auth_log_shard_id, bool *history_les_bound)
    }
  
    map<pg_shard_t, pg_info_t>::const_iterator auth_log_shard =
@@ -152,7 +152,7 @@ index d7292b3..5c669e8 100644
  
    if (auth_log_shard == all_info.end()) {
      if (up != acting) {
-@@ -1366,6 +1389,7 @@ bool PG::choose_acting(pg_shard_t &auth_log_shard_id, bool *history_les_bound)
+@@ -1376,6 +1399,7 @@ bool PG::choose_acting(pg_shard_t &auth_log_shard_id, bool *history_les_bound)
        up_primary,
        all_info,
        compat_mode,
@@ -160,7 +160,7 @@ index d7292b3..5c669e8 100644
        &want,
        &want_backfill,
        &want_acting_backfill,
-@@ -1381,6 +1405,7 @@ bool PG::choose_acting(pg_shard_t &auth_log_shard_id, bool *history_les_bound)
+@@ -1391,6 +1415,7 @@ bool PG::choose_acting(pg_shard_t &auth_log_shard_id, bool *history_les_bound)
        up_primary,
        all_info,
        compat_mode,
@@ -168,7 +168,7 @@ index d7292b3..5c669e8 100644
        &want,
        &want_backfill,
        &want_acting_backfill,
-@@ -6611,7 +6636,7 @@ PG::RecoveryState::Recovered::Recovered(my_context ctx)
+@@ -6662,7 +6687,7 @@ PG::RecoveryState::Recovered::Recovered(my_context ctx)
    // adjust acting set?  (e.g. because backfill completed...)
    bool history_les_bound = false;
    if (pg->acting != pg->up && !pg->choose_acting(auth_log_shard,
@@ -177,7 +177,7 @@ index d7292b3..5c669e8 100644
      assert(pg->want_acting.size());
  
    if (context< Active >().all_replicas_activated)
-@@ -7400,8 +7425,8 @@ PG::RecoveryState::GetLog::GetLog(my_context ctx)
+@@ -7451,8 +7476,8 @@ PG::RecoveryState::GetLog::GetLog(my_context ctx)
    PG *pg = context< RecoveryMachine >().pg;
  
    // adjust acting?

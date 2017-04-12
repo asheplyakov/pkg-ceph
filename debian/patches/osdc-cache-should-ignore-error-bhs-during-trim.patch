@@ -17,10 +17,10 @@ X-github-pr: https://github.com/ceph/ceph/pull/13244
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/src/osdc/ObjectCacher.cc b/src/osdc/ObjectCacher.cc
-index 2a1e76e..6408d31 100644
+index 454146e..2a9639c 100644
 --- a/src/osdc/ObjectCacher.cc
 +++ b/src/osdc/ObjectCacher.cc
-@@ -1160,7 +1160,7 @@ void ObjectCacher::trim()
+@@ -1151,7 +1151,7 @@ void ObjectCacher::trim()
        break;
  
      ldout(cct, 10) << "trim trimming " << *bh << dendl;

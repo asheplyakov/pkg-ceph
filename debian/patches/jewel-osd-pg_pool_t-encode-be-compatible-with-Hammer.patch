@@ -13,7 +13,7 @@ Signed-off-by: Alexey Sheplyakov <asheplyakov@mirantis.com>
  1 file changed, 6 insertions(+)
 
 diff --git a/src/osd/osd_types.cc b/src/osd/osd_types.cc
-index 171b3f1..85d43ba 100644
+index 784d454..fc16c17 100644
 --- a/src/osd/osd_types.cc
 +++ b/src/osd/osd_types.cc
 @@ -1498,6 +1498,12 @@ void pg_pool_t::encode(bufferlist& bl, uint64_t features) const
