@@ -1,6 +1,49 @@
-656b5b6 (HEAD, tag: v10.2.6, origin/jewel) 10.2.6
+50e863e (HEAD, tag: v10.2.7, origin/jewel) 10.2.7
+fb85c68 rgw_file:  use fh_hook::is_linked() to check residence
+fcc3ada jewel: librbd: possible race in ExclusiveLock handle_peer_notification
+eedb9f7 rgw_file: RGWFileHandle dtor must also cond-unlink from FHCache
+6c2a40a rgw_file:  split last argv on ws, if provided
+d2ca03b rgw_file: fix hiwat behavior
+166cb7f rgw_file: refcnt bugfixes
+31a71be rgw_file:  add refcount dout traces at debuglevel 17
+1d6c72f rgw_file: add pretty-print for RGWFileHandle
+a969c44 rgw_file: fix marker computation
+a70e83c rgw_file: rgw_readdir can't list multi-segment dirs
+209987e rgw_file: allow setattr on placeholder directories
+b24a8c2 rgw_file: posix style atime,ctime,mtime
+b618183 rgw_file: fix marker computation
+ed9308c rgw_file: rgw_readdir can't list multi-segment dirs
+26a38e2 rgw_file: allow setattr on placeholder directories
+7e4e290 rgw_file: fix reversed return value of getattr
+3c02ee4 rgw_file: fix non-negative return code for open operation
+e9a4903 rgw_file: fix double unref on rgw_fh for rename
+9910eac rgw: multipart part copy, fix regression
+a3fdf0e rgw: minor optimization
+2161376 rgw: rgw_obj_key use adjustment in multipart copy part
+135f84d rgw: multipart copy-part handle versionId
+9ab65f5 rgw: multipart copy part minor parsing cleanup
+3eb9dc9 rgw: multipart copy, check for empty bucket, improve logging
+2588e95 rgw: multipart copy part, chunked read
+bd118b5 rgw: doc: add multipart uploads copy part feature as supported
+b56b719 rgw: multipart uploads copy part support
+d44263f rgw: make sending Content-Length in 204 and 304 controllable
+f3face6 rgw: clear old zone short ids on period update
+0be4e89 rgw: hold a reference on data_sync_cr over run()
+18ffdb7 rgw: clear data_sync_cr if RGWDataSyncControlCR fails
+d0a0d2f tests: fix merge error in rgw/singleton/all/radosgw-admin.yaml
+1985662 rgw: RGWMetaSyncShardControlCR retries with backoff on all error codes
+dfaaec0 rgw_file:  return of RGWFileHandle::FLAG_EXACT_MATCH
+9b3784d rgw_file: invalid use of RGWFileHandle::FLAG_EXACT_MATCH
+7761376 rgw_file: rgw_lookup: don't ref for "/" or ".."
+97fed01 rgw_file: avoid stranding invalid-name bucket handles in fhcache
+d333add rgw: set dumpable flag after setuid post ff0e521
+656b5b6 (tag: v10.2.6) 10.2.6
+f7ce5df rgw: fix swift cannot disable object versioning with empty X-Versions-Location
+2f20328 osd: Increase priority for inactive PGs backfill
+e8041f6 rgw_file:  fix RGWLibFS::setattr for directory objects
 88f4895 qa/suites/upgrade/hammer-x: Add some volumes
 0c242d1 qa/suites/ceph-deploy: Drop OpenStack volume count
+e475bfa rgw_file: ensure valid_s3_object_name for directories, too
 ccd0265 qa: replace centos 7.2 with centos 7.3
 2cbec5b Removed dumplin test 13234.yaml as not needed anymore
 771e1d9 qa/suites/rest: Openstack volumes
@@ -12,6 +55,11 @@ ac7add1 qa/suites/knfs: Add openstack volume configuration
 ba35859 qa/suites/kcephfs: Openstack volume configuration
 aced718 qa/suites/krbd: Add openstack volume configuration
 94d5888 qa/suites/rgw: Add openstack volume configuration
+78c8be7 rgw/openssl fix: xenial autoconf logic problem: gcc/ld got too smart...
+db928d6 rbd-mirror: retry object copy after -ENOENT error
+a643fa8 rbd-mirror: object copy should always reference valid snapshots
+37bbc95 rbd-mirror: replace complex object op tuple with struct
+8941881 rgw_file:  interned RGWFileHandle objects need parent refs
 cb7bb0c tests: reduce stress-split-erasure-code-x86_64 dependency on stress-split
 8ae1886 tests: reduce stress-split-erasure-code dependency on stress-split
 4d4b38e qa: drop ubuntu trusty support
@@ -45,6 +93,32 @@ d9df745 cls/rgw: fix bi_list objclass command
 c1cf61f rgw: utilities to support raw bucket index operations
 0ce2a12 rgw: use bucket_info.bucket_id instead of marker where needed
 5fe58c5 cls/rgw: utilities to support raw bucket index operations
+952f34f test: Update for new error message when doing scrub with deep-scrub errors
+b655b98 osd: Add "trigger_scrub" admin socket command
+94c958d test: Add test for keeping deep-scrub information
+42eb24f osd: When deep-scrub errors present upgrade regular scrubs
+76a457a tasks/scrub_test.py: Make test deterministic by updating digests
+bd1f198 repair_test, scrub_test: Fix whitelists for scrub changes
+28106f0 scrub_test: Fix for list-inconsistent-obj output changes
+abcefc1 doc, test: Add schemas for list-inconsistent-* rados command output
+2fa2b64 test: Update testing for new list-inconsistent-obj output
+304f697 rados, osd: Improve attrs output of list-inconsistent-obj
+ea52f52 osd: Fix logging to help with diagnostics
+5e8f8a2 test: Fix use of wait_for_clean()
+2230e6a common: Change cleanbin() to use base64 encoding, update ceph-objectstore-tool
+83ea077 common: Move cleanbin() function to common/util.cc
+ba84ca9 test: Add test support for deep-scrub
+6a421d1 common: Fix indentation
+c7c3e07 osd: Handle corrupt attributes in get_object_context()
+8006ba7 ReplicatedPG::failed_push: release read lock on failure
+5ca69d5 test.sh: Make check for flags more robust
+1be38e5 test: Remove extra objectstore_tool call which causes a recovery
+026f181 test: Handle object removals in a non-racey way
+c5ef385 osd: Fix hang on unfound object after mark_unfound_lost is done
+6284f74 osd: Handle recovery read errors
+27393a8 osd: Fix log messages
+cbf66f3 osd: CLEANUP: Remove unused pending_read member
+228b91d test/osd-scrub-repair.sh: Use test case specific object names to help with diagnostics
 7515a77 tests: drop buildpackages.py
 36f96f4 tests: update SUSE yaml facets in qa/distros/all
 7cf37f6 rbd-nbd: support partition for rbd-nbd mapped raw block device.
@@ -136,6 +210,7 @@ f99ead1 rgw: multipart copy-part handle versionId
 e5ac120 rgw: multipart copy part, chunked read
 a54a7ad rgw: doc: add multipart uploads copy part feature as supported
 987b425 rgw: multipart uploads copy part support
+39848e4 radosgw/swift: clean up flush / newline behavior.
 21622c1 src/mds: fix MDSMap upgrade decoding
 be8bc11 mds: use FSMap::insert to add to standby_daemons
 649b1d4 rbd: bench-write should return error if io-size >= 4G
@@ -156,6 +231,7 @@ f66bd81 tests: subst branch and repo in qa/tasks/qemu.py
 69a0efa tests: subst repo name in krbd/unmap/tasks/unmap.yaml
 2931aef tests: subst repo name in qa/tasks/cram.py
 205403b cram: support fetching from sha1 branch, tag, commit hash
+3fce77a osd: jewel fix OSD network address in OSD heartbeat_check log message
 ea65450 qa/workunits/rbd: use more recent qemu-iotests that support Xenial
 f449e3d qa/workunits/rbd: removed qemu-iotest case 077
 61e1b0c tasks/rbd_fio: unmap rbd devices on cleanup
@@ -193,8 +269,15 @@ e2eaae4 Add ceph-create-keys to explicitly create admin/bootstrap keys
 5115c21 ceph_volume_client: check if volume metadata is empty
 bf33cd5 ceph_volume_client: fix _recover_auth_meta() method
 8404426 mds/server: skip unwanted dn in handle_client_readdir
+14a6aab rgw: Handle multiple listening addreses w/ optional ssl "correctly" with civetweb.
+6982505 rgw: s3: secure_port should override port, also apply ssl default right.
+28f2841 rgw: Get civetweb ssl enhancement: wip-listen3 = mg_get_local_addr
+8d83dfb rgw: Document that radosgw now supports SSL.
+e3f80c9 rgw: civetweb/openssl: automagic: load libssl.so and libcrypto.so by soname.
 a0ee8b9 jewel: fix compile error for dencode test case when --with-radosgw=no
 5e6c729 jewel: fixed compile error when --with-radosgw=no
+0455514 rgw: civetweb/openssl: Load libssl.so and libcrypto.so by soname.
+3866408 rgw: cmake: remove useless civetweb include path side effect.
 cdd6cbf librbd: block concurrent in-flight object map updates for the same object
 04cee05 qa/tasks/workunit: clear clone dir before retrying checkout
 1a98850 qa/tasks/workunit: retry on ceph.git if checkout fails
@@ -6230,7 +6313,7 @@ ae114ae cmake: support ccache via a WITH_CCACHE build option
 1df9705 test/librbd/fsx: musl libc doesn't implement random_r. Use c++11 std::mt19937 generator instead.
 6f1fb16 doc: osd: s/schedued/scheduled/
 7d93cf4 buffer: make usable outside of ceph source again
-93d3dfe Fixing NULL pointer dereference
+93d3dfe0 Fixing NULL pointer dereference
 72785ee rgw: enforce SLO part's ETag match during GET on SLO of Swift.
 1cf149d rgw: append X-Static-Large-Object attribute during PUT on SLO.
 630eac1 rgw: add support for normalisation of ranged SLO requests.
@@ -34194,7 +34277,7 @@ c1cabf5 ceph: don't crash when sending message to !up osd
 7c05c1f osd: simplify share_pg_log
 43bd49d osd: fix up PG::Missing methods a bit
 5115882 osd: factor out recover_primary_got() helper
-efe5abf osd: make C_OSD_CommittedPushedObject::op optional
+efe5abfc osd: make C_OSD_CommittedPushedObject::op optional
 22684f2 osd: pass version explicitly to pull
 a3be665 osd: fix share_pg_log()
 c3fa078 messages/MOSDPG*: clean up output a bit
