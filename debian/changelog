@@ -1,11 +1,36 @@
-ceph (10.2.6-2~u14.04+1~2.gbp8cea3e) UNRELEASED; urgency=low
+ceph (10.2.7-1~u14.04+1) jewel-trusty; urgency=low
 
-  ** SNAPSHOT build @8cea3e77f438fed03553b63f08b0c297b7bc22a4 **
+  * New upstream bugfix only release. The most prominent fixes/changes:
+    - osd: Increase priority for inactive PGs backfill,
+      https://tracker.ceph.com/issues/18350
+    - osd: Scrub improvements and other fixes,
+      https://tracker.ceph.com/issues/17857
+    - rgw: make sending Content-Length in 204 and 304 controllable,
+      https://tracker.ceph.com/issues/16602
+    - rgw: multipart uploads copy part support,
+      https://tracker.ceph.com/issues/12790
+    - rgw: fix swift cannot disable object versioning with empty X-Versions-Location,
+      https://tracker.ceph.com/issues/18852
+    See http://ceph.com/releases/v10-2-7-jewel-released for more details
+  * Refreshed patches:
+    - d/p/disable-openssl-linking.patch: dropped, implemented upstream
+    - d/p/osd-Increase-priority-for-inactive-PGs-backfill.patch: dropped,
+      merged upstream
+    - d/p/rgw-fix-swift-cannot-disable-object-versioning-with-.patch: dropped,
+      merged upstream
+    - d/p/osd-PG-restrict-want_acting-to-up-acting-on-recovery.patch: updated
+      offsets and git meta-data, no semantic changes
+  * Newly added patches:
+    - Upgrading from 0.94.6 to 10.2.6 can overload monitors
+      http://tracker.ceph.com/issues/19508
+      https://github.com/ceph/ceph/pull/14392
+      debian/patches/jewel-osd-pg_pool_t-encode-be-compatible-with-Hammer.patch
+    - rgw: the swift container acl should support field .ref
+      http://tracker.ceph.com/issues/18484
+      https://github.com/ceph/ceph/pull/13833
+  * Added libssl-dev to build-deps, necessary since 10.2.7
 
-  * [debug] osd: dump the successfully encoded OSD map too
-  * jewel: osd: pg_pool_t::encode(): be compatible with Hammer <= 0.94.6
-
- -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Thu, 06 Apr 2017 18:57:22 +0400
+ -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Thu, 13 Apr 2017 11:45:09 +0400
 
 ceph (10.2.6-1~u14.04+1) jewel-trusty; urgency=low
 
