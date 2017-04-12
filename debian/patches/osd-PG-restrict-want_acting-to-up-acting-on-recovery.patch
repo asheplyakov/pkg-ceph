@@ -37,7 +37,7 @@ X-short-title: osd/PG.cc: 6896: FAILED assert(pg->is_acting(osd_with_shard) || p
  2 files changed, 48 insertions(+), 20 deletions(-)
 
 diff --git a/src/osd/PG.cc b/src/osd/PG.cc
-index e4df1fd..dacd989 100644
+index 6e6699c..9186517 100644
 --- a/src/osd/PG.cc
 +++ b/src/osd/PG.cc
 @@ -991,7 +991,9 @@ PG::Scrubber::~Scrubber() {}
@@ -168,7 +168,7 @@ index e4df1fd..dacd989 100644
        &want,
        &want_backfill,
        &want_acting_backfill,
-@@ -6637,7 +6662,7 @@ PG::RecoveryState::Recovered::Recovered(my_context ctx)
+@@ -6662,7 +6687,7 @@ PG::RecoveryState::Recovered::Recovered(my_context ctx)
    // adjust acting set?  (e.g. because backfill completed...)
    bool history_les_bound = false;
    if (pg->acting != pg->up && !pg->choose_acting(auth_log_shard,
@@ -177,7 +177,7 @@ index e4df1fd..dacd989 100644
      assert(pg->want_acting.size());
  
    if (context< Active >().all_replicas_activated)
-@@ -7426,8 +7451,8 @@ PG::RecoveryState::GetLog::GetLog(my_context ctx)
+@@ -7451,8 +7476,8 @@ PG::RecoveryState::GetLog::GetLog(my_context ctx)
    PG *pg = context< RecoveryMachine >().pg;
  
    // adjust acting?
