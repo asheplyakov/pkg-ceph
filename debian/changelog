@@ -1,13 +1,38 @@
-ceph (10.2.6-2~u16.04+1~1.gbp9eae08) UNRELEASED; urgency=medium
+ceph (10.2.7-1~u16.04+1) jewel-xenial; urgency=low
 
-  ** SNAPSHOT build @9eae0843d716eeab0110f30367f91e99adc7b214 **
+  * New upstream bugfix only release. The most prominent fixes/changes:
+    - osd: Increase priority for inactive PGs backfill,
+      https://tracker.ceph.com/issues/18350
+    - osd: Scrub improvements and other fixes,
+      https://tracker.ceph.com/issues/17857
+    - rgw: make sending Content-Length in 204 and 304 controllable,
+      https://tracker.ceph.com/issues/16602
+    - rgw: multipart uploads copy part support,
+      https://tracker.ceph.com/issues/12790
+    - rgw: fix swift cannot disable object versioning with empty X-Versions-Location,
+      https://tracker.ceph.com/issues/18852
+    See http://ceph.com/releases/v10-2-7-jewel-released for more details
+  * Refreshed patches:
+    - d/p/disable-openssl-linking.patch: dropped, implemented upstream
+    - d/p/osd-Increase-priority-for-inactive-PGs-backfill.patch: dropped,
+      merged upstream
+    - d/p/rgw-fix-swift-cannot-disable-object-versioning-with-.patch: dropped,
+      merged upstream
+    - d/p/osd-PG-restrict-want_acting-to-up-acting-on-recovery.patch: updated
+      offsets and git meta-data, no semantic changes
+  * Newly added patches:
+    - Upgrading from 0.94.6 to 10.2.6 can overload monitors
+      http://tracker.ceph.com/issues/19508
+      https://github.com/ceph/ceph/pull/14392
+      debian/patches/jewel-osd-pg_pool_t-encode-be-compatible-with-Hammer.patch
+    - rgw: the swift container acl should support field .ref
+      http://tracker.ceph.com/issues/18484
+      https://github.com/ceph/ceph/pull/13833
+  * Added systemd targets to the package, closes
+    https://github.com/asheplyakov/pkg-ceph/issues/1
+  * Added libssl-dev to build-deps, necessary since 10.2.7
 
-  * rgw: the swift container acl should support field .ref
-  * Upgrading from 0.94.6 to 10.2.6 can overload monitors
-    http://tracker.ceph.com/issues/19508
-    https://github.com/ceph/ceph/pull/14392
-
- -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Mon, 10 Apr 2017 11:26:01 +0400
+ -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Wed, 12 Apr 2017 20:02:12 +0400
 
 ceph (10.2.6-1~u16.04+1) jewel-xenial; urgency=low
 
