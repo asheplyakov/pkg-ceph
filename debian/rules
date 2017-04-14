@@ -81,7 +81,7 @@ override_dh_installinit:
 	dh_installinit --no-start
 	dh_installinit -pceph-common --no-start --name=rbdmap
 	# Install upstart configurations using dh_installinit
-	for conf in `ls -1 src/upstart/ceph*.conf | grep -v mds`; do \
+	for conf in `ls -1 src/upstart/ceph*.conf | grep -v -E '(mds)|(rbd-mirror)'`; do \
         name=`basename $$conf | cut -d . -f 1`; \
         cp -v $$conf debian/ceph.$$name.upstart; \
         dh_installinit -pceph --no-start --name=$$name; \
