@@ -1,3 +1,9 @@
+ceph (10.2.7-1~u16.04+2) jewel-xenial; urgency=medium
+
+  * packaging: avoid file conflicts between ceph and rbd-mirror packages
+
+ -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Fri, 14 Apr 2017 18:03:24 +0400
+
 ceph (10.2.7-1~u16.04+1) jewel-xenial; urgency=low
 
   * New upstream bugfix only release. The most prominent fixes/changes:
