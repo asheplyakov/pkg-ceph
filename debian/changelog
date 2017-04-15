@@ -1,3 +1,9 @@
+ceph (10.2.7-1~u14.04+2) jewel-trusty; urgency=medium
+
+  * packaging: avoid file conflicts between ceph and rbd-mirror packages
+
+ -- Alexey Sheplyakov <asheplyakov@mirantis.com>  Sat, 15 Apr 2017 21:19:14 +0400
+
 ceph (10.2.7-1~u14.04+1) jewel-trusty; urgency=low
 
   * New upstream bugfix only release. The most prominent fixes/changes:
